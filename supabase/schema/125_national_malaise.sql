@@ -5,8 +5,10 @@
 -- read up front (a snapshot), so one year's penalty can't cascade into another the same
 -- pass (Order's −1 Growth / Growth's −1 Prosperity are judged against the year-start values).
 -- Effects ride _apply_policy_effect (schema/91) — the one clamp source; Party Popularity /
--- Government Confidence land on the sitting government.
--- Depends on: 10 (nations), 91 (_apply_policy_effect), 40 (current_game_date). Run after 91.
+-- Government Confidence land on the sitting government. An AUTHORITARIAN regime (1–4) is spared
+-- the political penalties (Prosperity / Welfare / Order) — it suppresses that fallout — but still
+-- takes the economic + international ones (Growth, Global Image).
+-- Depends on: 10 (nations), 70 (_to_num), 91 (_apply_policy_effect), 40 (current_game_date). After 91.
 -- ===========================================================================
 
 -- One malaise line into a nation's feed. ONE place for the insert shape the five checks share.
@@ -22,6 +24,7 @@ returns void language plpgsql security definer set search_path = public as $$
 declare
   n record;
   v_pro numeric; v_wel numeric; v_gro numeric; v_ord numeric; v_img numeric; v_bud numeric; v_inc numeric;
+  v_regime numeric; v_open boolean;
 begin
   if (p_tick - 1) % 12 <> 0 then return; end if;   -- January only (tick 1, 13, 25, …)
   for n in select id, stats, economy from public.nations where not coalesce(dormant, false) loop
@@ -30,18 +33,23 @@ begin
     v_gro := coalesce((n.stats->>'growth')::numeric, 0);
     v_ord := coalesce((n.stats->>'order')::numeric, 0);
     v_img := coalesce((n.stats->>'image')::numeric, 0);
+    -- An authoritarian regime (1–4) suppresses the POLITICAL fallout — the Prosperity, Welfare
+    -- and Order penalties (popularity / confidence) only bite an open regime (5+). Growth and
+    -- Global Image (economic / international) still land on everyone. (_to_num mirrors sanctions.)
+    v_regime := public._to_num(n.economy->>'regime');
+    v_open := (v_regime is null or v_regime >= 5);
 
-    if v_pro < 9 then
+    if v_pro < 9 and v_open then
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Party Popularity', 'v', -3));
       perform public._malaise_event(n.id, 'Due to low Prosperity, party popularity has suffered (−3%).');
     end if;
 
-    if v_wel < 9 then
+    if v_wel < 9 and v_open then
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Government Confidence', 'v', -5));
       perform public._malaise_event(n.id, 'Due to low Welfare, government confidence has suffered (−5%).');
     end if;
 
-    if v_ord < 9 then
+    if v_ord < 9 and v_open then
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Party Popularity', 'v', -3));
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Growth', 'v', -1));
       perform public._malaise_event(n.id, 'Due to low Order, party popularity has suffered (−3%) and growth has stalled (−1).');
