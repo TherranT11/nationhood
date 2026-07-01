@@ -13,6 +13,8 @@
 --                      economy resource (that reconciliation lands with Expand).
 -- Depends on: 10 (nations), 05 (game_state.current_tick), 40 (_begin_action, events),
 -- 91 (_apply_policy_effect: Budget), 114 (_party_holds_ministry). Run after 114.
+-- build_military_base also calls _have_defense_pact (schema/131) for abroad builds — late-bound
+-- (the body isn't resolved at CREATE), so 127 still applies before 131; it's only needed at call time.
 -- ===========================================================================
 
 create table if not exists public.military_bases (
@@ -59,13 +61,16 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 grant execute on function public.is_defence_minister() to authenticated;
 
--- Build a military base (Minister of Defence, 2 AP, $15B from the Budget). Slice 1 builds
--- at home only; an abroad build needs a mutual defence pact (a later slice). The $15B rides
--- _apply_policy_effect's Budget target — the one money path (a shortfall floors the Budget
--- at 0 and rolls into Debt, exactly like a debt-financed import).
-create or replace function public.build_military_base(p_scope text default 'home')
+-- Build a military base (Minister of Defence, 2 AP, $15B from the Budget). p_host names the
+-- nation the base sits in: null/empty/own → a home base; another nation → ABROAD, which needs
+-- a mutual defence pact with that nation (schema/131, _have_defense_pact). Either way the owner
+-- is the builder (nation_id), so an abroad base still counts toward the builder's own capacity.
+-- The $15B rides _apply_policy_effect's Budget target — the one money path (a shortfall floors
+-- the Budget at 0 and rolls into Debt). Dropped first: the parameter was renamed (p_scope→p_host).
+drop function if exists public.build_military_base(text);
+create or replace function public.build_military_base(p_host text default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_p public.parties%rowtype; v_nation text; v_tick int; v_cost numeric := 15;
+declare v_p public.parties%rowtype; v_nation text; v_tick int; v_cost numeric := 15; v_host text; v_abroad boolean;
 begin
   v_p := public._begin_action(0);   -- requires >= 1 action; the 2 AP are spent below
   v_nation := v_p.nation_id;
@@ -73,20 +78,28 @@ begin
     raise exception 'Only the Minister of Defence can build a military base.'; end if;
   if v_p.actions_remaining < 2 then
     raise exception 'Not enough actions left this turn (need 2).'; end if;
-  if coalesce(p_scope, 'home') <> 'home' then
-    raise exception 'Building a base abroad requires a mutual defence pact.'; end if;
+
+  v_host := coalesce(nullif(p_host, ''), v_nation);   -- default / empty / own → home
+  v_abroad := v_host <> v_nation;
+  if v_abroad then
+    if not exists (select 1 from public.nations where id = v_host and not coalesce(dormant, false)) then
+      raise exception 'No such nation to host the base.'; end if;
+    if not public._have_defense_pact(v_nation, v_host) then
+      raise exception 'You need a mutual defence pact with that nation to build there.'; end if;
+  end if;
 
   select current_tick into v_tick from public.game_state where id;
   perform public._apply_policy_effect(v_nation, jsonb_build_object('t', 'Budget', 'v', -v_cost));   -- pay $15B (shortfall → Debt)
   insert into public.military_bases (nation_id, host_nation_id, built_tick)
-    values (v_nation, v_nation, v_tick);
+    values (v_nation, v_host, v_tick);
   update public.parties set actions_remaining = actions_remaining - 2 where id = v_p.id;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_nation, v_p.id, 'declaration',
-            v_p.name || ' has commissioned a new military base at home.',
+            v_p.name || ' has commissioned a new military base '
+              || (case when v_abroad then 'in ' || (select name from public.nations where id = v_host) else 'at home' end) || '.',
             public.current_game_date());
-  return jsonb_build_object('built', true, 'actions', v_p.actions_remaining - 2);
+  return jsonb_build_object('built', true, 'abroad', v_abroad, 'actions', v_p.actions_remaining - 2);
 end $$;
 grant execute on function public.build_military_base(text) to authenticated;
 

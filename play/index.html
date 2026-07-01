@@ -368,9 +368,15 @@
     <div class="amodal__list">
       <div class="stmt__scope">
         <button class="stmt__opt is-on" id="bbHome" type="button">Home</button>
-        <button class="stmt__opt" id="bbAbroad" type="button" disabled>Abroad</button>
+        <button class="stmt__opt" id="bbAbroad" type="button">Abroad</button>
       </div>
-      <p class="noco__warn">A new base in your own territory. Costs <b>$15B</b> from the Budget (a shortfall is financed by Debt) and <b>2 actions</b>. Building <b>Abroad</b> needs a mutual defence pact.</p>
+      <div id="bbAbroadPick" hidden>
+        <label class="exp-lab">Continent</label>
+        <select id="bbContinent" class="exp-sel"></select>
+        <label class="exp-lab">Nation <span style="text-transform:none;letter-spacing:0;color:var(--soft)">— pact required</span></label>
+        <select id="bbNation" class="exp-sel"></select>
+      </div>
+      <p class="noco__warn" id="bbNote">A new base in your own territory. Costs <b>$15B</b> from the Budget (a shortfall is financed by Debt) and <b>2 actions</b>.</p>
       <div class="noco__btns"><button class="noco__btn noco__cancel" id="bbCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="bbConfirm" type="button">Build &middot; $15B</button></div>
     </div>
   </div>
@@ -784,18 +790,91 @@
   });
 
   // BUILD MILITARY BASE — the Minister of Defence commissions a base (2 AP, $15B from the
-  // Budget; a shortfall rolls into Debt). Home only this slice; Abroad is greyed pending a
-  // mutual defence pact. Fires through performAction so the AP budget + feed refresh; the
-  // base count updates on the Conflict page.
+  // Budget; a shortfall rolls into Debt). Home builds in your own territory; Abroad builds in
+  // an allied nation — a Continent → Nation drilldown where nations you have no mutual defence
+  // pact with are disabled. Fires through performAction so the AP budget + feed refresh.
   var buildBaseModal = document.getElementById('buildBaseModal');
-  function openBuildBase() { if (!acting) buildBaseModal.hidden = false; }
+  var BB = { mode: 'home', byCont: {}, allies: {}, loaded: false };
+  function openBuildBase() {
+    if (acting || !feedCtx) return;
+    BB.mode = 'home'; setBBMode();
+    buildBaseModal.hidden = false;
+    loadBBAbroad();
+  }
+  // Load once per open: which nations sit on which continent (excluding your own) and which of
+  // them you hold a pact with. Non-fatal — if it fails, Home still builds; Abroad just won't fill.
+  async function loadBBAbroad() {
+    BB.byCont = {}; BB.allies = {};
+    try {
+      var mine = feedCtx.nationId;
+      var res = await Promise.all([
+        supabase.from('nations').select('id, name').eq('dormant', false),
+        supabase.rpc('nation_continents'),
+        supabase.from('defense_pacts').select('nation_a, nation_b')
+      ]);
+      var contOf = {}; ((res[1] || {}).data || []).forEach(function (r) { contOf[r.nation_id] = r.continent; });
+      ((res[2] || {}).data || []).forEach(function (p) {
+        if (p.nation_a === mine) BB.allies[p.nation_b] = true;
+        else if (p.nation_b === mine) BB.allies[p.nation_a] = true;
+      });
+      ((res[0] || {}).data || []).forEach(function (n) {
+        if (n.id === mine) return;                                   // home is the other tab
+        var c = contOf[n.id] || 'Unassigned';
+        (BB.byCont[c] = BB.byCont[c] || []).push(n);
+      });
+    } catch (e) { /* Abroad picker stays empty; Home is unaffected */ }
+    renderBBContinents();
+  }
+  function renderBBContinents() {
+    var conts = Object.keys(BB.byCont).sort();
+    var sel = document.getElementById('bbContinent');
+    sel.innerHTML = conts.length
+      ? conts.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join('')
+      : '<option value="">No other nations yet</option>';
+    sel.onchange = renderBBNations;
+    renderBBNations();
+  }
+  function renderBBNations() {
+    var c = document.getElementById('bbContinent').value;
+    var nats = (BB.byCont[c] || []).slice().sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
+    var sel = document.getElementById('bbNation');
+    sel.innerHTML = nats.length
+      ? nats.map(function (n) {
+          var ally = !!BB.allies[n.id];
+          return '<option value="' + esc(n.id) + '"' + (ally ? '' : ' disabled') + '>' + esc(n.name) + (ally ? '' : ' — no pact') + '</option>';
+        }).join('')
+      : '<option value="">No nations here</option>';
+    sel.onchange = updateBBConfirm;
+    updateBBConfirm();
+  }
+  function updateBBConfirm() {
+    var btn = document.getElementById('bbConfirm');
+    if (BB.mode === 'home') { btn.disabled = false; return; }
+    var val = document.getElementById('bbNation').value;
+    btn.disabled = !(val && BB.allies[val]);   // an allied nation must be picked
+  }
+  function setBBMode() {
+    var home = BB.mode === 'home';
+    document.getElementById('bbHome').classList.toggle('is-on', home);
+    document.getElementById('bbAbroad').classList.toggle('is-on', !home);
+    document.getElementById('bbAbroadPick').hidden = home;
+    document.getElementById('bbNote').innerHTML = home
+      ? 'A new base in your own territory. Costs <b>$15B</b> from the Budget (a shortfall is financed by Debt) and <b>2 actions</b>.'
+      : 'A base on an ally’s soil — you need a <b>mutual defence pact</b> with them. Costs <b>$15B</b> and <b>2 actions</b>.';
+    updateBBConfirm();
+  }
+  document.getElementById('bbHome').onclick = function () { BB.mode = 'home'; setBBMode(); };
+  document.getElementById('bbAbroad').onclick = function () { BB.mode = 'abroad'; setBBMode(); };
   var closeBuildBase = wireModalClose(buildBaseModal, 'buildBaseClose');
   var bbCancel = document.getElementById('bbCancel'); if (bbCancel) bbCancel.addEventListener('click', closeBuildBase);
   var bbConfirm = document.getElementById('bbConfirm');
   if (bbConfirm) bbConfirm.addEventListener('click', function () {
+    if (bbConfirm.disabled) return;
+    var host = BB.mode === 'abroad' ? document.getElementById('bbNation').value : null;
+    if (BB.mode === 'abroad' && !(host && BB.allies[host])) return;   // guard (server re-checks the pact)
     closeBuildBase();
-    performAction(function () { return supabase.rpc('build_military_base', { p_scope: 'home' }); },
-      function () { return 'A new military base has been commissioned.'; });
+    performAction(function () { return supabase.rpc('build_military_base', { p_host: host }); },
+      function (d) { return 'A new military base has been commissioned' + (d && d.abroad ? ' abroad.' : '.'); });
   });
 
   // EXPAND MILITARY — build military at one of your bases (1 AP; $5B + 1 Energy + 1 Minerals
