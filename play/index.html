@@ -389,6 +389,13 @@
   </div>
 </div>
 
+<div class="amodal" id="deployModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Deploy the Military</b><button class="amodal__x" id="deployClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list" id="deployBody"><p class="empty">Loading…</p></div>
+  </div>
+</div>
+
 <div class="amodal" id="negotiateModal" hidden>
   <div class="amodal__panel">
     <div class="amodal__hd"><b id="negTitle">Coalition Talks</b><button class="amodal__x" id="negClose" type="button" aria-label="Close">&times;</button></div>
@@ -949,6 +956,80 @@
       var qty = EXP.qty; closeExpand();
       performAction(function () { return supabase.rpc('expand_military', { p_base_id: base.id, p_qty: qty }); },
         function (d) { return (d.ordered || qty) + ' military ordered — ready next turn.'; });
+    };
+  }
+
+  // DEPLOY MILITARY — reposition military between Home (the reserve) and your bases abroad
+  // (1 AP, instant). Home available = on_hand.military − everything already stationed abroad;
+  // an abroad base holds at most 5. Fires deploy_military through performAction.
+  var deployModal = document.getElementById('deployModal');
+  var closeDeploy = wireModalClose(deployModal, 'deployClose');
+  var DEP = { locs: [], from: 0, to: 1, qty: 1 };
+  function openDeploy() {
+    if (acting || !feedCtx) return;
+    document.getElementById('deployBody').innerHTML = '<p class="empty">Loading…</p>';
+    deployModal.hidden = false;
+    loadDeploy();
+  }
+  async function loadDeploy() {
+    try {
+      var nid = feedCtx.nationId;
+      var res = await Promise.all([
+        supabase.from('military_bases').select('id, host_nation_id, garrison').eq('nation_id', nid),
+        supabase.from('nations').select('id, name, on_hand')
+      ]);
+      var bases = res[0].data || [], names = {}, total = 0;
+      (res[1].data || []).forEach(function (n) { names[n.id] = n.name; if (n.id === nid) total = Number((n.on_hand || {}).military) || 0; });
+      var abroad = bases.filter(function (b) { return b.host_nation_id !== nid; });
+      var abroadSum = abroad.reduce(function (a, b) { return a + (Number(b.garrison) || 0); }, 0);
+      var home = Math.max(0, Math.floor(total - abroadSum));
+      DEP.locs = [{ id: null, label: 'Home', avail: home, cap: Infinity, garrison: 0 }].concat(
+        abroad.map(function (b) { var g = Number(b.garrison) || 0; return { id: b.id, label: 'Base in ' + (names[b.host_nation_id] || b.host_nation_id), avail: g, cap: 5, garrison: g }; })
+      );
+      DEP.from = 0; DEP.to = DEP.locs.length > 1 ? 1 : 0; DEP.qty = 1;
+      renderDeploy();
+    } catch (e) { document.getElementById('deployBody').innerHTML = '<p class="empty">Couldn’t load. Try again.</p>'; }
+  }
+  function depMax() {
+    var src = DEP.locs[DEP.from], dst = DEP.locs[DEP.to];
+    if (!src || !dst || DEP.from === DEP.to) return 0;
+    var dstHead = dst.cap === Infinity ? Infinity : Math.max(0, dst.cap - dst.garrison);
+    return Math.max(0, Math.min(src.avail, dstHead));
+  }
+  function renderDeploy() {
+    var body = document.getElementById('deployBody');
+    if (DEP.locs.length < 2) { body.innerHTML = '<p class="empty">You have no bases abroad yet. Build one (Build Base → Abroad) to deploy there.</p>'; return; }
+    if (DEP.to === DEP.from) DEP.to = (DEP.from + 1) % DEP.locs.length;
+    var max = depMax();
+    DEP.qty = Math.max(max > 0 ? 1 : 0, Math.min(DEP.qty, max));
+    function optsHtml(selIdx) {
+      return DEP.locs.map(function (l, i) {
+        var meta = l.id === null ? (l.avail + ' available') : (l.garrison + '/5');
+        return '<option value="' + i + '"' + (i === selIdx ? ' selected' : '') + '>' + esc(l.label) + ' · ' + meta + '</option>';
+      }).join('');
+    }
+    body.innerHTML =
+      '<label class="exp-lab">From</label><select id="depFrom" class="exp-sel">' + optsHtml(DEP.from) + '</select>' +
+      '<label class="exp-lab">To</label><select id="depTo" class="exp-sel">' + optsHtml(DEP.to) + '</select>' +
+      '<label class="exp-lab">How many</label>' +
+      '<div class="exp-step"><button type="button" id="depMinus"' + (DEP.qty <= 1 ? ' disabled' : '') + '>−</button>' +
+        '<span id="depQty">' + DEP.qty + '</span>' +
+        '<button type="button" id="depPlus"' + (DEP.qty >= max ? ' disabled' : '') + '>+</button>' +
+        '<span class="exp-max">max ' + max + '</span></div>' +
+      (max < 1 ? '<p class="exp-warn">Nothing can move between those two right now.</p>' : '') +
+      '<div class="noco__btns"><button class="noco__btn noco__cancel" id="depCancel" type="button">Cancel</button>' +
+        '<button class="noco__btn noco__confirm" id="depGo" type="button"' + (max > 0 ? '' : ' disabled') + '>Deploy ' + DEP.qty + '</button></div>';
+    document.getElementById('depFrom').onchange = function () { DEP.from = +this.value; if (DEP.from === DEP.to) DEP.to = (DEP.from + 1) % DEP.locs.length; renderDeploy(); };
+    document.getElementById('depTo').onchange = function () { DEP.to = +this.value; if (DEP.to === DEP.from) DEP.from = (DEP.to + 1) % DEP.locs.length; renderDeploy(); };
+    document.getElementById('depMinus').onclick = function () { if (DEP.qty > 1) { DEP.qty--; renderDeploy(); } };
+    document.getElementById('depPlus').onclick = function () { if (DEP.qty < depMax()) { DEP.qty++; renderDeploy(); } };
+    document.getElementById('depCancel').onclick = closeDeploy;
+    document.getElementById('depGo').onclick = function () {
+      var src = DEP.locs[DEP.from], dst = DEP.locs[DEP.to], qty = DEP.qty;
+      if (!src || !dst || DEP.from === DEP.to || qty < 1) return;
+      closeDeploy();
+      performAction(function () { return supabase.rpc('deploy_military', { p_from: src.id, p_to: dst.id, p_qty: qty }); },
+        function (d) { return (d.deployed || qty) + ' military deployed.'; });
     };
   }
   // DIRECT opens a modal to assign a field action to a chosen party member: Run for
@@ -1641,7 +1722,7 @@
       '<div class="leadbar__grid">' +
         '<button class="lead" type="button" id="def-base" data-cost="2"><b>Build Military Base</b><span class="lead__lane">The Forces</span><span class="lead__desc">Commission a new base at home. ($15B)</span></button>' +
         '<button class="lead" type="button" id="def-expand" data-cost="1"><b>Expand Military</b><span class="lead__lane">The Forces</span><span class="lead__desc">Build military at one of your bases.</span></button>' +
-        '<button class="lead" type="button" id="def-deploy" data-soon disabled><b>Deploy</b><span class="lead__lane">The Forces</span><span class="lead__desc">Move military between your bases.</span></button>' +
+        '<button class="lead" type="button" id="def-deploy" data-cost="1"><b>Deploy</b><span class="lead__lane">The Forces</span><span class="lead__desc">Move military between home and your bases abroad.</span></button>' +
         '<button class="lead" type="button" id="def-tech" data-soon disabled><b>Technology</b><span class="lead__lane">The Forces</span><span class="lead__desc">Research military technologies.</span></button>' +
       '</div></section>';
     el.querySelectorAll('.lead').forEach(stampCost);
@@ -1649,6 +1730,8 @@
     if (b) { actionBtns.push(b); b.addEventListener('click', function () { if (!b.disabled) openBuildBase(); }); }
     var ex = document.getElementById('def-expand');
     if (ex) { actionBtns.push(ex); ex.addEventListener('click', function () { if (!ex.disabled) openExpand(); }); }
+    var dp = document.getElementById('def-deploy');
+    if (dp) { actionBtns.push(dp); dp.addEventListener('click', function () { if (!dp.disabled) openDeploy(); }); }
   }
 
   (async () => {
