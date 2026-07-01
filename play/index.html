@@ -121,11 +121,6 @@
   /* Expand-military modal */
   .exp-lab{display:block;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin:12px 0 5px}
   .exp-sel{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit;font-size:14px}
-  .exp-cap{font-size:12.5px;color:var(--muted);margin-top:9px}
-  .exp-cap b{color:var(--ink)}
-  .exp-res{font-size:12.5px;color:var(--muted);margin-top:4px}
-  .exp-res b{color:var(--ink)}
-  .exp-res b.short{color:var(--red)}
   .exp-step{display:flex;align-items:center;gap:12px}
   .exp-step button{width:34px;height:34px;border:1px solid var(--line);border-radius:9px;background:var(--field);font-size:19px;line-height:1;cursor:pointer;color:var(--ink)}
   .exp-step button:disabled{opacity:.4;cursor:not-allowed}
@@ -913,6 +908,7 @@
     air_wing: { name: 'Air Wing', plural: 'Air Wings', cost: 1, ticks: 2, beats: 'Fleet',    color: '#3f9fe0', desc: 'Air force — strikes anywhere and screens, but holds nothing.' }
   };
   function uplur(k, n) { return n === 1 ? UNIT_SPEC[k].name : UNIT_SPEC[k].plural; }
+  function baseUnitTotal(b) { return (Number(b.armies) || 0) + (Number(b.fleets) || 0) + (Number(b.air_wings) || 0); }   // one source for a base's unit count
   function unitIcon(k) {
     if (k === 'air_wing') return '<svg viewBox="0 0 24 18"><polygon points="12,1 4,16 12,12 20,16" fill="#fff"/></svg>';
     if (k === 'fleet') return '<svg viewBox="0 0 24 18"><polygon points="3,9 21,9 18,15 6,15" fill="#fff"/><rect x="9" y="4" width="6" height="4" fill="#fff"/></svg>';
@@ -945,15 +941,14 @@
     } catch (e) { document.getElementById('expandBody').innerHTML = '<p class="empty">Couldn’t load. Try again.</p>'; }
   }
   function expBase() { return EXP.bases[EXP.sel]; }
-  function baseUnits(b) { return (Number(b.armies) || 0) + (Number(b.fleets) || 0) + (Number(b.air_wings) || 0); }
-  function expCapLeft() { var b = expBase(); return b ? Math.max(0, 5 - (baseUnits(b) + (EXP.pending[b.id] || 0))) : 0; }
+  function expCapLeft() { var b = expBase(); return b ? Math.max(0, 5 - (baseUnitTotal(b) + (EXP.pending[b.id] || 0))) : 0; }
   function expMax() { return Math.max(0, Math.min(expCapLeft(), Math.floor(EXP.mil / UNIT_SPEC[EXP.type].cost))); }
   function renderExpand() {
     var body = document.getElementById('expandBody');
     if (!EXP.bases.length) { body.innerHTML = '<p class="empty">You have no bases yet — build one first.</p>'; return; }
     var b = expBase(), spec = UNIT_SPEC[EXP.type], max = expMax();
     EXP.qty = Math.max(max > 0 ? 1 : 0, Math.min(EXP.qty, max));
-    var host = EXP.names[b.host_nation_id] || b.host_nation_id, committed = baseUnits(b) + (EXP.pending[b.id] || 0);
+    var host = EXP.names[b.host_nation_id] || b.host_nation_id, committed = baseUnitTotal(b) + (EXP.pending[b.id] || 0);
     var baseOpts = EXP.bases.map(function (x, i) { return '<option value="' + i + '"' + (i === EXP.sel ? ' selected' : '') + '>Base ' + (i + 1) + ' · ' + esc(EXP.names[x.host_nation_id] || x.host_nation_id) + '</option>'; }).join('');
     var cards = UNIT_ORDER.map(function (k) { var u = UNIT_SPEC[k];
       return '<div class="ucard' + (EXP.type === k ? ' on' : '') + '" data-u="' + k + '"><div class="uchip" style="background:' + u.color + '">' + unitIcon(k) + '</div>' +
@@ -1015,7 +1010,7 @@
     } catch (e) { document.getElementById('deployBody').innerHTML = '<p class="empty">Couldn’t load. Try again.</p>'; }
   }
   function depUnitsAt(b, k) { return Number(b[UNIT_COL[k]]) || 0; }
-  function depBaseCommitted(b) { return (Number(b.armies) || 0) + (Number(b.fleets) || 0) + (Number(b.air_wings) || 0) + (DEP.pending[b.id] || 0); }
+  function depBaseCommitted(b) { return baseUnitTotal(b) + (DEP.pending[b.id] || 0); }
   function depMax() {
     var src = DEP.bases[DEP.from], dst = DEP.bases[DEP.to];
     if (!src || !dst || DEP.from === DEP.to) return 0;
@@ -1029,8 +1024,7 @@
     DEP.qty = Math.max(max > 0 ? 1 : 0, Math.min(DEP.qty, max));
     function baseOpts(selIdx) {
       return DEP.bases.map(function (b, i) {
-        var units = (Number(b.armies) || 0) + (Number(b.fleets) || 0) + (Number(b.air_wings) || 0);
-        return '<option value="' + i + '"' + (i === selIdx ? ' selected' : '') + '>Base ' + (i + 1) + ' · ' + esc(DEP.names[b.host_nation_id] || b.host_nation_id) + ' · ' + units + '/5</option>';
+        return '<option value="' + i + '"' + (i === selIdx ? ' selected' : '') + '>Base ' + (i + 1) + ' · ' + esc(DEP.names[b.host_nation_id] || b.host_nation_id) + ' · ' + baseUnitTotal(b) + '/5</option>';
       }).join('');
     }
     var cards = UNIT_ORDER.map(function (k) { var u = UNIT_SPEC[k];
