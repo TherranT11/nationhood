@@ -264,15 +264,16 @@
 
     <div id="pmbar"></div>
     <div id="tradebar"></div>
+    <div id="defencebar"></div>
 
     <section class="panel leadbar">
       <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
       <div class="leadbar__grid">
-        <button class="lead" id="act-rally" type="button" data-standing title="Roll 1d6 + Charisma, ÷10 then −25%, added to popularity (capped at your ceiling). Cost: $25K + %COST% actions."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
+        <button class="lead" id="act-campaign" type="button" data-standing title="Raise your party's popularity: hold a Rally (Charisma, $25K) or run an Ad Blitz (Guile, $100K). Cost: %COST% actions + funds."><b>Campaign</b><span class="lead__lane">Charisma / Guile &middot; The Public</span><span class="lead__desc">Raise your party's popularity.</span></button>
         <button class="lead" id="act-direct" type="button" data-cost="1" title="Direct a party member to a field action (1 AP): run for a seat, raise a paramilitary wing, or appoint a Deputy Leader."><b>Direct</b><span class="lead__lane">The Whip</span><span class="lead__desc">Direct members of your party to action.</span></button>
         <button class="lead" id="act-fundraise" type="button" data-standing title="Roll 1d6 + Charisma, ×$15K, added to your funds. Cost: %COST% actions."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
         <button class="lead" id="act-attack" type="button" data-standing title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: $25K + %COST% actions."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
-        <button class="lead" id="act-adblitz" type="button" data-standing title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Cost: $100K + %COST% actions."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
+        <button class="lead" id="act-leave" type="button" data-cost="1" disabled title="Leave the governing coalition (1 AP)."><b>Leave Coalition</b><span class="lead__lane">The Cabinet</span><span class="lead__desc">Walk out of the government.</span></button>
         <button class="lead" id="act-noconfidence" type="button" data-cost="1" title="Table a vote of no confidence in the sitting government (1 AP). It carries unless the government votes No; 12-tick cooldown."><b>No Confidence</b><span class="lead__lane">The Chamber</span><span class="lead__desc">A vote of no confidence against the current government.</span></button>
         <button class="lead" id="act-recruit" type="button" data-cost="1" data-cost-label="1–2" title="Opens a recruitment drive ($25K): a Newcomer (1 action) and a Seasoned candidate (2 actions, 1d3 years of experience) step forward — hire one."><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span><span class="lead__desc">Adds a politician to your bench.</span></button>
         <button class="lead" id="act-negotiate" type="button" data-cost-free title="Open coalition talks: invite another party to the table, trade promises term by term, and form a government once everything's agreed. Opening talks is free — an action is spent only when you bring in another party or lock in the agreement."><b>Negotiate</b><span class="lead__lane">Guile &middot; The Backroom</span><span class="lead__desc">Builds a coalition deal.</span></button>
@@ -335,6 +336,30 @@
   </div>
 </div>
 
+<div class="amodal" id="campaignModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Run a Campaign</b><button class="amodal__x" id="campaignClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list">
+      <button class="atarget" id="campRally" type="button"><span class="atarget__id"><b>Hold a Rally</b><span>Charisma &middot; The Base</span></span><span class="atarget__st" data-funds="$25K"></span></button>
+      <button class="atarget" id="campBlitz" type="button"><span class="atarget__id"><b>Ad Blitz</b><span>Guile &middot; The Airwaves</span></span><span class="atarget__st" data-funds="$100K"></span></button>
+    </div>
+  </div>
+</div>
+
+<div class="amodal" id="buildBaseModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Build a Military Base</b><button class="amodal__x" id="buildBaseClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list">
+      <div class="stmt__scope">
+        <button class="stmt__opt is-on" id="bbHome" type="button">Home</button>
+        <button class="stmt__opt" id="bbAbroad" type="button" disabled>Abroad</button>
+      </div>
+      <p class="noco__warn">A new base in your own territory. Costs <b>$15B</b> from the Budget (a shortfall is financed by Debt) and <b>2 actions</b>. Building <b>Abroad</b> needs a mutual defence pact.</p>
+      <div class="noco__btns"><button class="noco__btn noco__cancel" id="bbCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="bbConfirm" type="button">Build &middot; $15B</button></div>
+    </div>
+  </div>
+</div>
+
 <div class="amodal" id="negotiateModal" hidden>
   <div class="amodal__panel">
     <div class="amodal__hd"><b id="negTitle">Coalition Talks</b><button class="amodal__x" id="negClose" type="button" aria-label="Close">&times;</button></div>
@@ -363,12 +388,12 @@
   </div>
 </div>
 
-<div class="amodal" id="resignModal" hidden>
+<div class="amodal" id="leaveModal" hidden>
   <div class="amodal__panel">
-    <div class="amodal__hd"><b>Resign the Government</b><button class="amodal__x" id="resignClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__hd"><b id="leaveTitle">Leave the Coalition</b><button class="amodal__x" id="leaveClose" type="button" aria-label="Close">&times;</button></div>
     <div class="amodal__list">
-      <p class="noco__warn">Resigning dissolves your government and calls a <b>snap election</b> — you may not return to power. A voluntary resignation stings, but lighter than a fall: your party loses <b>−2% Party Popularity</b> and each coalition partner <b>−1%</b>. Costs <b>1 action</b>.</p>
-      <div class="noco__btns"><button class="noco__btn noco__cancel" id="resignCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="resignConfirm" type="button">Resign</button></div>
+      <p class="noco__warn" id="leaveWarn"></p>
+      <div class="noco__btns"><button class="noco__btn noco__cancel" id="leaveCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="leaveConfirm" type="button">Leave</button></div>
     </div>
   </div>
 </div>
@@ -506,6 +531,9 @@
   // action stays disabled for everyone in the nation, on top of the usual AP gate.
   // Produce (the PM action) is nation-wide cooldown-gated the same way no-confidence is.
   var NOW_TICK = 0, nocoUntilTick = 0, produceUntilTick = 0, produceBtn = null, reshuffleUntilTick = 0, reshuffleBtn = null;
+  // Leave Coalition is gated by government membership (set at load), not just AP — like the
+  // cooldown gates below, this override keeps setActions from re-enabling it on AP alone.
+  var leaveBtn = null, leaveEligible = false;
   function setActions(n) {
     partyActions = n;
     setTopbarActions(n);
@@ -516,6 +544,7 @@
     if (nocoBtn && nocoUntilTick > NOW_TICK) nocoBtn.disabled = true;   // cooldown overrides the AP gate
     if (produceBtn && produceUntilTick > NOW_TICK) produceBtn.disabled = true;
     if (reshuffleBtn && reshuffleUntilTick > NOW_TICK) reshuffleBtn.disabled = true;
+    if (leaveBtn && !leaveEligible) leaveBtn.disabled = true;           // must be in government (membership gate)
   }
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
@@ -674,9 +703,77 @@
     actionBtns.push(btn);
     btn.addEventListener('click', function () { if (!btn.disabled) performAction(function () { return supabase.rpc(rpc); }, okMsg); });
   }
-  wireAction(document.getElementById('act-rally'), 'party_rally', function (d) { return 'Rally held — popularity +' + d.delta + '%.'; });
   wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +$' + (d.funds_gain / 1000) + 'K.'; });
-  wireAction(document.getElementById('act-adblitz'), 'party_ad_blitz', function (d) { return 'Ad blitz — popularity +' + d.delta + '%' + (d.ceiling_gain ? ' (ceiling +' + d.ceiling_gain + '%)' : '') + '.'; });
+
+  // CAMPAIGN — one action, two ways to raise popularity: a Rally (Charisma, $25K) or an Ad
+  // Blitz (Guile, $100K). A picker; each choice fires its existing RPC through performAction
+  // so the AP budget + feed refresh. (Replaces the old standalone Rally / Ad Blitz buttons.)
+  var campaignBtn = document.getElementById('act-campaign');
+  var campaignModal = document.getElementById('campaignModal');
+  var closeCampaign = wireModalClose(campaignModal, 'campaignClose');
+  if (campaignBtn) {
+    actionBtns.push(campaignBtn);
+    campaignBtn.addEventListener('click', function () {
+      if (campaignBtn.disabled || !feedCtx) return;
+      // Fill the AP figure from the one source (STANDING_COST) so it can't drift from the pill.
+      campaignModal.querySelectorAll('.atarget__st').forEach(function (s) { s.textContent = s.dataset.funds + ' · ' + STANDING_COST + ' AP'; });
+      campaignModal.hidden = false;
+    });
+  }
+  var campRally = document.getElementById('campRally');
+  if (campRally) campRally.addEventListener('click', function () { closeCampaign(); performAction(function () { return supabase.rpc('party_rally'); }, function (d) { return 'Rally held — popularity +' + d.delta + '%.'; }); });
+  var campBlitz = document.getElementById('campBlitz');
+  if (campBlitz) campBlitz.addEventListener('click', function () { closeCampaign(); performAction(function () { return supabase.rpc('party_ad_blitz'); }, function (d) { return 'Ad blitz — popularity +' + d.delta + '%' + (d.ceiling_gain ? ' (ceiling +' + d.ceiling_gain + '%)' : '') + '.'; }); });
+
+  // LEAVE COALITION — walk out of the government (1 AP). A junior partner takes −3% Party
+  // Popularity and the government −5% Confidence; the Head of Government leaving IS a
+  // resignation (−5% Party Popularity + a snap election). The button is enabled only for a
+  // party in government (leaveEligible, set at load); the confirm copy is chosen from amPM.
+  leaveBtn = document.getElementById('act-leave');
+  var leaveModal = document.getElementById('leaveModal');
+  var closeLeave = wireModalClose(leaveModal, 'leaveClose');
+  var leaveCancel = document.getElementById('leaveCancel'); if (leaveCancel) leaveCancel.addEventListener('click', closeLeave);
+  if (leaveBtn) {
+    actionBtns.push(leaveBtn);
+    leaveBtn.addEventListener('click', function () {
+      if (leaveBtn.disabled) return;
+      document.getElementById('leaveTitle').textContent = amPM ? 'Resign as Head of Government' : 'Leave the Coalition';
+      document.getElementById('leaveWarn').innerHTML = amPM
+        ? 'As Head of Government, leaving means <b>resigning</b> — it dissolves your government and calls a <b>snap election</b> you may not win. Your party loses <b>−5% Party Popularity</b>. Costs <b>1 action</b>.'
+        : 'Walking out of the coalition costs your party <b>−3% Party Popularity</b> and the government <b>−5% Confidence</b>. Costs <b>1 action</b>.';
+      document.getElementById('leaveConfirm').textContent = amPM ? 'Resign' : 'Leave';
+      leaveModal.hidden = false;
+    });
+  }
+  var leaveConfirm = document.getElementById('leaveConfirm');
+  if (leaveConfirm) leaveConfirm.addEventListener('click', function () {
+    if (acting) return;
+    closeLeave();
+    acting = true;
+    actionBtns.forEach(function (b) { b.disabled = true; });
+    // Leaving reseats the government (a junior exit, or a snap election for the premier), so
+    // reload on success to pick up the new composition rather than patch the page in place.
+    supabase.rpc('leave_coalition').then(function (r) {
+      if (r.error) { ping(r.error.message || 'Action failed.'); acting = false; setActions(partyActions); return; }
+      ping(r.data && r.data.resigned ? 'You have resigned as Head of Government — fresh elections held.' : 'Your party has left the coalition.');
+      setTimeout(function () { location.reload(); }, 900);
+    }).catch(function () { ping('Action failed. Try again.'); acting = false; setActions(partyActions); });
+  });
+
+  // BUILD MILITARY BASE — the Minister of Defence commissions a base (2 AP, $15B from the
+  // Budget; a shortfall rolls into Debt). Home only this slice; Abroad is greyed pending a
+  // mutual defence pact. Fires through performAction so the AP budget + feed refresh; the
+  // base count updates on the Conflict page.
+  var buildBaseModal = document.getElementById('buildBaseModal');
+  function openBuildBase() { if (!acting) buildBaseModal.hidden = false; }
+  var closeBuildBase = wireModalClose(buildBaseModal, 'buildBaseClose');
+  var bbCancel = document.getElementById('bbCancel'); if (bbCancel) bbCancel.addEventListener('click', closeBuildBase);
+  var bbConfirm = document.getElementById('bbConfirm');
+  if (bbConfirm) bbConfirm.addEventListener('click', function () {
+    closeBuildBase();
+    performAction(function () { return supabase.rpc('build_military_base', { p_scope: 'home' }); },
+      function () { return 'A new military base has been commissioned.'; });
+  });
   // DIRECT opens a modal to assign a field action to a chosen party member: Run for
   // Parliament, Raise a Paramilitary Wing, or appoint a Deputy Leader. 1 AP per field
   // action (the appointment is free). Like Attack/Recruit, it's a picker that fires via
@@ -898,25 +995,6 @@
       if (pill) { pill.textContent = 'Cooldown'; pill.classList.add('lead__cost--soon'); }
     }
   }
-
-  // RESIGN — the head of government voluntarily dissolves the government (1 action),
-  // triggering a snap election. The confirm button calls resign_government; because the
-  // election reseats everything, we reload the page on success rather than patch in place.
-  var resignModal = document.getElementById('resignModal');
-  var closeResign = wireModalClose(resignModal, 'resignClose');
-  var resignCancel = document.getElementById('resignCancel'); if (resignCancel) resignCancel.addEventListener('click', closeResign);
-  var resignConfirm = document.getElementById('resignConfirm');
-  if (resignConfirm) resignConfirm.addEventListener('click', function () {
-    if (acting) return;
-    closeResign();
-    acting = true;
-    actionBtns.forEach(function (b) { b.disabled = true; });
-    supabase.rpc('resign_government').then(function (r) {
-      if (r.error) { ping(r.error.message || 'Action failed.'); acting = false; setActions(partyActions); return; }
-      ping('The government has resigned — fresh elections held.');
-      setTimeout(function () { location.reload(); }, 900);   // reseat: reload to pick up the new government
-    }).catch(function () { ping('Action failed. Try again.'); acting = false; setActions(partyActions); });
-  });
 
   // STATEMENT — the head of government releases a written address (0 AP, $10K funds).
   // International reaches every nation's feed; domestic stays in the home nation. The
@@ -1274,10 +1352,9 @@
     ['Statement', 'Release a public statement.'],
     ['Appoint',   'Appoint a minister to the cabinet.'],
     ['Reshuffle', 'Reshuffle the cabinet.'],
-    ['Elections', 'Call a general election.'],
-    ['Resign',    'Resign the government.']
+    ['Elections', 'Call a general election.']
   ];
-  function renderPMBar(isPM, nocoLive) {
+  function renderPMBar(isPM) {
     var el = document.getElementById('pmbar');
     if (!isPM) { el.innerHTML = ''; produceBtn = null; reshuffleBtn = null; return; }
     el.innerHTML = '<section class="panel leadbar">' +
@@ -1285,12 +1362,12 @@
       '<p class="leadbar__sub">Your leader holds the premiership. One action only. Choose where to spend it.</p>' +
       '<div class="leadbar__grid">' +
       PM_ACTIONS.map(function (a) {
-        // Coalition, Produce, Appoint, Statement, Reshuffle and Resign are live; the rest stay dimmed scaffolds.
-        var id = a[0] === 'Coalition' ? ' id="pm-coalition"' : a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : a[0] === 'Statement' ? ' id="pm-statement"' : a[0] === 'Reshuffle' ? ' id="pm-reshuffle"' : a[0] === 'Resign' ? ' id="pm-resign"' : '';
+        // Coalition, Produce, Appoint, Statement and Reshuffle are live; the rest stay dimmed scaffolds.
+        var id = a[0] === 'Coalition' ? ' id="pm-coalition"' : a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : a[0] === 'Statement' ? ' id="pm-statement"' : a[0] === 'Reshuffle' ? ' id="pm-reshuffle"' : '';
         // Most premiership actions spend the single weekly action (1 AP). Coalition and Statement
         // cost no action (Statement is paid in $10K funds); Produce costs PRODUCE_COST on a cooldown;
         // Reshuffle costs 2 AP on a 6-tick cooldown.
-        var cost = a[0] === 'Coalition' || a[0] === 'Statement' ? ' data-cost-free' : a[0] === 'Produce' ? ' data-cost="' + PRODUCE_COST + '"' : a[0] === 'Reshuffle' ? ' data-cost="2"' : a[0] === 'Resign' ? ' data-cost="1"' : '';
+        var cost = a[0] === 'Coalition' || a[0] === 'Statement' ? ' data-cost-free' : a[0] === 'Produce' ? ' data-cost="' + PRODUCE_COST + '"' : a[0] === 'Reshuffle' ? ' data-cost="2"' : '';
         return '<button class="lead" type="button"' + (id || ' disabled') + cost +
           '><b>' + a[0] + '</b><span class="lead__desc">' + a[1] + '</span></button>';
       }).join('') +
@@ -1306,17 +1383,6 @@
     }
     var apptBtn = el.querySelector('#pm-appoint');
     if (apptBtn) apptBtn.addEventListener('click', openAppointModal);
-    // Resign opens a confirm modal; a live no-confidence motion greys it out until that resolves.
-    var resignBtn = el.querySelector('#pm-resign');
-    if (resignBtn) {
-      if (nocoLive) {
-        resignBtn.disabled = true;
-        resignBtn.title = 'A no-confidence motion is on the floor — it must be resolved before you can resign.';
-        var rp = resignBtn.querySelector('.lead__cost'); if (rp) { rp.textContent = 'Motion live'; rp.classList.add('lead__cost--soon'); }
-      } else {
-        resignBtn.addEventListener('click', function () { if (!acting) document.getElementById('resignModal').hidden = false; });
-      }
-    }
     // Produce: run a production cycle (PRODUCE_COST AP, 12-tick nation cooldown). Fires via
     // performAction so the AP budget + feed refresh; the returned `until` greys it out at once.
     produceBtn = el.querySelector('#pm-produce');
@@ -1383,6 +1449,27 @@
     if (s) s.addEventListener('click', function () { window.location.href = '/play/economy/#sanctions'; });
     var ta = document.getElementById('trade-agreement');
     if (ta) ta.addEventListener('click', function () { window.location.href = '/play/trade-agreement/'; });
+  }
+
+  // The Minister of Defence container — shown only to the party holding the Defence
+  // portfolio, above the Party Leader actions. Build Military Base is live (opens a modal);
+  // Expand, Deploy and Technology land in later slices (shown "Soon").
+  function renderDefenceBar(isDefenceMin) {
+    var el = document.getElementById('defencebar');
+    if (!el) return;
+    if (!isDefenceMin) { el.innerHTML = ''; return; }
+    el.innerHTML = '<section class="panel leadbar">' +
+      '<div class="glance-hd"><span>Minister of Defence &middot; This Week’s Action</span></div>' +
+      '<p class="leadbar__sub">Your party holds the Defence portfolio. Build and command the nation’s military bases.</p>' +
+      '<div class="leadbar__grid">' +
+        '<button class="lead" type="button" id="def-base" data-cost="2"><b>Build Military Base</b><span class="lead__lane">The Forces</span><span class="lead__desc">Commission a new base at home. ($15B)</span></button>' +
+        '<button class="lead" type="button" id="def-expand" data-soon disabled><b>Expand Military</b><span class="lead__lane">The Forces</span><span class="lead__desc">Build military at one of your bases.</span></button>' +
+        '<button class="lead" type="button" id="def-deploy" data-soon disabled><b>Deploy</b><span class="lead__lane">The Forces</span><span class="lead__desc">Move military between your bases.</span></button>' +
+        '<button class="lead" type="button" id="def-tech" data-soon disabled><b>Technology</b><span class="lead__lane">The Forces</span><span class="lead__desc">Research military technologies.</span></button>' +
+      '</div></section>';
+    el.querySelectorAll('.lead').forEach(stampCost);
+    var b = document.getElementById('def-base');
+    if (b) { actionBtns.push(b); b.addEventListener('click', function () { if (!b.disabled) openBuildBase(); }); }
   }
 
   (async () => {
@@ -1465,18 +1552,33 @@
         const { data: govt } = await supabase.from('governments')
           .select('formateur_party_id, reshuffle_until_tick').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
         amPM = !!(govt && govt.formateur_party_id === party.id);   // head of government — manages crises too
-        // A live no-confidence motion (agenda or voting) greys out Resign until it resolves.
+        // A live no-confidence motion (agenda or voting) blocks the premier from leaving
+        // (resigning) until it resolves — junior partners can still walk.
         var nocoLive = false;
         if (amPM) {
           const { data: liveNoco } = await supabase.from('proposals').select('id')
             .eq('nation_id', party.nation_id).eq('kind', 'no_confidence').in('status', ['agenda', 'voting']).limit(1);
           nocoLive = !!(liveNoco && liveNoco.length);
         }
-        renderPMBar(amPM, nocoLive);
+        renderPMBar(amPM);
+        // Gate Leave Coalition: only a party in the government can walk out; the premier is
+        // additionally blocked while a no-confidence motion is live. AP is applied by setActions
+        // via the leaveEligible override, so re-run it once membership is known.
+        leaveEligible = !!party.in_government && !(amPM && nocoLive);
+        if (leaveBtn) {
+          leaveBtn.title = !party.in_government
+            ? 'Your party is not in the government.'
+            : (amPM && nocoLive) ? 'A no-confidence motion is on the floor — it must be resolved first.'
+            : amPM ? 'Resign as Head of Government (1 AP): −5% Party Popularity and a snap election.'
+            : 'Leave the governing coalition (1 AP): −5% Government Confidence, −3% your Party Popularity.';
+        }
+        setActions(partyActions);
         applyProduceCooldown(curTick, nation && nation.produce_until_tick);   // nation-wide Produce cooldown gate
         applyReshuffleCooldown(curTick, govt && govt.reshuffle_until_tick);   // 6-tick reshuffle cooldown gate
         const { data: tmin } = await supabase.rpc('is_trade_minister');   // my party holds Trade → show the Trade bar
         renderTradeBar(tmin === true);
+        const { data: dmin } = await supabase.rpc('is_defence_minister'); // my party holds Defence → show the Defence bar
+        renderDefenceBar(dmin === true);
       } catch (e) { /* leave the PM bar hidden if the government can't be read */ }
       await loadFeed(party.nation_id, nation, gameDate);
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)

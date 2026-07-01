@@ -83,13 +83,13 @@
     var flag = n.flag ? '<img class="n-flag" src="' + esc(n.flag) + '" alt="">' : '';
     return '<div class="nation"><div class="nn">' + flag + esc(n.name) + (n.id === myId ? '<span class="self">You</span>' : '') + '</div>' +
       '<div class="nstats">' +
-        '<div class="nstat"><span class="nk">Military Bases</span><span class="nv">' + num(n.military_bases) + '</span></div>' +
+        '<div class="nstat"><span class="nk">Military Bases</span><span class="nv">' + num(n.base_count) + '</span></div>' +
         '<div class="nstat"><span class="nk">Available Military</span><span class="nv">' + num((n.on_hand || {}).military) + '</span></div>' +
       '</div></div>';
   }
 
   function continentCard(name, nations, myId, open){
-    var bases = nations.reduce(function(a, n){ return a + num(n.military_bases); }, 0);
+    var bases = nations.reduce(function(a, n){ return a + num(n.base_count); }, 0);
     var tags = '<span class="ctag calm">At peace</span>' + (nations.length ? '<span class="ctag mil">' + bases + ' base' + (bases === 1 ? '' : 's') + '</span>' : '');
     var body = (nations.length
         ? '<div class="subh">Nations &amp; Garrisons</div>' + nations.map(function(n){ return nationRow(n, myId); }).join('')
@@ -123,12 +123,15 @@
     try {
       var { data: party } = await supabase.from('parties').select('nation_id').eq('user_id', user.id).single();
       if (!party){ window.location.replace('/nation-select/'); return; }
-      var [nat, con, nc] = await Promise.all([
-        supabase.from('nations').select('id, name, flag, military_bases, on_hand').eq('dormant', false).order('name'),
+      var [nat, con, nc, mb] = await Promise.all([
+        supabase.from('nations').select('id, name, flag, on_hand').eq('dormant', false).order('name'),
         supabase.from('continents').select('name').order('name'),         // the painted continents (the list)
-        supabase.rpc('nation_continents')                                  // which continent each nation sits on
+        supabase.rpc('nation_continents'),                                 // which continent each nation sits on
+        supabase.from('military_bases').select('nation_id')                // base rows → count per nation (one source)
       ]);
       var contOf = {}; (nc.data || []).forEach(function(r){ contOf[r.nation_id] = r.continent; });
+      var basesOf = {}; (mb.data || []).forEach(function(r){ basesOf[r.nation_id] = (basesOf[r.nation_id] || 0) + 1; });
+      (nat.data || []).forEach(function(n){ n.base_count = basesOf[n.id] || 0; });
       render(nat.data || [], contOf, (con.data || []).map(function(c){ return c.name; }), party.nation_id);
     } catch (e){ fail('Couldn’t load the world right now. Refresh to try again.'); }
   })();
