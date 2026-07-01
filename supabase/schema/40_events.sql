@@ -304,7 +304,7 @@ begin
   v_roll  := floor(random() * 6)::int + 1;
   v_total := v_roll + v_gui;
   v_tier  := public._action_tier(v_total);
-  v_delta := round((v_total::numeric) / 3.0, 1);                        -- (1d6 + Guile) / 3
+  v_delta := round((v_total::numeric) / 3.0 * 0.4, 1);                  -- (1d6 + Guile) / 3, cut 60%
   v_newpop := least(v_p.popularity + v_delta, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor)); -- capped at the crowding-adjusted ceiling
   v_newpop := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity, v_newpop); -- archetype ceiling (schema/70)
   v_delta := v_newpop - v_p.popularity;                                 -- amount actually applied
