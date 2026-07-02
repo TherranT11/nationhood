@@ -82,10 +82,16 @@ begin
     values (v_nation, p_base_id, v_type, v_qty, v_tick + v_dur);
   update public.parties set actions_remaining = actions_remaining - 1 where id = v_p.id;
 
+  -- Feed announcement, keyed by the unit type (the exact build count + ready time is in the
+  -- player's own action toast). Third-person, so it reads as news about the nation.
   insert into public.events (nation_id, party_id, kind, body, game_date)
-    values (v_nation, v_p.id, 'economy',
-            v_qty::text || ' ' || public._unit_label(v_type, v_qty)
-              || ' ordered — ready in ' || v_dur || ' tick' || case when v_dur = 1 then '' else 's' end || '.',
+    values (v_nation, v_p.id, 'declaration',
+            'The nation of ' || (select name from public.nations where id = v_nation)
+              || case v_type
+                   when 'fleet'    then ' has begun expanding its naval shipbuilding.'
+                   when 'air_wing' then ' has started to expand its air force.'
+                   else                 ' has started to expand its military.'
+                 end,
             public.current_game_date());
   return jsonb_build_object('ordered', v_qty, 'ticks', v_dur, 'actions', v_p.actions_remaining - 1);
 end $$;
