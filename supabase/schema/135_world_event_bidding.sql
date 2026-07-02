@@ -91,7 +91,7 @@ returns void language plpgsql security definer set search_path = public as $$
 declare
   v_def jsonb; v_status text; v_total numeric; v_max numeric; v_thresh numeric;
   v_targets text[]; v_nat text; v_amt numeric; v_name text; v_body text; v_aft jsonb;
-  v_bres text; v_bamt numeric; v_astr text;
+  v_bres text; v_bamt numeric; v_astr text; v_per numeric; v_mult numeric;
 begin
   select definition, status into v_def, v_status from public.world_event_instances where id = p_instance for update;
   if not found or v_status <> 'active' then return; end if;
@@ -104,9 +104,18 @@ begin
     into v_total, v_max from public.world_event_bids where instance_id = p_instance;
 
   if v_total >= v_thresh and v_max > 0 then
-    -- Threshold met: every nation whose stake equals the largest wins the reward (ties share it).
+    -- Threshold met: every nation whose stake equals the largest wins the reward (ties share it) —
+    -- the flat winEffects, PLUS an optional per-bid bonus scaled by how much the winner staked:
+    -- perBid.effects applied floor(winning stake / perBid.per) times.
+    v_per  := coalesce((v_def->'bidding'->'perBid'->>'per')::numeric, 0);
+    v_mult := case when v_per > 0 then floor(v_max / v_per) else 0 end;
     for v_nat in select nation_id from public.world_event_bids where instance_id = p_instance and amount = v_max loop
       perform public._apply_we_effects(v_nat, v_def->'bidding'->'winEffects');
+      if v_mult > 0 then
+        perform public._apply_we_effects(v_nat, (
+          select coalesce(jsonb_agg(jsonb_build_object('t', e->>'t', 'v', coalesce((e->>'v')::numeric, 0) * v_mult)), '[]'::jsonb)
+            from jsonb_array_elements(coalesce(v_def->'bidding'->'perBid'->'effects', '[]'::jsonb)) e));
+      end if;
     end loop;
     v_body := v_name || ' — the commitment met the threshold; the strongest bidder is rewarded.';
   else
