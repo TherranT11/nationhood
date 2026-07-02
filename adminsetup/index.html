@@ -3349,6 +3349,9 @@
       // Condition/reward vocabularies. Stats are the five national stats; production covers all
       // seven produced resources; on-hand rewards drop the ones with no stockpile sink.
       var OBJ_STATS  = ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image'];
+      // Rewards grant these four national stats (Welfare isn't a reward target; Budget is its
+      // own dedicated reward — the "Wealth" in the authored reward list meant Budget).
+      var REWARD_STATS = ['Prosperity', 'Growth', 'Order', 'Image'];
       var OBJ_PRODS  = ['Food', 'Energy', 'Minerals', 'Services', 'Goods', 'Military', 'Diplomacy'];
       var OBJ_ONHAND = ['Energy', 'Food', 'Minerals', 'Services', 'Goods', 'Diplomacy'];
       var OBJ_UNITS  = ['Armies', 'Fleets', 'Air Wings'];
@@ -3378,7 +3381,7 @@
         budget:     { label: 'Budget +/− X',                  parts: [{ p: 'amount', t: 'num' }] },
         relations:  { label: 'Relations with [nation] +/− X', parts: [{ p: 'nation', t: 'nat' }, { p: 'amount', t: 'num' }] },
         debt:       { label: 'Debt +/− X',                    parts: [{ p: 'amount', t: 'num' }] },
-        stat:       { label: '[stat] +X',                     parts: [{ p: 'stat', t: 'sel', opts: OBJ_STATS }, { p: 'amount', t: 'num' }] }
+        stat:       { label: '[stat] +X',                     parts: [{ p: 'stat', t: 'sel', opts: REWARD_STATS }, { p: 'amount', t: 'num' }] }
       };
       var REWARD_ORDER = ['popularity', 'confidence', 'onhand', 'budget', 'relations', 'debt', 'stat'];
 
