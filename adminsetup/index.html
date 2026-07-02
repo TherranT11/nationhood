@@ -3625,12 +3625,14 @@
       // ----- list + persistence (world_events table) -----
       async function loadWorldEvents() {
         var box = document.getElementById('weList');
+        // Load nations FIRST and independently — the editor's involved-nations grid needs them,
+        // and an events-load failure (e.g. a not-yet-applied column) must never hide them.
+        try { const { data: nn } = await supabase.from('nations').select('id, name, dormant').order('name'); NATIONS = (nn || []).filter(function (n) { return !n.dormant; }); }
+        catch (e) { NATIONS = []; }
         try {
           const { data, error } = await supabase.from('world_events').select('id, definition, seeded').order('created_at', { ascending: true });
           if (error) throw error; weCache = data || [];
         } catch (e) { box.innerHTML = '<p class="empty">Could not load world events.</p>'; return; }
-        try { const { data: nn } = await supabase.from('nations').select('id, name, dormant').order('name'); NATIONS = (nn || []).filter(function (n) { return !n.dormant; }); }
-        catch (e) { NATIONS = []; }
         renderWeList();
       }
       function renderWeList() {
