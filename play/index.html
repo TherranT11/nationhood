@@ -239,6 +239,11 @@
   .feed__date{font-family:'Space Mono',monospace;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--indigo);font-weight:700}
   .feed__flag{width:21px;height:14px;object-fit:cover;border:1px solid var(--line);border-radius:2px;vertical-align:-1px;margin:0 5px 0 1px}
   .feed__evt b{color:var(--ink);font-weight:700}
+  /* A global Turning Point broadcast in the feed — highlighted, with a globe + World Event tag. */
+  .feed__major{list-style:none;background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 22%,transparent);border-left:2px solid var(--indigo);border-radius:9px;padding:12px 14px;margin:7px 0;font-size:15.5px;line-height:1.55;color:var(--ink)}
+  .feed__globe{vertical-align:-3px;margin-right:7px}
+  .feed__wetag{display:inline-block;font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--indigo);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);background:var(--surface);border-radius:5px;padding:2px 6px;margin-right:7px;vertical-align:1px}
+  .feed__mtxt b{color:var(--ink);font-weight:700}
   .feed__eff{display:inline-block;margin-left:7px;border-radius:7px;padding:2px 8px;font-size:12px;font-style:italic;font-weight:600;border:1px solid;vertical-align:1px}
   .feed__eff.pos{color:var(--green,#16915a);background:color-mix(in srgb,var(--green,#16915a) 13%,transparent);border-color:color-mix(in srgb,var(--green,#16915a) 32%,transparent)}
   .feed__eff.neg{color:var(--red,#C42B2B);background:color-mix(in srgb,var(--red,#C42B2B) 13%,transparent);border-color:color-mix(in srgb,var(--red,#C42B2B) 32%,transparent)}
@@ -356,6 +361,7 @@
         <div class="glance-hd"><span id="eventsHd">Events</span></div>
         <div class="evfilter" id="evFilter">
           <button class="evchip active" data-cat="all" type="button">All</button>
+          <button class="evchip" data-cat="world" type="button">World</button>
           <button class="evchip" data-cat="party" type="button">Parties</button>
           <button class="evchip" data-cat="legislative" type="button">Legislative</button>
           <button class="evchip" data-cat="government" type="button">Government</button>
@@ -541,16 +547,25 @@
   var PARTY_KINDS = { rally: 1, fundraise: 1, attack: 1, adblitz: 1, recruit: 1, party: 1, conviction: 1 };
   var LEG_KINDS = { declaration: 1, law: 1, no_confidence: 1 };
   var GOV_KINDS = { government: 1, agenda: 1, ministry: 1, regime: 1, election: 1 };
-  function eventCat(kind) { return PARTY_KINDS[kind] ? 'party' : (LEG_KINDS[kind] ? 'legislative' : (GOV_KINDS[kind] ? 'government' : 'other')); }
+  // World events (a nation-scoped notice/action, or a global 'world_broadcast' Turning Point).
+  var WORLD_KINDS = { world_event: 1, world_broadcast: 1 };
+  function eventCat(kind) { return PARTY_KINDS[kind] ? 'party' : (LEG_KINDS[kind] ? 'legislative' : (GOV_KINDS[kind] ? 'government' : (WORLD_KINDS[kind] ? 'world' : 'other'))); }
+  // A globe marks a global Turning Point in the feed (vs the nation flag on ordinary events).
+  var FEED_GLOBE = '<svg class="feed__globe" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--indigo)" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>';
   var FEED_ITEMS = [], FEED_FLAG = '', evCat = 'all';
   function renderFeed() {
     var box = document.getElementById('events');
     var list = FEED_ITEMS.filter(function (it) { return evCat === 'all' || it.cat === evCat; });
     if (!list.length) {
-      box.innerHTML = '<p class="empty">' + (evCat === 'party' ? 'No party events yet.' : evCat === 'legislative' ? 'No legislative events yet.' : evCat === 'government' ? 'No government events yet.' : 'No events yet.') + '</p>';
+      box.innerHTML = '<p class="empty">' + (evCat === 'party' ? 'No party events yet.' : evCat === 'legislative' ? 'No legislative events yet.' : evCat === 'government' ? 'No government events yet.' : evCat === 'world' ? 'No world events yet.' : 'No events yet.') + '</p>';
       return;
     }
     box.innerHTML = '<ul class="feed">' + list.map(function (it) {
+      // A global Turning Point (major) reads as a broadcast: globe + World Event tag, highlighted.
+      if (it.major) {
+        return '<li class="feed__major"><span class="feed__date">' + esc(it.when) + '</span> &mdash; ' + FEED_GLOBE +
+          '<span class="feed__wetag">World Event</span><span class="feed__mtxt">' + it.body + '</span></li>';
+      }
       return '<li class="feed__evt"><span class="feed__date">' + esc(it.when) + '</span> &mdash; ' + FEED_FLAG + it.body + '</li>';
     }).join('') + '</ul>';
   }
@@ -587,7 +602,7 @@
         // events (rallies etc.) have none and narrate their outcome in the body.
         var eff = (e.effect_target != null && e.effect_value != null)
           ? ' <span class="feed__eff ' + esc(e.tone || 'warn') + '"><i>' + esc(eventEffectLabel(e.effect_target, e.effect_value, currency)) + '</i></span>' : '';
-        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: eventCat(e.kind), body: esc(e.body) + eff });
+        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: eventCat(e.kind), major: e.kind === 'world_broadcast', body: esc(e.body) + eff });
       });
       items.sort(function (a, b) { return a.created < b.created ? 1 : (a.created > b.created ? -1 : 0); });
       FEED_ITEMS = items;

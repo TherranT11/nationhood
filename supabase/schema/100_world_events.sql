@@ -198,8 +198,10 @@ begin
   v_body := v_name || (case when coalesce(v_def->>'desc','') <> '' then ' — ' || (v_def->>'desc') else '' end);
   foreach v_nat in array v_targets loop
     if v_type = 'turning_point' then
+      -- A Turning Point takes no player action, so it lives ONLY in the events feed — as a major
+      -- 'world_broadcast' notice (globe + World Event tag), never in the action panel.
       perform public._apply_we_effects(v_nat, v_def->'turning'->'effects');
-      insert into public.events (nation_id, kind, body, game_date) values (v_nat, 'world_event', v_body, public.current_game_date());
+      insert into public.events (nation_id, kind, body, game_date) values (v_nat, 'world_broadcast', v_body, public.current_game_date());
     else
       insert into public.events (nation_id, kind, body, game_date)
         values (v_nat, 'world_event',
