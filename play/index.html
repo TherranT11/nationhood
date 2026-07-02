@@ -262,6 +262,20 @@
   .wevt__maxbtn:hover{background:var(--chip,#F4F3EF);color:var(--ink)}
   .wevt__maxbtn:disabled{opacity:.5;cursor:not-allowed}
   .wevt__hold{font-size:12px;color:var(--muted);margin-top:9px}
+  /* Compact card: an 84px thumbnail + text on top, then a rule line, winner chips, tight bid row. */
+  .wevt__top{display:flex;gap:13px;align-items:flex-start}
+  .wevt__thumb{width:84px;height:84px;flex:none;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--chip)}
+  .wevt__thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .wevt__ht{min-width:0}
+  .wevt__rule{font-size:13px;color:var(--ink);margin-top:13px;padding-top:12px;border-top:1px solid var(--line);line-height:1.5}
+  .wevt__rewards{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:9px}
+  .wevt__rlbl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-right:2px}
+  .wevt__chip{display:inline-flex;align-items:center;gap:5px;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;background:var(--chip);border:1px solid var(--line);border-radius:7px;padding:4px 8px;color:var(--ink)}
+  .wevt__cd{width:7px;height:7px;border-radius:2px}
+  .wevt__fine{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);margin-top:10px}
+  .wevt__bidrow{display:flex;gap:8px;margin-top:13px}
+  .wevt__selwrap{flex:none}
+  .wevt__actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:10px}
 
   /* Phone refresh (matches the Party page): tighter padding, smaller hero, drop
      the placeholder "Next Month" pill. Action cards already go 2-up at ≤700. */
@@ -652,7 +666,10 @@
   // World Events panel — active Decisions and Mutual Agreements awaiting THIS nation's action.
   // Turning Points apply on fire and surface only in the events feed, so they aren't listed
   // here. The panel hides itself whenever there's nothing to act on.
-  function weEffSummary(arr) { return (arr || []).map(function (e) { var v = Number(e.v) || 0; return esc(e.t) + ' ' + (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); }).join(', ') || 'nothing'; }
+  function weEffOne(e) { var v = Number(e.v) || 0; return esc(e.t) + ' ' + (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); }
+  function weEffSummary(arr) { return (arr || []).map(weEffOne).join(', ') || 'nothing'; }
+  // A winner-reward chip: a sign-coloured dot (green gain · red cost) + the effect. Reuses weEffOne.
+  function weEffChip(e) { var v = Number(e.v) || 0, c = v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--soft)'; return '<span class="wevt__chip"><span class="wevt__cd" style="background:' + c + '"></span>' + weEffOne(e) + '</span>'; }
   async function loadWorldEventsPanel(nationId) {
     var panel = document.getElementById('weventPanel'), box = document.getElementById('wevents');
     if (!nationId) { panel.hidden = true; return; }
@@ -678,8 +695,9 @@
       return false;
     });
     if (!open.length) { panel.hidden = true; return; }
-    // Bidding cards let the HoG stake up to everything the nation holds. Fetch the nation's
-    // holdings once when a bid is open; HOLD maps each resource label → the amount on hand.
+    // Bidding cards let the HoG stake up to everything the nation holds. HOLD maps each resource
+    // label → the amount held — a DISPLAY MIRROR of the server's _we_bid_have (schema/135), which
+    // stays authoritative: the bid RPC re-reads holdings and caps/floors the stake. Keep in sync.
     var HOLD = {};
     if (open.some(function (i) { return (i.definition || {}).type === 'bidding'; })) {
       try {
@@ -702,9 +720,10 @@
     panel.hidden = false;
     box.innerHTML = open.map(function (i) {
       var d = i.definition || {};
-      var head = (d.image ? '<img src="' + esc(d.image) + '" alt="" style="max-width:100%;border-radius:9px;margin-bottom:10px">' : '') +
-        '<div class="wevt__name">' + esc(d.name || 'A world event') + '</div>' +
-        (d.desc ? '<div class="wevt__desc">' + esc(d.desc) + '</div>' : '');
+      var head = '<div class="wevt__top">' +
+        (d.image ? '<div class="wevt__thumb"><img src="' + esc(d.image) + '" alt=""></div>' : '') +
+        '<div class="wevt__ht"><div class="wevt__name">' + esc(d.name || 'A world event') + '</div>' +
+        (d.desc ? '<div class="wevt__desc">' + esc(d.desc) + '</div>' : '') + '</div></div>';
       // Every party in the nation sees the card, but only the Head of Government may act: the
       // action controls are disabled for everyone else, with a note (amPM = formateur, set at load).
       var dis = amPM ? '' : ' disabled';
@@ -722,16 +741,17 @@
       if (d.type === 'bidding') {
         var bd = d.bidding || {}, res = bd.resources || [];
         var firstRes = res[0] || '', have0 = bidMax(firstRes);
-        var resSel = '<select class="wevt__bres"' + dis + '>' + res.map(function (r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select>';
-        var bterms = '<div class="wevt__desc" style="margin-top:8px">Stake <b>' + (res.map(esc).join(' or ') || 'a resource') + '</b> in a sealed bid — up to everything your nation holds. If the total reaches <b>' + (Number(bd.threshold) || 0) + '</b>, the strongest bidder gains <b>' + weEffSummary(bd.winEffects) + '</b>; otherwise every nation that stakes nothing loses <b>' + weEffSummary(bd.zeroEffects) + '</b>.</div>';
-        return '<div class="wevt">' + head + bterms +
-          '<div class="wevt__opts">' + resSel +
+        var rule = '<div class="wevt__rule">Stake <b>' + (res.map(esc).join(' or ') || 'a resource') + '</b> in a sealed bid — the highest total stake wins, up to everything your nation holds.</div>';
+        var winChips = (bd.winEffects || []).map(weEffChip).join('');
+        var rewards = winChips ? '<div class="wevt__rewards"><span class="wevt__rlbl">Winner</span>' + winChips + '</div>' : '';
+        var fine = '<div class="wevt__fine">Threshold ' + (Number(bd.threshold) || 0) + ' · bids hidden until reveal · stake nothing, lose nothing.</div>';
+        return '<div class="wevt">' + head + rule + rewards + fine +
+          '<div class="wevt__bidrow"><div class="wevt__selwrap"><select class="wevt__bres"' + dis + '>' + res.map(function (r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select></div>' +
             '<input class="wevt__bid" type="number" min="0" step="any" max="' + have0 + '" placeholder="Amount"' + dis + '>' +
-            '<button class="wevt__maxbtn" type="button"' + dis + '>Max</button>' +
-            '<button class="wevt__opt" type="button" data-act="placebid" data-i="' + esc(i.id) + '"' + dis + '>Submit sealed bid</button>' +
-            '<button class="wevt__opt wevt__opt--ghost" type="button" data-act="decline" data-i="' + esc(i.id) + '"' + dis + '>Decline Bid</button>' +
-          '</div>' +
+            '<button class="wevt__maxbtn" type="button"' + dis + '>Max</button></div>' +
           '<div class="wevt__hold">Your nation holds <b class="wevt__holdv">' + fmtHold(have0) + '</b> <span class="wevt__holdr">' + esc(firstRes || '—') + '</span>.</div>' +
+          '<div class="wevt__actions"><button class="wevt__opt" type="button" data-act="placebid" data-i="' + esc(i.id) + '"' + dis + '>Submit sealed bid</button>' +
+            '<button class="wevt__opt wevt__opt--ghost" type="button" data-act="decline" data-i="' + esc(i.id) + '"' + dis + '>Decline Bid</button></div>' +
           note + '</div>';
       }
       var m = d.mutual || {};
