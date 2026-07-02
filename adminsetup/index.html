@@ -3574,11 +3574,13 @@
       // 'Budget, Diplomacy, …' the spec names). Read straight off POL_TGT (the one source for
       // these lists, line ~1545) rather than re-listing them. Government-internal targets are
       // out of scope for a nation-facing world event, so only these two groups are exposed.
-      // Effect targets: national stats, resource PRODUCTION (bare names → production.*), and
-      // resource ON HAND ("X on hand" → the spendable on_hand stockpile). Military lives only
-      // on hand, so it appears in that group alone.
+      // Effect targets: national stats, GOVERNMENT (Government Confidence + Party Popularity, both
+      // handled by _apply_policy_effect), resource PRODUCTION (bare names → production.*), and
+      // resource ON HAND ("X on hand" → the spendable on_hand stockpile). Military lives only on
+      // hand, so it appears in that group alone.
       var WE_ONHAND = ['Military', 'Energy', 'Food', 'Minerals', 'Services', 'Goods'];
-      var WE_TGT = { National: POL_TGT.National, 'Resource (Production)': POL_TGT.Resource, 'Resource (On Hand)': WE_ONHAND.map(function (r) { return r + ' on hand'; }) };
+      var WE_TGT = { National: POL_TGT.National, Government: ['Government Confidence', 'Party Popularity'],
+                     'Resource (Production)': POL_TGT.Resource, 'Resource (On Hand)': WE_ONHAND.map(function (r) { return r + ' on hand'; }) };
       // Competitive bid stat — production/national only (on-hand + Military aren't readable via
       // _nation_stat_get, so they can't be bid on).
       var WE_STATS = POL_TGT.National.concat(POL_TGT.Resource);
