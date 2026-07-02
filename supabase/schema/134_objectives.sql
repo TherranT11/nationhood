@@ -14,6 +14,7 @@
 --   definition = {
 --     name, desc,
 --     ticks: int,                          -- turns the nation has to complete it
+--     nation: text,                        -- nations.id this objective is assigned to ('' = unassigned)
 --     conditions: [ condition ... ],       -- ALL must hold for the objective to complete
 --     rewards:    [ reward ... ]            -- applied once on completion
 --   }
