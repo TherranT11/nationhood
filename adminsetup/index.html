@@ -396,6 +396,15 @@
   .cbuild .werow{display:flex;gap:7px;align-items:center}
   .cbuild .werow .we-et{flex:1}
   .cbuild .pvrow{margin-bottom:7px;font-size:12.5px;word-break:break-word}
+  /* Objectives builder — heterogeneous condition/reward rows (a leading "kind" select then
+     kind-specific params). Reuses .cbuild's card/input/add styles; only the flex row is new. */
+  .cbuild .obrow{display:flex;gap:7px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+  .cbuild .obrow select,.cbuild .obrow input{width:auto;flex:1;min-width:64px;padding:8px 9px;font-size:12.5px}
+  .cbuild .obrow .okind{flex:2.4;min-width:180px}
+  .cbuild .pvobj{background:var(--indigo-soft,#ECE9FD);border:1px solid color-mix(in srgb,var(--indigo) 22%,transparent);border-radius:9px;padding:9px 11px;font-size:12.5px;line-height:1.6;margin-bottom:12px;color:#2c2470}
+  .cbuild .pvobj .tl{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--indigo);margin-bottom:5px;font-weight:700}
+  .cbuild .pvrew{background:var(--green-soft,#E5F4EC);border:1px solid #cbe9da;border-radius:9px;padding:9px 11px;font-size:12.5px;line-height:1.6;color:#0e5c39}
+  .cbuild .pvrew .tl{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--green,#16915a);margin-bottom:5px;font-weight:700}
 
   /* Events tab — compose + fire a one-off event at a nation. Scoped under .evtab so
      the generic names (.card/.f/.effbox/.pill/.feed/.ev…) don't collide with other tabs. */
@@ -582,6 +591,7 @@
         <button class="vtab" data-tab="convictions" type="button">Convictions</button>
         <button class="vtab" data-tab="inactivity" type="button">Inactivity</button>
         <button class="vtab" data-tab="crises" type="button">Crises</button>
+        <button class="vtab" data-tab="objectives" type="button">Objectives</button>
         <button class="vtab" data-tab="events" type="button">Events</button>
         <button class="vtab" data-tab="corporations" type="button">Corporations</button>
         <button class="vtab" data-tab="world-events" type="button">World Events</button>
@@ -819,6 +829,45 @@
               </div>
             </div>
             <div class="note" id="cbNote" role="status" aria-live="polite" style="margin-top:14px"></div>
+          </div>
+        </div>
+      </div>
+      <div class="tabpane" data-tab="objectives" hidden>
+        <div class="poltab">
+          <div class="panel">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <h2 style="margin:0">National Objectives</h2>
+              <button class="btn btn-solid" id="obNew" type="button">+ New objective</button>
+            </div>
+            <p class="sub" style="margin:8px 0 14px">A national objective is a timed goal — a nation has a set number of ticks to satisfy every condition, and completing it pays out the rewards. This tab authors the objectives; assigning them to nations and scoring them each tick is a later slice.</p>
+            <div id="obList"><p class="empty">Loading…</p></div>
+          </div>
+          <div class="panel" id="obEditorPanel" hidden>
+            <div class="cbuild">
+              <div class="cols">
+                <div>
+                  <div class="card">
+                    <div class="sechd">Identity</div>
+                    <div class="f"><label>Objective name</label><input type="text" id="obName"></div>
+                    <div class="f"><label>Description</label><textarea id="obDesc"></textarea></div>
+                    <div class="f" style="margin-bottom:0"><label>Number of ticks <span class="hint">turns the nation has to complete it</span></label><input type="number" min="1" step="1" id="obTicks"></div>
+                  </div>
+                  <div class="card">
+                    <div class="sechd">Objective — complete when ALL conditions hold</div>
+                    <div id="obConds"></div>
+                    <div class="addrow"><button class="add" id="obAddCond" type="button">+ condition</button></div>
+                  </div>
+                  <div class="card">
+                    <div class="sechd">Rewards — paid out on completion</div>
+                    <div id="obRewards"></div>
+                    <div class="addrow"><button class="add" id="obAddReward" type="button">+ reward</button></div>
+                  </div>
+                  <button class="save" id="obSave" type="button">Save objective</button>
+                </div>
+                <aside><div class="rail"><div class="rh">Preview</div><div class="rb" id="obPrev"></div></div></aside>
+              </div>
+            </div>
+            <div class="note" id="obNote" role="status" aria-live="polite" style="margin-top:14px"></div>
           </div>
         </div>
       </div>
@@ -1716,6 +1765,7 @@
         if (tab === 'convictions') loadConvictions();
         if (tab === 'inactivity') loadInactivity();
         if (tab === 'crises') loadCrises();
+        if (tab === 'objectives') loadObjectives();
         if (tab === 'events') loadEvents();
         if (tab === 'corporations') loadCorporations();
         if (tab === 'world-events') loadWorldEvents();
@@ -3287,6 +3337,222 @@
       (document.getElementById('cbEndMode')  || {}).onclick = function (e) { var m = e.target.dataset.m; if (!CRISIS || !m) return; CRISIS.endMode = m; renderEndIf(); renderPreview(); };
 
       return loadCrises;
+    })();
+
+    // ---- National Objectives (admin authoring; one JSONB definition per objective, is_admin RLS) ----
+    // AUTHORING ONLY: the builder stores each objective's definition (schema/134_objectives).
+    // Assigning objectives to nations, scoring them each tick, and paying out rewards is a
+    // later runtime slice. Self-contained IIFE (reuses the .cbuild/.poltab shells) so its
+    // generic identifiers can't collide with the other tabs; returns loadObjectives().
+    var loadObjectives = (function () {
+      // Condition/reward vocabularies. Stats are the five national stats; production covers all
+      // seven produced resources; on-hand rewards drop the ones with no stockpile sink.
+      var OBJ_STATS  = ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image'];
+      // Rewards grant these four national stats (Welfare isn't a reward target; Budget is its
+      // own dedicated reward — the "Wealth" in the authored reward list meant Budget).
+      var REWARD_STATS = ['Prosperity', 'Growth', 'Order', 'Image'];
+      var OBJ_PRODS  = ['Food', 'Energy', 'Minerals', 'Services', 'Goods', 'Military', 'Diplomacy'];
+      var OBJ_ONHAND = ['Energy', 'Food', 'Minerals', 'Services', 'Goods', 'Diplomacy'];
+      var OBJ_UNITS  = ['Armies', 'Fleets', 'Air Wings'];
+
+      // Each kind names the params it carries; the row renderer + preview read straight off this,
+      // so adding a kind is a one-line change. part.t: num | sel(opts) | cont(inent) | nat(ion) | hex.
+      var COND_DEFS = {
+        stat_up:   { label: 'Increase [stat] by X',                 parts: [{ p: 'stat', t: 'sel', opts: OBJ_STATS }, { p: 'amount', t: 'num' }] },
+        stat_down: { label: 'Decrease [stat] by X',                 parts: [{ p: 'stat', t: 'sel', opts: OBJ_STATS }, { p: 'amount', t: 'num' }] },
+        prod_up:   { label: 'Increase [resource] Production by X',   parts: [{ p: 'resource', t: 'sel', opts: OBJ_PRODS }, { p: 'amount', t: 'num' }] },
+        budget:    { label: 'Have at least X Budget',               parts: [{ p: 'amount', t: 'num' }] },
+        debt_down: { label: 'Decrease Debt by X%',                  parts: [{ p: 'pct', t: 'num' }] },
+        fdi:       { label: 'FDI tokens in at least X countries',    parts: [{ p: 'count', t: 'num' }] },
+        trade:     { label: 'At least X Trade Agreements active',    parts: [{ p: 'count', t: 'num' }] },
+        mil_dom:   { label: 'Most Military in [continent]',          parts: [{ p: 'continent', t: 'cont' }] },
+        gdp_up:    { label: 'Increase GDP by X%',                    parts: [{ p: 'pct', t: 'num' }] },
+        allies:    { label: 'X Allies in [continent]',              parts: [{ p: 'count', t: 'num' }, { p: 'continent', t: 'cont' }] },
+        units:     { label: 'More than X [unit]',                    parts: [{ p: 'count', t: 'num' }, { p: 'unit', t: 'sel', opts: OBJ_UNITS }] },
+        relations: { label: 'Relations with [nation] above Y',       parts: [{ p: 'nation', t: 'nat' }, { p: 'value', t: 'num' }] },
+        seize:     { label: 'Seize Territory [hex]',                  parts: [{ p: 'hex', t: 'hex' }] }
+      };
+      var COND_ORDER = ['stat_up', 'stat_down', 'prod_up', 'budget', 'debt_down', 'fdi', 'trade', 'mil_dom', 'gdp_up', 'allies', 'units', 'relations', 'seize'];
+
+      var REWARD_DEFS = {
+        popularity: { label: 'Party Popularity +X',          parts: [{ p: 'amount', t: 'num' }] },
+        confidence: { label: 'Government Confidence +X',      parts: [{ p: 'amount', t: 'num' }] },
+        onhand:     { label: '+X [resource] on hand',         parts: [{ p: 'amount', t: 'num' }, { p: 'resource', t: 'sel', opts: OBJ_ONHAND }] },
+        budget:     { label: 'Budget +/− X',                  parts: [{ p: 'amount', t: 'num' }] },
+        relations:  { label: 'Relations with [nation] +/− X', parts: [{ p: 'nation', t: 'nat' }, { p: 'amount', t: 'num' }] },
+        debt:       { label: 'Debt +/− X',                    parts: [{ p: 'amount', t: 'num' }] },
+        stat:       { label: '[stat] +X',                     parts: [{ p: 'stat', t: 'sel', opts: REWARD_STATS }, { p: 'amount', t: 'num' }] }
+      };
+      var REWARD_ORDER = ['popularity', 'confidence', 'onhand', 'budget', 'relations', 'debt', 'stat'];
+
+      var OBJ = null, objEditingId = null, objSaving = false, objCache = [], objNations = [], objContinents = [], objHexes = [];
+
+      var n = function (v) { return Number(v) || 0; };
+      var sgn = function (v) { return (n(v) > 0 ? '+' : n(v) < 0 ? '−' : '') + Math.abs(n(v)); };
+      var money = function (v) { return (n(v) >= 0 ? '+' : '−') + '₣' + Math.abs(n(v)) + 'B'; };
+      function natName(id) { var m = objNations.filter(function (x) { return x.id === id; })[0]; return (m && m.name) || id || '—'; }
+      // A hex is keyed by its axial coords "q,r"; its option/preview label is its map name (or
+      // the coords) plus the nation that holds it.
+      function hexKey(h) { return h.q + ',' + h.r; }
+      function hexOptLabel(h) { return (h.name || '(' + h.q + ', ' + h.r + ')') + ' · ' + natName(h.nation_id); }
+      function hexLabel(key) { var h = objHexes.filter(function (x) { return hexKey(x) === key; })[0]; return h ? hexOptLabel(h) : (key || '—'); }
+      function setObjNote(msg, kind) { var el = document.getElementById('obNote'); if (el) { el.textContent = msg || ''; el.className = 'note' + (kind ? ' ' + kind : ''); } }
+
+      // ----- the definition shape -----
+      function blankObjective() { return { name: '', desc: '', ticks: 12, conditions: [], rewards: [] }; }
+      function partDefault(part) {
+        if (part.t === 'sel') return part.opts[0];
+        if (part.t === 'cont') return objContinents[0] || '';
+        if (part.t === 'nat') return (objNations[0] || {}).id || '';
+        if (part.t === 'hex') return objHexes.length ? hexKey(objHexes[0]) : '';
+        return 1;   // num
+      }
+      function blankItem(kind, defs) { var d = defs[kind]; var o = { kind: kind }; d.parts.forEach(function (p) { o[p.p] = partDefault(p); }); return o; }
+      function normalizeObjective(def) {
+        var o = (def && typeof def === 'object') ? def : blankObjective();
+        o.name = o.name || ''; o.desc = o.desc || ''; o.ticks = Math.max(1, parseInt(o.ticks, 10) || 12);
+        o.conditions = Array.isArray(o.conditions) ? o.conditions.filter(function (c) { return c && COND_DEFS[c.kind]; }) : [];
+        o.rewards = Array.isArray(o.rewards) ? o.rewards.filter(function (r) { return r && REWARD_DEFS[r.kind]; }) : [];
+        return o;
+      }
+
+      // ----- list + persistence (objectives table; one JSONB definition per row) -----
+      async function loadObjectives() {
+        var box = document.getElementById('obList');
+        try {
+          const { data, error } = await supabase.from('objectives').select('id, definition').order('created_at', { ascending: true });
+          if (error) throw error; objCache = data || [];
+        } catch (e) { box.innerHTML = '<p class="empty">Could not load objectives.</p>'; return; }
+        try { const { data: nn } = await supabase.from('nations').select('id, name').order('name'); objNations = nn || []; } catch (e) { objNations = []; }
+        try { const { data: cc } = await supabase.from('continents').select('name').order('name'); objContinents = (cc || []).map(function (c) { return c.name; }); } catch (e) { objContinents = []; }
+        // Hexes assigned to a nation (world_hexes.nation_id set) — the "Seize Territory" picker.
+        try { const { data: hx } = await supabase.from('world_hexes').select('q, r, name, nation_id').not('nation_id', 'is', null).order('name'); objHexes = hx || []; } catch (e) { objHexes = []; }
+        renderObjList();
+      }
+      function renderObjList() {
+        var box = document.getElementById('obList');
+        if (!objCache.length) { box.innerHTML = '<p class="empty">No objectives yet. Click “New objective” to create one.</p>'; return; }
+        box.innerHTML = objCache.map(function (row) {
+          var d = row.definition || {}, nc = (d.conditions || []).length, nr = (d.rewards || []).length;
+          return '<div class="plcard"><div><div class="plcard__name">' + esc(d.name || 'Untitled objective') + '</div>' +
+            '<div class="plcard__meta">' + n(d.ticks) + ' tick' + (n(d.ticks) === 1 ? '' : 's') + ' · ' + nc + ' condition' + (nc === 1 ? '' : 's') + ' · ' + nr + ' reward' + (nr === 1 ? '' : 's') + '</div></div>' +
+            '<div class="plcard__btns"><button class="ed" data-id="' + row.id + '" type="button">Edit</button><button class="rm" data-id="' + row.id + '" type="button">Remove</button></div></div>';
+        }).join('');
+        box.querySelectorAll('.ed').forEach(function (b) { b.onclick = function () { var r = objCache.filter(function (x) { return x.id === b.dataset.id; })[0]; if (r) openObjective(JSON.parse(JSON.stringify(r.definition)), r.id); }; });
+        box.querySelectorAll('.rm').forEach(function (b) { b.onclick = function () { removeObjective(b.dataset.id); }; });
+      }
+      async function saveObjective() {
+        if (!OBJ) return;
+        if (objSaving) return; objSaving = true; setObjNote('Saving…');
+        try {
+          if (objEditingId) { const { error } = await supabase.from('objectives').update({ definition: OBJ }).eq('id', objEditingId); if (error) throw error; }
+          else { const { data, error } = await supabase.from('objectives').insert({ definition: OBJ }).select('id').single(); if (error) throw error; objEditingId = data.id; }
+          setObjNote('Saved “' + (OBJ.name || 'objective') + '”.', 'ok'); loadObjectives();
+        } catch (e) { setObjNote('Save failed: ' + (e.message || e), 'error'); }
+        objSaving = false;
+      }
+      async function removeObjective(id) {
+        if (!confirm('Delete this objective?')) return;
+        try {
+          const { error } = await supabase.from('objectives').delete().eq('id', id); if (error) throw error;
+          if (objEditingId === id) { objEditingId = null; document.getElementById('obEditorPanel').hidden = true; }
+          loadObjectives();
+        } catch (e) { setObjNote('Delete failed: ' + (e.message || e), 'error'); }
+      }
+      function openObjective(def, id) {
+        OBJ = normalizeObjective(def); objEditingId = id || null;
+        var panel = document.getElementById('obEditorPanel'); panel.hidden = false; setObjNote('');
+        var nm = document.getElementById('obName'), ds = document.getElementById('obDesc'), tk = document.getElementById('obTicks');
+        nm.value = OBJ.name || ''; ds.value = OBJ.desc || ''; tk.value = OBJ.ticks || 12;
+        nm.oninput = function (e) { OBJ.name = e.target.value; renderObjPreview(); };
+        ds.oninput = function (e) { OBJ.desc = e.target.value; renderObjPreview(); };
+        tk.oninput = function (e) { OBJ.ticks = Math.max(1, parseInt(e.target.value, 10) || 1); renderObjPreview(); };
+        renderConds(); renderRewards(); renderObjPreview();
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      // ----- heterogeneous rows: a "kind" select then the kind's params. One renderer, two callers.
+      function partsHtml(item, def) {
+        return def.parts.map(function (p) {
+          var val = item[p.p];
+          if (p.t === 'num') return '<input data-prop="' + p.p + '" data-num="1" type="number" step="any" value="' + (val == null ? 0 : val) + '">';
+          if (p.t === 'sel') return '<select data-prop="' + p.p + '">' + p.opts.map(function (o) { return '<option' + (o === val ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
+          if (p.t === 'cont') return '<select data-prop="' + p.p + '">' + (objContinents.length ? objContinents : ['—']).map(function (o) { return '<option' + (o === val ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
+          if (p.t === 'nat') return '<select data-prop="' + p.p + '">' + (objNations.length ? objNations.map(function (na) { return '<option value="' + esc(na.id) + '"' + (na.id === val ? ' selected' : '') + '>' + esc(na.name || na.id) + '</option>'; }).join('') : '<option value="">— no nations —</option>') + '</select>';
+          if (p.t === 'hex') return '<select data-prop="' + p.p + '">' + (objHexes.length ? objHexes.map(function (h) { var k = hexKey(h); return '<option value="' + esc(k) + '"' + (k === val ? ' selected' : '') + '>' + esc(hexOptLabel(h)) + '</option>'; }).join('') : '<option value="">— no assigned hexes —</option>') + '</select>';
+          return '';
+        }).join('');
+      }
+      function renderRows(list, boxId, defs, order, rerender, joinWord) {
+        var box = document.getElementById(boxId); box.innerHTML = '';
+        if (!list.length) { var e = document.createElement('div'); e.className = 'tickcalc'; e.textContent = 'None yet.'; box.appendChild(e); return; }
+        list.forEach(function (item, i) {
+          if (i > 0 && joinWord) { var a = document.createElement('div'); a.className = 'andtag'; a.textContent = joinWord; box.appendChild(a); }
+          var row = document.createElement('div'); row.className = 'obrow';
+          row.innerHTML = '<select class="okind">' + order.map(function (k) { return '<option value="' + k + '"' + (k === item.kind ? ' selected' : '') + '>' + esc(defs[k].label) + '</option>'; }).join('') + '</select>' +
+            partsHtml(item, defs[item.kind]) + '<button class="xb" type="button">×</button>';
+          row.querySelector('.okind').onchange = function (e) { list[i] = blankItem(e.target.value, defs); rerender(); renderObjPreview(); };
+          row.querySelectorAll('[data-prop]').forEach(function (ctrl) {
+            ctrl.oninput = ctrl.onchange = function () {
+              item[ctrl.dataset.prop] = (ctrl.dataset.num != null) ? (parseFloat(ctrl.value) || 0) : ctrl.value;
+              renderObjPreview();
+            };
+          });
+          row.querySelector('.xb').onclick = function () { list.splice(i, 1); rerender(); renderObjPreview(); };
+          box.appendChild(row);
+        });
+      }
+      function renderConds() { renderRows(OBJ.conditions, 'obConds', COND_DEFS, COND_ORDER, renderConds, 'AND'); }
+      function renderRewards() { renderRows(OBJ.rewards, 'obRewards', REWARD_DEFS, REWARD_ORDER, renderRewards, null); }
+
+      // ----- preview rail: render each condition/reward as a readable line -----
+      function condText(c) {
+        switch (c.kind) {
+          case 'stat_up': return 'Increase ' + c.stat + ' by ' + n(c.amount);
+          case 'stat_down': return 'Decrease ' + c.stat + ' by ' + n(c.amount);
+          case 'prod_up': return 'Increase ' + c.resource + ' production by ' + n(c.amount);
+          case 'budget': return 'Hold at least ₣' + n(c.amount) + 'B Budget';
+          case 'debt_down': return 'Reduce Debt by ' + n(c.pct) + '%';
+          case 'fdi': return 'Hold FDI tokens in at least ' + n(c.count) + ' countr' + (n(c.count) === 1 ? 'y' : 'ies');
+          case 'trade': return 'Keep at least ' + n(c.count) + ' Trade Agreement' + (n(c.count) === 1 ? '' : 's') + ' active';
+          case 'mil_dom': return 'Hold more Military in ' + (c.continent || '—') + ' than any other nation';
+          case 'gdp_up': return 'Grow GDP by ' + n(c.pct) + '%';
+          case 'allies': return 'Have ' + n(c.count) + ' all' + (n(c.count) === 1 ? 'y' : 'ies') + ' in ' + (c.continent || '—');
+          case 'units': return 'Field more than ' + n(c.count) + ' ' + c.unit;
+          case 'relations': return 'Relations with ' + natName(c.nation) + ' above ' + n(c.value);
+          case 'seize': return 'Seize territory ' + hexLabel(c.hex);
+        }
+        return '';
+      }
+      function rewardText(r) {
+        switch (r.kind) {
+          case 'popularity': return sgn(r.amount) + ' Party Popularity';
+          case 'confidence': return sgn(r.amount) + ' Government Confidence';
+          case 'onhand': return sgn(r.amount) + ' ' + r.resource + ' on hand';
+          case 'budget': return money(r.amount) + ' Budget';
+          case 'relations': return sgn(r.amount) + ' Relations with ' + natName(r.nation);
+          case 'debt': return money(r.amount) + ' Debt';
+          case 'stat': return sgn(r.amount) + ' ' + r.stat;
+        }
+        return '';
+      }
+      function renderObjPreview() {
+        var box = document.getElementById('obPrev'); if (!box || !OBJ) return;
+        var conds = '<div class="pvobj"><div class="tl">Complete within ' + n(OBJ.ticks) + ' tick' + (n(OBJ.ticks) === 1 ? '' : 's') + ' — all of</div>' +
+          (OBJ.conditions.length ? OBJ.conditions.map(function (c) { return '· ' + esc(condText(c)); }).join('<br>') : 'No conditions yet.') + '</div>';
+        var rews = '<div class="pvrew"><div class="tl">Rewards</div>' +
+          (OBJ.rewards.length ? OBJ.rewards.map(function (r) { return '· ' + esc(rewardText(r)); }).join('<br>') : 'None set.') + '</div>';
+        box.innerHTML = '<div class="pvname">' + esc(OBJ.name || 'Untitled objective') + '</div>' +
+          (OBJ.desc ? '<div class="pvdesc">' + esc(OBJ.desc) + '</div>' : '') + conds + rews;
+      }
+
+      // ----- buttons -----
+      document.getElementById('obNew').onclick = function () { openObjective(blankObjective(), null); };
+      document.getElementById('obAddCond').onclick = function () { if (!OBJ) return; OBJ.conditions.push(blankItem('stat_up', COND_DEFS)); renderConds(); renderObjPreview(); };
+      document.getElementById('obAddReward').onclick = function () { if (!OBJ) return; OBJ.rewards.push(blankItem('popularity', REWARD_DEFS)); renderRewards(); renderObjPreview(); };
+      document.getElementById('obSave').onclick = saveObjective;
+
+      return loadObjectives;
     })();
 
     // ---- World Events (admin authoring; one JSONB definition per event, is_admin RLS) ----
