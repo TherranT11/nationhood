@@ -181,16 +181,14 @@ end $$;
 revoke all on function public._nation_onhand_add(text, text, numeric) from public, anon, authenticated;
 
 -- Apply ONE crisis effect {t,v}. 'Crisis Meter' adjusts THIS instance's meter (floored at 0);
--- an "<Resource> on hand" target moves the nation's stockpile (floored at 0); every other target
--- rides _apply_policy_effect (schema/91) — the single source for stat mapping, clamping, money
--- scaling, the confidence-collapse hook, popularity floors.
+-- every other target — stats, economy, production, and "<Resource> on hand" stockpiles — rides
+-- _apply_policy_effect (schema/91), the single source for stat mapping, clamping, money scaling,
+-- on-hand routing, the confidence-collapse hook and popularity floors.
 create or replace function public._apply_crisis_effect(p_id uuid, p_nation text, p_eff jsonb)
 returns void language plpgsql security definer set search_path = public as $$
 begin
   if (p_eff->>'t') = 'Crisis Meter' then
     update public.nation_crises set meter = greatest(0, meter + coalesce((p_eff->>'v')::numeric, 0)) where id = p_id;
-  elsif (p_eff->>'t') like '%on hand' then
-    perform public._nation_onhand_add(p_nation, lower(btrim(replace(p_eff->>'t', 'on hand', ''))), coalesce((p_eff->>'v')::numeric, 0));
   else
     perform public._apply_policy_effect(p_nation, p_eff);
   end if;
