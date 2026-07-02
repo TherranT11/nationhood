@@ -664,7 +664,7 @@
       if (!involved(d)) return false;
       if (d.type === 'decision') return !answered[i.id];
       if (d.type === 'mutual') return !agreed[i.id];
-      if (d.type === 'competitive') return !bidded[i.id];
+      if (d.type === 'competitive' || d.type === 'bidding') return !bidded[i.id];
       return false;
     });
     if (!open.length) { panel.hidden = true; return; }
@@ -689,6 +689,13 @@
         return '<div class="wevt">' + head + cterms +
           '<div class="wevt__opts"><input class="wevt__bid" type="number" min="0" step="1" placeholder="Your bid"><button class="wevt__opt" type="button" data-act="bid" data-i="' + esc(i.id) + '">Submit sealed bid</button></div></div>';
       }
+      if (d.type === 'bidding') {
+        var bd = d.bidding || {}, res = bd.resources || [];
+        var resSel = '<select class="wevt__bres">' + res.map(function (r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select>';
+        var bterms = '<div class="wevt__desc" style="margin-top:8px">Stake <b>' + (res.map(esc).join(' or ') || 'a resource') + '</b> in a sealed bid. If the total reaches <b>' + (Number(bd.threshold) || 0) + '</b>, the strongest bidder gains <b>' + weEffSummary(bd.winEffects) + '</b>; otherwise every nation that stakes nothing loses <b>' + weEffSummary(bd.zeroEffects) + '</b>.</div>';
+        return '<div class="wevt">' + head + bterms +
+          '<div class="wevt__opts">' + resSel + '<input class="wevt__bid" type="number" min="0" step="any" placeholder="Amount"><button class="wevt__opt" type="button" data-act="placebid" data-i="' + esc(i.id) + '">Submit sealed bid</button></div></div>';
+      }
       var m = d.mutual || {};
       var need = d.scope === 'global' ? null : (d.nations || []).length;
       var terms = '<div class="wevt__desc" style="margin-top:8px">You contribute <b>' + weEffSummary(m.contribution) + '</b>; both gain <b>' + weEffSummary(m.effects) + '</b>' +
@@ -700,6 +707,7 @@
       b.onclick = function () {
         if (b.dataset.act === 'agree') actWorldEvent('world_event_agree', { p_instance: b.dataset.i }, box, 'Agreement');
         else if (b.dataset.act === 'bid') { var inp = b.parentNode.querySelector('.wevt__bid'); actWorldEvent('world_event_bid', { p_instance: b.dataset.i, p_amount: Math.max(0, Math.floor(+(inp && inp.value) || 0)) }, box, 'Bid'); }
+        else if (b.dataset.act === 'placebid') { var bres = b.parentNode.querySelector('.wevt__bres'), bamt = b.parentNode.querySelector('.wevt__bid'); actWorldEvent('world_event_place_bid', { p_instance: b.dataset.i, p_resource: bres && bres.value, p_amount: Math.max(0, +(bamt && bamt.value) || 0) }, box, 'Bid'); }
         else actWorldEvent('world_event_choose', { p_instance: b.dataset.i, p_option: +b.dataset.o }, box, 'Decision');
       };
     });
@@ -713,7 +721,7 @@
       const { data, error } = await supabase.rpc(rpc, args);
       if (error) throw error;
       ping(rpc === 'world_event_choose' ? ('Decided: ' + (data.chose || 'done') + '.')
-        : rpc === 'world_event_bid' ? (data.resolved ? 'Bid in — the contest resolved.' : 'Sealed bid submitted.')
+        : (rpc === 'world_event_bid' || rpc === 'world_event_place_bid') ? (data.resolved ? 'Bid in — the contest resolved.' : 'Sealed bid submitted.')
         : (data.sealed ? 'Agreement sealed.' : 'Agreed — waiting on the other side.'));
       if (feedCtx) { await loadWorldEventsPanel(feedCtx.nationId); await loadFeed(feedCtx.nationId, feedCtx.nation, feedCtx.gameDate); }
     } catch (e) { ping((e && e.message) || ('Couldn’t record that ' + kind.toLowerCase() + '.')); box.querySelectorAll('.wevt__opt').forEach(function (b) { b.disabled = false; }); }

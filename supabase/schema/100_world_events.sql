@@ -165,7 +165,7 @@ begin
   select definition into v_def from public.world_events where id = p_event;
   if v_def is null then raise exception 'No such world event.'; end if;
   v_type := v_def->>'type'; v_name := coalesce(nullif(v_def->>'name',''), 'A world event');
-  if v_type not in ('decision', 'turning_point', 'mutual', 'competitive') then
+  if v_type not in ('decision', 'turning_point', 'mutual', 'competitive', 'bidding') then
     raise exception 'Unknown world-event type.';
   end if;
   select current_tick into v_tick from public.game_state where id;
@@ -187,6 +187,7 @@ begin
         values (v_nat, 'world_event',
                 v_body || (case v_type when 'mutual' then ' — an agreement awaits in World Events.'
                                        when 'competitive' then ' — a sealed bid awaits in World Events.'
+                                       when 'bidding' then ' — a sealed bid awaits in World Events.'
                                        else ' — a decision awaits in World Events.' end),
                 public.current_game_date());
     end if;
@@ -415,17 +416,19 @@ begin
 end $$;
 grant execute on function public.world_event_bid(uuid, numeric) to authenticated;
 
--- Called once per tick by _advance_tick (schema/60): resolve any competitive contest whose
--- 3-tick bidding window has elapsed (fired at fired_tick → closes at fired_tick + 3). Contests
--- where everyone bid early already resolved in world_event_bid; this catches the stragglers.
+-- Called once per tick by _advance_tick (schema/60): resolve any competitive or bidding contest
+-- whose 3-tick bidding window has elapsed (fired at fired_tick → closes at fired_tick + 3).
+-- Contests where everyone bid early already resolved on the last bid; this catches the stragglers.
+-- (_resolve_we_bidding is late-bound from schema/135 — apply 135 before the tick runs.)
 create or replace function public._resolve_overdue_world_events(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
 declare r record;
 begin
-  for r in select id from public.world_event_instances
-            where status = 'active' and (definition->>'type') = 'competitive'
+  for r in select id, (definition->>'type') as t from public.world_event_instances
+            where status = 'active' and (definition->>'type') in ('competitive', 'bidding')
               and fired_tick is not null and p_tick - fired_tick >= 3 loop
-    perform public._resolve_we_competitive(r.id);
+    if r.t = 'bidding' then perform public._resolve_we_bidding(r.id);
+    else perform public._resolve_we_competitive(r.id); end if;
   end loop;
 end $$;
 revoke all on function public._resolve_overdue_world_events(int) from public, anon, authenticated;
