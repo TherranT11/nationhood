@@ -136,14 +136,31 @@ begin
 end $$;
 revoke all on function public._resolve_we_bidding(uuid) from public, anon, authenticated;
 
--- A nation's leader stakes a sealed bid of a chosen (allowed) resource. No action cost. The bid
--- is capped at what the nation holds and paid immediately (all-pay). Resolves the contest early
--- once every involved nation has bid.
+-- Resolve the contest early once EVERY involved nation has responded (bid or declined). ONE
+-- source for the "all in?" check, shared by world_event_place_bid and world_event_decline_bid.
+create or replace function public._we_bidding_maybe_resolve(p_instance uuid)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare v_def jsonb; v_targets text[]; v_bidders int;
+begin
+  select definition into v_def from public.world_event_instances where id = p_instance;
+  v_targets := public._we_targets(v_def);
+  select count(*) into v_bidders from public.world_event_bids where instance_id = p_instance;
+  if coalesce(array_length(v_targets, 1), 0) > 0 and v_bidders >= array_length(v_targets, 1) then
+    perform public._resolve_we_bidding(p_instance);
+    return true;
+  end if;
+  return false;
+end $$;
+revoke all on function public._we_bidding_maybe_resolve(uuid) from public, anon, authenticated;
+
+-- The Head of Government stakes a sealed bid of a chosen (allowed) resource for the nation. No
+-- action cost. The bid is capped at what the nation holds and paid immediately (all-pay).
+-- Resolves the contest early once every involved nation has responded.
 create or replace function public.world_event_place_bid(p_instance uuid, p_resource text, p_amount numeric)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_party public.parties%rowtype; v_inst public.world_event_instances%rowtype; v_def jsonb;
-  v_have numeric; v_bid numeric; v_nname text; v_targets text[]; v_bidders int;
+  v_have numeric; v_bid numeric; v_nname text;
 begin
   v_party := public._lock_party();   -- caller's party + nation (no action cost)
   select * into v_inst from public.world_event_instances where id = p_instance for update;
@@ -153,8 +170,9 @@ begin
   if v_def->>'type' <> 'bidding' then raise exception 'That event is not a bidding event.'; end if;
   if (v_def->>'scope') <> 'global' and not ((v_def->'nations') ? v_party.nation_id) then
     raise exception 'This bid does not involve your nation.'; end if;
+  perform public._require_hog(v_party.nation_id, v_party.id);   -- the HoG bids for the nation
   if exists (select 1 from public.world_event_bids where instance_id = p_instance and nation_id = v_party.nation_id) then
-    raise exception 'Your nation has already bid.'; end if;
+    raise exception 'Your nation has already responded.'; end if;
   if not ((v_def->'bidding'->'resources') ? p_resource) then
     raise exception 'You can''t stake % in this event.', coalesce(p_resource, 'that'); end if;
   if p_amount is null or p_amount < 0 then raise exception 'Bid zero or more.'; end if;
@@ -173,14 +191,41 @@ begin
             coalesce(nullif(v_def->>'name', ''), 'A world event') || ' — ' || coalesce(v_nname, v_party.nation_id) || ' committed a sealed bid.',
             public.current_game_date());
 
-  v_targets := public._we_targets(v_def);
-  select count(*) into v_bidders from public.world_event_bids where instance_id = p_instance;
-  if coalesce(array_length(v_targets, 1), 0) > 0 and v_bidders >= array_length(v_targets, 1) then
-    perform public._resolve_we_bidding(p_instance);
-    return jsonb_build_object('ok', true, 'bid', v_bid, 'resolved', true);
-  end if;
-  return jsonb_build_object('ok', true, 'bid', v_bid, 'resolved', false);
+  return jsonb_build_object('ok', true, 'bid', v_bid, 'resolved', public._we_bidding_maybe_resolve(p_instance));
 end $$;
 grant execute on function public.world_event_place_bid(uuid, text, numeric) to authenticated;
+
+-- The Head of Government formally declines to bid for the nation ("Do Not Bid"). Records a zero
+-- stake (no resource, nothing paid) so the contest counts the nation as having responded and can
+-- resolve; staking nothing means the zero-bidder penalty if the threshold is missed.
+create or replace function public.world_event_decline_bid(p_instance uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_party public.parties%rowtype; v_inst public.world_event_instances%rowtype; v_def jsonb; v_nname text;
+begin
+  v_party := public._lock_party();
+  select * into v_inst from public.world_event_instances where id = p_instance for update;
+  if not found then raise exception 'That event is gone.'; end if;
+  if v_inst.status <> 'active' then raise exception 'Bidding has closed.'; end if;
+  v_def := v_inst.definition;
+  if v_def->>'type' <> 'bidding' then raise exception 'That event is not a bidding event.'; end if;
+  if (v_def->>'scope') <> 'global' and not ((v_def->'nations') ? v_party.nation_id) then
+    raise exception 'This bid does not involve your nation.'; end if;
+  perform public._require_hog(v_party.nation_id, v_party.id);   -- the HoG answers for the nation
+  if exists (select 1 from public.world_event_bids where instance_id = p_instance and nation_id = v_party.nation_id) then
+    raise exception 'Your nation has already responded.'; end if;
+
+  insert into public.world_event_bids (instance_id, nation_id, side, resource, amount, party_id)
+    values (p_instance, v_party.nation_id, null, null, 0, v_party.id);   -- abstain = zero stake
+
+  select name into v_nname from public.nations where id = v_party.nation_id;
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_party.nation_id, v_party.id, 'world_event',
+            coalesce(nullif(v_def->>'name', ''), 'A world event') || ' — ' || coalesce(v_nname, v_party.nation_id) || ' declined to bid.',
+            public.current_game_date());
+
+  return jsonb_build_object('ok', true, 'declined', true, 'resolved', public._we_bidding_maybe_resolve(p_instance));
+end $$;
+grant execute on function public.world_event_decline_bid(uuid) to authenticated;
 
 notify pgrst, 'reload schema';

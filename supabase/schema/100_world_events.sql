@@ -140,6 +140,21 @@ returns text[] language sql stable security definer set search_path = public as 
             join public.nations n on n.id = e.value and coalesce(n.dormant,false) = false) end;
 $$;
 
+-- The Head of Government acts on world events for the whole nation. Raises unless p_party is the
+-- formateur of p_nation's active government. ONE source for the gate, shared by every world-event
+-- action RPC (choose / agree / bid / place_bid / decline). Internal — the security-definer RPCs
+-- call it as the definer.
+create or replace function public._require_hog(p_nation text, p_party uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_form uuid;
+begin
+  select formateur_party_id into v_form from public.governments where nation_id = p_nation and status = 'active';
+  if not found then raise exception 'There is no sitting government to act for your nation.'; end if;
+  if v_form is distinct from p_party then
+    raise exception 'Only the Head of Government can act on world events for your nation.'; end if;
+end $$;
+revoke all on function public._require_hog(text, uuid) from public, anon, authenticated;
+
 -- Resolve a Decision instance once every live target nation has answered.
 create or replace function public._maybe_resolve_we(p_instance uuid)
 returns void language plpgsql security definer set search_path = public as $$
@@ -229,6 +244,7 @@ begin
   if (v_def->>'scope') <> 'global' and not ((v_def->'nations') ? v_party.nation_id) then
     raise exception 'This decision does not involve your nation.';
   end if;
+  perform public._require_hog(v_party.nation_id, v_party.id);   -- the HoG answers for the nation
   if exists (select 1 from public.world_event_choices where instance_id = p_instance and nation_id = v_party.nation_id) then
     raise exception 'Your nation has already decided.';
   end if;
@@ -286,6 +302,7 @@ begin
   if (v_def->>'scope') <> 'global' and not ((v_def->'nations') ? v_party.nation_id) then
     raise exception 'This agreement does not involve your nation.';
   end if;
+  perform public._require_hog(v_party.nation_id, v_party.id);   -- the HoG agrees for the nation
   if exists (select 1 from public.world_event_agreements where instance_id = p_instance and nation_id = v_party.nation_id) then
     raise exception 'Your nation has already agreed.';
   end if;
@@ -398,6 +415,7 @@ begin
   if v_def->>'type' <> 'competitive' then raise exception 'That event is not a competitive bid.'; end if;
   v_side := public._we_side(v_def, v_party.nation_id);
   if v_side is null then raise exception 'Your nation is not on either side of this contest.'; end if;
+  perform public._require_hog(v_party.nation_id, v_party.id);   -- the HoG bids for the nation
   if exists (select 1 from public.world_event_bids where instance_id = p_instance and nation_id = v_party.nation_id) then
     raise exception 'Your nation has already bid.';
   end if;

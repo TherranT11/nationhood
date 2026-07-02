@@ -253,6 +253,11 @@
   .wevt__opt{flex:1;min-width:160px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:11px 14px;border-radius:10px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer}
   .wevt__opt:hover{filter:brightness(1.06)} .wevt__opt:disabled{opacity:.5;cursor:not-allowed;filter:none}
   .wevt__bid{flex:1;min-width:120px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-size:14px}
+  .wevt__bres{min-width:130px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-size:14px}
+  .wevt__bid:disabled,.wevt__bres:disabled{opacity:.5;cursor:not-allowed}
+  .wevt__opt--ghost{background:var(--surface);color:var(--ink);border-color:var(--line)}
+  .wevt__opt--ghost:hover{filter:none;background:var(--chip,#F4F3EF)}
+  .wevt__hog{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-top:11px}
 
   /* Phone refresh (matches the Party page): tighter padding, smaller hero, drop
      the placeholder "Next Month" pill. Action cards already go 2-up at ≤700. */
@@ -295,6 +300,11 @@
     <div id="tradebar"></div>
     <div id="defencebar"></div>
 
+    <section class="panel" id="weventPanel" hidden>
+      <div class="glance-hd"><span>World Events</span></div>
+      <div id="wevents"></div>
+    </section>
+
     <section class="panel leadbar">
       <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
       <div class="leadbar__grid">
@@ -312,11 +322,6 @@
     <section class="panel" id="glance">
       <div class="glance-hd"><span>The Nation at a Glance</span><a class="glance-link">Nation &#9656;</a></div>
       <div class="snap" id="snap"><p class="empty">Loading the nation&rsquo;s figures&hellip;</p></div>
-    </section>
-
-    <section class="panel" id="weventPanel" hidden>
-      <div class="glance-hd"><span>World Events</span></div>
-      <div id="wevents"></div>
     </section>
 
     <div class="cols">
@@ -679,35 +684,40 @@
       var head = (d.image ? '<img src="' + esc(d.image) + '" alt="" style="max-width:100%;border-radius:9px;margin-bottom:10px">' : '') +
         '<div class="wevt__name">' + esc(d.name || 'A world event') + '</div>' +
         (d.desc ? '<div class="wevt__desc">' + esc(d.desc) + '</div>' : '');
+      // Every party in the nation sees the card, but only the Head of Government may act: the
+      // action controls are disabled for everyone else, with a note (amPM = formateur, set at load).
+      var dis = amPM ? '' : ' disabled';
+      var note = amPM ? '' : '<div class="wevt__hog">Only your Head of Government can act on this — follow the outcome in the feed.</div>';
       if (d.type === 'decision') {
-        var opts = (d.options || []).map(function (o, oi) { return '<button class="wevt__opt" type="button" data-act="choose" data-i="' + esc(i.id) + '" data-o="' + oi + '">' + esc(o.label || ('Option ' + (oi + 1))) + '</button>'; }).join('');
-        return '<div class="wevt">' + head + '<div class="wevt__opts">' + opts + '</div></div>';
+        var opts = (d.options || []).map(function (o, oi) { return '<button class="wevt__opt" type="button" data-act="choose" data-i="' + esc(i.id) + '" data-o="' + oi + '"' + dis + '>' + esc(o.label || ('Option ' + (oi + 1))) + '</button>'; }).join('');
+        return '<div class="wevt">' + head + '<div class="wevt__opts">' + opts + '</div>' + note + '</div>';
       }
       if (d.type === 'competitive') {
         var c = d.competitive || {}, mySide = side(d);
         var cterms = '<div class="wevt__desc" style="margin-top:8px">You’re on <b>Side ' + mySide + '</b>. Stake <b>' + esc(c.stat || 'Budget') + '</b> in a sealed bid — the higher side total wins. Winner gains <b>' + weEffSummary(c.winEffects) + '</b>.</div>';
         return '<div class="wevt">' + head + cterms +
-          '<div class="wevt__opts"><input class="wevt__bid" type="number" min="0" step="1" placeholder="Your bid"><button class="wevt__opt" type="button" data-act="bid" data-i="' + esc(i.id) + '">Submit sealed bid</button></div></div>';
+          '<div class="wevt__opts"><input class="wevt__bid" type="number" min="0" step="1" placeholder="Your bid"' + dis + '><button class="wevt__opt" type="button" data-act="bid" data-i="' + esc(i.id) + '"' + dis + '>Submit sealed bid</button></div>' + note + '</div>';
       }
       if (d.type === 'bidding') {
         var bd = d.bidding || {}, res = bd.resources || [];
-        var resSel = '<select class="wevt__bres">' + res.map(function (r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select>';
+        var resSel = '<select class="wevt__bres"' + dis + '>' + res.map(function (r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select>';
         var bterms = '<div class="wevt__desc" style="margin-top:8px">Stake <b>' + (res.map(esc).join(' or ') || 'a resource') + '</b> in a sealed bid. If the total reaches <b>' + (Number(bd.threshold) || 0) + '</b>, the strongest bidder gains <b>' + weEffSummary(bd.winEffects) + '</b>; otherwise every nation that stakes nothing loses <b>' + weEffSummary(bd.zeroEffects) + '</b>.</div>';
         return '<div class="wevt">' + head + bterms +
-          '<div class="wevt__opts">' + resSel + '<input class="wevt__bid" type="number" min="0" step="any" placeholder="Amount"><button class="wevt__opt" type="button" data-act="placebid" data-i="' + esc(i.id) + '">Submit sealed bid</button></div></div>';
+          '<div class="wevt__opts">' + resSel + '<input class="wevt__bid" type="number" min="0" step="any" placeholder="Amount"' + dis + '><button class="wevt__opt" type="button" data-act="placebid" data-i="' + esc(i.id) + '"' + dis + '>Submit sealed bid</button><button class="wevt__opt wevt__opt--ghost" type="button" data-act="decline" data-i="' + esc(i.id) + '"' + dis + '>Do Not Bid</button></div>' + note + '</div>';
       }
       var m = d.mutual || {};
       var need = d.scope === 'global' ? null : (d.nations || []).length;
       var terms = '<div class="wevt__desc" style="margin-top:8px">You contribute <b>' + weEffSummary(m.contribution) + '</b>; both gain <b>' + weEffSummary(m.effects) + '</b>' +
         (need ? ' · ' + (agCount[i.id] || 0) + ' of ' + need + ' agreed' : '') + '</div>';
       return '<div class="wevt">' + head + terms +
-        '<div class="wevt__opts"><button class="wevt__opt" type="button" data-act="agree" data-i="' + esc(i.id) + '">Agree &amp; contribute</button></div></div>';
+        '<div class="wevt__opts"><button class="wevt__opt" type="button" data-act="agree" data-i="' + esc(i.id) + '"' + dis + '>Agree &amp; contribute</button></div>' + note + '</div>';
     }).join('');
     box.querySelectorAll('.wevt__opt').forEach(function (b) {
       b.onclick = function () {
         if (b.dataset.act === 'agree') actWorldEvent('world_event_agree', { p_instance: b.dataset.i }, box, 'Agreement');
         else if (b.dataset.act === 'bid') { var inp = b.parentNode.querySelector('.wevt__bid'); actWorldEvent('world_event_bid', { p_instance: b.dataset.i, p_amount: Math.max(0, Math.floor(+(inp && inp.value) || 0)) }, box, 'Bid'); }
         else if (b.dataset.act === 'placebid') { var bres = b.parentNode.querySelector('.wevt__bres'), bamt = b.parentNode.querySelector('.wevt__bid'); actWorldEvent('world_event_place_bid', { p_instance: b.dataset.i, p_resource: bres && bres.value, p_amount: Math.max(0, +(bamt && bamt.value) || 0) }, box, 'Bid'); }
+        else if (b.dataset.act === 'decline') actWorldEvent('world_event_decline_bid', { p_instance: b.dataset.i }, box, 'Bid');
         else actWorldEvent('world_event_choose', { p_instance: b.dataset.i, p_option: +b.dataset.o }, box, 'Decision');
       };
     });
@@ -721,6 +731,7 @@
       const { data, error } = await supabase.rpc(rpc, args);
       if (error) throw error;
       ping(rpc === 'world_event_choose' ? ('Decided: ' + (data.chose || 'done') + '.')
+        : rpc === 'world_event_decline_bid' ? (data.resolved ? 'Declined — the contest resolved.' : 'Declined to bid.')
         : (rpc === 'world_event_bid' || rpc === 'world_event_place_bid') ? (data.resolved ? 'Bid in — the contest resolved.' : 'Sealed bid submitted.')
         : (data.sealed ? 'Agreement sealed.' : 'Agreed — waiting on the other side.'));
       if (feedCtx) { await loadWorldEventsPanel(feedCtx.nationId); await loadFeed(feedCtx.nationId, feedCtx.nation, feedCtx.gameDate); }
