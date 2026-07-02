@@ -3397,6 +3397,9 @@
       function hexKey(h) { return h.q + ',' + h.r; }
       function hexOptLabel(h) { return (h.name || '(' + h.q + ', ' + h.r + ')') + ' · ' + natName(h.nation_id); }
       function hexLabel(key) { var h = objHexes.filter(function (x) { return hexKey(x) === key; })[0]; return h ? hexOptLabel(h) : (key || '—'); }
+      // "<Nation> · " scope prefix for an assigned objective, empty when unassigned. ONE source
+      // for the scope label shared by the list card and the preview.
+      function whoPrefix(id) { return id ? esc(natName(id)) + ' · ' : ''; }
       function setObjNote(msg, kind) { var el = document.getElementById('obNote'); if (el) { el.textContent = msg || ''; el.className = 'note' + (kind ? ' ' + kind : ''); } }
 
       // ----- the definition shape -----
@@ -3435,9 +3438,8 @@
         if (!objCache.length) { box.innerHTML = '<p class="empty">No objectives yet. Click “New objective” to create one.</p>'; return; }
         box.innerHTML = objCache.map(function (row) {
           var d = row.definition || {}, nc = (d.conditions || []).length, nr = (d.rewards || []).length;
-          var who = d.nation ? esc(natName(d.nation)) + ' · ' : '';
           return '<div class="plcard"><div><div class="plcard__name">' + esc(d.name || 'Untitled objective') + '</div>' +
-            '<div class="plcard__meta">' + who + n(d.ticks) + ' tick' + (n(d.ticks) === 1 ? '' : 's') + ' · ' + nc + ' condition' + (nc === 1 ? '' : 's') + ' · ' + nr + ' reward' + (nr === 1 ? '' : 's') + '</div></div>' +
+            '<div class="plcard__meta">' + whoPrefix(d.nation) + n(d.ticks) + ' tick' + (n(d.ticks) === 1 ? '' : 's') + ' · ' + nc + ' condition' + (nc === 1 ? '' : 's') + ' · ' + nr + ' reward' + (nr === 1 ? '' : 's') + '</div></div>' +
             '<div class="plcard__btns"><button class="ed" data-id="' + row.id + '" type="button">Edit</button><button class="rm" data-id="' + row.id + '" type="button">Remove</button></div></div>';
         }).join('');
         box.querySelectorAll('.ed').forEach(function (b) { b.onclick = function () { var r = objCache.filter(function (x) { return x.id === b.dataset.id; })[0]; if (r) openObjective(JSON.parse(JSON.stringify(r.definition)), r.id); }; });
@@ -3545,8 +3547,7 @@
       }
       function renderObjPreview() {
         var box = document.getElementById('obPrev'); if (!box || !OBJ) return;
-        var who = OBJ.nation ? esc(natName(OBJ.nation)) + ' · ' : '';
-        var conds = '<div class="pvobj"><div class="tl">' + who + 'Complete within ' + n(OBJ.ticks) + ' tick' + (n(OBJ.ticks) === 1 ? '' : 's') + ' — all of</div>' +
+        var conds = '<div class="pvobj"><div class="tl">' + whoPrefix(OBJ.nation) + 'Complete within ' + n(OBJ.ticks) + ' tick' + (n(OBJ.ticks) === 1 ? '' : 's') + ' — all of</div>' +
           (OBJ.conditions.length ? OBJ.conditions.map(function (c) { return '· ' + esc(condText(c)); }).join('<br>') : 'No conditions yet.') + '</div>';
         var rews = '<div class="pvrew"><div class="tl">Rewards</div>' +
           (OBJ.rewards.length ? OBJ.rewards.map(function (r) { return '· ' + esc(rewardText(r)); }).join('<br>') : 'None set.') + '</div>';
