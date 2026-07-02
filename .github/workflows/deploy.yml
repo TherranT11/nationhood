@@ -14,12 +14,13 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 
+# Build and deploy are SEPARATE jobs on purpose. Uploading the Pages artifact lives only in
+# `build`; `deploy` just publishes it. So a "Re-run failed jobs" after a flaky publish re-runs
+# `deploy` alone and never uploads a second artifact — which is what triggers the
+# "Multiple artifacts named github-pages were unexpectedly found" error in a single-job setup.
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,5 +36,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
