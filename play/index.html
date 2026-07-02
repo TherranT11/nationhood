@@ -678,8 +678,9 @@
       return false;
     });
     if (!open.length) { panel.hidden = true; return; }
-    // Bidding cards let the HoG stake up to everything the nation holds. Fetch the nation's
-    // holdings once when a bid is open; HOLD maps each resource label → the amount on hand.
+    // Bidding cards let the HoG stake up to everything the nation holds. HOLD maps each resource
+    // label → the amount held — a DISPLAY MIRROR of the server's _we_bid_have (schema/135), which
+    // stays authoritative: the bid RPC re-reads holdings and caps/floors the stake. Keep in sync.
     var HOLD = {};
     if (open.some(function (i) { return (i.definition || {}).type === 'bidding'; })) {
       try {
