@@ -21,6 +21,7 @@
 --       stat_up/stat_down {stat, amount} · prod_up {resource, amount} · budget {amount}
 --       debt_down {pct} · fdi {count} · trade {count} · mil_dom {continent} · gdp_up {pct}
 --       allies {count, continent} · units {unit, count} · relations {nation, value}
+--       seize {hex}  -- hex "q,r" of a nation-held world_hexes tile to capture
 --   reward    = { kind, ...params }   -- popularity/confidence/budget/debt {amount} ·
 --       onhand {resource, amount} · relations {nation, amount} · stat {stat, amount}
 -- ===========================================================================

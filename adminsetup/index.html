@@ -3357,7 +3357,7 @@
       var OBJ_UNITS  = ['Armies', 'Fleets', 'Air Wings'];
 
       // Each kind names the params it carries; the row renderer + preview read straight off this,
-      // so adding a kind is a one-line change. part.t: num | sel(opts) | cont(inent) | nat(ion).
+      // so adding a kind is a one-line change. part.t: num | sel(opts) | cont(inent) | nat(ion) | hex.
       var COND_DEFS = {
         stat_up:   { label: 'Increase [stat] by X',                 parts: [{ p: 'stat', t: 'sel', opts: OBJ_STATS }, { p: 'amount', t: 'num' }] },
         stat_down: { label: 'Decrease [stat] by X',                 parts: [{ p: 'stat', t: 'sel', opts: OBJ_STATS }, { p: 'amount', t: 'num' }] },
@@ -3370,9 +3370,10 @@
         gdp_up:    { label: 'Increase GDP by X%',                    parts: [{ p: 'pct', t: 'num' }] },
         allies:    { label: 'X Allies in [continent]',              parts: [{ p: 'count', t: 'num' }, { p: 'continent', t: 'cont' }] },
         units:     { label: 'More than X [unit]',                    parts: [{ p: 'count', t: 'num' }, { p: 'unit', t: 'sel', opts: OBJ_UNITS }] },
-        relations: { label: 'Relations with [nation] above Y',       parts: [{ p: 'nation', t: 'nat' }, { p: 'value', t: 'num' }] }
+        relations: { label: 'Relations with [nation] above Y',       parts: [{ p: 'nation', t: 'nat' }, { p: 'value', t: 'num' }] },
+        seize:     { label: 'Seize Territory [hex]',                  parts: [{ p: 'hex', t: 'hex' }] }
       };
-      var COND_ORDER = ['stat_up', 'stat_down', 'prod_up', 'budget', 'debt_down', 'fdi', 'trade', 'mil_dom', 'gdp_up', 'allies', 'units', 'relations'];
+      var COND_ORDER = ['stat_up', 'stat_down', 'prod_up', 'budget', 'debt_down', 'fdi', 'trade', 'mil_dom', 'gdp_up', 'allies', 'units', 'relations', 'seize'];
 
       var REWARD_DEFS = {
         popularity: { label: 'Party Popularity +X',          parts: [{ p: 'amount', t: 'num' }] },
@@ -3385,12 +3386,17 @@
       };
       var REWARD_ORDER = ['popularity', 'confidence', 'onhand', 'budget', 'relations', 'debt', 'stat'];
 
-      var OBJ = null, objEditingId = null, objSaving = false, objCache = [], objNations = [], objContinents = [];
+      var OBJ = null, objEditingId = null, objSaving = false, objCache = [], objNations = [], objContinents = [], objHexes = [];
 
       var n = function (v) { return Number(v) || 0; };
       var sgn = function (v) { return (n(v) > 0 ? '+' : n(v) < 0 ? '−' : '') + Math.abs(n(v)); };
       var money = function (v) { return (n(v) >= 0 ? '+' : '−') + '₣' + Math.abs(n(v)) + 'B'; };
       function natName(id) { var m = objNations.filter(function (x) { return x.id === id; })[0]; return (m && m.name) || id || '—'; }
+      // A hex is keyed by its axial coords "q,r"; its option/preview label is its map name (or
+      // the coords) plus the nation that holds it.
+      function hexKey(h) { return h.q + ',' + h.r; }
+      function hexOptLabel(h) { return (h.name || '(' + h.q + ', ' + h.r + ')') + ' · ' + natName(h.nation_id); }
+      function hexLabel(key) { var h = objHexes.filter(function (x) { return hexKey(x) === key; })[0]; return h ? hexOptLabel(h) : (key || '—'); }
       function setObjNote(msg, kind) { var el = document.getElementById('obNote'); if (el) { el.textContent = msg || ''; el.className = 'note' + (kind ? ' ' + kind : ''); } }
 
       // ----- the definition shape -----
@@ -3399,6 +3405,7 @@
         if (part.t === 'sel') return part.opts[0];
         if (part.t === 'cont') return objContinents[0] || '';
         if (part.t === 'nat') return (objNations[0] || {}).id || '';
+        if (part.t === 'hex') return objHexes.length ? hexKey(objHexes[0]) : '';
         return 1;   // num
       }
       function blankItem(kind, defs) { var d = defs[kind]; var o = { kind: kind }; d.parts.forEach(function (p) { o[p.p] = partDefault(p); }); return o; }
@@ -3419,6 +3426,8 @@
         } catch (e) { box.innerHTML = '<p class="empty">Could not load objectives.</p>'; return; }
         try { const { data: nn } = await supabase.from('nations').select('id, name').order('name'); objNations = nn || []; } catch (e) { objNations = []; }
         try { const { data: cc } = await supabase.from('continents').select('name').order('name'); objContinents = (cc || []).map(function (c) { return c.name; }); } catch (e) { objContinents = []; }
+        // Hexes assigned to a nation (world_hexes.nation_id set) — the "Seize Territory" picker.
+        try { const { data: hx } = await supabase.from('world_hexes').select('q, r, name, nation_id').not('nation_id', 'is', null).order('name'); objHexes = hx || []; } catch (e) { objHexes = []; }
         renderObjList();
       }
       function renderObjList() {
@@ -3471,6 +3480,7 @@
           if (p.t === 'sel') return '<select data-prop="' + p.p + '">' + p.opts.map(function (o) { return '<option' + (o === val ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
           if (p.t === 'cont') return '<select data-prop="' + p.p + '">' + (objContinents.length ? objContinents : ['—']).map(function (o) { return '<option' + (o === val ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
           if (p.t === 'nat') return '<select data-prop="' + p.p + '">' + (objNations.length ? objNations.map(function (na) { return '<option value="' + esc(na.id) + '"' + (na.id === val ? ' selected' : '') + '>' + esc(na.name || na.id) + '</option>'; }).join('') : '<option value="">— no nations —</option>') + '</select>';
+          if (p.t === 'hex') return '<select data-prop="' + p.p + '">' + (objHexes.length ? objHexes.map(function (h) { var k = hexKey(h); return '<option value="' + esc(k) + '"' + (k === val ? ' selected' : '') + '>' + esc(hexOptLabel(h)) + '</option>'; }).join('') : '<option value="">— no assigned hexes —</option>') + '</select>';
           return '';
         }).join('');
       }
@@ -3511,6 +3521,7 @@
           case 'allies': return 'Have ' + n(c.count) + ' all' + (n(c.count) === 1 ? 'y' : 'ies') + ' in ' + (c.continent || '—');
           case 'units': return 'Field more than ' + n(c.count) + ' ' + c.unit;
           case 'relations': return 'Relations with ' + natName(c.nation) + ' above ' + n(c.value);
+          case 'seize': return 'Seize territory ' + hexLabel(c.hex);
         }
         return '';
       }
