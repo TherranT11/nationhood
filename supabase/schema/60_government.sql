@@ -587,6 +587,10 @@ begin
   -- has closed (those where everyone bid early already resolved on the final bid). Isolated.
   begin perform public._resolve_overdue_world_events(v_tick);
   exception when others then raise warning 'tick %: world events failed — %', v_tick, sqlerrm; end;
+  -- Seeded events (schema/136): on even calendar months, fire one random seeded world event
+  -- from the admin's pool. Isolated so a bad definition can't abort the rest of the tick.
+  begin perform public._fire_seeded_world_event(v_tick);
+  exception when others then raise warning 'tick %: seeded event failed — %', v_tick, sqlerrm; end;
   -- Corporations (schema/47): release queued firms when their nation's climate is healthy
   -- (applies the sector bonus), compound each placed firm's cash by its growth, and fold
   -- insolvent private firms (reversing their bonus). Runs on this tick's settled economy.

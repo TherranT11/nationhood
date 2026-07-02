@@ -29,6 +29,9 @@ create table if not exists public.world_events (
   definition jsonb not null,
   created_at timestamptz not null default now()
 );
+-- Seeded events form the pool the even-month cadence draws from (schema/136): every even month
+-- (Feb/Apr/Jun/Aug/Oct/Dec) the tick fires ONE random seeded event. Admin-managed from the builder.
+alter table public.world_events add column if not exists seeded boolean not null default false;
 
 alter table public.world_events enable row level security;
 
@@ -152,16 +155,16 @@ begin
 end $$;
 revoke all on function public._maybe_resolve_we(uuid) from public, anon, authenticated;
 
--- Admin: fire a saved world event now. Snapshots the definition, drops a notice into each
--- live target nation's box; a Turning Point also applies its effects everywhere and resolves
--- at once. Decision/Turning Point only in Phase 1.
-create or replace function public.world_event_fire(p_event uuid)
+-- Fire a saved world event. Snapshots the definition, drops a notice into each live target
+-- nation's box; a Turning Point also applies its effects everywhere and resolves at once. This
+-- is the INTERNAL worker (no admin gate) so both the admin RPC and the seeded even-month tick
+-- (schema/136) fire through ONE path. The public world_event_fire wrapper below adds the gate.
+create or replace function public._world_event_fire(p_event uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_def jsonb; v_type text; v_name text; v_iid uuid; v_tick int;
   v_targets text[]; v_nat text; v_body text;
 begin
-  if not public.is_admin() then raise exception 'Admin only.'; end if;
   select definition into v_def from public.world_events where id = p_event;
   if v_def is null then raise exception 'No such world event.'; end if;
   v_type := v_def->>'type'; v_name := coalesce(nullif(v_def->>'name',''), 'A world event');
@@ -194,6 +197,15 @@ begin
   end loop;
 
   return jsonb_build_object('instance', v_iid, 'type', v_type, 'targets', array_length(v_targets, 1));
+end $$;
+revoke all on function public._world_event_fire(uuid) from public, anon, authenticated;
+
+-- Admin RPC: fire a saved world event now (the builder's "Fire now"). Thin gate over the worker.
+create or replace function public.world_event_fire(p_event uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'Admin only.'; end if;
+  return public._world_event_fire(p_event);
 end $$;
 grant execute on function public.world_event_fire(uuid) to authenticated;
 

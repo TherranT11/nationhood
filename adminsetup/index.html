@@ -3582,7 +3582,7 @@
       // (_we_bid_have/_we_bid_spend, schema/135) knows how to read + pay each.
       var BID_RESOURCES = ['Military', 'Army', 'Fleets', 'Air Wings', 'Energy', 'Food', 'Budget', 'Minerals', 'Services', 'Goods', 'Diplomacy'];
 
-      var WE = null, weEditingId = null, weSaving = false, weFiring = false, weCache = [], NATIONS = [];
+      var WE = null, weEditingId = null, weSaving = false, weFiring = false, weSeeding = false, weSeeded = false, weCache = [], NATIONS = [];
 
       function weTgtSelect(sel) { var h = ''; Object.keys(WE_TGT).forEach(function (g) { h += '<optgroup label="' + g + '">' + WE_TGT[g].map(function (t) { return '<option' + (t === sel ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</optgroup>'; }); return '<select class="we-et">' + h + '</select>'; }
       function effStr(e) { var v = Number(e.v) || 0, s = (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); return (e.t === 'Budget' || e.t === 'Debt' || e.t === 'Income') ? e.t + ' ' + (v >= 0 ? '+' : '−') + '₣' + Math.abs(v) + 'B' : esc(e.t || '?') + ' ' + s; }
@@ -3626,7 +3626,7 @@
       async function loadWorldEvents() {
         var box = document.getElementById('weList');
         try {
-          const { data, error } = await supabase.from('world_events').select('id, definition').order('created_at', { ascending: true });
+          const { data, error } = await supabase.from('world_events').select('id, definition, seeded').order('created_at', { ascending: true });
           if (error) throw error; weCache = data || [];
         } catch (e) { box.innerHTML = '<p class="empty">Could not load world events.</p>'; return; }
         try { const { data: nn } = await supabase.from('nations').select('id, name, dormant').order('name'); NATIONS = (nn || []).filter(function (n) { return !n.dormant; }); }
@@ -3640,7 +3640,7 @@
           var d = row.definition || {};
           var scope = d.scope === 'global' || d.type === 'turning_point' ? 'Global' : ((d.nations || []).length + ' nation' + ((d.nations || []).length === 1 ? '' : 's'));
           return '<div class="plcard"><div><div class="plcard__name">' + esc(d.name || 'Untitled event') + '</div>' +
-            '<div class="plcard__meta">' + esc(TYPE_LABEL[d.type] || d.type || '—') + ' · ' + scope + '</div></div>' +
+            '<div class="plcard__meta">' + esc(TYPE_LABEL[d.type] || d.type || '—') + ' · ' + scope + (row.seeded ? ' · 🌱 Seeded' : '') + '</div></div>' +
             '<div class="plcard__btns"><button class="ed" data-id="' + row.id + '" type="button">Edit</button><button class="rm" data-id="' + row.id + '" type="button">Remove</button></div></div>';
         }).join('');
         box.querySelectorAll('.ed').forEach(function (b) { b.onclick = function () { var r = weCache.filter(function (x) { return x.id === b.dataset.id; })[0]; if (r) openEvent(JSON.parse(JSON.stringify(r.definition)), r.id); }; });
@@ -3666,12 +3666,31 @@
       // Turning Point are playable in this phase; the others show why they can't fire yet.
       function renderFire() {
         var c = document.getElementById('weFireCard'); if (!c || !WE) return;
-        if (!weEditingId) { c.innerHTML = '<div class="sechd">Fire now</div><p class="hint" style="margin:0">Save the event first, then fire it.</p>'; return; }
+        if (!weEditingId) { c.innerHTML = '<div class="sechd">Fire &amp; seed</div><p class="hint" style="margin:0">Save the event first, then fire or seed it.</p>'; return; }
         var reach = WE.type === 'competitive' ? ((WE.competitive.sideA.length + WE.competitive.sideB.length) + ' nation' + ((WE.competitive.sideA.length + WE.competitive.sideB.length) === 1 ? '' : 's'))
           : (WE.type === 'turning_point' || WE.scope === 'global') ? 'every nation' : (WE.nations.length + ' nation' + (WE.nations.length === 1 ? '' : 's'));
-        c.innerHTML = '<div class="sechd">Fire now <span class="hint">admin override — sends this event to ' + reach + ' immediately</span></div>' +
-          '<button class="btn btn-solid" id="weFireBtn" type="button">Fire to ' + reach + '</button>';
+        c.innerHTML = '<div class="sechd">Fire &amp; seed <span class="hint">admin override — send now, or add to the even-month pool</span></div>' +
+          '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+            '<button class="btn btn-solid" id="weFireBtn" type="button">Fire to ' + reach + ' now</button>' +
+            '<button class="btn' + (weSeeded ? ' btn-solid' : '') + '" id="weSeedBtn" type="button">' + (weSeeded ? '🌱 Seeded — remove from pool' : '🌱 Seed into the pool') + '</button>' +
+          '</div>' +
+          '<p class="hint" style="margin:8px 0 0">One random seeded event fires every even month (Feb · Apr · Jun · Aug · Oct · Dec).</p>';
         document.getElementById('weFireBtn').onclick = fireEvent;
+        document.getElementById('weSeedBtn').onclick = seedEvent;
+      }
+      // Toggle this saved event's place in the even-month pool (world_events.seeded, schema/100).
+      async function seedEvent() {
+        if (weSeeding) return;
+        if (!weEditingId) { setWeNote('Save the event first, then seed it.', 'error'); return; }
+        weSeeding = true;
+        try {
+          const { error } = await supabase.from('world_events').update({ seeded: !weSeeded }).eq('id', weEditingId);
+          if (error) throw error;
+          weSeeded = !weSeeded;
+          setWeNote(weSeeded ? 'Seeded into the even-month pool.' : 'Removed from the pool.', 'ok');
+          renderFire(); loadWorldEvents();
+        } catch (e) { setWeNote('Couldn’t update seeding: ' + (e.message || e), 'error'); }
+        weSeeding = false;
       }
       async function fireEvent() {
         if (weFiring) return;
@@ -3698,6 +3717,7 @@
       // ----- editor -----
       function openEvent(def, id) {
         WE = normalizeEvent(def); weEditingId = id || null;
+        weSeeded = !!(weCache.filter(function (r) { return r.id === id; })[0] || {}).seeded;
         var panel = document.getElementById('weEditorPanel'); panel.hidden = false; setWeNote('');
         var nm = document.getElementById('weName'), ds = document.getElementById('weDesc'), ty = document.getElementById('weType');
         nm.value = WE.name || ''; ds.value = WE.desc || ''; ty.value = WE.type;
