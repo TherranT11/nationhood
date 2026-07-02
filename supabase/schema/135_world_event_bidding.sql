@@ -153,26 +153,37 @@ begin
 end $$;
 revoke all on function public._we_bidding_maybe_resolve(uuid) from public, anon, authenticated;
 
+-- Guard for a bidding action: locks the caller's party AND the instance row, verifies the
+-- instance is an active bidding event involving the caller's nation, that the caller is the
+-- nation's HoG, and that the nation hasn't already responded. Returns the locked party. ONE
+-- source for the "may this HoG act on this contest?" checks — shared by place_bid and decline.
+create or replace function public._we_bidding_guard(p_instance uuid)
+returns public.parties%rowtype language plpgsql security definer set search_path = public as $$
+declare v_party public.parties%rowtype; v_st text; v_def jsonb;
+begin
+  v_party := public._lock_party();   -- caller's party + nation (no action cost)
+  select status, definition into v_st, v_def from public.world_event_instances where id = p_instance for update;
+  if not found then raise exception 'That event is gone.'; end if;
+  if v_st <> 'active' then raise exception 'Bidding has closed.'; end if;
+  if v_def->>'type' <> 'bidding' then raise exception 'That event is not a bidding event.'; end if;
+  if (v_def->>'scope') <> 'global' and not ((v_def->'nations') ? v_party.nation_id) then
+    raise exception 'This bid does not involve your nation.'; end if;
+  perform public._require_hog(v_party.nation_id, v_party.id);   -- the HoG acts for the nation
+  if exists (select 1 from public.world_event_bids where instance_id = p_instance and nation_id = v_party.nation_id) then
+    raise exception 'Your nation has already responded.'; end if;
+  return v_party;
+end $$;
+revoke all on function public._we_bidding_guard(uuid) from public, anon, authenticated;
+
 -- The Head of Government stakes a sealed bid of a chosen (allowed) resource for the nation. No
 -- action cost. The bid is capped at what the nation holds and paid immediately (all-pay).
 -- Resolves the contest early once every involved nation has responded.
 create or replace function public.world_event_place_bid(p_instance uuid, p_resource text, p_amount numeric)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare
-  v_party public.parties%rowtype; v_inst public.world_event_instances%rowtype; v_def jsonb;
-  v_have numeric; v_bid numeric; v_nname text;
+declare v_party public.parties%rowtype; v_def jsonb; v_have numeric; v_bid numeric; v_nname text;
 begin
-  v_party := public._lock_party();   -- caller's party + nation (no action cost)
-  select * into v_inst from public.world_event_instances where id = p_instance for update;
-  if not found then raise exception 'That event is gone.'; end if;
-  if v_inst.status <> 'active' then raise exception 'Bidding has closed.'; end if;
-  v_def := v_inst.definition;
-  if v_def->>'type' <> 'bidding' then raise exception 'That event is not a bidding event.'; end if;
-  if (v_def->>'scope') <> 'global' and not ((v_def->'nations') ? v_party.nation_id) then
-    raise exception 'This bid does not involve your nation.'; end if;
-  perform public._require_hog(v_party.nation_id, v_party.id);   -- the HoG bids for the nation
-  if exists (select 1 from public.world_event_bids where instance_id = p_instance and nation_id = v_party.nation_id) then
-    raise exception 'Your nation has already responded.'; end if;
+  v_party := public._we_bidding_guard(p_instance);   -- lock + "may this HoG bid?" checks
+  select definition into v_def from public.world_event_instances where id = p_instance;   -- row already locked by the guard
   if not ((v_def->'bidding'->'resources') ? p_resource) then
     raise exception 'You can''t stake % in this event.', coalesce(p_resource, 'that'); end if;
   if p_amount is null or p_amount < 0 then raise exception 'Bid zero or more.'; end if;
@@ -200,20 +211,10 @@ grant execute on function public.world_event_place_bid(uuid, text, numeric) to a
 -- resolve; staking nothing means the zero-bidder penalty if the threshold is missed.
 create or replace function public.world_event_decline_bid(p_instance uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare
-  v_party public.parties%rowtype; v_inst public.world_event_instances%rowtype; v_def jsonb; v_nname text;
+declare v_party public.parties%rowtype; v_def jsonb; v_nname text;
 begin
-  v_party := public._lock_party();
-  select * into v_inst from public.world_event_instances where id = p_instance for update;
-  if not found then raise exception 'That event is gone.'; end if;
-  if v_inst.status <> 'active' then raise exception 'Bidding has closed.'; end if;
-  v_def := v_inst.definition;
-  if v_def->>'type' <> 'bidding' then raise exception 'That event is not a bidding event.'; end if;
-  if (v_def->>'scope') <> 'global' and not ((v_def->'nations') ? v_party.nation_id) then
-    raise exception 'This bid does not involve your nation.'; end if;
-  perform public._require_hog(v_party.nation_id, v_party.id);   -- the HoG answers for the nation
-  if exists (select 1 from public.world_event_bids where instance_id = p_instance and nation_id = v_party.nation_id) then
-    raise exception 'Your nation has already responded.'; end if;
+  v_party := public._we_bidding_guard(p_instance);   -- lock + "may this HoG act?" checks
+  select definition into v_def from public.world_event_instances where id = p_instance;   -- row already locked by the guard
 
   insert into public.world_event_bids (instance_id, nation_id, side, resource, amount, party_id)
     values (p_instance, v_party.nation_id, null, null, 0, v_party.id);   -- abstain = zero stake
