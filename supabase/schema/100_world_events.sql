@@ -170,6 +170,22 @@ begin
 end $$;
 revoke all on function public._maybe_resolve_we(uuid) from public, anon, authenticated;
 
+-- Human-readable summary of an effect list for a feed line, e.g. "+1% Unemployment, +2%
+-- Inflation, −25 Budget, +25 Debt". Unemployment/Inflation carry a % on the value; money and
+-- stats read plain. Preserves authored order; skips zero effects. Used for the Turning Point
+-- broadcast so players see what it did to every nation.
+create or replace function public._we_effects_text(p_effects jsonb)
+returns text language sql immutable as $$
+  select nullif(string_agg(
+    (case when coalesce((e->>'v')::numeric, 0) >= 0 then '+' else '−' end)
+    || trim(to_char(abs(coalesce((e->>'v')::numeric, 0)), 'FM999999990.###'))
+    || (case when e->>'t' in ('Unemployment %', 'Inflation %') then '% ' else ' ' end)
+    || replace(e->>'t', ' %', ''),
+    ', ' order by ord), '')
+  from jsonb_array_elements(coalesce(p_effects, '[]'::jsonb)) with ordinality as t(e, ord)
+  where coalesce((e->>'v')::numeric, 0) <> 0;
+$$;
+
 -- Fire a saved world event. Snapshots the definition, drops a notice into each live target
 -- nation's box; a Turning Point also applies its effects everywhere and resolves at once. This
 -- is the INTERNAL worker (no admin gate) so both the admin RPC and the seeded even-month tick
@@ -199,9 +215,13 @@ begin
   foreach v_nat in array v_targets loop
     if v_type = 'turning_point' then
       -- A Turning Point takes no player action, so it lives ONLY in the events feed — as a major
-      -- 'world_broadcast' notice (globe + World Event tag), never in the action panel.
+      -- 'world_broadcast' notice (globe + World Event tag), never in the action panel. The notice
+      -- spells out what it did to every nation.
       perform public._apply_we_effects(v_nat, v_def->'turning'->'effects');
-      insert into public.events (nation_id, kind, body, game_date) values (v_nat, 'world_broadcast', v_body, public.current_game_date());
+      insert into public.events (nation_id, kind, body, game_date)
+        values (v_nat, 'world_broadcast',
+                v_body || coalesce(' — All nations: ' || public._we_effects_text(v_def->'turning'->'effects') || '.', ''),
+                public.current_game_date());
     else
       insert into public.events (nation_id, kind, body, game_date)
         values (v_nat, 'world_event',
