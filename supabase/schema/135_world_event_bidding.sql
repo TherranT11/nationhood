@@ -91,6 +91,7 @@ returns void language plpgsql security definer set search_path = public as $$
 declare
   v_def jsonb; v_status text; v_total numeric; v_max numeric; v_thresh numeric;
   v_targets text[]; v_nat text; v_amt numeric; v_name text; v_body text; v_aft jsonb;
+  v_bres text; v_bamt numeric; v_astr text;
 begin
   select definition, status into v_def, v_status from public.world_event_instances where id = p_instance for update;
   if not found or v_status <> 'active' then return; end if;
@@ -117,12 +118,20 @@ begin
     v_body := v_name || ' — too little was committed; the idle are penalised.';
   end if;
 
-  -- Aftermath: always applied, per involved nation (a nation with no entry gets nothing).
+  -- Aftermath: always applied, per involved nation (a nation with no entry gets nothing). Each
+  -- nation's own feed line recalls what it staked (reads the bid's resource + amount).
   v_aft := coalesce(v_def->'bidding'->'aftermath', '{}'::jsonb);
   foreach v_nat in array v_targets loop
     perform public._apply_we_effects(v_nat, v_aft->v_nat);
+    select resource, amount into v_bres, v_bamt
+      from public.world_event_bids where instance_id = p_instance and nation_id = v_nat;
+    v_astr := case when coalesce(v_bamt, 0) <= 0 then null
+                   when v_bamt = floor(v_bamt) then floor(v_bamt)::text
+                   else round(v_bamt, 2)::text end;
     insert into public.events (nation_id, kind, body, game_date)
-      values (v_nat, 'world_event', v_body, public.current_game_date());
+      values (v_nat, 'world_event',
+              v_body || coalesce(' Your commitment: ' || v_astr || ' ' || v_bres || '.', ''),
+              public.current_game_date());
   end loop;
 end $$;
 revoke all on function public._resolve_we_bidding(uuid) from public, anon, authenticated;
