@@ -156,7 +156,12 @@ begin
     when 'Popularity Ceiling' then
       update public.parties set pop_ceiling = greatest(0, least(100, pop_ceiling + v_v)) where nation_id = p_nation and in_government;
     else
-      null;  -- unknown target
+      -- "<Resource> on hand" → the spendable stockpile (Military / Energy / Food / Minerals /
+      -- Services / Goods), floored at 0 by _nation_onhand_add (schema/99, late-bound). Distinct
+      -- from the bare production targets above. Any other target is an unknown → ignored.
+      if v_t like '%on hand' then
+        perform public._nation_onhand_add(p_nation, lower(btrim(replace(v_t, 'on hand', ''))), v_v);
+      end if;
   end case;
 end $$;
 

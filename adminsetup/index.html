@@ -3574,8 +3574,14 @@
       // 'Budget, Diplomacy, …' the spec names). Read straight off POL_TGT (the one source for
       // these lists, line ~1545) rather than re-listing them. Government-internal targets are
       // out of scope for a nation-facing world event, so only these two groups are exposed.
-      var WE_TGT = { National: POL_TGT.National, Resource: POL_TGT.Resource };
-      var WE_STATS = WE_TGT.National.concat(WE_TGT.Resource);   // flat list for the competitive bid stat
+      // Effect targets: national stats, resource PRODUCTION (bare names → production.*), and
+      // resource ON HAND ("X on hand" → the spendable on_hand stockpile). Military lives only
+      // on hand, so it appears in that group alone.
+      var WE_ONHAND = ['Military', 'Energy', 'Food', 'Minerals', 'Services', 'Goods'];
+      var WE_TGT = { National: POL_TGT.National, 'Resource (Production)': POL_TGT.Resource, 'Resource (On Hand)': WE_ONHAND.map(function (r) { return r + ' on hand'; }) };
+      // Competitive bid stat — production/national only (on-hand + Military aren't readable via
+      // _nation_stat_get, so they can't be bid on).
+      var WE_STATS = POL_TGT.National.concat(POL_TGT.Resource);
       var TYPE_LABEL = { decision: 'Decision', mutual: 'Mutual Agreement', competitive: 'Competitive', bidding: 'Bidding', turning_point: 'Turning Point' };
       // What a Bidding event may let nations stake (author picks a subset). Mixes on-hand
       // stockpiles, the Budget line, produced Diplomacy and built units — the server
@@ -3625,12 +3631,14 @@
       // ----- list + persistence (world_events table) -----
       async function loadWorldEvents() {
         var box = document.getElementById('weList');
+        // Load nations FIRST and independently — the editor's involved-nations grid needs them,
+        // and an events-load failure (e.g. a not-yet-applied column) must never hide them.
+        try { const { data: nn } = await supabase.from('nations').select('id, name, dormant').order('name'); NATIONS = (nn || []).filter(function (n) { return !n.dormant; }); }
+        catch (e) { NATIONS = []; }
         try {
           const { data, error } = await supabase.from('world_events').select('id, definition, seeded').order('created_at', { ascending: true });
           if (error) throw error; weCache = data || [];
         } catch (e) { box.innerHTML = '<p class="empty">Could not load world events.</p>'; return; }
-        try { const { data: nn } = await supabase.from('nations').select('id, name, dormant').order('name'); NATIONS = (nn || []).filter(function (n) { return !n.dormant; }); }
-        catch (e) { NATIONS = []; }
         renderWeList();
       }
       function renderWeList() {
