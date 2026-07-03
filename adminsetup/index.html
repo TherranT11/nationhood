@@ -454,26 +454,6 @@
   .evtab .ev .eff{margin-top:11px}
   .evtab .feed .empty{border:1px dashed var(--line2);border-radius:13px;padding:34px 18px;text-align:center;color:var(--soft);font-size:13px;font-style:italic}
 
-  /* Wiki (Nationpedia) authoring tab. Scoped under .wktab so generic names don't collide. */
-  .wktab .sub code{font-family:'Space Mono',monospace;font-size:11px;background:var(--chip);padding:1px 5px;border-radius:5px}
-  /* top bar: new + existing-article chips */
-  .wktab .wkbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
-  .wktab .wknew{flex:none;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);border:1px solid transparent;border-radius:9px;padding:9px 14px;cursor:pointer}
-  .wktab .wknew:hover{filter:brightness(.97)}
-  .wktab .wklist{display:flex;flex-wrap:wrap;gap:6px}
-  .wktab .wklist .empty{font-style:italic;color:var(--soft);font-size:12.5px}
-  .wktab .wkitem{display:inline-flex;align-items:baseline;gap:7px;border:1px solid var(--line2);background:var(--surface);border-radius:8px;padding:6px 11px;cursor:pointer;font-size:13px}
-  .wktab .wkitem:hover{border-color:var(--indigo)}
-  .wktab .wkitem.on{border-color:var(--indigo);background:var(--indigo-soft)}
-  .wktab .wkitem b{font-weight:700}
-  .wktab .wkitem span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
-  /* editor | preview split */
-  .wktab .wksplit{display:grid;grid-template-columns:minmax(320px,440px) 1fr;gap:22px;align-items:start}
-  .wktab .wksplit > *{min-width:0}
-  .wktab .wkpv-col{position:sticky;top:16px}
-  .wktab .wkpv-hd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);font-weight:700;margin:0 0 10px}
-  .wktab .wkpv{border:1px solid var(--line);border-radius:14px;padding:24px clamp(16px,2vw,28px);background:var(--surface);overflow:hidden;max-height:none}
-  @media(max-width:900px){.wktab .wksplit{grid-template-columns:1fr}.wktab .wkpv-col{position:static}}
   @media(max-width:720px){.adminbody{flex-direction:column}.vtabs{flex-direction:row;flex-wrap:wrap;width:auto;position:static}}
   @media(max-width:560px){.wrap2{padding:28px 16px 64px}}
   /* Corporations tab — admin Creator for firms (corporations table). */
@@ -596,7 +576,6 @@
         <button class="vtab" data-tab="corporations" type="button">Corporations</button>
         <button class="vtab" data-tab="world-events" type="button">World Events</button>
         <button class="vtab" data-tab="world-map" type="button">World Map</button>
-        <button class="vtab" data-tab="wiki" type="button">Wiki</button>
       </nav>
       <div class="tabwrap">
       <div class="tabpane" data-tab="nations">
@@ -1087,22 +1066,6 @@
           <div class="wm-inspect" id="wmInspect" hidden></div>
         </div>
       </div>
-      <div class="tabpane" data-tab="wiki" hidden>
-        <div class="wktab">
-          <p class="sub" style="margin:0 0 14px">Write Nationpedia articles — players read them under <b>Wiki</b>. The preview updates as you type. Markup: <code>[[Title]]</code> or <code>[[Title|label]]</code> to link another article, <code>**bold**</code>, <code>[1]</code> for a reference marker, and a blank line for a new paragraph.</p>
-          <div class="wkbar">
-            <button class="wknew" id="wkNew" type="button">+ New article</button>
-            <div class="wklist" id="wkList"><span class="empty">Loading…</span></div>
-          </div>
-          <div class="wksplit">
-            <div id="wkFormHost"></div>
-            <div class="wkpv-col">
-              <div class="wkpv-hd">Live preview</div>
-              <div class="wkpv wk-article" id="wkPreview"><div class="wk-empty">Enter a title to preview…</div></div>
-            </div>
-          </div>
-        </div>
-      </div>
       </div><!-- /tabwrap -->
     </div><!-- /adminbody -->
   </div>
@@ -1117,7 +1080,6 @@
     import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget, polTgtLabel } from '/policies.js';
     import { CONV_ROMAN, convRoman, adoptLines, activeLines, lawLines } from '/convictions.js';
     import { MINISTRIES } from '/ministries.js';
-    import { mountWikiEditor } from '/wiki-editor.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
@@ -1815,7 +1777,6 @@
         if (tab === 'corporations') loadCorporations();
         if (tab === 'world-events') loadWorldEvents();
         if (tab === 'world-map') initWorldMap();
-        if (tab === 'wiki') initWiki();
       });
     });
 
@@ -1866,50 +1827,6 @@
       } catch (e) { document.getElementById('pactNote').textContent = e.message || 'Couldn’t remove the pact.'; }
     }
     document.getElementById('pactAdd').addEventListener('click', addPact);
-
-    // ---- Wiki (Nationpedia) authoring (admin; wiki_articles table, RLS) ----------------------
-    // The article list + the shared structured editor (/wiki-editor.js) — the SAME editor the
-    // player page mounts, so there is one source for authoring. Clicking a list chip loads it into
-    // the editor; "+ New article" blanks it. Admins may delete (canDelete) and edit anything (the
-    // is_admin RLS in schema/105 is the real gate).
-    var WK = { rows: [], inited: false };
-    var WK_EDITOR = null;
-    function renderWkList() {
-      var list = document.getElementById('wkList');
-      if (!WK.rows.length) { list.innerHTML = '<span class="empty">No articles yet.</span>'; return; }
-      list.innerHTML = WK.rows.map(function (r) {
-        return '<button class="wkitem" type="button" data-id="' + r.id + '"><b>' + esc(r.title) + '</b><span>' + esc(r.kind || '') + '</span></button>';
-      }).join('');
-      list.querySelectorAll('[data-id]').forEach(function (b) {
-        b.onclick = function () { var r = WK.rows.find(function (x) { return x.id === b.dataset.id; }); if (r && WK_EDITOR) WK_EDITOR.loadRow(r); };
-      });
-    }
-    async function loadWiki() {
-      var list = document.getElementById('wkList'); list.innerHTML = '<span class="empty">Loading…</span>';
-      const { data, error } = await supabase.from('wiki_articles').select('id, title, kind, definition').order('title');
-      if (error) { list.innerHTML = '<span class="empty">Could not load articles.</span>'; return; }
-      WK.rows = data || []; renderWkList();
-    }
-    function initWiki() {
-      if (!WK.inited) {
-        WK.inited = true;
-        WK_EDITOR = mountWikiEditor({
-          supabase: supabase,
-          host: document.getElementById('wkFormHost'),
-          previewEl: document.getElementById('wkPreview'),
-          knownTitles: function () { return new Set(WK.rows.map(function (r) { return r.title.toLowerCase(); })); },
-          userId: null,       // admin inserts: author_id stays null; is_admin RLS bypasses the own-check
-          canDelete: true,
-          onSaved: function (title) {
-            loadWiki().then(function () {
-              if (title) { var saved = WK.rows.find(function (r) { return r.title.toLowerCase() === String(title).toLowerCase(); }); if (saved) WK_EDITOR.loadRow(saved); }
-            });
-          }
-        });
-        document.getElementById('wkNew').onclick = function () { WK_EDITOR.newArticle(); };
-      }
-      loadWiki();
-    }
 
     // ---- World Map editor (admin; world_hexes table, is_admin RLS) -------------------
     // A field of pointy-top axial hexes. A hex row exists only when it's land or carries
