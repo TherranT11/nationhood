@@ -154,7 +154,7 @@ grant execute on function public.economy_produce() to authenticated;
 -- from _advance_tick (schema/60); self-filters to June so it's safe to call each tick.
 create or replace function public._resolve_economy_demands(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_n record; v_year int; v_d jsonb; v_food boolean; v_goods boolean; v_serv boolean; v_mil boolean; v_msg text; v_unmet int;
+declare v_n record; v_year int; v_d jsonb; v_food boolean; v_goods boolean; v_serv boolean; v_mil boolean; v_msg text; v_unmet int; v_conf int;
 begin
   if ((p_tick - 1) % 12) + 1 <> 6 then return; end if;   -- June only
   v_year := 1980 + (p_tick - 1) / 12;
@@ -190,9 +190,10 @@ begin
     -- ≤10 confidence-collapse snap election). No government / no coalition → the calls no-op.
     v_unmet := (case when v_food then 0 else 1 end) + (case when v_goods then 0 else 1 end)
              + (case when v_serv then 0 else 1 end) + (case when v_mil then 0 else 1 end);
+    v_conf := 2 * v_unmet;   -- confidence penalty magnitude, one source (used by the effect + the event line)
     if v_unmet > 0 then
       perform public._apply_policy_effect(v_n.id, jsonb_build_object('t', 'Party Popularity', 'v', -v_unmet));
-      perform public._apply_policy_effect(v_n.id, jsonb_build_object('t', 'Government Confidence', 'v', -2 * v_unmet));
+      perform public._apply_policy_effect(v_n.id, jsonb_build_object('t', 'Government Confidence', 'v', -v_conf));
     end if;
 
     -- Reset for the next cycle (next June).
@@ -208,7 +209,7 @@ begin
           || (case when v_serv  then '' else 'Services ran short — Welfare −1. ' end)
           || (case when v_mil   then '' else 'Military upkeep went unpaid — the forces shrank. ' end)
           || (case when v_unmet > 0 then 'The coalition answered for it — Party Popularity −' || v_unmet
-                    || '%, Government Confidence −' || (2 * v_unmet) || '%. ' else '' end);
+                    || '%, Government Confidence −' || v_conf || '%. ' else '' end);
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_n.id, null, 'economy', btrim(v_msg), public.current_game_date());
   end loop;
