@@ -528,6 +528,10 @@ begin
   -- −3% Government Confidence and −2% Party Popularity. Self-filters to January.
   begin perform public._resolve_agenda_neglect(v_tick);
   exception when others then raise warning 'tick %: agenda-neglect penalty failed — %', v_tick, sqlerrm; end;
+  -- Passive Per-Year modifier effects (schema/70): each January, a modifier's yearly stat nudges
+  -- land. Self-filters to January.
+  begin perform public._apply_modifier_year_effects(v_tick);
+  exception when others then raise warning 'tick %: per-year modifier effects failed — %', v_tick, sqlerrm; end;
   -- Military builds (schema/129): every tick, matured Expand orders deliver typed units to bases.
   begin perform public._resolve_military_builds(v_tick);
   exception when others then raise warning 'tick %: military builds failed — %', v_tick, sqlerrm; end;

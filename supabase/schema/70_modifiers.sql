@@ -269,9 +269,21 @@ end $$;
 -- (schema/91). Called by advance_tick (schema/60). Unlike the floor/ceiling bounds, this is
 -- an additive mutation — it needs no enforcement chokepoint, it just runs each tick.
 -- ---------------------------------------------------------------------------
+-- Nudge one nation stat by a signed amount, into its valid band — the ONE source the passive
+-- per-tick and per-year modifier appliers share. Unemployment / inflation live in economy (0–100);
+-- every other stat in stats (1–20).
+create or replace function public._apply_modifier_stat_effect(p_nation text, p_key text, p_value numeric)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_econ boolean := p_key in ('unemployment', 'inflation');
+begin
+  perform public._nation_stat_add(p_nation, case when v_econ then 'economy' else 'stats' end,
+            p_key, p_value, case when v_econ then 0 else 1 end, case when v_econ then 100 else 20 end);
+end $$;
+revoke all on function public._apply_modifier_stat_effect(text, text, numeric) from public, anon, authenticated;
+
 create or replace function public._apply_modifier_tick_effects()
 returns void language plpgsql security definer set search_path = public as $$
-declare r record; v_econ boolean;
+declare r record;
 begin
   for r in
     select nm.nation_id, e.effect_key, e.effect_value
@@ -279,15 +291,28 @@ begin
       join public.modifier_effects e on e.modifier_id = nm.modifier_id
      where e.effect_type = 'stat_tick' and e.effect_key is not null and e.effect_value <> 0
   loop
-    v_econ := r.effect_key in ('unemployment', 'inflation');
-    perform public._nation_stat_add(r.nation_id,
-              case when v_econ then 'economy' else 'stats' end,
-              r.effect_key, r.effect_value,
-              case when v_econ then 0 else 1 end,
-              case when v_econ then 100 else 20 end);
+    perform public._apply_modifier_stat_effect(r.nation_id, r.effect_key, r.effect_value);
   end loop;
 end $$;
 revoke all on function public._apply_modifier_tick_effects() from public, anon, authenticated;
+
+-- Passive Per-YEAR stat effects: the same nudge as per-tick, but once a year (each January).
+-- Self-filters to January from advance_tick (schema/60); a no-op the other eleven months.
+create or replace function public._apply_modifier_year_effects(p_tick int)
+returns void language plpgsql security definer set search_path = public as $$
+declare r record;
+begin
+  if (p_tick - 1) % 12 <> 0 then return; end if;   -- January only (tick 1, 13, 25, …)
+  for r in
+    select nm.nation_id, e.effect_key, e.effect_value
+      from public.nation_modifiers nm
+      join public.modifier_effects e on e.modifier_id = nm.modifier_id
+     where e.effect_type = 'stat_year' and e.effect_key is not null and e.effect_value <> 0
+  loop
+    perform public._apply_modifier_stat_effect(r.nation_id, r.effect_key, r.effect_value);
+  end loop;
+end $$;
+revoke all on function public._apply_modifier_year_effects(int) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- _apply_modifier_bounds(): the per-tick ENFORCEMENT chokepoint for the absolute bounds —
@@ -316,15 +341,18 @@ begin
     v_econ := r.stat in ('unemployment', 'inflation');
     perform public._nation_stat_add(r.nation_id, case when v_econ then 'economy' else 'stats' end, r.stat, 0, r.flr, r.ceil);
   end loop;
-  -- Resource ceilings → cap each bounded production resource at its tightest ceiling (floor stays 0).
+  -- Resource floors/ceilings → clamp each bounded production resource into [tightest floor, tightest
+  -- ceiling]. A floor holds output up (an export tier that can't collapse); a ceiling caps it.
   for r in
-    select nm.nation_id, e.effect_key as res, min(e.effect_value) as ceil
+    select nm.nation_id, e.effect_key as res,
+           max(e.effect_value) filter (where e.effect_type = 'resource_floor')   as flr,
+           min(e.effect_value) filter (where e.effect_type = 'resource_ceiling') as ceil
       from public.nation_modifiers nm
       join public.modifier_effects e on e.modifier_id = nm.modifier_id
-     where e.effect_type = 'resource_ceiling' and e.effect_key is not null
+     where e.effect_type in ('resource_floor', 'resource_ceiling') and e.effect_key is not null
      group by nm.nation_id, e.effect_key
   loop
-    perform public._nation_stat_add(r.nation_id, 'production', r.res, 0, null, r.ceil);
+    perform public._nation_stat_add(r.nation_id, 'production', r.res, 0, r.flr, r.ceil);
   end loop;
 end $$;
 revoke all on function public._apply_modifier_bounds() from public, anon, authenticated;

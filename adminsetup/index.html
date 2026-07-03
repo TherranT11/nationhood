@@ -3940,11 +3940,13 @@
       { v: 'archetype_pop_ceiling', label: 'Archetype Popularity Ceiling', target: 'archetype' },
       { v: 'archetype_pop_floor',   label: 'Archetype Popularity Floor',   target: 'archetype' },
       { v: 'resource_ceiling',      label: 'Resource Ceiling',             target: 'resource' },
+      { v: 'resource_floor',        label: 'Resource Floor',               target: 'resource' },
       { v: 'confidence_ceiling',    label: 'Government Confidence Ceiling', target: 'none' },
       { v: 'confidence_formation',  label: 'Gov Confidence Penalty/Bonus on Formation', target: 'none' },
       { v: 'stat_ceiling',          label: 'Stat Ceiling',                 target: 'stat' },
       { v: 'stat_floor',            label: 'Stat Floor',                   target: 'stat' },
       { v: 'stat_tick',             label: 'Passive Per-Tick (stat)',      target: 'stat' },
+      { v: 'stat_year',             label: 'Passive Per-Year (stat)',      target: 'stat' },
       { v: 'rate_multiplier',       label: 'Rate Multiplier',              target: 'rate' },
       { v: 'regime_ceiling',        label: 'Regime Ceiling',               target: 'none' },
       { v: 'regime_floor',          label: 'Regime Floor',                 target: 'none' }
@@ -3972,6 +3974,8 @@
       switch (e.effect_type) {
         case 'stat_floor':            return '<b>' + k + '</b> can’t fall below <b>' + v + '</b>.';
         case 'stat_tick':             return '<b>' + k + '</b> <b>' + (v >= 0 ? '+' : '') + v + '</b> every tick.';
+        case 'stat_year':             return '<b>' + k + '</b> <b>' + (v >= 0 ? '+' : '') + v + '</b> every year (each January).';
+        case 'resource_floor':        return '<b>' + k + '</b> production can’t fall below <b>' + v + '</b>.';
         case 'rate_multiplier':       return '<b>' + k + '</b> is scaled <b>×' + v + '</b>' + (k === 'Income' ? ' when collected' : ' when produced') + '.';
         case 'stat_ceiling':          return '<b>' + k + '</b> can’t rise above <b>' + v + '</b>.';
         case 'regime_floor':          return 'Regime can’t close below <b>' + v + '</b>.';
