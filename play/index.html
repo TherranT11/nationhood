@@ -758,12 +758,12 @@
     var HOLD = {};
     if (open.some(function (i) { return (i.definition || {}).type === 'bidding'; })) {
       try {
-        const { data: nrow } = await supabase.from('nations').select('on_hand, economy, production').eq('id', nationId).maybeSingle();
+        const { data: nrow } = await supabase.from('nations').select('on_hand, economy').eq('id', nationId).maybeSingle();
         const { data: bases } = await supabase.from('military_bases').select('armies, fleets, air_wings').eq('nation_id', nationId);
-        var oh = (nrow || {}).on_hand || {}, ec = (nrow || {}).economy || {}, pr = (nrow || {}).production || {};
+        var oh = (nrow || {}).on_hand || {}, ec = (nrow || {}).economy || {};
         var ua = 0, uf = 0, uw = 0; (bases || []).forEach(function (b) { ua += Number(b.armies) || 0; uf += Number(b.fleets) || 0; uw += Number(b.air_wings) || 0; });
         HOLD = { Military: Number(oh.military) || 0, Energy: Number(oh.energy) || 0, Food: Number(oh.food) || 0, Minerals: Number(oh.minerals) || 0,
-                 Services: Number(oh.services) || 0, Goods: Number(oh.goods) || 0, Budget: Number(ec.budget) || 0, Diplomacy: Number(pr.diplomacy) || 0,
+                 Services: Number(oh.services) || 0, Goods: Number(oh.goods) || 0, Budget: Number(ec.budget) || 0, Diplomacy: Number(oh.diplomacy) || 0,
                  Army: ua, Fleets: uf, 'Air Wings': uw };
       } catch (e) { HOLD = {}; }
     }

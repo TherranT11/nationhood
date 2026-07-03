@@ -114,10 +114,8 @@
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">' + msg + '</div></div>'; }
   function cap(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
-  // The domestic production resources shown in the strip. The first six accrue an on-hand
-  // stockpile through the produce tick (schema/113); Diplomacy is produced but never accrues one,
-  // so its "on hand" reflects its production — the same figure the rest of the game reads as the
-  // diplomacy holding (e.g. home-page bidding). One source: production.diplomacy.
+  // The domestic production resources shown in the strip. Each accrues an on-hand stockpile
+  // through the produce tick (schema/113), Diplomacy included — produced, banked, and spent.
   var ECON = ['energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy'];
 
   // ---- World map mini-view (the Nation panel's Map box; reads the shared world_hexes) ----
@@ -249,7 +247,7 @@
 
     var economy =
       '<section class="panel"><h2>Domestic Economy</h2><div class="econ">' +
-        ECON.map(function(k){ var v = prod[k], oh = (k === 'diplomacy') ? v : onhand[k]; return '<div class="ecell"><div class="k">' + cap(k) + ' Production</div><div class="v">' + (v != null ? v : '—') + '</div><div class="oh">On hand · ' + (oh != null ? oh : '—') + '</div></div>'; }).join('') +
+        ECON.map(function(k){ var v = prod[k], oh = onhand[k]; return '<div class="ecell"><div class="k">' + cap(k) + ' Production</div><div class="v">' + (v != null ? v : '—') + '</div><div class="oh">On hand · ' + (oh != null ? oh : '—') + '</div></div>'; }).join('') +
       '</div></section>';
 
     // National Identity = every declaration slot's current value, grouped.
