@@ -216,7 +216,9 @@
     // Regime line via the shared regimeText() (one source) → e.g. "Minority — Electoral Democracy (17)".
     var regimeTxt = regimeText(eco.regime);
     var govType = (gov ? cap(gov.type) : 'No government') + (regimeTxt !== '—' ? ' — ' + regimeTxt : '');
-    var hog = pmPol ? (esc((pmPol.first_name || '') + ' ' + (pmPol.last_name || '')).trim() + ', ' + (pmPol.age != null ? pmPol.age : '?') + ' (' + esc(pmParty ? pmParty.name : '—') + ')') : '—';
+    // Prefix the declared Head-of-Government title (e.g. "Chancellor"); blank/— title → no prefix.
+    var hogTitle = declValue('head_of_government_title'); if (!hogTitle || hogTitle === '—') hogTitle = '';
+    var hog = pmPol ? ((hogTitle ? esc(hogTitle) + ' ' : '') + esc((pmPol.first_name || '') + ' ' + (pmPol.last_name || '')).trim() + ', ' + (pmPol.age != null ? pmPol.age : '?') + ' (' + esc(pmParty ? pmParty.name : '—') + ')') : '—';
     var conf = gov ? (Math.round(gov.confidence) + '%') : '—';
 
     function frow(k, v){ return '<div class="frow"><span class="fk">' + k + '</span><span class="fv">' + v + '</span></div>'; }

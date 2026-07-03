@@ -516,6 +516,10 @@ begin
   -- Self-filters to January, so it's a no-op the other eleven months.
   begin perform public._resolve_national_malaise(v_tick);
   exception when others then raise warning 'tick %: national malaise failed — %', v_tick, sqlerrm; end;
+  -- Vacant cabinet (schema/138): each January, every unstaffed ministry docks −1% Government
+  -- Confidence on the sitting government. Self-filters to January, a no-op the other eleven months.
+  begin perform public._resolve_vacant_cabinet(v_tick);
+  exception when others then raise warning 'tick %: vacant-cabinet penalty failed — %', v_tick, sqlerrm; end;
   -- Military builds (schema/129): every tick, matured Expand orders deliver typed units to bases.
   begin perform public._resolve_military_builds(v_tick);
   exception when others then raise warning 'tick %: military builds failed — %', v_tick, sqlerrm; end;
@@ -998,16 +1002,14 @@ create or replace function public._apply_cabinet_slate(p_gov uuid, p_nation text
 returns void language plpgsql security definer set search_path = public as $$
 declare
   r record; v_pol_nation text;
-  -- Canonical portfolios (mirrors MINISTRIES in ministries.js). The server validates
-  -- independently so a crafted client can't seed junk rows / blow past the 11 real seats.
-  c_ministries constant text[] := array['Defence', 'Treasury', 'Interior', 'Foreign Affairs',
-    'Trade', 'Labour', 'Justice', 'Health', 'Education', 'Energy', 'Economic Development'];
 begin
-  -- Validate: each entry is a real portfolio + a politician from THIS nation.
+  -- Validate: each entry is a real portfolio + a politician from THIS nation. Portfolios come
+  -- from the one server source _ministries() (schema/138), so a crafted client can't seed junk
+  -- rows / blow past the 11 real seats, and the slate + the vacant-cabinet penalty always agree.
   for r in select value->>'ministry' as ministry, nullif(value->>'politician_id','')::uuid as pol
              from jsonb_array_elements(coalesce(p_set, '[]'::jsonb)) loop
     if r.ministry is null or r.pol is null then continue; end if;
-    if not (r.ministry = any(c_ministries)) then raise exception 'Unknown ministry: %', r.ministry; end if;
+    if not (r.ministry = any(public._ministries())) then raise exception 'Unknown ministry: %', r.ministry; end if;
     select p.nation_id into v_pol_nation from public.politicians pol join public.parties p on p.id = pol.party_id where pol.id = r.pol;
     if v_pol_nation is distinct from p_nation then raise exception 'A chosen politician is not from your nation.'; end if;
   end loop;
