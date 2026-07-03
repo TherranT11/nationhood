@@ -986,13 +986,19 @@
       var tick = null; try { tick = await currentTick(); } catch (e) { tick = null; }
       const { data: hr } = await supabase.from('government_objectives').select('objective_id, deadline_tick').eq('government_id', govId);
       const { data: objs } = await supabase.from('objectives').select('id, definition');
+      // Crises live on this nation now — gates whether a crisis-locked objective can be taken.
+      var activeCrises = {};
+      try { const { data: nc } = await supabase.from('nation_crises').select('crisis_id').eq('nation_id', nationId).eq('status', 'active'); (nc || []).forEach(function (r) { activeCrises[r.crisis_id] = 1; }); } catch (e) {}
       var held = hr || [], all = objs || [], byId = {};
       all.forEach(function (o) { byId[o.id] = o.definition || {}; });
       var heldIds = held.map(function (r) { return r.objective_id; });
       agendaCtx = {
         govId: govId, tick: tick,
         held: held.filter(function (r) { return byId[r.objective_id]; }).map(function (r) { return { objId: r.objective_id, def: byId[r.objective_id], deadline: r.deadline_tick }; }),
-        avail: all.filter(function (o) { var nn = (o.definition && o.definition.nation) || ''; return (nn === '' || nn === nationId) && heldIds.indexOf(o.id) < 0; }).map(function (o) { return { objId: o.id, def: o.definition || {} }; })
+        avail: all.filter(function (o) {
+          var d = o.definition || {}, nn = d.nation || '', rc = d.requires_crisis || '';
+          return (nn === '' || nn === nationId) && heldIds.indexOf(o.id) < 0 && (!rc || activeCrises[rc]);
+        }).map(function (o) { return { objId: o.id, def: o.definition || {} }; })
       };
       renderAgenda();
       panel.hidden = false;

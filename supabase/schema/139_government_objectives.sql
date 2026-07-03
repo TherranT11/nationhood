@@ -48,6 +48,14 @@ begin
   if v_def is null then return false; end if;
   v_onation := coalesce(v_def->>'nation', '');
   if v_onation <> '' and v_onation <> v_nation then return false; end if;
+  -- Crisis gate: an objective marked "only available if a crisis is active" can only be taken while
+  -- that crisis is live on the nation (a nation_crises row, status 'active').
+  if coalesce(v_def->>'requires_crisis', '') <> '' then
+    if not exists (select 1 from public.nation_crises
+                    where nation_id = v_nation and crisis_id = (v_def->>'requires_crisis')::uuid and status = 'active') then
+      return false;
+    end if;
+  end if;
   if (select count(*) from public.government_objectives where government_id = p_gov) >= public._agenda_cap() then return false; end if;
   if exists (select 1 from public.government_objectives where government_id = p_gov and objective_id = p_objective) then return false; end if;
 
