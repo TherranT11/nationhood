@@ -151,7 +151,7 @@ begin
   select formateur_party_id into v_form from public.governments where nation_id = p_nation and status = 'active';
   if not found then raise exception 'There is no sitting government to act for your nation.'; end if;
   if v_form is distinct from p_party then
-    raise exception 'Only the Head of Government can act on world events for your nation.'; end if;
+    raise exception 'Only the Head of Government can do that for your nation.'; end if;
 end $$;
 revoke all on function public._require_hog(text, uuid) from public, anon, authenticated;
 
