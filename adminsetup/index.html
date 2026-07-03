@@ -1286,7 +1286,10 @@
           (rels || []).forEach(function (r) { relMap[r.nation_a === editingId ? r.nation_b : r.nation_a] = r.value; });
         } catch (e) { relMap = {}; }
       }
-      var others = nationsCache.filter(function (n) { return n.id !== editingId; });
+      // Base relations are set with every other ACTIVE nation only — dormant nations are hidden
+      // and inert, so they get their relations the moment they're activated (their own save runs
+      // saveRelations over the then-current active roster). Symmetric, so one row covers the pair.
+      var others = nationsCache.filter(function (n) { return n.id !== editingId && !n.dormant; });
       box.innerHTML = others.length
         ? others.map(function (n) {
             return '<div><label for="rel-' + esc(n.id) + '">Relations with ' + esc(n.name || n.id) + '</label>' +
