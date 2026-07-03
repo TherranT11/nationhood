@@ -1459,8 +1459,8 @@
       mayorHtml +
       // Youth Wing
       '<div class="dcard"><div class="dcard__t">Expand the Youth Wing</div>' +
-        '<div class="dcard__mech">Roll 1D12 + 3 ticks · then floor +0.1% × (1D3 + Image(' + image + '))</div>' +
-        '<div class="dcard__eff">A patient investment in the base — the drive lands in <b>4–15 ticks</b>, then raises your <b>popularity floor</b>. A higher-Image organiser builds more.</div>' +
+        '<div class="dcard__mech">Roll 1D12 + 3 ticks · then ceiling +0.1% × (1D3 + Image(' + image + '))</div>' +
+        '<div class="dcard__eff">A patient investment in the base — the drive lands in <b>4–15 ticks</b>, then raises your <b>popularity ceiling</b>. A higher-Image organiser builds more.</div>' +
         '<div class="dcard__foot"><button class="dgo idg" id="dYw" type="button"' + (DIR.funds >= 25000 && !isMin ? '' : ' disabled') + '>Expand the Wing</button><span class="dnote">' + (isMin ? 'A sitting minister can’t' : DIR.funds >= 25000 ? 'Costs $25K + 1 action' : 'Need $25K') + '</span></div></div>' +
       // Paramilitary
       '<div class="dcard para"><div class="dcard__t">Raise a Paramilitary Wing</div>' +
@@ -1490,7 +1490,7 @@
     if (dYw && !dYw.disabled) dYw.onclick = function () {
       var mem = dirMember().id, nm = dirName(dirMember()); closeDirectModal();
       performAction(function () { return supabase.rpc('direct_youth_wing', { p_member: mem }); }, function (d) {
-        return nm + ' is expanding the youth wing — a floor boost lands in ' + d.ticks + ' ticks.';
+        return nm + ' is expanding the youth wing — a ceiling boost lands in ' + d.ticks + ' ticks.';
       });
     };
     var dCity = document.getElementById('dCity');
