@@ -1,11 +1,13 @@
 -- ===========================================================================
 -- 112 · Youth Wing — the deferred Direct action, now built.
 -- Depends on: 20 (parties), 30 (politicians), 40 (_begin_action, _bare_party, events),
--- 60 (_advance_tick), 111 (_politician_busy). Run after 111.
+-- 60 (_advance_tick), 94 (_apply_conviction_effect — the Popularity Ceiling raise),
+-- 111 (_politician_busy). Run after 111.
 --
 -- Expand the Youth Wing: $25K + 1 action. It rolls 1D12 + 3 → the drive lands that many ticks
--- out, where it raises the party's popularity FLOOR by 0.1% for every point of (1D3 + the
--- organiser's Image). A patient, long investment in the base. Resolution runs from the tick.
+-- out, where it raises the party's popularity CEILING by 0.1% for every point of (1D3 + the
+-- organiser's Image). A patient, long investment in the base — more room to grow, not a guaranteed
+-- floor. Resolution runs from the tick.
 -- ===========================================================================
 
 create table if not exists public.youth_wings (
@@ -52,8 +54,8 @@ begin
 end $$;
 grant execute on function public.direct_youth_wing(uuid) to authenticated;
 
--- Resolve due youth wings: raise the party's popularity floor by 0.1% × (1D3 + organiser Image),
--- clamped to the invariant (floor ≤ ceiling; popularity pulled up to — never above — the new floor).
+-- Resolve due youth wings: raise the party's popularity CEILING by 0.1% × (1D3 + organiser Image),
+-- through the one 'Popularity Ceiling' effect (schema/94) — clamped to the party's regime cap.
 create or replace function public._resolve_youth_wings(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_w record; v_pts int; v_gain numeric; v_bare text; v_nation text;
@@ -61,15 +63,12 @@ begin
   for v_w in select * from public.youth_wings where resolve_tick <= p_tick loop
     v_pts  := floor(random() * 3)::int + 1 + coalesce(v_w.organiser_image, 0);   -- 1D3 + Image
     v_gain := round(v_pts * 0.1, 1);
-    update public.parties
-       set pop_floor  = least(pop_ceiling, pop_floor + v_gain),
-           popularity = greatest(popularity, least(pop_ceiling, pop_floor + v_gain))
-     where id = v_w.party_id
-     returning public._bare_party(name), nation_id into v_bare, v_nation;
+    select public._bare_party(name), nation_id into v_bare, v_nation from public.parties where id = v_w.party_id;
     if found then
+      perform public._apply_conviction_effect(v_w.party_id, v_nation, jsonb_build_object('t', 'Popularity Ceiling', 'v', v_gain));
       insert into public.events (nation_id, party_id, kind, body, game_date)
         values (v_nation, v_w.party_id, 'party',
-                'The ' || v_bare || '''s youth wing has come of age — popularity floor +' || trim(to_char(v_gain, 'FM990.0')) || '% (organised by ' || v_w.organiser_name || ').',
+                'The ' || v_bare || '''s youth wing has come of age — popularity ceiling +' || trim(to_char(v_gain, 'FM990.0')) || '% (organised by ' || v_w.organiser_name || ').',
                 public.current_game_date());
     end if;
     delete from public.youth_wings where id = v_w.id;

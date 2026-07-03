@@ -1,7 +1,7 @@
 -- ===========================================================================
 -- 110 · Mayoral candidacy — the Direct "Announce Candidacy for Mayor" action.
--- Depends on: 107/108 (cities + mayor_election_tick), 109 (Direct), 40 (_begin_action,
--- _bare_party, events). Run after 109.
+-- Depends on: 107/108 (cities + mayor_party_id + mayor_election_tick), 109 (Direct), 40
+-- (_begin_action, _bare_party, events), 91 (_pop_floor_add — the one floor rule). Run after 109.
 --
 -- ANNOUNCE ONLY: a party fields a candidate in a city's mayoral race — it records the
 -- candidacy, charges the campaign cost, and fires the announcement event. The RESOLUTION
@@ -79,10 +79,11 @@ grant execute on function public.direct_mayor_announce(uuid, uuid, int) to authe
 -- ---------------------------------------------------------------------------
 create or replace function public._resolve_mayoral_elections(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_city record; v_best record; v_prize numeric;
+declare v_city record; v_best record; v_prize numeric; v_loser text;
 begin
   for v_city in
-    select c.id, c.name, c.nation_id, c.mayor_name, coalesce(c.pop_pct, 0) as pop_pct, coalesce(n.population, 0) as population
+    select c.id, c.name, c.nation_id, c.mayor_name, c.mayor_party_id as prev_party,
+           coalesce(c.pop_pct, 0) as pop_pct, coalesce(n.population, 0) as population
       from public.cities c join public.nations n on n.id = c.nation_id
      where c.mayor_election_tick is not null and c.mayor_election_tick <= p_tick
   loop
@@ -99,11 +100,19 @@ begin
       -- A declared candidate takes the chair (the NPC incumbent only holds an uncontested race).
       v_prize := round(0.4 * (v_city.population * v_city.pop_pct / 100.0), 1);   -- population is already in millions
       update public.cities set mayor_name = v_best.candidate_name, mayor_party_id = v_best.party_id, mayor_election_tick = p_tick + 12 where id = v_city.id;
-      if v_prize > 0 then
-        update public.parties                                            -- floor prize (invariant-safe)
-           set pop_floor  = least(pop_ceiling, pop_floor + v_prize),
-               popularity = greatest(popularity, least(pop_ceiling, pop_floor + v_prize))
-         where id = v_best.party_id;
+      -- The winner gains the mayorship's popularity floor; a DIFFERENT ousted incumbent loses the
+      -- same floor it once conferred (the drop drags its popularity down — see _pop_floor_add).
+      if v_prize > 0 then perform public._pop_floor_add(v_best.party_id, v_prize); end if;
+      if v_prize > 0 and v_city.prev_party is not null and v_city.prev_party <> v_best.party_id then
+        perform public._pop_floor_add(v_city.prev_party, -v_prize);
+        select public._bare_party(name) into v_loser from public.parties where id = v_city.prev_party;
+        if v_loser is not null then
+          insert into public.events (nation_id, party_id, kind, body, game_date)
+            values (v_city.nation_id, v_city.prev_party, 'party',
+                    'The ' || v_loser || ' lost the mayoralty of ' || v_city.name
+                    || ' — popularity floor −' || trim(to_char(v_prize, 'FM990.0')) || '%.',
+                    public.current_game_date());
+        end if;
       end if;
       insert into public.events (nation_id, party_id, kind, body, game_date)
         values (v_city.nation_id, v_best.party_id, 'party',

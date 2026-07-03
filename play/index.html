@@ -252,24 +252,6 @@
   .feed__eff.warn{color:var(--amber,#E0820E);background:color-mix(in srgb,var(--amber,#E0820E) 14%,transparent);border-color:color-mix(in srgb,var(--amber,#E0820E) 32%,transparent)}
   .feed__img{display:block;max-width:180px;max-height:88px;width:auto;object-fit:cover;border-radius:8px;border:1px solid var(--line);margin:9px 0 2px}
 
-  /* Agenda — the government's national objectives */
-  .agenda__count{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);font-weight:700}
-  .obj-list{display:flex;flex-direction:column;gap:10px}
-  .obj-card{border:1px solid var(--line);border-radius:12px;padding:13px 15px;background:var(--field,var(--surface))}
-  .obj-card__name{font-weight:800;font-size:15px;letter-spacing:-.01em}
-  .obj-card__meta{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-top:3px}
-  .obj-conds{font-size:13.5px;color:var(--ink);margin:8px 0 2px;line-height:1.5}
-  .obj-rews{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
-  .obj-rew{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--green,#16915a);border:1px solid color-mix(in srgb,var(--green,#16915a) 32%,transparent);background:color-mix(in srgb,var(--green,#16915a) 12%,transparent);border-radius:7px;padding:3px 9px}
-  .obj-card__foot{display:flex;justify-content:flex-end;margin-top:10px}
-  .obj-btn{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;border-radius:9px;padding:8px 14px;cursor:pointer;border:1px solid var(--line)}
-  .obj-btn:disabled{opacity:.5;cursor:default}
-  .obj-drop{background:var(--surface);color:var(--muted)} .obj-drop:hover{border-color:var(--red);color:var(--red)}
-  .obj-add{background:var(--indigo);border-color:var(--indigo);color:#fff} .obj-add:hover{filter:brightness(1.08)}
-  .agenda__addbtn{margin-top:11px;width:100%}
-  .agenda__note{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-top:11px}
-  .obj-empty{color:var(--soft);font-style:italic;font-size:13.5px}
-
   /* World Events panel — a fired decision awaiting this nation's answer. */
   .wevt{border:1px solid var(--line);border-radius:12px;padding:15px 17px;margin-bottom:12px}
   .wevt:last-child{margin-bottom:0}
@@ -346,12 +328,6 @@
       <div id="wevents"></div>
     </section>
 
-    <!-- Agenda — the government's national objectives (up to three). Hidden until there's a government. -->
-    <section class="panel" id="agendaPanel" hidden>
-      <div class="glance-hd"><span>Agenda</span><span id="agendaCount" class="agenda__count"></span></div>
-      <div id="agendaBody"></div>
-    </section>
-
     <div id="pmbar"></div>
     <div id="tradebar"></div>
     <div id="defencebar"></div>
@@ -405,13 +381,6 @@
   <div class="amodal__panel">
     <div class="amodal__hd"><b>Attack a Rival</b><button class="amodal__x" id="attackClose" type="button" aria-label="Close">&times;</button></div>
     <div class="amodal__list" id="attackList"></div>
-  </div>
-</div>
-
-<div class="amodal" id="agendaModal" hidden>
-  <div class="amodal__panel">
-    <div class="amodal__hd"><b>Add a National Objective</b><button class="amodal__x" id="agendaClose" type="button" aria-label="Close">&times;</button></div>
-    <div class="amodal__list" id="agendaAvail"></div>
   </div>
 </div>
 
@@ -537,7 +506,6 @@
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
   import { ideologyLabel } from '/archetypes.js';
   import { MINISTRIES } from '/ministries.js';
-  import { condText as objCondText, rewardText as objRewardText } from '/objectives.js';
 
   mountTopbar();   // shared top bar into #topbar + the settings gear (Log out lives there now)
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -654,26 +622,25 @@
     } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load events.</p>'; }
   }
 
-  // The Global feed: every world event that fires — the world-shaping Turning Points
-  // (world_broadcast) plus the interactive world events (world_event) as they resolve. Both fire
-  // to nations identically or per-nation; identical (created_at, body) lines are deduped to one,
-  // shown with the globe rather than a flag. Turning Points read as the major broadcast card.
+  // The Global feed: every nation's stored events, the whole world at once — so the filter chips
+  // (World / Parties / Legislative / Government) all work globally. Categorised by eventCat, shown
+  // with the globe (no single flag). Turning Points (world_broadcast) fire to every nation
+  // identically, so those — and only those — are deduped by (created_at, body) to one broadcast.
   async function loadFeedGlobal(gameDate) {
     var box = document.getElementById('events');
     try {
       const { data: evs } = await supabase.from('events')
         .select('kind, body, game_date, created_at, effect_target, effect_value, tone, image_url')
-        .in('kind', ['world_broadcast', 'world_event']);
+        .order('created_at', { ascending: false });
       var seen = {}, items = [];
       (evs || []).forEach(function (e) {
-        var key = (e.created_at || '') + '|' + (e.body || '');
-        if (seen[key]) return; seen[key] = 1;
-        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: 'world', major: e.kind === 'world_broadcast', img: e.image_url || '', body: esc(e.body) + feedEff(e, '$') });
+        if (e.kind === 'world_broadcast') { var key = (e.created_at || '') + '|' + (e.body || ''); if (seen[key]) return; seen[key] = 1; }
+        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: eventCat(e.kind), major: e.kind === 'world_broadcast', img: e.image_url || '', body: esc(e.body) + feedEff(e, '$') });
       });
       items.sort(function (a, b) { return a.created < b.created ? 1 : (a.created > b.created ? -1 : 0); });
       FEED_ITEMS = items; FEED_FLAG = '';
       renderFeed();
-    } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load world events.</p>'; }
+    } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load events.</p>'; }
   }
 
   // Nation selector: 'global' or a nation id. Loads that view and titles the panel. feedView
@@ -913,91 +880,6 @@
     modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
     window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) close(); });
     return close;
-  }
-
-  // ---- Agenda: the government's national objectives (up to AGENDA_CAP; mirrors _agenda_cap()).
-  // Read-only for everyone; the Head of Government (amPM) adds from the nation's pool or drops.
-  // Assign / drop run through the HoG-gated RPCs (schema/139). ----
-  var AGENDA_CAP = 3, agendaBusy = false;
-  var agendaCtx = { govId: null, tick: null, held: [], avail: [] };
-  var closeAgenda = wireModalClose(document.getElementById('agendaModal'), 'agendaClose');
-
-  function objNatName(id) { var m = (FEED_NATIONS || []).filter(function (x) { return x.id === id; })[0]; return (m && m.name) || id || '—'; }
-  // One card for both the panel (mode 'held' → Drop) and the add modal (mode 'avail' → Add).
-  function objCardHtml(o, mode) {
-    var d = o.def || {};
-    var conds = (d.conditions || []).map(function (c) { return esc(objCondText(c, { natName: objNatName })); }).filter(Boolean).join(' &middot; ') || 'No conditions set';
-    var rews = (d.rewards || []).map(function (r) { var t = objRewardText(r, { natName: objNatName }); return t ? '<span class="obj-rew">' + esc(t) + '</span>' : ''; }).join('');
-    var ticks = Number(d.ticks) || 0;
-    var left = (mode === 'held' && o.deadline != null && agendaCtx.tick != null) ? Math.max(0, o.deadline - agendaCtx.tick) : null;
-    var meta = 'Complete within ' + ticks + ' tick' + (ticks === 1 ? '' : 's') + (left != null ? ' &middot; ' + left + ' left' : '');
-    var foot = !amPM ? '' : (mode === 'held'
-      ? '<div class="obj-card__foot"><button class="obj-btn obj-drop" data-drop="' + esc(o.objId) + '" type="button">Drop</button></div>'
-      : '<div class="obj-card__foot"><button class="obj-btn obj-add" data-add="' + esc(o.objId) + '" type="button">Add</button></div>');
-    return '<div class="obj-card"><span class="obj-card__name">' + esc(d.name || 'Untitled objective') + '</span>' +
-      '<div class="obj-card__meta">' + meta + '</div><div class="obj-conds">' + conds + '</div>' +
-      (rews ? '<div class="obj-rews">' + rews + '</div>' : '') + foot + '</div>';
-  }
-
-  function renderAgenda() {
-    var cnt = document.getElementById('agendaCount'), body = document.getElementById('agendaBody');
-    var held = agendaCtx.held;
-    cnt.textContent = held.length + ' / ' + AGENDA_CAP + ' active';
-    var cards = held.length
-      ? '<div class="obj-list">' + held.map(function (o) { return objCardHtml(o, 'held'); }).join('') + '</div>'
-      : '<p class="obj-empty">No objectives on the agenda yet.' + (amPM ? '' : ' Your Head of Government sets it.') + '</p>';
-    var addBtn = (amPM && held.length < AGENDA_CAP && agendaCtx.avail.length)
-      ? '<button class="obj-btn obj-add agenda__addbtn" id="agendaAdd" type="button">+ Add National Objective</button>' : '';
-    var note = (amPM && held.length >= AGENDA_CAP) ? '<div class="agenda__note">Agenda full — drop one to add another.</div>'
-      : (amPM && !agendaCtx.avail.length && held.length < AGENDA_CAP) ? '<div class="agenda__note">No objectives available for your nation yet.</div>' : '';
-    body.innerHTML = cards + addBtn + note;
-    body.querySelectorAll('[data-drop]').forEach(function (b) { b.onclick = function () { agendaAct('objective_drop', b.dataset.drop, b); }; });
-    var add = document.getElementById('agendaAdd'); if (add) add.onclick = openAgendaModal;
-  }
-
-  function openAgendaModal() {
-    var list = document.getElementById('agendaAvail');
-    list.innerHTML = agendaCtx.avail.length
-      ? agendaCtx.avail.map(function (o) { return objCardHtml(o, 'avail'); }).join('')
-      : '<p class="empty">No objectives available for your nation.</p>';
-    list.querySelectorAll('[data-add]').forEach(function (b) { b.onclick = function () { agendaAct('objective_assign', b.dataset.add, b); }; });
-    document.getElementById('agendaModal').hidden = false;
-  }
-
-  async function agendaAct(rpc, objId, btn) {
-    if (agendaBusy) return; agendaBusy = true; if (btn) btn.disabled = true;
-    try {
-      const { error } = await supabase.rpc(rpc, { p_objective: objId });
-      if (error) { ping((error.message) || 'Couldn’t update the agenda.'); if (btn) btn.disabled = false; }
-      else {
-        closeAgenda();
-        ping(rpc === 'objective_assign' ? 'Objective added to your agenda.' : 'Objective dropped.');
-        if (feedCtx) { await loadAgenda(feedCtx.nationId); await refreshFeed(); }
-      }
-    } catch (e) { ping('Couldn’t update the agenda.'); if (btn) btn.disabled = false; }
-    finally { agendaBusy = false; }
-  }
-
-  async function loadAgenda(nationId) {
-    var panel = document.getElementById('agendaPanel');
-    try {
-      const { data: gr } = await supabase.from('governments').select('id').eq('nation_id', nationId).eq('status', 'active').maybeSingle();
-      var govId = gr && gr.id;
-      if (!govId) { panel.hidden = true; agendaCtx = { govId: null, tick: null, held: [], avail: [] }; return; }
-      var tick = null; try { tick = await currentTick(); } catch (e) { tick = null; }
-      const { data: hr } = await supabase.from('government_objectives').select('objective_id, deadline_tick').eq('government_id', govId);
-      const { data: objs } = await supabase.from('objectives').select('id, definition');
-      var held = hr || [], all = objs || [], byId = {};
-      all.forEach(function (o) { byId[o.id] = o.definition || {}; });
-      var heldIds = held.map(function (r) { return r.objective_id; });
-      agendaCtx = {
-        govId: govId, tick: tick,
-        held: held.filter(function (r) { return byId[r.objective_id]; }).map(function (r) { return { objId: r.objective_id, def: byId[r.objective_id], deadline: r.deadline_tick }; }),
-        avail: all.filter(function (o) { var nn = (o.definition && o.definition.nation) || ''; return (nn === '' || nn === nationId) && heldIds.indexOf(o.id) < 0; }).map(function (o) { return { objId: o.id, def: o.definition || {} }; })
-      };
-      renderAgenda();
-      panel.hidden = false;
-    } catch (e) { panel.hidden = true; }
   }
 
   // Run a leader-action RPC: one shared double-fire lock, disable the buttons,
@@ -1459,8 +1341,8 @@
       mayorHtml +
       // Youth Wing
       '<div class="dcard"><div class="dcard__t">Expand the Youth Wing</div>' +
-        '<div class="dcard__mech">Roll 1D12 + 3 ticks · then floor +0.1% × (1D3 + Image(' + image + '))</div>' +
-        '<div class="dcard__eff">A patient investment in the base — the drive lands in <b>4–15 ticks</b>, then raises your <b>popularity floor</b>. A higher-Image organiser builds more.</div>' +
+        '<div class="dcard__mech">Roll 1D12 + 3 ticks · then ceiling +0.1% × (1D3 + Image(' + image + '))</div>' +
+        '<div class="dcard__eff">A patient investment in the base — the drive lands in <b>4–15 ticks</b>, then raises your <b>popularity ceiling</b>. A higher-Image organiser builds more.</div>' +
         '<div class="dcard__foot"><button class="dgo idg" id="dYw" type="button"' + (DIR.funds >= 25000 && !isMin ? '' : ' disabled') + '>Expand the Wing</button><span class="dnote">' + (isMin ? 'A sitting minister can’t' : DIR.funds >= 25000 ? 'Costs $25K + 1 action' : 'Need $25K') + '</span></div></div>' +
       // Paramilitary
       '<div class="dcard para"><div class="dcard__t">Raise a Paramilitary Wing</div>' +
@@ -1490,7 +1372,7 @@
     if (dYw && !dYw.disabled) dYw.onclick = function () {
       var mem = dirMember().id, nm = dirName(dirMember()); closeDirectModal();
       performAction(function () { return supabase.rpc('direct_youth_wing', { p_member: mem }); }, function (d) {
-        return nm + ' is expanding the youth wing — a floor boost lands in ' + d.ticks + ' ticks.';
+        return nm + ' is expanding the youth wing — a ceiling boost lands in ' + d.ticks + ' ticks.';
       });
     };
     var dCity = document.getElementById('dCity');
@@ -2145,7 +2027,6 @@
       }
       await selectFeed('global');
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
-      loadAgenda(party.nation_id);   // the government's national objectives (non-blocking)
       renderInvites();   // surface any pending coalition invites (non-blocking)
       renderFormation(); // nudge a formateur to the Government page if the window is open
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));

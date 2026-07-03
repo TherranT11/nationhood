@@ -835,7 +835,9 @@
                     <div class="f"><label>Objective name</label><input type="text" id="obName"></div>
                     <div class="f"><label>Description</label><textarea id="obDesc"></textarea></div>
                     <div class="f"><label>Number of ticks <span class="hint">turns the nation has to complete it</span></label><input type="number" min="1" step="1" id="obTicks"></div>
-                    <div class="f" style="margin-bottom:0"><label>For nation <span class="hint">which nation may take this on — it’s assigned to a government in-game, not here</span></label><select id="obNation"></select></div>
+                    <div class="f"><label>For nation <span class="hint">which nation may take this on — it’s assigned to a government in-game, not here</span></label><select id="obNation"></select></div>
+                    <div class="f" style="margin-bottom:0"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="obCrisisOn" style="width:auto"> <span>Only available if a crisis is active</span></label>
+                      <select id="obCrisis" style="margin-top:8px" hidden></select></div>
                   </div>
                   <div class="card">
                     <div class="sechd">Objective — complete when ALL conditions hold</div>
@@ -3349,7 +3351,7 @@
       };
       var REWARD_ORDER = ['popularity', 'confidence', 'onhand', 'budget', 'relations', 'debt', 'stat'];
 
-      var OBJ = null, objEditingId = null, objSaving = false, objCache = [], objNations = [], objContinents = [], objHexes = [];
+      var OBJ = null, objEditingId = null, objSaving = false, objCache = [], objNations = [], objContinents = [], objHexes = [], objCrises = [];
 
       var n = function (v) { return Number(v) || 0; };
       function natName(id) { var m = objNations.filter(function (x) { return x.id === id; })[0]; return (m && m.name) || id || '—'; }
@@ -3364,7 +3366,7 @@
       function setObjNote(msg, kind) { var el = document.getElementById('obNote'); if (el) { el.textContent = msg || ''; el.className = 'note' + (kind ? ' ' + kind : ''); } }
 
       // ----- the definition shape -----
-      function blankObjective() { return { name: '', desc: '', ticks: 12, nation: '', conditions: [], rewards: [] }; }
+      function blankObjective() { return { name: '', desc: '', ticks: 12, nation: '', requires_crisis: '', conditions: [], rewards: [] }; }
       function partDefault(part) {
         if (part.t === 'sel') return part.opts[0];
         if (part.t === 'cont') return objContinents[0] || '';
@@ -3376,6 +3378,7 @@
       function normalizeObjective(def) {
         var o = (def && typeof def === 'object') ? def : blankObjective();
         o.name = o.name || ''; o.desc = o.desc || ''; o.ticks = Math.max(1, parseInt(o.ticks, 10) || 12); o.nation = o.nation || '';
+        o.requires_crisis = typeof o.requires_crisis === 'string' ? o.requires_crisis : '';
         o.conditions = Array.isArray(o.conditions) ? o.conditions.filter(function (c) { return c && COND_DEFS[c.kind]; }) : [];
         o.rewards = Array.isArray(o.rewards) ? o.rewards.filter(function (r) { return r && REWARD_DEFS[r.kind]; }) : [];
         return o;
@@ -3388,7 +3391,12 @@
           const { data, error } = await supabase.from('objectives').select('id, definition').order('created_at', { ascending: true });
           if (error) throw error; objCache = data || [];
         } catch (e) { box.innerHTML = '<p class="empty">Could not load objectives.</p>'; return; }
-        try { const { data: nn } = await supabase.from('nations').select('id, name').order('name'); objNations = nn || []; } catch (e) { objNations = []; }
+        // The nation roster for the "assign to" list — the live query, falling back to the shared
+        // nationsCache if it comes back empty, so the list is never blank.
+        try { const { data: nn } = await supabase.from('nations').select('id, name').order('name'); objNations = (nn && nn.length) ? nn : (nationsCache || []).map(function (x) { return { id: x.id, name: x.name }; }); }
+        catch (e) { objNations = (nationsCache || []).map(function (x) { return { id: x.id, name: x.name }; }); }
+        // Authored crises, for the "only available if a crisis is active" gate (name + its nation).
+        try { const { data: cr } = await supabase.from('crises').select('id, definition'); objCrises = (cr || []).map(function (r) { return { id: r.id, name: (r.definition && r.definition.name) || 'Untitled crisis', nation: (r.definition && r.definition.nation) || '' }; }); } catch (e) { objCrises = []; }
         try { const { data: cc } = await supabase.from('continents').select('name').order('name'); objContinents = (cc || []).map(function (c) { return c.name; }); } catch (e) { objContinents = []; }
         // Hexes assigned to a nation (world_hexes.nation_id set) — the "Seize Territory" picker.
         try { const { data: hx } = await supabase.from('world_hexes').select('q, r, name, nation_id').not('nation_id', 'is', null).order('name'); objHexes = hx || []; } catch (e) { objHexes = []; }
@@ -3437,6 +3445,18 @@
           return '<option value="' + esc(na.id) + '"' + (OBJ.nation === na.id ? ' selected' : '') + '>' + esc(na.name || na.id) + '</option>';
         }).join('');
         nt.onchange = function () { OBJ.nation = this.value || ''; renderObjPreview(); };
+        // Crisis gate: only available while the chosen crisis is active on the taking nation.
+        var cOn = document.getElementById('obCrisisOn'), cSel = document.getElementById('obCrisis');
+        function renderObjCrisis() {
+          cSel.hidden = !cOn.checked;
+          cSel.innerHTML = objCrises.length
+            ? objCrises.map(function (c) { return '<option value="' + esc(c.id) + '"' + (OBJ.requires_crisis === c.id ? ' selected' : '') + '>' + esc(c.name) + (c.nation ? ' (' + esc(natName(c.nation)) + ')' : '') + '</option>'; }).join('')
+            : '<option value="">— no crises authored yet —</option>';
+        }
+        cOn.checked = !!OBJ.requires_crisis;
+        renderObjCrisis();
+        cOn.onchange = function () { OBJ.requires_crisis = cOn.checked ? (OBJ.requires_crisis || (objCrises[0] || {}).id || '') : ''; renderObjCrisis(); renderObjPreview(); };
+        cSel.onchange = function () { OBJ.requires_crisis = this.value || ''; renderObjPreview(); };
         renderConds(); renderRewards(); renderObjPreview();
         panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
@@ -3486,8 +3506,10 @@
           (OBJ.conditions.length ? OBJ.conditions.map(function (c) { return '· ' + esc(condText(c)); }).join('<br>') : 'No conditions yet.') + '</div>';
         var rews = '<div class="pvrew"><div class="tl">Rewards</div>' +
           (OBJ.rewards.length ? OBJ.rewards.map(function (r) { return '· ' + esc(rewardText(r)); }).join('<br>') : 'None set.') + '</div>';
+        var gate = '';
+        if (OBJ.requires_crisis) { var gc = objCrises.filter(function (c) { return c.id === OBJ.requires_crisis; })[0]; gate = '<div class="pvdesc" style="font-style:italic">Only available while <b>' + esc(gc ? gc.name : 'a crisis') + '</b> is active.</div>'; }
         box.innerHTML = '<div class="pvname">' + esc(OBJ.name || 'Untitled objective') + '</div>' +
-          (OBJ.desc ? '<div class="pvdesc">' + esc(OBJ.desc) + '</div>' : '') + conds + rews;
+          (OBJ.desc ? '<div class="pvdesc">' + esc(OBJ.desc) + '</div>' : '') + gate + conds + rews;
       }
 
       // ----- buttons -----

@@ -80,6 +80,29 @@ begin
 end $$;
 revoke all on function public._nation_budget_add(text, numeric) from public, anon, authenticated;
 
+-- Move ONE party's popularity floor by p_delta — the single source for a floor change. A DROP
+-- (delta < 0) drags standing popularity down with it by the same amount (never below the new floor
+-- or 0); a RISE lifts popularity up to at least the new floor. The floor stays within [0, ceiling].
+-- Read by the Popularity Floor effect below (per in-government party) and the mayoral prize / loss
+-- (schema/110), so every party-floor change obeys one rule.
+create or replace function public._pop_floor_add(p_party uuid, p_delta numeric)
+returns void language plpgsql security definer set search_path = public as $$
+declare r record; v_new numeric;
+begin
+  if coalesce(p_delta, 0) = 0 then return; end if;
+  select popularity, pop_floor, pop_ceiling into r from public.parties where id = p_party;
+  if not found then return; end if;
+  v_new := greatest(0, least(coalesce(r.pop_ceiling, 100), coalesce(r.pop_floor, 0) + p_delta));   -- the new floor
+  if p_delta < 0 then
+    update public.parties set pop_floor = v_new,
+      popularity = greatest(v_new, coalesce(r.popularity, 0) - (coalesce(r.pop_floor, 0) - v_new)) where id = p_party;
+  else
+    update public.parties set pop_floor = v_new,
+      popularity = least(coalesce(r.pop_ceiling, 100), greatest(coalesce(r.popularity, 0), v_new)) where id = p_party;
+  end if;
+end $$;
+revoke all on function public._pop_floor_add(uuid, numeric) from public, anon, authenticated;
+
 -- Apply ONE authored effect to a nation. Unknown targets are ignored (forward-
 -- compatible with the authoring tool's target list).
 create or replace function public._apply_policy_effect(p_nation text, p_eff jsonb)
@@ -160,19 +183,8 @@ begin
     -- abandons you shrank), never below the new floor / 0; a RISE lifts popularity up to at least
     -- the new floor. The floor itself stays within [0, that party's ceiling].
     when 'Popularity Floor' then
-      for r in select id, popularity, pop_floor, pop_ceiling from public.parties where nation_id = p_nation and in_government loop
-        v_new := greatest(0, least(coalesce(r.pop_ceiling, 100), coalesce(r.pop_floor, 0) + v_v));   -- the new floor
-        if v_v < 0 then
-          update public.parties
-             set pop_floor  = v_new,
-                 popularity = greatest(v_new, coalesce(r.popularity, 0) - (coalesce(r.pop_floor, 0) - v_new))
-           where id = r.id;
-        else
-          update public.parties
-             set pop_floor  = v_new,
-                 popularity = least(coalesce(r.pop_ceiling, 100), greatest(coalesce(r.popularity, 0), v_new))
-           where id = r.id;
-        end if;
+      for r in select id from public.parties where nation_id = p_nation and in_government loop
+        perform public._pop_floor_add(r.id, v_v);   -- one floor rule (see _pop_floor_add)
       end loop;
     else
       -- "<Resource> on hand" → the spendable stockpile (Military / Energy / Food / Minerals /
