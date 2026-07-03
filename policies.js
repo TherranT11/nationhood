@@ -58,6 +58,27 @@ export function fiscalDelta(curOpt, propOpt, pop, pros) {
   var cm = optMoney(curOpt, pop, pros), pm = optMoney(propOpt, pop, pros);
   return { Income: pm.Income - cm.Income, Budget: pm.Budget - cm.Budget, Debt: pm.Debt - cm.Debt };
 }
+// The recurring fiscal change as a SINGLE net ₣B/yr figure: Income + Budget − Debt (Debt is a
+// liability, so more of it is a cost). ONE source for the "Net fiscal impact" line in the propose
+// preview and the Legislature bill view.
+export function fiscalNet(curOpt, propOpt, pop, pros) {
+  var d = fiscalDelta(curOpt, propOpt, pop, pros);
+  return d.Income + d.Budget - d.Debt;
+}
+// The up-front money an option applies once, netted to a single ₣B figure: its NON-recurring
+// money effects (cadence 'once' or finite-duration — anything fiscalFactor leaves out), summed
+// as Income + Budget − Debt (Debt is a liability, so it counts as a cost). Absolute (these fire
+// on enactment regardless of the current rung), unlike the recurring fiscalDelta. ONE source for
+// the "one-time cost" line so the recurring and one-time money never split across the preview.
+export function optOneTimeMoney(o, pop, pros) {
+  var net = 0;
+  ((o && o.effects) || []).forEach(function (e) {
+    if (!isMoneyTarget(e.t) || fiscalFactor(e)) return;   // recurring money is the /year delta, not here
+    var amt = policyMoney(Number(e.v) || 0, e.scale, pop, pros);
+    net += (e.t === 'Debt') ? -amt : amt;
+  });
+  return net;
+}
 
 // Two policy targets are scoped to the parties in government (schema/91 _apply_policy_effect),
 // not all parties in the nation — so label them with that scope wherever a policy's effects are

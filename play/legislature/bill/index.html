@@ -133,7 +133,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { fetchProposals, fetchVotes, fetchPolicies, castVote, tallyVotes, proposalOutcome, proposalLocked } from '/proposals.js';
   import { ideologyLabel } from '/archetypes.js';
-  import { policyOptions, policyOptionIdx, effectText, fiscalFactor, fiscalDelta, isTradePolicy, tradeEffectText } from '/policies.js';
+  import { policyOptions, policyOptionIdx, effectText, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText } from '/policies.js';
 
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
@@ -202,13 +202,11 @@
     if (!def) return '';
     var opts = policyOptions(def), co = opts[ci], po = opts[pi];
     if (!po) return '';
-    var d = fiscalDelta(co, po, ST.pop, ST.pros), frows = [];
-    if (Math.abs(d.Income) >= 0.05) frows.push(fiscalRow('National Income', 'per year', d.Income, true));
-    if (Math.abs(d.Budget) >= 0.05) frows.push(fiscalRow('Treasury / Budget', 'per year', d.Budget, true));
-    if (Math.abs(d.Debt) >= 0.05) frows.push(fiscalRow('National Debt', 'liability', d.Debt, false));
-    if (frows.length >= 2) frows.push(fiscalRow('Net annual change', '', d.Income + d.Budget - d.Debt, true, true));
+    var netY = fiscalNet(co, po, ST.pop, ST.pros), oneT = optOneTimeMoney(po, ST.pop, ST.pros), frows = [];
+    if (Math.abs(netY) >= 0.05) frows.push(fiscalRow('Net fiscal impact', 'per year', netY, true, true));
+    if (Math.abs(oneT) >= 0.05) frows.push(fiscalRow('One-time cost', 'on enactment', oneT, true));
     var fiscalHtml = frows.length ? frows.join('') : '<div class="inone">No change to the budget.</div>';
-    var effs = (po.effects || []).filter(function(e){ return !fiscalFactor(e); });
+    var effs = (po.effects || []).filter(function(e){ return !isMoneyTarget(e.t); });
     var effHtml = '';
     // Trade rungs carry their standing modifiers (import ×, tariff) outside the effects list — show current → proposed.
     if (isTradePolicy(def)) {
