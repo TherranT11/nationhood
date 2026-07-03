@@ -282,8 +282,8 @@ end $$;
 grant execute on function public.party_attack(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
--- party_ad_blitz(): 1d6 + Guile, ÷3, added to popularity (capped at ceiling).
--- A natural 6 also raises the ceiling +0.5%. $100K + 1 action.
+-- party_ad_blitz(): (1d6 + Guile) ÷ 3 × 0.2, clamped to +0.1%..+1%, added to popularity
+-- (capped at ceiling). A natural 6 also raises the ceiling +0.5%. $100K + 1 action.
 -- ---------------------------------------------------------------------------
 create or replace function public.party_ad_blitz()
 returns jsonb
@@ -305,7 +305,7 @@ begin
   v_roll  := floor(random() * 6)::int + 1;
   v_total := v_roll + v_gui;
   v_tier  := public._action_tier(v_total);
-  v_delta := round((v_total::numeric) / 3.0 * 0.4, 1);                  -- (1d6 + Guile) / 3, cut 60%
+  v_delta := greatest(0.1, least(1.0, round((v_total::numeric) / 3.0 * 0.2, 1)));  -- (1d6 + Guile) / 3, cut 80% (×0.2), clamped +0.1%..+1%
   v_newpop := least(v_p.popularity + v_delta, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor)); -- capped at the crowding-adjusted ceiling
   v_newpop := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity, v_newpop); -- archetype ceiling (schema/70)
   v_delta := v_newpop - v_p.popularity;                                 -- amount actually applied
