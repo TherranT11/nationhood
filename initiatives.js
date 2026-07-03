@@ -19,12 +19,16 @@ const CSS = `
 .nini__pick{margin-top:9px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .nini__pick select{flex:1;min-width:150px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font-size:13px}
 .nini__go{border:none;background:var(--indigo);color:#fff;border-radius:8px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer}
+.nini__go--solo{margin-top:9px}
+.nini__need{margin-top:9px;font-size:12px;font-style:italic;color:var(--soft)}
 .nini-empty{color:var(--soft);font-size:13px;font-style:italic}
 `;
 function injectCss(){ if(document.getElementById('nini-css'))return; var s=document.createElement('style'); s.id='nini-css'; s.textContent=CSS; document.head.appendChild(s); }
 
 // Effective cost + on-enact effect line — MIRRORS the server (schema/141): private −20% / state
-// +25%; private → +1 Growth, state → −1D2 Unemployment & Inflation. Display only.
+// +25%; private → +1 Growth, state → −1D2 Unemployment & Inflation. Display only. Execution is
+// driven by ownership: private lets corporations bid (no executor picked); state requires the
+// nation's own state-owned firm in one of the initiative's authored sectors.
 function effCost(d){ var c=Number(d.cost)||0; if(d.ownership==='private')return Math.round(c*0.8); if(d.ownership==='state')return Math.round(c*1.25); return Math.round(c); }
 function ownEffect(d){ return d.ownership==='private'?'+1 Growth':d.ownership==='state'?'−1–2 Unemployment & Inflation':''; }
 
@@ -36,7 +40,7 @@ export async function fetchNationInitiatives(nationId){
     const [defsR, mineR, corpsR] = await Promise.all([
       supabase.from('national_initiatives').select('id, definition').order('created_at'),
       supabase.from('nation_initiatives').select('id, initiative_id, corp_id, status, started_tick, complete_tick, cost_per_tick').eq('nation_id', nationId),
-      supabase.from('corporations').select('id, name').eq('nation_id', nationId).eq('status', 'placed')
+      supabase.from('corporations').select('id, name, category, type').eq('nation_id', nationId).eq('status', 'placed')
     ]);
     var defs = defsR.data || [], mine = mineR.data || [];
     var activeRow = mine.filter(function(r){ return r.status==='active'; })[0] || null;
@@ -69,17 +73,26 @@ export function renderNationInitiatives(el, data, ctx){
   }
   (data.available||[]).forEach(function(row){
     var d=row.definition||{};
-    var corps=(data.corps||[]).filter(function(c){ return Array.isArray(d.executors) && d.executors.indexOf(c.id)>=0; });
-    var eff=ownEffect(d), lm=d.lengthMonths||[];
+    var eff=ownEffect(d), lm=d.lengthMonths||[], secs=Array.isArray(d.sectors)?d.sectors:[];
     html += '<div class="nini" data-init="'+esc(row.id)+'"><div class="nini__name">'+esc(d.name||'Initiative')+'</div>'+
       '<div class="nini__meta">$'+effCost(d)+'B · '+(lm[0]!=null?lm[0]:'?')+'–'+(lm[1]!=null?lm[1]:'?')+' mo · '+esc(d.ownership||'unset')+(eff?' · '+eff:'')+(d.cadence==='recurring'?' · recurring':'')+'</div>'+
       '<span class="nini__gain">+'+(d.quantity||0)+' '+esc(d.resource||'')+'</span>';
     if(ctx.amPM){
-      html += '<div class="nini__pick" hidden><select class="nini__corp">'+
-        corps.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join('')+
-        '<option value="">Direct government programme</option></select>'+
-        '<button class="nini__go" type="button">Enact (2 AP)</button></div>'+
-        '<button class="nini__start" type="button">Start ▸</button>';
+      if(d.ownership==='state'){
+        // State: the nation must use its OWN state-owned firm in one of the authored sectors.
+        var so=(data.corps||[]).filter(function(c){ return c.type==='so' && secs.indexOf(c.category)>=0; });
+        if(!so.length){
+          html += '<div class="nini__need">Needs a state-owned '+esc(secs.join(' / ')||'sector')+' corporation — your nation has none.</div>';
+        } else {
+          html += '<div class="nini__pick" hidden><select class="nini__corp">'+
+            so.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join('')+
+            '</select><button class="nini__go" type="button">Enact (2 AP)</button></div>'+
+            '<button class="nini__start" type="button">Start ▸</button>';
+        }
+      } else {
+        // Private: corporations bid competitively — no executor is picked up front.
+        html += '<button class="nini__go nini__go--solo" type="button">Enact (2 AP)</button>';
+      }
     }
     html += '</div>';
   });
@@ -88,6 +101,6 @@ export function renderNationInitiatives(el, data, ctx){
   el.querySelectorAll('.nini[data-init]').forEach(function(card){
     var start=card.querySelector('.nini__start'), pick=card.querySelector('.nini__pick'), go=card.querySelector('.nini__go');
     if(start&&pick) start.addEventListener('click', function(){ pick.hidden=false; start.hidden=true; });
-    if(go) go.addEventListener('click', function(){ var v=card.querySelector('.nini__corp').value; if(ctx.onEnact) ctx.onEnact(card.dataset.init, v||null); });
+    if(go) go.addEventListener('click', function(){ var sel=card.querySelector('.nini__corp'); var v=sel?sel.value:''; if(ctx.onEnact) ctx.onEnact(card.dataset.init, v||null); });
   });
 }

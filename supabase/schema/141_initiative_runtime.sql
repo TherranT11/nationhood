@@ -13,7 +13,7 @@ create table if not exists public.nation_initiatives (
   id            uuid primary key default gen_random_uuid(),
   nation_id     text not null references public.nations (id) on delete cascade,
   initiative_id uuid not null references public.national_initiatives (id) on delete cascade,
-  corp_id       uuid references public.corporations (id) on delete set null,  -- the one executor (null = direct programme)
+  corp_id       uuid references public.corporations (id) on delete set null,  -- state: the SO firm carrying it out; private: null (competitive bids)
   status        text not null default 'active',   -- 'active' | 'completed'
   started_tick  int  not null,
   complete_tick int  not null,                     -- started_tick + rolled duration; completes when the clock reaches it
@@ -32,8 +32,8 @@ create policy "nation_initiatives_select_all" on public.nation_initiatives for s
 -- Gated to the formateur of the active government; costs 2 party actions. Rolls the duration in
 -- [min,max], applies the ownership on-enact effects, and books the instance (its cost drains over
 -- the duration via the tick). The cost is NOT paid up front — it's spread across the months.
--- corp is the ONE chosen executor (a placed corp in this nation whose type matches the ownership),
--- or null for a direct government programme; it's flavour for now (named in the events, no effect).
+-- corp is required for a STATE initiative (the nation's own state-owned firm in an authorised
+-- sector) and ignored for a PRIVATE one (corporations bid); it's flavour for now (named in events).
 -- ---------------------------------------------------------------------------
 create or replace function public.initiative_enact(p_initiative uuid, p_corp uuid default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
@@ -86,16 +86,21 @@ begin
   elsif  v_own = 'state'   then v_cost := round(v_cost * 1.25);
   end if;
 
-  -- Validate the chosen executor: it must be one of the initiative's AUTHORED executors (the corps
-  -- the admin curated in the builder) AND still a placed corp in this nation. Null = direct
-  -- government programme (always allowed). The corp is flavour for now — named in the events only.
+  -- Bind the executor from the ownership model (schema/140 authors the eligible sectors). STATE: the
+  -- nation must carry it out with its OWN state-owned firm in one of those sectors, so a nation with
+  -- no such firm simply can't enact it. PRIVATE: corporations bid competitively (the −20% reflects
+  -- it) — no executor is bound up front and p_corp is ignored.
   v_corp := null;
-  if p_corp is not null then
-    if not (jsonb_typeof(v_def->'executors') = 'array' and (v_def->'executors') ? p_corp::text) then
-      raise exception 'That corporation is not an authorised executor for this initiative.';
+  if v_own = 'state' then
+    if p_corp is null then
+      raise exception 'Choose a state-owned corporation to carry out this initiative.';
     end if;
-    if not exists (select 1 from public.corporations c where c.id = p_corp and c.nation_id = v_nation and c.status = 'placed') then
-      raise exception 'That corporation can''t carry out this initiative.';
+    if not exists (
+      select 1 from public.corporations c
+       where c.id = p_corp and c.nation_id = v_nation and c.status = 'placed' and c.type = 'so'
+         and jsonb_typeof(v_def->'sectors') = 'array' and (v_def->'sectors') ? c.category
+    ) then
+      raise exception 'That corporation can''t carry out this initiative — it must be a state-owned firm in an authorised sector.';
     end if;
     v_corp := p_corp;
   end if;

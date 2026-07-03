@@ -575,16 +575,6 @@
   .ibuild .fx{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;border-radius:6px;padding:4px 8px}
   .ibuild .fx.good{background:var(--green-soft,#E5F4EC);border:1px solid var(--green);color:var(--green)}
   .ibuild .fx.bad{background:var(--red-soft,#FBEAE9);border:1px solid var(--red);color:var(--red)}
-  .ibuild .corprow{display:flex;align-items:center;gap:10px;border:1px solid var(--line2);background:var(--field,#FCFBF9);border-radius:10px;padding:10px 12px;margin-bottom:7px;cursor:pointer;user-select:none}
-  .ibuild .corprow.on{border-color:var(--green);background:var(--green-soft,#E5F4EC)}
-  .ibuild .corprow .cb2{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--soft);flex:none;display:grid;place-items:center;color:#fff;font-size:10px}
-  .ibuild .corprow.on .cb2{background:var(--green);border-color:var(--green)}
-  .ibuild .cinfo{flex:1;min-width:0}
-  .ibuild .cinfo b{font-size:13px;font-weight:700}
-  .ibuild .cinfo span{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);letter-spacing:.03em;display:block;margin-top:2px}
-  .ibuild .ctype{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:5px;padding:3px 7px;flex:none}
-  .ibuild .ctype.priv{color:var(--indigo);background:var(--indigo-soft)}
-  .ibuild .ctype.state{color:var(--amber);background:var(--amber-soft,#FBF0DD)}
   .ibuild .chipeff{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;border-radius:8px;padding:5px 10px}
   .ibuild .chipeff .d{width:8px;height:8px;border-radius:2px}
   .ibuild .preview{background:var(--field,#FCFBF9);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
@@ -976,13 +966,14 @@
 
           <div class="card">
             <div class="sec-h">Execution</div>
-            <div class="flabel">Private enterprise or state sanctioned? <span class="hint">— reveals the corporations that could carry it out</span></div>
+            <div class="flabel">Private enterprise or state sanctioned?</div>
             <div class="seg" id="i-ownership">
               <button data-own="private" type="button">Private Enterprise</button>
               <button data-own="state" type="button">State Sanctioned</button>
             </div>
             <div id="i-ownfx"></div>
-            <div id="i-corps" style="margin-top:12px"></div>
+            <div class="flabel">Sectors <span class="hint">— which sector's corporations carry it out (a nation needs one to qualify)</span></div>
+            <div class="tiles" id="i-sectors"></div>
           </div>
 
           <div class="card">
@@ -3856,15 +3847,18 @@
       function resourceCategories(res) {
         return CATEGORIES.filter(function (c) { return (CATEGORY_BONUS[c] || {}).tag === '+ ' + res + ' production'; });
       }
-      var CORPS = [], INAT = [];   // placed corporations + live nations, fetched once
+      var INAT = [];   // live nations, fetched once (for the eligibility tiles)
       var IN = null, iEditId = null, iSaving = false, iCache = [];
+
+      // The producing sectors for a resource, as a {sector:true} set (default: all of them ticked).
+      function iSectorSet(res) { var s = {}; resourceCategories(res).forEach(function (c) { s[c] = true; }); return s; }
 
       function iBlank() {
         return { name: '', description: '', resource: 'Energy', quantity: 1, cadence: 'one_time',
-          ownership: null, corps: {}, cost: 120, minM: 16, maxM: 36, global: false, nations: {},
+          ownership: null, sectors: iSectorSet('Energy'), cost: 120, minM: 16, maxM: 36, global: false, nations: {},
           startEvent: '', finishEvent: '' };
       }
-      // Stored definition → editor state (corps/nations as {id:true} sets).
+      // Stored definition → editor state (sectors/nations as {key:true} sets).
       function iNormalize(def) {
         var d = (def && typeof def === 'object') ? def : {}, s = iBlank();
         s.name = d.name || ''; s.description = d.description || '';
@@ -3877,7 +3871,11 @@
         s.ownership = (d.ownership === 'private' || d.ownership === 'state') ? d.ownership : null;
         s.global = d.eligibleNations === '*';
         if (!s.global && Array.isArray(d.eligibleNations)) d.eligibleNations.forEach(function (id) { s.nations[id] = true; });
-        (Array.isArray(d.executors) ? d.executors : []).forEach(function (id) { s.corps[id] = true; });
+        // Ticked sectors, kept within the resource's producing set. Legacy defs (no sectors) default
+        // to all of them so an old initiative still qualifies for its whole resource.
+        var valid = iSectorSet(s.resource);
+        if (Array.isArray(d.sectors)) { s.sectors = {}; d.sectors.forEach(function (x) { if (valid[x]) s.sectors[x] = true; }); }
+        else s.sectors = valid;
         s.startEvent = d.startEvent || ''; s.finishEvent = d.finishEvent || '';
         return s;
       }
@@ -3886,20 +3884,8 @@
         if (IN.ownership === 'state')   return Math.round(IN.cost * (1 + STATE_MARKUP));
         return IN.cost;
       }
-      function iOwnOf(type) { return type === 'so' ? 'state' : 'private'; }
-      function iQualifying() {
-        if (!IN.ownership) return [];
-        var nats = IN.global ? null : IN.nations, cats = resourceCategories(IN.resource);
-        return CORPS.filter(function (c) {
-          if (nats && !nats[c.nation]) return false;
-          if (iOwnOf(c.type) !== IN.ownership) return false;
-          return cats.indexOf(c.sector) >= 0;
-        });
-      }
-      function iRefreshCorps() { IN.corps = {}; iQualifying().forEach(function (c) { IN.corps[c.id] = true; }); }
-      // The qualifying corps the admin has ticked — ONE source for the preview list and the saved
-      // executors, so "which firms carry it out" is computed in exactly one place.
-      function iChosen() { return iQualifying().filter(function (c) { return IN.corps[c.id]; }); }
+      // The ticked sectors — ONE source for the preview line and the saved definition.
+      function iChosenSectors() { return resourceCategories(IN.resource).filter(function (c) { return IN.sectors[c]; }); }
       function iNatName(id) { var n = INAT.filter(function (x) { return x.id === id; })[0]; return n ? (n.name || id) : id; }
 
       function iRenderResource() { document.getElementById('i-resource').innerHTML = RESOURCES.map(function (r) { return '<option' + (r === IN.resource ? ' selected' : '') + '>' + r + '</option>'; }).join(''); }
@@ -3921,34 +3907,34 @@
       function iRenderOwnership() {
         document.querySelectorAll('#i-ownership [data-own]').forEach(function (b) { b.classList.toggle('on', IN.ownership === b.dataset.own); });
         iRenderOwnfx();
-        var box = document.getElementById('i-corps');
-        if (!IN.ownership) { box.innerHTML = '<div class="corphint">Choose private or state to see the eligible corporations.</div>'; return; }
-        var q = iQualifying();
-        if (!q.length) { box.innerHTML = '<div class="corphint">No ' + IN.ownership + ' corporations in this sector among the eligible nations — this would run as a direct government programme.</div>'; return; }
-        box.innerHTML = q.map(function (c) {
-          var cls = iOwnOf(c.type) === 'private' ? 'priv' : 'state';
-          return '<div class="corprow' + (IN.corps[c.id] ? ' on' : '') + '" data-corp="' + esc(c.id) + '">' +
-            '<span class="cb2">' + (IN.corps[c.id] ? '✓' : '') + '</span>' +
-            '<div class="cinfo"><b>' + esc(c.name) + '</b><span>' + esc(iNatName(c.nation)) + ' · ' + esc(c.sector) + '</span></div>' +
-            '<span class="ctype ' + cls + '">' + (c.type === 'so' ? 'State' : 'Private') + '</span></div>';
+      }
+      // The sectors whose corporations can carry the initiative out. Constrained to the ones that
+      // actually produce the chosen resource (Energy → Energy/Nuclear) — the runtime matches a
+      // nation's corps against these (private bids from any; state needs its own SO firm in one).
+      function iRenderSectors() {
+        var cats = resourceCategories(IN.resource), box = document.getElementById('i-sectors');
+        if (!cats.length) { box.innerHTML = '<div class="corphint">No corporate sector produces ' + esc(IN.resource) + ' — this runs as a direct government programme.</div>'; return; }
+        box.innerHTML = cats.map(function (c) {
+          var on = !!IN.sectors[c];
+          return '<div class="tile' + (on ? ' on' : '') + '" data-sec="' + esc(c) + '"><span class="cb">' + (on ? '✓' : '') + '</span><span class="tlabel">' + esc(c) + '</span></div>';
         }).join('');
-        box.querySelectorAll('[data-corp]').forEach(function (r) { r.onclick = function () { var id = r.dataset.corp; IN.corps[id] = !IN.corps[id]; iRenderOwnership(); iRenderPreview(); }; });
+        box.querySelectorAll('[data-sec]').forEach(function (t) { t.onclick = function () { IN.sectors[t.dataset.sec] = !IN.sectors[t.dataset.sec]; iRenderSectors(); iRenderPreview(); }; });
       }
       function iRenderNations() {
         var el = document.getElementById('i-gpill');
         el.className = 'gpill' + (IN.global ? ' on' : '');
         el.innerHTML = '🌐 Global — every nation';
-        el.onclick = function () { IN.global = !IN.global; iRefreshCorps(); iRenderNations(); iRenderOwnership(); iRenderPreview(); };
+        el.onclick = function () { IN.global = !IN.global; iRenderNations(); iRenderPreview(); };
         document.getElementById('i-nations').innerHTML = INAT.map(function (n) {
           var on = IN.global || IN.nations[n.id];
           return '<div class="tile' + (on ? ' on' : '') + (IN.global ? ' dis' : '') + '" data-nat="' + esc(n.id) + '"><span class="cb">' + (on ? '✓' : '') + '</span><span class="tlabel">' + esc(n.name || n.id) + '</span></div>';
         }).join('');
-        document.querySelectorAll('#i-nations [data-nat]').forEach(function (t) { t.onclick = function () { IN.nations[t.dataset.nat] = !IN.nations[t.dataset.nat]; iRefreshCorps(); iRenderNations(); iRenderOwnership(); iRenderPreview(); }; });
+        document.querySelectorAll('#i-nations [data-nat]').forEach(function (t) { t.onclick = function () { IN.nations[t.dataset.nat] = !IN.nations[t.dataset.nat]; iRenderNations(); iRenderPreview(); }; });
       }
       function iRenderPreview() {
         var col = 'var(--' + IN.resource.toLowerCase() + ')';
-        var chosen = iChosen().map(function (c) { return c.name; });
-        var execTxt = !IN.ownership ? '—' : ((IN.ownership === 'private' ? 'Private' : 'State') + ' · ' + (chosen.length ? chosen.join(', ') : 'direct programme'));
+        var secs = iChosenSectors();
+        var execTxt = !IN.ownership ? '—' : ((IN.ownership === 'private' ? 'Private' : 'State') + ' · ' + (secs.length ? secs.join(', ') : 'direct programme'));
         var costTxt = IN.ownership ? ('$' + iEffCost() + 'B') : ('$' + IN.cost + 'B');
         var fxTxt = IN.ownership === 'private' ? '+1 Growth' : IN.ownership === 'state' ? '−1–2 Unemployment · −1–2 Inflation' : '—';
         var elig = IN.global ? 'Every nation' : (Object.keys(IN.nations).filter(function (k) { return IN.nations[k]; }).map(iNatName).join(', ') || 'none');
@@ -3956,7 +3942,7 @@
           '<div class="pl">Preview</div><h3>' + esc(IN.name || 'Untitled Initiative') + '</h3>' +
           '<span class="chipeff" style="background:rgba(127,127,127,.08);border:1px solid ' + col + ';color:' + col + '"><span class="d" style="background:' + col + '"></span>+' + IN.quantity + ' ' + esc(IN.resource) + '</span>' +
           '<div class="meta"><b>' + costTxt + '</b> · <b>' + IN.minM + '–' + IN.maxM + ' mo</b> · ' + (IN.cadence === 'recurring' ? 'Recurring' : 'One-time') + '<br>' +
-          'On enact: <b>' + fxTxt + '</b><br>Executor: <b>' + esc(execTxt) + '</b><br>Eligible: <b>' + esc(elig) + '</b></div>';
+          'On enact: <b>' + fxTxt + '</b><br>Sectors: <b>' + esc(execTxt) + '</b><br>Eligible: <b>' + esc(elig) + '</b></div>';
       }
       // Fill the form inputs from IN, then run the dynamic renders.
       function iRenderEditor() {
@@ -3968,7 +3954,7 @@
         document.getElementById('i-maxM').value = IN.maxM;
         document.getElementById('i-startEvent').value = IN.startEvent;
         document.getElementById('i-finishEvent').value = IN.finishEvent;
-        iRenderResource(); iRenderCadence(); iRenderOwnership(); iRenderNations(); iRenderPreview();
+        iRenderResource(); iRenderCadence(); iRenderOwnership(); iRenderSectors(); iRenderNations(); iRenderPreview();
         document.getElementById('i-cancel').hidden = !iEditId;
         document.getElementById('i-save').textContent = iEditId ? 'Save changes' : 'Save Initiative';
       }
@@ -4002,7 +3988,7 @@
           name: IN.name.trim(), description: IN.description.trim(),
           resource: IN.resource, quantity: IN.quantity, cadence: IN.cadence,
           cost: IN.cost, lengthMonths: [IN.minM, IN.maxM], ownership: IN.ownership,
-          executors: iChosen().map(function (c) { return c.id; }),
+          sectors: iChosenSectors(),
           eligibleNations: IN.global ? '*' : Object.keys(IN.nations).filter(function (k) { return IN.nations[k]; }),
           startEvent: IN.startEvent.trim(), finishEvent: IN.finishEvent.trim()
         };
@@ -4017,10 +4003,7 @@
       }
 
       async function loadInitiatives() {
-        // Corps + live nations, fetched once (best-effort — the builder still opens without them).
-        if (!CORPS.length) {
-          try { const { data } = await supabase.from('corporations').select('id, nation_id, name, category, type').eq('status', 'placed'); CORPS = (data || []).map(function (c) { return { id: c.id, nation: c.nation_id, name: c.name, sector: c.category, type: c.type }; }); } catch (e) { CORPS = []; }
-        }
+        // Live nations, fetched once (best-effort — the builder still opens without them).
         if (!INAT.length) {
           try { const { data } = await supabase.from('nations').select('id, name, dormant').order('name'); INAT = (data || []).filter(function (n) { return !n.dormant; }); } catch (e) { INAT = []; }
         }
@@ -4038,11 +4021,11 @@
       document.getElementById('i-cancel').onclick = iNew;
       document.getElementById('i-name').oninput = function () { IN.name = this.value; iRenderPreview(); };
       document.getElementById('i-desc').oninput = function () { IN.description = this.value; };
-      document.getElementById('i-resource').onchange = function () { IN.resource = this.value; iRefreshCorps(); iRenderOwnership(); iRenderPreview(); };
+      document.getElementById('i-resource').onchange = function () { IN.resource = this.value; IN.sectors = iSectorSet(IN.resource); iRenderSectors(); iRenderPreview(); };
       document.getElementById('i-qminus').onclick = function () { if (IN.quantity > 1) { IN.quantity--; document.getElementById('i-qty').textContent = IN.quantity; iRenderPreview(); } };
       document.getElementById('i-qplus').onclick = function () { IN.quantity++; document.getElementById('i-qty').textContent = IN.quantity; iRenderPreview(); };
       document.querySelectorAll('#i-cadence [data-cad]').forEach(function (b) { b.onclick = function () { IN.cadence = b.dataset.cad; iRenderCadence(); iRenderPreview(); }; });
-      document.querySelectorAll('#i-ownership [data-own]').forEach(function (b) { b.onclick = function () { IN.ownership = b.dataset.own; iRefreshCorps(); iRenderOwnership(); iRenderPreview(); }; });
+      document.querySelectorAll('#i-ownership [data-own]').forEach(function (b) { b.onclick = function () { IN.ownership = b.dataset.own; iRenderOwnership(); iRenderPreview(); }; });
       document.getElementById('i-cost').oninput = function () { IN.cost = parseInt(this.value, 10) || 0; iRenderOwnfx(); iRenderPreview(); };
       document.getElementById('i-minM').oninput = function () { IN.minM = parseInt(this.value, 10) || 0; iRenderPreview(); };
       document.getElementById('i-maxM').oninput = function () { IN.maxM = parseInt(this.value, 10) || 0; iRenderPreview(); };
