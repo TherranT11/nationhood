@@ -489,22 +489,23 @@ begin
   begin
   if (v_tick - 1) % 12 = 0 then
     -- Add each nation's income to its budget through the one budget rule (_nation_budget_add,
-    -- schema/91): budget floors at 0, the shortfall overflows to debt.
+    -- schema/91): budget floors at 0, the shortfall overflows to debt. A modifier's income Rate
+    -- Multiplier (schema/70) scales the take before it lands.
     for v_rec in
       select id, coalesce((economy->>'income')::numeric, 0) as inc
         from public.nations
        where coalesce((economy->>'income')::numeric, 0) <> 0 and not coalesce(dormant, false)
     loop
-      perform public._nation_budget_add(v_rec.id, v_rec.inc);
+      perform public._nation_budget_add(v_rec.id, round(v_rec.inc * public._mod_rate_multiplier(v_rec.id, 'income')));
     end loop;
     insert into public.events (nation_id, party_id, kind, body, game_date)
     select n.id, null, 'income',
-           'Annual income of ' || (case when (n.economy->>'income')::numeric < 0 then '−' else '+' end) ||
-           coalesce(n.economy->>'currency', '$') || ltrim(n.economy->>'income', '-') ||
-           'B applied — budget ' || coalesce(n.economy->>'currency', '$') || (n.economy->>'budget') ||
-           'B, debt ' || coalesce(n.economy->>'currency', '$') || (n.economy->>'debt') || 'B.',
+           'Annual income of ' || (case when x.eff < 0 then '−' else '+' end) || x.cur || abs(x.eff)::text ||
+           'B applied — budget ' || x.cur || (n.economy->>'budget') || 'B, debt ' || x.cur || (n.economy->>'debt') || 'B.',
            public.current_game_date()
       from public.nations n
+      cross join lateral (select round((n.economy->>'income')::numeric * public._mod_rate_multiplier(n.id, 'income')) as eff,
+                                 coalesce(n.economy->>'currency', '$') as cur) x
      where coalesce((n.economy->>'income')::numeric, 0) <> 0 and not coalesce(n.dormant, false);
   end if;
   exception when others then raise warning 'tick %: annual income failed — %', v_tick, sqlerrm; end;

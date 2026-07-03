@@ -186,6 +186,24 @@ returns numeric language sql stable security definer set search_path = public as
   select least(p_old, greatest(p_new, coalesce(public._mod_archetype_pop_floor(p_nation, p_archetype), p_new)));
 $$;
 
+-- The combined Rate Multiplier a nation's active modifiers apply to a key ('income' or a
+-- production resource). Multipliers on the same key COMPOUND (×1.4 then ×0.9 → ×1.26); no modifier
+-- → 1.0 (unchanged). Read at the points those rates are applied (income in schema/60, production in
+-- schema/113). Only positive multipliers count — a 0/blank value is treated as "no effect".
+create or replace function public._mod_rate_multiplier(p_nation text, p_key text)
+returns numeric language plpgsql stable security definer set search_path = public as $$
+declare v numeric := 1; r record;
+begin
+  for r in
+    select e.effect_value from public.nation_modifiers nm
+      join public.modifier_effects e on e.modifier_id = nm.modifier_id
+     where nm.nation_id = p_nation and e.effect_type = 'rate_multiplier'
+       and e.effect_key = p_key and coalesce(e.effect_value, 0) > 0
+  loop v := v * r.effect_value; end loop;
+  return v;
+end $$;
+revoke all on function public._mod_rate_multiplier(text, text) from public, anon, authenticated;
+
 -- Safe numeric cast: returns null instead of throwing on non-numeric text (e.g. a
 -- legacy free-text regime like "Electoral Democracy"). Used by the end-condition
 -- reader so one bad jsonb value can never abort advance_tick.
