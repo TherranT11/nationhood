@@ -985,6 +985,20 @@
           </div>
 
           <div class="card">
+            <div class="sec-h">Joint project</div>
+            <div id="i-jpill"></div>
+            <div id="i-jbody" hidden>
+              <div class="flabel">Associated nation <span class="hint">— collaborates on the project</span></div>
+              <select id="i-jpartner"></select>
+              <div class="flabel">Associated nation receives</div>
+              <div class="two">
+                <div class="stepper"><button id="i-jqminus" type="button">−</button><span class="v" id="i-jqty">1</span><button id="i-jqplus" type="button">+</button></div>
+                <select id="i-jtarget"></select>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
             <div class="sec-h">Event text</div>
             <div class="flabel">Event description when started</div>
             <textarea id="i-startEvent" placeholder="Fires in the nation's event feed the moment it's enacted…"></textarea>
@@ -3833,6 +3847,9 @@
     // resource's eligible sectors are DERIVED from CATEGORY_BONUS (one source, corporations.js). ----
     var loadInitiatives = (function () {
       var RESOURCES = ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy', 'Military'];
+      // What the partner nation of a joint project can receive — production resources + core stats,
+      // all valid _apply_policy_effect targets (schema/91), so the runtime applies them in one place.
+      var JTARGETS = ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Order', 'Welfare', 'Growth', 'Image', 'Prosperity'];
       // The corp sectors that produce a resource, derived from CATEGORY_BONUS so it can't drift from
       // the sector→production mapping. Military has no producing sector → it runs as a direct programme.
       function resourceCategories(res) {
@@ -3847,6 +3864,7 @@
       function iBlank() {
         return { name: '', description: '', resource: 'Energy', quantity: 1, cadence: 'one_time',
           sectors: iSectorSet('Energy'), costModel: 'flat', cost: 120, minM: 16, maxM: 36, global: false, nations: {},
+          joint: { on: false, partner: '', quantity: 1, target: 'Energy' },
           startEvent: '', finishEvent: '' };
       }
       // Stored definition → editor state (sectors/nations as {key:true} sets).
@@ -3867,6 +3885,10 @@
         var valid = iSectorSet(s.resource);
         if (Array.isArray(d.sectors)) { s.sectors = {}; d.sectors.forEach(function (x) { if (valid[x]) s.sectors[x] = true; }); }
         else s.sectors = valid;
+        if (d.joint && d.joint.partner) {
+          s.joint = { on: true, partner: d.joint.partner, quantity: Math.max(1, parseInt(d.joint.quantity, 10) || 1),
+            target: JTARGETS.indexOf(d.joint.target) >= 0 ? d.joint.target : 'Energy' };
+        }
         s.startEvent = d.startEvent || ''; s.finishEvent = d.finishEvent || '';
         return s;
       }
@@ -3916,16 +3938,33 @@
         }).join('');
         document.querySelectorAll('#i-nations [data-nat]').forEach(function (t) { t.onclick = function () { IN.nations[t.dataset.nat] = !IN.nations[t.dataset.nat]; iRenderNations(); iRenderPreview(); }; });
       }
+      // Joint project: a partner nation collaborates (its consent + optional cost-share is negotiated
+      // at enact) and receives a benefit when the project completes. Author-side this is just the
+      // partner + what they get; the negotiation is a later runtime slice.
+      function iRenderJoint() {
+        var pill = document.getElementById('i-jpill');
+        pill.className = 'gpill' + (IN.joint.on ? ' on' : '');
+        pill.innerHTML = '🤝 Joint project — a partner nation collaborates';
+        pill.onclick = function () { IN.joint.on = !IN.joint.on; iRenderJoint(); iRenderPreview(); };
+        document.getElementById('i-jbody').hidden = !IN.joint.on;
+        if (!IN.joint.on) return;
+        if (!IN.joint.partner && INAT.length) IN.joint.partner = INAT[0].id;
+        document.getElementById('i-jpartner').innerHTML = INAT.map(function (n) { return '<option value="' + esc(n.id) + '"' + (n.id === IN.joint.partner ? ' selected' : '') + '>' + esc(n.name || n.id) + '</option>'; }).join('');
+        document.getElementById('i-jqty').textContent = IN.joint.quantity;
+        document.getElementById('i-jtarget').innerHTML = JTARGETS.map(function (t) { return '<option' + (t === IN.joint.target ? ' selected' : '') + '>' + t + '</option>'; }).join('');
+      }
       function iRenderPreview() {
         var col = 'var(--' + IN.resource.toLowerCase() + ')';
         var secs = iChosenSectors();
         var secTxt = secs.length ? secs.join(', ') : 'any / direct programme';
         var elig = IN.global ? 'Every nation' : (Object.keys(IN.nations).filter(function (k) { return IN.nations[k]; }).map(iNatName).join(', ') || 'none');
+        var jointTxt = (IN.joint.on && IN.joint.partner) ? (iNatName(IN.joint.partner) + ' receives +' + IN.joint.quantity + ' ' + IN.joint.target) : '';
         document.getElementById('i-preview').innerHTML =
           '<div class="pl">Preview</div><h3>' + esc(IN.name || 'Untitled Initiative') + '</h3>' +
           '<span class="chipeff" style="background:rgba(127,127,127,.08);border:1px solid ' + col + ';color:' + col + '"><span class="d" style="background:' + col + '"></span>+' + IN.quantity + ' ' + esc(IN.resource) + '</span>' +
           '<div class="meta"><b>' + esc(iCostExpr()) + '</b> · <b>' + IN.minM + '–' + IN.maxM + ' mo</b> · ' + (IN.cadence === 'recurring' ? 'Recurring' : 'One-time') + '<br>' +
-          'Sectors: <b>' + esc(secTxt) + '</b><br>Eligible: <b>' + esc(elig) + '</b></div>';
+          'Sectors: <b>' + esc(secTxt) + '</b><br>Eligible: <b>' + esc(elig) + '</b>' +
+          (jointTxt ? '<br>Joint: <b>' + esc(jointTxt) + '</b>' : '') + '</div>';
       }
       // Fill the form inputs from IN, then run the dynamic renders.
       function iRenderEditor() {
@@ -3937,7 +3976,7 @@
         document.getElementById('i-maxM').value = IN.maxM;
         document.getElementById('i-startEvent').value = IN.startEvent;
         document.getElementById('i-finishEvent').value = IN.finishEvent;
-        iRenderResource(); iRenderCadence(); iRenderCostModel(); iRenderSectors(); iRenderNations(); iRenderPreview();
+        iRenderResource(); iRenderCadence(); iRenderCostModel(); iRenderSectors(); iRenderNations(); iRenderJoint(); iRenderPreview();
         document.getElementById('i-cancel').hidden = !iEditId;
         document.getElementById('i-save').textContent = iEditId ? 'Save changes' : 'Save Initiative';
       }
@@ -3973,6 +4012,7 @@
           resource: IN.resource, quantity: IN.quantity, cadence: IN.cadence,
           costModel: IN.costModel, cost: IN.cost, lengthMonths: [IN.minM, IN.maxM],
           sectors: iChosenSectors(),
+          joint: (IN.joint.on && IN.joint.partner) ? { partner: IN.joint.partner, quantity: IN.joint.quantity, target: IN.joint.target } : null,
           eligibleNations: IN.global ? '*' : Object.keys(IN.nations).filter(function (k) { return IN.nations[k]; }),
           startEvent: IN.startEvent.trim(), finishEvent: IN.finishEvent.trim()
         };
@@ -4011,6 +4051,10 @@
       document.querySelectorAll('#i-cadence [data-cad]').forEach(function (b) { b.onclick = function () { IN.cadence = b.dataset.cad; iRenderCadence(); iRenderPreview(); }; });
       document.getElementById('i-costmodel').onchange = function () { IN.costModel = this.value; iRenderCostModel(); iRenderPreview(); };
       document.getElementById('i-cost').oninput = function () { IN.cost = parseFloat(this.value) || 0; iRenderPreview(); };
+      document.getElementById('i-jpartner').onchange = function () { IN.joint.partner = this.value; iRenderPreview(); };
+      document.getElementById('i-jtarget').onchange = function () { IN.joint.target = this.value; iRenderPreview(); };
+      document.getElementById('i-jqminus').onclick = function () { if (IN.joint.quantity > 1) { IN.joint.quantity--; document.getElementById('i-jqty').textContent = IN.joint.quantity; iRenderPreview(); } };
+      document.getElementById('i-jqplus').onclick = function () { IN.joint.quantity++; document.getElementById('i-jqty').textContent = IN.joint.quantity; iRenderPreview(); };
       document.getElementById('i-minM').oninput = function () { IN.minM = parseInt(this.value, 10) || 0; iRenderPreview(); };
       document.getElementById('i-maxM').oninput = function () { IN.maxM = parseInt(this.value, 10) || 0; iRenderPreview(); };
       document.getElementById('i-startEvent').oninput = function () { IN.startEvent = this.value; };

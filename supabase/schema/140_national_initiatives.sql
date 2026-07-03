@@ -14,6 +14,7 @@
 --     cost,                -- flat → $B; production → $B per current unit; gdp → % of GDP (before the private/state adjustment)
 --     lengthMonths: [min, max],
 --     sectors: [sector …], -- which producing sectors' corps can carry it out; the enacting Minister picks private (bids) or state (its own SO firm in one)
+--     joint,               -- null, or { partner: nation_id, quantity, target } — a partner nation collaborates and receives the benefit (negotiation is a runtime slice)
 --     eligibleNations,     -- '*' for every nation, else [nation_id …]
 --     startEvent, finishEvent
 --   }
