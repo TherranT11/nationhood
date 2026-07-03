@@ -89,6 +89,7 @@ declare
   v_targets text[]; v_nat text; v_amt numeric; v_name text; v_body text; v_aft jsonb;
   v_bres text; v_bamt numeric; v_astr text; v_per numeric; v_mult numeric;
   v_side jsonb; v_sup text; v_sidenames text := '';
+  v_res text; v_winners text; v_losers text;
 begin
   select definition, status into v_def, v_status from public.world_event_instances where id = p_instance for update;
   if not found or v_status <> 'active' then return; end if;
@@ -129,6 +130,12 @@ begin
     end if;
     v_body := v_name || ' — the commitment met the threshold; the strongest bidder is rewarded.'
               || case when v_sidenames <> '' then ' ' || v_sidenames || ' prevailed.' else '' end;
+    -- Winner / loser name lists for the resolution-description tokens: the top bidder(s) win, the
+    -- rest of the involved are the losers.
+    select string_agg(n.name, ' & ' order by n.name) into v_winners from public.nations n
+      where n.id in (select nation_id from public.world_event_bids where instance_id = p_instance and amount = v_max);
+    select string_agg(n.name, ' & ' order by n.name) into v_losers from public.nations n
+      where n.id = any(v_targets) and n.id not in (select nation_id from public.world_event_bids where instance_id = p_instance and amount = v_max);
   else
     -- Threshold missed: every involved nation that staked nothing takes the penalty.
     foreach v_nat in array v_targets loop
@@ -136,6 +143,21 @@ begin
       if v_amt <= 0 then perform public._apply_we_effects(v_nat, v_def->'bidding'->'zeroEffects'); end if;
     end loop;
     v_body := v_name || ' — too little was committed; the idle are penalised.';
+    -- No winner when the threshold is missed; the idle (staked nothing) are the losers.
+    v_winners := null;
+    select string_agg(n.name, ' & ' order by n.name) into v_losers from public.nations n
+      where n.id = any(v_targets)
+        and coalesce((select amount from public.world_event_bids where instance_id = p_instance and nation_id = n.id), 0) <= 0;
+  end if;
+
+  -- Resolution description (optional): fill its tokens and append to the closing feed line.
+  v_res := coalesce(nullif(btrim(v_def->>'resolution'), ''), '');
+  if v_res <> '' then
+    v_body := v_body || ' ' || replace(replace(replace(replace(v_res,
+        '{event}', v_name),
+        '{winner}', coalesce(v_winners, 'no one')),
+        '{loser}', coalesce(v_losers, 'no one')),
+        '{winning_side}', coalesce(nullif(v_sidenames, ''), 'no side'));
   end if;
 
   -- Aftermath: always applied, per involved nation (a nation with no entry gets nothing). Each

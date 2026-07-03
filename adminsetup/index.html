@@ -1027,7 +1027,8 @@
                       <option value="bidding">Bidding</option>
                       <option value="turning_point">Turning Point</option>
                     </select></div>
-                    <div class="f" style="margin-bottom:0"><label>Description <span class="hint" id="weDescHint">the prompt players see</span></label><textarea id="weDesc"></textarea></div>
+                    <div class="f"><label>Description <span class="hint" id="weDescHint">the prompt players see</span></label><textarea id="weDesc"></textarea></div>
+                    <div class="f" style="margin-bottom:0"><label>Resolution description <span class="hint">shown when the event ends · tokens: {event}, {winner}, {loser}, {winning_side}</span></label><textarea id="weResolution" placeholder="e.g. {winner} seized the prize while {loser} came away with nothing."></textarea></div>
                   </div>
                   <div class="card" id="weNationsCard"><!-- filled by renderNationsCard (varies by type) --></div>
                   <div class="card" id="weTypeBox"><!-- filled by renderType --></div>
@@ -3556,7 +3557,7 @@
       function effStr(e) { var v = Number(e.v) || 0, s = (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); return (e.t === 'Budget' || e.t === 'Debt' || e.t === 'Income') ? e.t + ' ' + (v >= 0 ? '+' : '−') + '₣' + Math.abs(v) + 'B' : esc(e.t || '?') + ' ' + s; }
 
       function blankEvent() {
-        return { name: 'New World Event', image: '', type: 'decision', scope: 'nations', nations: [], desc: '',
+        return { name: 'New World Event', image: '', type: 'decision', scope: 'nations', nations: [], desc: '', resolution: '',
           options: [{ label: 'Option A', effects: [] }, { label: 'Option B', effects: [] }],
           mutual: { contribution: [], effects: [] }, competitive: { stat: 'Budget', sideA: [], sideB: [], winEffects: [] },
           bidding: { resources: ['Military'], threshold: 3, winEffects: [], zeroEffects: [], perBid: { per: 0, effects: [] }, hasSides: false, sides: [], aftermath: {} }, turning: { effects: [] } };
@@ -3569,6 +3570,7 @@
         var d = (def && typeof def === 'object') ? def : blankEvent();
         d.type = TYPE_LABEL[d.type] ? d.type : 'decision';
         d.scope = d.scope === 'global' ? 'global' : 'nations';
+        d.resolution = typeof d.resolution === 'string' ? d.resolution : '';
         d.nations = Array.isArray(d.nations) ? d.nations : [];
         d.options = (Array.isArray(d.options) && d.options.length >= 2) ? d.options : [{ label: 'Option A', effects: [] }, { label: 'Option B', effects: [] }];
         d.options.forEach(function (o) { o.label = o.label || ''; o.effects = Array.isArray(o.effects) ? o.effects : []; });
@@ -3709,10 +3711,11 @@
         WE = normalizeEvent(def); weEditingId = id || null;
         weSeeded = !!(weCache.filter(function (r) { return r.id === id; })[0] || {}).seeded;
         var panel = document.getElementById('weEditorPanel'); panel.hidden = false; setWeNote('');
-        var nm = document.getElementById('weName'), ds = document.getElementById('weDesc'), ty = document.getElementById('weType');
-        nm.value = WE.name || ''; ds.value = WE.desc || ''; ty.value = WE.type;
+        var nm = document.getElementById('weName'), ds = document.getElementById('weDesc'), ty = document.getElementById('weType'), rs = document.getElementById('weResolution');
+        nm.value = WE.name || ''; ds.value = WE.desc || ''; ty.value = WE.type; rs.value = WE.resolution || '';
         nm.oninput = function (e) { WE.name = e.target.value; renderPreview(); };
         ds.oninput = function (e) { WE.desc = e.target.value; renderPreview(); };
+        rs.oninput = function (e) { WE.resolution = e.target.value; renderPreview(); };
         ty.onchange = function (e) { WE.type = e.target.value; renderDescHint(); renderNationsCard(); renderType(); renderFire(); renderPreview(); };
         document.getElementById('weImgFile').onchange = function (e) { weUpload(e.target.files && e.target.files[0]); };
         document.getElementById('weImgClear').onclick = function () { WE.image = ''; renderImg(); renderPreview(); };
@@ -3874,6 +3877,7 @@
           '<div class="pvrow hint">' + (TYPE_LABEL[WE.type] || WE.type) + ' · ' + (WE.type === 'turning_point' || WE.scope === 'global' ? 'Global' : (WE.nations.length + ' nation' + (WE.nations.length === 1 ? '' : 's'))) + '</div>';
         if (WE.image) rows += '<div class="pvrow"><img src="' + esc(WE.image) + '" style="max-width:100%;border-radius:8px"></div>';
         if (WE.desc) rows += '<div class="pvrow" style="font-size:13px">' + esc(WE.desc) + '</div>';
+        if (WE.resolution) rows += '<div class="pvrow hint" style="font-style:italic">On resolution: ' + esc(WE.resolution) + '</div>';
         if (WE.type === 'decision') rows += WE.options.map(function (o) { return '<div class="pvrow"><b>' + esc(o.label || '—') + '</b> → ' + effEcho(o.effects); }).join('');
         else if (WE.type === 'mutual') rows += '<div class="pvrow">Each contributes ' + effEcho(WE.mutual.contribution) + ' · both gain ' + effEcho(WE.mutual.effects) + '</div>';
         else if (WE.type === 'competitive') rows += '<div class="pvrow">Bid on <b>' + esc(WE.competitive.stat) + '</b> · A: ' + (WE.competitive.sideA.map(nationName).map(esc).join(', ') || '—') + ' vs B: ' + (WE.competitive.sideB.map(nationName).map(esc).join(', ') || '—') + ' · winner gains ' + effEcho(WE.competitive.winEffects) + '</div>';
