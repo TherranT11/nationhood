@@ -2985,7 +2985,7 @@
       var RES = ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy'];
       // The tradeable on-hand stockpile resources (no Diplomacy; Military is on-hand only).
       var ONHAND_RES = ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Military'];
-      var EFF_TGT = { Crisis: ['Crisis Meter'], National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Income', 'Regime'], Government: ['Government Confidence', 'Party Popularity'], Resource: RES, 'On hand': ONHAND_RES.map(function (r) { return r + ' on hand'; }) };
+      var EFF_TGT = { Crisis: ['Crisis Meter', 'End Crisis'], National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Income', 'Regime'], Government: ['Government Confidence', 'Party Popularity'], Resource: RES, 'On hand': ONHAND_RES.map(function (r) { return r + ' on hand'; }) };
 
       // The crisis's custom stats that have a name — ONE source for every dropdown/preview
       // that lists them (effect targets, endIf targets, thresholds, preview).
@@ -3014,7 +3014,7 @@
       function eff(t, v) { return { t: t, v: v }; }
       function signed(v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); }
       function effScaleStr(e) { return isMoneyTarget(e.t) ? (e.scale === 'perm' ? ' /M pop' : e.scale === 'pop' ? ' ×pop×prosp' : '') : ''; }
-      function effStr(e) { if (e.t === 'Budget' || e.t === 'Debt') return e.t + ' ' + (e.v > 0 ? '+' : '−') + '₣' + Math.abs(e.v) + 'B' + effScaleStr(e); if (e.t === 'Crisis Meter') return 'Crisis ' + signed(e.v); return tgtLabel(e.t) + ' ' + signed(e.v) + effScaleStr(e); }
+      function effStr(e) { if (e.t === 'End Crisis') return 'End the crisis'; if (e.t === 'Budget' || e.t === 'Debt') return e.t + ' ' + (e.v > 0 ? '+' : '−') + '₣' + Math.abs(e.v) + 'B' + effScaleStr(e); if (e.t === 'Crisis Meter') return 'Crisis ' + signed(e.v); return tgtLabel(e.t) + ' ' + signed(e.v) + effScaleStr(e); }
       function newAction(type) { return { type: type, decision: '', ministry: 'Interior', cause: '', cost: [], mech: 'roll', direct: [eff('Crisis Meter', -2)], stat: 'Charisma', needed: 12, success: [eff('Crisis Meter', -3)], failure: [eff('Order', -1)], eventSuccess: '', eventFail: '', lawName: '', lawEffect: [eff('Crisis Meter', -4)] }; }
       function blankStage() { return { name: '', desc: '', growth: 1, at: 10, onActivate: [], actions: [] }; }
       function blankCrisis() {

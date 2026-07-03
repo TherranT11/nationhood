@@ -234,6 +234,10 @@ declare v_key text;
 begin
   if (p_eff->>'t') = 'Crisis Meter' then
     update public.nation_crises set meter = greatest(0, meter + coalesce((p_eff->>'v')::numeric, 0)) where id = p_id;
+  elsif (p_eff->>'t') = 'End Crisis' then
+    -- Resolve THIS instance outright (value ignored). The tick re-reads status and announces it;
+    -- from a player/stage action the crisis simply ends. Idempotent — only an active row resolves.
+    update public.nation_crises set status = 'resolved' where id = p_id and status = 'active';
   elsif left(coalesce(p_eff->>'t', ''), 5) = 'stat:' then
     -- A custom crisis stat on THIS instance: nudge stat_values[<name>], clamped 0..100.
     v_key := substr(p_eff->>'t', 6);
@@ -293,16 +297,21 @@ revoke all on function public._apply_stage_activate(uuid, text, jsonb) from publ
 -- live and does nothing, so a nation can't be spawned twice.
 create or replace function public._crisis_spawn_nation(p_origin text, p_new_nation text)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_tick int; v_name text; v_oname text;
+declare v_tick int; v_name text; v_oname text; v_pop numeric;
 begin
   if nullif(p_new_nation, '') is null then return; end if;
-  select name into v_name from public.nations where id = p_new_nation and dormant;
+  select name, population into v_name, v_pop from public.nations where id = p_new_nation and dormant;
   if not found then return; end if;   -- not a dormant nation (gone, or already activated)
   select current_tick into v_tick from public.game_state where id;
   update public.nations
      set dormant = false,
          next_election_tick = coalesce(v_tick, 1) + 1 + floor(random() * 6)::int
    where id = p_new_nation;
+  -- The breakaway's people secede FROM the origin: the origin loses the new nation's population
+  -- (floored at 0). The dormant guard above makes this run once — a re-run finds it already live.
+  update public.nations
+     set population = greatest(0, coalesce(population, 0) - coalesce(v_pop, 0))
+   where id = p_origin;
   select name into v_oname from public.nations where id = p_origin;
   insert into public.events (nation_id, party_id, kind, body, game_date, tone)
   values (p_new_nation, null, 'crisis',
@@ -348,6 +357,18 @@ begin
 end $$;
 revoke all on function public._crisis_emerged_event(text, text) from public, anon, authenticated;
 
+-- The "a crisis has subsided" feed line — ONE source, written both when an endIf resolver holds
+-- and when an End Crisis threshold/effect resolves the instance.
+create or replace function public._crisis_subsided_event(p_nation text, p_name text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.events (nation_id, party_id, kind, body, game_date, tone)
+  values (p_nation, null, 'crisis',
+          'The crisis has subsided: ' || coalesce(p_name, 'Unnamed Crisis') || '.',
+          public.current_game_date(), 'pos');
+end $$;
+revoke all on function public._crisis_subsided_event(text, text) from public, anon, authenticated;
+
 -- The per-tick crisis pass (called by advance_tick, schema/60). FIRE: start any crisis
 -- whose triggers are now met on a nation not already running it (fire-once in Phase 1).
 -- GROW: climb each active crisis's meter by its stage growth (1 | 2 | 1d3); crossing the
@@ -358,7 +379,7 @@ returns void language plpgsql security definer set search_path = public as $$
 declare
   v_n text; v_c record; v_active record; v_new_id uuid;
   v_def jsonb; v_stage jsonb; v_growth text; v_inc numeric; v_at numeric;
-  v_sv jsonb; v_fired jsonb; v_meter numeric;
+  v_sv jsonb; v_fired jsonb; v_meter numeric; v_status text;
 begin
   -- FIRE  (dormant nations are inert — they neither host crises nor get auto-scheduled)
   for v_n in select id from public.nations where not coalesce(dormant, false) loop
@@ -403,17 +424,18 @@ begin
       if v_fired is distinct from v_active.fired_thresholds then
         update public.nation_crises set fired_thresholds = v_fired where id = v_active.id;
       end if;
-      -- Threshold effects may have moved custom stats or the meter — re-read both, so the endIf
-      -- test and the escalation check below see this tick's threshold changes.
-      select stat_values, meter into v_sv, v_meter from public.nation_crises where id = v_active.id;
+      -- Threshold effects may have moved custom stats, the meter, or ended the crisis (an End
+      -- Crisis effect) — re-read all three, so the checks below see this tick's threshold changes.
+      select stat_values, meter, status into v_sv, v_meter, v_status from public.nation_crises where id = v_active.id;
+      if v_status = 'resolved' then   -- an End Crisis threshold effect resolved it this tick
+        perform public._crisis_subsided_event(v_active.nation_id, v_active.definition->>'name');
+        continue;
+      end if;
       -- "Crisis immediately ends if": resolvers checked next, so even a persistent terminal
       -- crisis can subside once the nation (or a custom stat) recovers past an endIf threshold.
       if public._crisis_resolve_met(v_active.nation_id, v_active.definition, v_sv) then
         update public.nation_crises set status = 'resolved' where id = v_active.id;
-        insert into public.events (nation_id, party_id, kind, body, game_date, tone)
-        values (v_active.nation_id, null, 'crisis',
-                'The crisis has subsided: ' || coalesce(v_active.definition->>'name', 'Unnamed Crisis') || '.',
-                public.current_game_date(), 'pos');
+        perform public._crisis_subsided_event(v_active.nation_id, v_active.definition->>'name');
         continue;
       end if;
       if v_active.stage >= 5 then continue; end if;   -- terminal: inert until Phase 2
