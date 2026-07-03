@@ -3897,6 +3897,9 @@
         });
       }
       function iRefreshCorps() { IN.corps = {}; iQualifying().forEach(function (c) { IN.corps[c.id] = true; }); }
+      // The qualifying corps the admin has ticked — ONE source for the preview list and the saved
+      // executors, so "which firms carry it out" is computed in exactly one place.
+      function iChosen() { return iQualifying().filter(function (c) { return IN.corps[c.id]; }); }
       function iNatName(id) { var n = INAT.filter(function (x) { return x.id === id; })[0]; return n ? (n.name || id) : id; }
 
       function iRenderResource() { document.getElementById('i-resource').innerHTML = RESOURCES.map(function (r) { return '<option' + (r === IN.resource ? ' selected' : '') + '>' + r + '</option>'; }).join(''); }
@@ -3944,7 +3947,7 @@
       }
       function iRenderPreview() {
         var col = 'var(--' + IN.resource.toLowerCase() + ')';
-        var chosen = iQualifying().filter(function (c) { return IN.corps[c.id]; }).map(function (c) { return c.name; });
+        var chosen = iChosen().map(function (c) { return c.name; });
         var execTxt = !IN.ownership ? '—' : ((IN.ownership === 'private' ? 'Private' : 'State') + ' · ' + (chosen.length ? chosen.join(', ') : 'direct programme'));
         var costTxt = IN.ownership ? ('$' + iEffCost() + 'B') : ('$' + IN.cost + 'B');
         var fxTxt = IN.ownership === 'private' ? '+1 Growth' : IN.ownership === 'state' ? '−1–2 Unemployment · −1–2 Inflation' : '—';
@@ -3999,7 +4002,7 @@
           name: IN.name.trim(), description: IN.description.trim(),
           resource: IN.resource, quantity: IN.quantity, cadence: IN.cadence,
           cost: IN.cost, lengthMonths: [IN.minM, IN.maxM], ownership: IN.ownership,
-          executors: iQualifying().filter(function (c) { return IN.corps[c.id]; }).map(function (c) { return c.id; }),
+          executors: iChosen().map(function (c) { return c.id; }),
           eligibleNations: IN.global ? '*' : Object.keys(IN.nations).filter(function (k) { return IN.nations[k]; }),
           startEvent: IN.startEvent.trim(), finishEvent: IN.finishEvent.trim()
         };
