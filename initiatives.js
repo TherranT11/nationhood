@@ -65,8 +65,9 @@ export async function fetchNationInitiatives(nationId){
   } catch(e){ return { active:null, available:[], corps:[], nation:{} }; }
 }
 
-// Render into `el`. ctx = { amPM, currentTick, onEnact(initiativeId, ownership, corpId|null) }. Only
-// the head of government sees the enact controls; everyone sees the running programme + what's available.
+// Render into `el`. ctx = { canEnact, currentTick, onEnact(initiativeId, ownership, corpId|null) }.
+// Only the Minister of Economic Development (canEnact) sees the enact controls; everyone sees the
+// running programme + what's available.
 export function renderNationInitiatives(el, data, ctx){
   if(!el) return; injectCss(); ctx = ctx || {};
   var html='';
@@ -87,7 +88,7 @@ export function renderNationInitiatives(el, data, ctx){
     html += '<div class="nini" data-init="'+esc(row.id)+'"><div class="nini__name">'+esc(d.name||'Initiative')+'</div>'+
       '<div class="nini__meta">'+(lm[0]!=null?lm[0]:'?')+'–'+(lm[1]!=null?lm[1]:'?')+' mo'+(d.cadence==='recurring'?' · recurring':'')+'</div>'+
       '<span class="nini__gain">+'+(d.quantity||0)+' '+esc(d.resource||'')+'</span>';
-    if(ctx.amPM){
+    if(ctx.canEnact){
       // The Minister picks the execution model. State needs one of the nation's own SO firms in an
       // authorised sector; private lets firms bid (no executor picked).
       var so=(data.corps||[]).filter(function(c){ return c.type==='so' && secs.indexOf(c.category)>=0; });
@@ -105,7 +106,7 @@ export function renderNationInitiatives(el, data, ctx){
     }
     html += '</div>';
   });
-  el.innerHTML = html || '<p class="nini-empty">No initiatives available'+(ctx.amPM?'':' — your Head of Government enacts these')+'.</p>';
+  el.innerHTML = html || '<p class="nini-empty">No initiatives available'+(ctx.canEnact?'':' — your Minister of Economic Development enacts these')+'.</p>';
 
   el.querySelectorAll('.nini[data-init]').forEach(function(card){
     var priv=card.querySelector('.nini__opt[data-own="private"]');

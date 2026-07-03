@@ -1,11 +1,21 @@
--- 141 · National Initiatives — RUNTIME. The head of government enacts an authored initiative
--- (schema/140): the treasury pays its cost over a rolled duration, then it lands a PERMANENT
--- production increase. On-enact effects: private → +1 Growth; state → −1D2 Unemployment & Inflation.
--- One initiative at a time per nation. A one-time initiative is gone once carried out here; a
--- recurring one can be enacted again after it completes.
+-- 141 · National Initiatives — RUNTIME. The Minister of Economic Development enacts an authored
+-- initiative (schema/140): the treasury pays its cost over a rolled duration, then it lands a
+-- PERMANENT production increase. On-enact effects: private → +1 Growth; state → −1D2 Unemployment
+-- & Inflation. One initiative at a time per nation. A one-time initiative is gone once carried out
+-- here; a recurring one can be enacted again after it completes.
 -- Depends on: 140 (national_initiatives), 91 (_apply_policy_effect / _nation_budget_add /
--- _nation_stat_add), 40 (_begin_action), 47 (corporations), 60 (advance_tick hook). Run after 140.
+-- _nation_stat_add), 40 (_begin_action), 47 (corporations), 60 (advance_tick hook),
+-- 114 (_party_holds_ministry). Run after 140.
 -- ===========================================================================
+
+-- Is the signed-in player's party the Minister of Economic Development? Drives the home action
+-- container + the enact controls in the National Initiatives panel. Mirrors is_trade_minister
+-- (schema/114) through the shared _party_holds_ministry helper.
+create or replace function public.is_economic_development_minister()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select public._party_holds_ministry(id, 'Economic Development') from public.parties where user_id = auth.uid()), false);
+$$;
+grant execute on function public.is_economic_development_minister() to authenticated;
 
 -- Per-nation live initiative instances. World-readable (players see progress, like nation_crises);
 -- NO client writes — only the enact RPC + tick (both security definer) touch it.
@@ -28,8 +38,8 @@ create policy "nation_initiatives_select_all" on public.nation_initiatives for s
 -- (No insert/update/delete policy: clients never write; the enact RPC + tick are security definer.)
 
 -- ---------------------------------------------------------------------------
--- initiative_enact(initiative, ownership, corp): the head of government starts a national initiative.
--- Gated to the formateur of the active government; costs 2 party actions. The enacting Minister
+-- initiative_enact(initiative, ownership, corp): the Minister of Economic Development starts a
+-- national initiative. Gated to the party holding that portfolio; costs 2 party actions. The Minister
 -- picks the execution model — 'private' (corporations bid, −20%, +1 Growth) or 'state' (the nation's
 -- own state-owned firm in an authorised sector, +25%, −1D2 Unemployment & Inflation). Rolls the
 -- duration in [min,max], applies that model's on-enact effects, and books the instance (its cost
@@ -50,8 +60,8 @@ begin
 
   select * into v_gov from public.governments where nation_id = v_nation and status = 'active';
   if not found then raise exception 'There is no sitting government to enact an initiative.'; end if;
-  if v_gov.formateur_party_id is distinct from v_p.id then
-    raise exception 'Only the head of government can enact a national initiative.';
+  if not public._party_holds_ministry(v_p.id, 'Economic Development') then
+    raise exception 'Only the Minister of Economic Development can enact a national initiative.';
   end if;
 
   select definition into v_def from public.national_initiatives where id = p_initiative;
