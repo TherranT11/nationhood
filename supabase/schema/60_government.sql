@@ -551,6 +551,11 @@ begin
     begin perform public.resolve_election(v_n); v_count := v_count + 1;
     exception when others then raise warning 'tick %: election failed for nation % — %', v_tick, v_n, sqlerrm; end;
   end loop;
+  -- Auto-apply any triggered National Modifier: a modifier with start conditions "fires off"
+  -- on every non-dormant nation that now meets them all (schema/70). Runs before the lift so a
+  -- nation that both qualifies and has met the end conditions ends up without it.
+  begin perform public._apply_modifier_triggers(v_tick);
+  exception when others then raise warning 'tick %: modifier triggers failed — %', v_tick, sqlerrm; end;
   -- Lift any assigned National Modifier whose end conditions are all met (schema/70).
   delete from public.nation_modifiers nm
    where public._modifier_end_met(nm.modifier_id, nm.nation_id, nm.since_tick, v_tick);

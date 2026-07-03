@@ -83,11 +83,27 @@ create table if not exists public.modifier_end_conditions (
 );
 create index if not exists modifier_end_conditions_modifier_idx on public.modifier_end_conditions (modifier_id);
 
+-- Start (trigger) conditions: a modifier that has at least one of these AUTO-APPLIES to any
+-- non-dormant nation whose live state satisfies every one of them (AND, not OR) — it "fires
+-- off on any nation that fits the bill". Same shape as end conditions (a nation later lifts it
+-- once its end conditions all hold, so trigger + end form a hysteresis loop). 'duration' is not
+-- a valid start type — the nation isn't carrying the modifier yet, so there's no clock to age.
+create table if not exists public.modifier_start_conditions (
+  id           uuid primary key default gen_random_uuid(),
+  modifier_id  uuid not null references public.national_modifiers (id) on delete cascade,
+  cond_type    text not null,                 -- stat | regime | resource | economy | confidence
+  cond_op      text not null default 'gte',   -- gte (at or above) | lte (at or below)
+  cond_key     text,                          -- stat / resource / economy metric; null for regime, confidence
+  cond_value   numeric not null default 0     -- the threshold (rank, raw value, or %)
+);
+create index if not exists modifier_start_conditions_modifier_idx on public.modifier_start_conditions (modifier_id);
+
 -- RLS: world-readable (the game reads them to enforce, the admin UI to display);
 -- only the admin writes. Mirrors the nations table.
 alter table public.national_modifiers enable row level security;
 alter table public.modifier_effects    enable row level security;
 alter table public.modifier_end_conditions enable row level security;
+alter table public.modifier_start_conditions enable row level security;
 alter table public.nation_modifiers    enable row level security;
 
 drop policy if exists "nm_select_all"   on public.national_modifiers;
@@ -116,6 +132,15 @@ drop policy if exists "mec_update_admin" on public.modifier_end_conditions;
 create policy "mec_update_admin" on public.modifier_end_conditions for update using (public.is_admin()) with check (public.is_admin());
 drop policy if exists "mec_delete_admin" on public.modifier_end_conditions;
 create policy "mec_delete_admin" on public.modifier_end_conditions for delete using (public.is_admin());
+
+drop policy if exists "msc_select_all"   on public.modifier_start_conditions;
+create policy "msc_select_all"   on public.modifier_start_conditions for select using (true);
+drop policy if exists "msc_insert_admin" on public.modifier_start_conditions;
+create policy "msc_insert_admin" on public.modifier_start_conditions for insert with check (public.is_admin());
+drop policy if exists "msc_update_admin" on public.modifier_start_conditions;
+create policy "msc_update_admin" on public.modifier_start_conditions for update using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "msc_delete_admin" on public.modifier_start_conditions;
+create policy "msc_delete_admin" on public.modifier_start_conditions for delete using (public.is_admin());
 
 drop policy if exists "nmod_select_all"   on public.nation_modifiers;
 create policy "nmod_select_all"   on public.nation_modifiers for select using (true);
@@ -218,48 +243,92 @@ $$;
 -- live nation state; called by advance_tick() (schema/60). p_since = the tick the
 -- modifier became active on this nation (for 'duration'); p_tick = the new tick.
 -- ===========================================================================
+-- One condition (from either the start or end table) tested against a nation's live state:
+-- true when the nation's current value for cond_type/cond_key satisfies cond_op vs cond_value.
+-- ONE source for the metric mapping — shared by the start-trigger and end-lift evaluators.
+-- 'duration' (months active) needs the since/current tick; a start condition passes p_since =
+-- null and never uses it. Unknown type or a missing/non-numeric value → unmet.
+create or replace function public._modifier_cond_met(p_nation text, p_type text, p_op text, p_key text, p_value numeric, p_since int, p_tick int)
+returns boolean language plpgsql stable security definer set search_path = public as $$
+declare v_n public.nations%rowtype; v_cur numeric;
+begin
+  select * into v_n from public.nations where id = p_nation;
+  if not found then return false; end if;
+  case p_type
+    when 'stat'       then v_cur := public._to_num(v_n.stats      ->> p_key);
+    when 'regime'     then v_cur := public._to_num(v_n.economy    ->> 'regime');
+    when 'resource'   then v_cur := public._to_num(v_n.production ->> p_key);
+    when 'economy'    then
+      v_cur := case p_key
+                 when 'gdp'        then v_n.gdp::numeric
+                 when 'population' then v_n.population
+                 else public._to_num(v_n.economy ->> p_key)
+               end;
+    when 'confidence' then
+      select g.confidence into v_cur from public.governments g
+        where g.nation_id = p_nation and g.status = 'active';
+    when 'duration'   then v_cur := case when p_since is null then null else p_tick - p_since end;  -- months active (end only)
+    else return false;                                  -- unknown condition → never satisfied
+  end case;
+  if v_cur is null then return false; end if;           -- no value to test → condition unmet
+  if p_op = 'gte' then return v_cur >= p_value; else return v_cur <= p_value; end if;
+end $$;
+
+-- True when a modifier should be LIFTED from a nation: it has at least one end condition AND
+-- every one is satisfied. p_since = the tick it became active on this nation (for 'duration').
 create or replace function public._modifier_end_met(p_mod uuid, p_nation text, p_since int, p_tick int)
-returns boolean
-language plpgsql
-stable
-security definer
-set search_path = public
-as $$
-declare
-  v_n public.nations%rowtype; c record; v_cur numeric; v_total int;
+returns boolean language plpgsql stable security definer set search_path = public as $$
+declare c record; v_total int;
 begin
   select count(*) into v_total from public.modifier_end_conditions where modifier_id = p_mod;
   if v_total = 0 then return false; end if;          -- no conditions → never auto-ends
-  select * into v_n from public.nations where id = p_nation;
-  if not found then return false; end if;
-
   for c in select * from public.modifier_end_conditions where modifier_id = p_mod loop
-    v_cur := null;
-    case c.cond_type
-      when 'stat'       then v_cur := public._to_num(v_n.stats      ->> c.cond_key);
-      when 'regime'     then v_cur := public._to_num(v_n.economy    ->> 'regime');
-      when 'resource'   then v_cur := public._to_num(v_n.production ->> c.cond_key);
-      when 'economy'    then
-        v_cur := case c.cond_key
-                   when 'gdp'        then v_n.gdp::numeric
-                   when 'population' then v_n.population
-                   else public._to_num(v_n.economy ->> c.cond_key)
-                 end;
-      when 'confidence' then
-        select g.confidence into v_cur from public.governments g
-          where g.nation_id = p_nation and g.status = 'active';
-      when 'duration'   then v_cur := p_tick - p_since;   -- months active
-      else return false;                                  -- unknown condition → never satisfied
-    end case;
-    if v_cur is null then return false; end if;           -- no value to test → condition unmet
-    if c.cond_op = 'gte' then
-      if v_cur < c.cond_value then return false; end if;
-    else  -- 'lte'
-      if v_cur > c.cond_value then return false; end if;
+    if not public._modifier_cond_met(p_nation, c.cond_type, c.cond_op, c.cond_key, c.cond_value, p_since, p_tick) then
+      return false;
     end if;
   end loop;
   return true;   -- every condition satisfied
 end $$;
+
+-- True when a modifier should be APPLIED to a nation: it has at least one start condition AND
+-- every one is satisfied. The nation isn't carrying it yet, so p_since is null and any
+-- 'duration' start condition is unmet (the builder doesn't offer that type for triggers).
+create or replace function public._modifier_start_met(p_mod uuid, p_nation text, p_tick int)
+returns boolean language plpgsql stable security definer set search_path = public as $$
+declare c record; v_total int;
+begin
+  select count(*) into v_total from public.modifier_start_conditions where modifier_id = p_mod;
+  if v_total = 0 then return false; end if;          -- no start conditions → never auto-applies
+  for c in select * from public.modifier_start_conditions where modifier_id = p_mod loop
+    if not public._modifier_cond_met(p_nation, c.cond_type, c.cond_op, c.cond_key, c.cond_value, null, p_tick) then
+      return false;
+    end if;
+  end loop;
+  return true;
+end $$;
+
+-- Auto-apply every triggered modifier: for each modifier carrying start conditions, add it
+-- (stamped this tick) to any non-dormant nation that now meets them all. Called by advance_tick
+-- (schema/60) just before the end-lift, so a nation that both qualifies AND has met the end
+-- conditions ends up without it (the lift wins). on-conflict keeps an existing assignment's
+-- since_tick intact — a nation already carrying it isn't re-stamped.
+create or replace function public._apply_modifier_triggers(p_tick int)
+returns void language plpgsql security definer set search_path = public as $$
+declare r record;
+begin
+  for r in
+    select m.modifier_id, n.id as nation_id
+      from (select distinct modifier_id from public.modifier_start_conditions) m
+      cross join public.nations n
+     where not coalesce(n.dormant, false)
+       and public._modifier_start_met(m.modifier_id, n.id, p_tick)
+  loop
+    insert into public.nation_modifiers (nation_id, modifier_id, since_tick)
+      values (r.nation_id, r.modifier_id, p_tick)
+      on conflict do nothing;
+  end loop;
+end $$;
+revoke all on function public._apply_modifier_triggers(int) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Passive per-tick stat effects: every nation's active modifiers apply their signed

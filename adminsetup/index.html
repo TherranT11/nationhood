@@ -674,6 +674,9 @@
             <div id="m-effects"></div>
             <button class="btn btn-ghost" type="button" id="m-addEffect" style="margin-top:8px">+ Add effect</button>
             <div class="modsummary"><div class="modsummary__h">What this modifier does</div><ul id="m-sumList" class="mcard__efflist"></ul></div>
+            <label style="margin-top:12px">Trigger conditions <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">— the modifier auto-applies to ANY non-dormant nation that meets ALL of these (none = only manual assignment)</span></label>
+            <div id="m-startconds"></div>
+            <button class="btn btn-ghost" type="button" id="m-addStartCond" style="margin-top:8px">+ Add trigger condition</button>
             <label style="margin-top:12px">End conditions <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">— the modifier lifts itself once ALL of these are met (none = stays until removed)</span></label>
             <div id="m-endconds"></div>
             <button class="btn btn-ghost" type="button" id="m-addCond" style="margin-top:8px">+ Add end condition</button>
@@ -3935,7 +3938,7 @@
     })();
 
     // ---- National Modifiers (admin CRUD; writes go straight to the tables via is_admin RLS) ----
-    var modEditing = null, modsCache = [], assignCache = {}, effectsCache = {}, condsCache = {};   // *Cache: modifier_id -> [...]
+    var modEditing = null, modsCache = [], assignCache = {}, effectsCache = {}, condsCache = {}, startCondsCache = {};   // *Cache: modifier_id -> [...]
     var EFFECT_TYPES = [
       { v: 'archetype_pop_ceiling', label: 'Archetype Popularity Ceiling', target: 'archetype' },
       { v: 'archetype_pop_floor',   label: 'Archetype Popularity Floor',   target: 'archetype' },
@@ -4097,6 +4100,10 @@
     ];
     var ECONOMY = ['unemployment', 'inflation', 'budget', 'debt', 'gdp', 'population'];
     var COND_OPTS = CONDITION_TYPES.map(function (t) { return '<option value="' + t.v + '">' + esc(t.label) + '</option>'; }).join('');
+    // Trigger (start) conditions can't test 'months active' — the nation isn't carrying the
+    // modifier yet, so there's no clock to age — so that option is dropped from the picker.
+    var START_COND_OPTS = CONDITION_TYPES.filter(function (t) { return t.base !== 'duration'; })
+      .map(function (t) { return '<option value="' + t.v + '">' + esc(t.label) + '</option>'; }).join('');
     function condInfo(v) { return CONDITION_TYPES.filter(function (x) { return x.v === v; })[0] || { base: 'stat', op: 'gte', target: 'none', label: v }; }
     function niceKey(k) { return k === 'gdp' ? 'GDP' : k === 'image' ? statName(k) : cap(k); } // one source for a metric/stat key's label
     function condKeyOpts(target) {
@@ -4123,16 +4130,18 @@
       sel.innerHTML = condKeyOpts(target);
       if (prev) sel.value = prev;
     }
-    function addCondRow(c) {
+    // The cond-row builder is shared by the trigger (start) and end lists — pass the container
+    // and its option set (start drops 'duration'). ONE source for both; the DB tables mirror.
+    function addCondRow(container, c, optsHtml) {
       c = c || {};
       var row = document.createElement('div');
       row.className = 'effrow';
       row.innerHTML =
-        '<div><label>When</label><select class="cond-type">' + COND_OPTS + '</select></div>' +
+        '<div><label>When</label><select class="cond-type">' + (optsHtml || COND_OPTS) + '</select></div>' +
         '<div><label>Target</label><select class="cond-key"></select></div>' +
         '<div><label>Value</label><input class="cond-value" type="number" step="0.1" value="0"></div>' +
         '<button class="eff-del" type="button" aria-label="Remove condition">&times;</button>';
-      document.getElementById('m-endconds').appendChild(row);
+      container.appendChild(row);
       var typeSel = row.querySelector('.cond-type');
       if (c.cond_type) typeSel.value = c.cond_type + '_' + (c.cond_op || 'gte');
       typeSel.addEventListener('change', function () { syncCondKey(row); });
@@ -4142,12 +4151,12 @@
       row.querySelector('.eff-del').addEventListener('click', function () { row.remove(); }); // conditions are optional → no auto re-add
       return row;
     }
-    function setCondRows(cs) {
-      document.getElementById('m-endconds').innerHTML = '';
-      (cs || []).forEach(addCondRow);   // none = no rows (end conditions are optional)
+    function setCondRows(container, cs, optsHtml) {
+      container.innerHTML = '';
+      (cs || []).forEach(function (c) { addCondRow(container, c, optsHtml); });   // none = no rows (optional)
     }
-    function readCondRows() {
-      return Array.prototype.slice.call(document.querySelectorAll('#m-endconds .effrow')).map(function (row) {
+    function readCondRows(container) {
+      return Array.prototype.slice.call(container.querySelectorAll('.effrow')).map(function (row) {
         var info = condInfo(row.querySelector('.cond-type').value);
         return {
           cond_type: info.base, cond_op: info.op,
@@ -4156,7 +4165,9 @@
         };
       });
     }
-    document.getElementById('m-addCond').addEventListener('click', function () { addCondRow(); });
+    var startCondsBox = document.getElementById('m-startconds'), endCondsBox = document.getElementById('m-endconds');
+    document.getElementById('m-addCond').addEventListener('click', function () { addCondRow(endCondsBox); });
+    document.getElementById('m-addStartCond').addEventListener('click', function () { addCondRow(startCondsBox, null, START_COND_OPTS); });
 
     function renderModNations(selected) {
       var box = document.getElementById('m-nations'), sel = selected || [];
@@ -4177,11 +4188,14 @@
         if (eEffs) throw eEffs;
         const { data: conds, error: eConds } = await supabase.from('modifier_end_conditions').select('*');
         if (eConds) throw eConds;
+        const { data: starts, error: eStarts } = await supabase.from('modifier_start_conditions').select('*');
+        if (eStarts) throw eStarts;
         modsCache = mods || [];
-        assignCache = {}; effectsCache = {}; condsCache = {};
+        assignCache = {}; effectsCache = {}; condsCache = {}; startCondsCache = {};
         (links || []).forEach(function (l) { (assignCache[l.modifier_id] = assignCache[l.modifier_id] || []).push(l.nation_id); });
         (effs || []).forEach(function (x) { (effectsCache[x.modifier_id] = effectsCache[x.modifier_id] || []).push(x); });
         (conds || []).forEach(function (x) { (condsCache[x.modifier_id] = condsCache[x.modifier_id] || []).push(x); });
+        (starts || []).forEach(function (x) { (startCondsCache[x.modifier_id] = startCondsCache[x.modifier_id] || []).push(x); });
         if (!modsCache.length) { box.innerHTML = '<p class="empty">No modifiers yet.</p>'; return; }
         box.innerHTML = modsCache.map(function (m) {
           var effRows = (effectsCache[m.id] || []).map(function (x) {
@@ -4189,12 +4203,14 @@
             return '<li>' + esc(effInfo(x.effect_type).label) + (kl ? ' · ' + esc(kl) : '') + ' · ' + esc(String(x.effect_value)) + '</li>';
           }).join('');
           var condRows = (condsCache[m.id] || []).map(function (c) { return '<li>' + esc(condText(c)) + '</li>'; }).join('');
+          var startRows = (startCondsCache[m.id] || []).map(function (c) { return '<li>' + esc(condText(c)) + '</li>'; }).join('');
           var names = (assignCache[m.id] || []).map(function (nid) { var n = nationsCache.filter(function (x) { return x.id === nid; })[0]; return n ? n.name : nid; });
           return '<div class="mcard ' + esc(m.color || 'yellow') + '"><div class="mcard__top"><div>' +
             '<div class="mcard__name">' + esc(m.name) + '</div><ul class="mcard__efflist">' + (effRows || '<li>No effects</li>') + '</ul></div>' +
             '<div class="mcard__btns"><button class="ed" type="button" data-id="' + esc(m.id) + '">Edit</button>' +
             '<button class="rm" type="button" data-id="' + esc(m.id) + '">Remove</button></div></div>' +
             (m.description ? '<div class="mcard__desc">' + esc(m.description) + '</div>' : '') +
+            (startRows ? '<div class="mcard__nations">Triggers when ALL: <ul class="mcard__efflist">' + startRows + '</ul></div>' : '') +
             '<div class="mcard__nations">' + (condRows ? 'Ends when ALL: <ul class="mcard__efflist">' + condRows + '</ul>' : 'No end conditions — stays until removed') + '</div>' +
             '<div class="mcard__nations">' + (names.length ? 'Assigned: ' + esc(names.join(', ')) : 'Not assigned to any nation') + '</div></div>';
         }).join('');
@@ -4209,7 +4225,8 @@
       document.getElementById('m-color').value = m.color || 'yellow';
       document.getElementById('m-desc').value = m.description || '';
       setEffectRows(effectsCache[m.id] || []);
-      setCondRows(condsCache[m.id] || []);
+      setCondRows(startCondsBox, startCondsCache[m.id] || [], START_COND_OPTS);
+      setCondRows(endCondsBox, condsCache[m.id] || []);
       renderModNations(assignCache[m.id] || []);
       document.getElementById('modFormTitle').textContent = 'Edit ' + (m.name || 'Modifier');
       document.getElementById('modBtn').textContent = 'Save changes';
@@ -4222,7 +4239,8 @@
       document.getElementById('modForm').reset();
       document.getElementById('m-color').value = 'yellow';
       setEffectRows([]);
-      setCondRows([]);
+      setCondRows(startCondsBox, []);
+      setCondRows(endCondsBox, []);
       renderModNations([]);
       document.getElementById('modFormTitle').textContent = 'Add Modifier';
       document.getElementById('modBtn').textContent = 'Add Modifier';
@@ -4239,7 +4257,8 @@
       if (!name) { modNote.textContent = 'Enter a modifier name.'; modNote.className = 'note error'; return; }
       var effects = readEffectRows();
       if (!effects.length) { modNote.textContent = 'Add at least one effect.'; modNote.className = 'note error'; return; }
-      var conditions = readCondRows();   // end conditions are optional
+      var startConditions = readCondRows(startCondsBox);   // trigger conditions are optional
+      var conditions = readCondRows(endCondsBox);          // end conditions are optional
       var row = {
         name: name,
         color: document.getElementById('m-color').value,
@@ -4272,6 +4291,13 @@
         if (conditions.length) {
           const { error: eInsC } = await supabase.from('modifier_end_conditions').insert(conditions.map(function (c) { return { modifier_id: id, cond_type: c.cond_type, cond_op: c.cond_op, cond_key: c.cond_key, cond_value: c.cond_value }; }));
           if (eInsC) throw eInsC;
+        }
+        // Reset trigger (start) conditions to exactly the rows on screen (may be none).
+        const { error: eDelS } = await supabase.from('modifier_start_conditions').delete().eq('modifier_id', id);
+        if (eDelS) throw eDelS;
+        if (startConditions.length) {
+          const { error: eInsS } = await supabase.from('modifier_start_conditions').insert(startConditions.map(function (c) { return { modifier_id: id, cond_type: c.cond_type, cond_op: c.cond_op, cond_key: c.cond_key, cond_value: c.cond_value }; }));
+          if (eInsS) throw eInsS;
         }
         // Reset the assignment to the checked set, preserving since_tick for nations
         // that stay (so a 'duration' clock isn't restarted by an unrelated edit);
