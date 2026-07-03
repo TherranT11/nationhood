@@ -2048,8 +2048,8 @@
         fetchNationInitiatives(party.nation_id).then(function(data){
           renderNationInitiatives(document.getElementById('homeInitiatives'), data, {
             amPM: amPM, currentTick: curTick,
-            onEnact: function(id, corp){
-              performAction(function(){ return supabase.rpc('initiative_enact', { p_initiative: id, p_corp: corp }); },
+            onEnact: function(id, own, corp){
+              performAction(function(){ return supabase.rpc('initiative_enact', { p_initiative: id, p_ownership: own, p_corp: corp }); },
                 function(d){ return 'Initiative under way — completes in ~' + d.months + ' month' + (d.months===1?'':'s') + '.'; })
                 .then(function(){ loadInitiatives(); });
             }
