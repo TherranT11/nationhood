@@ -104,7 +104,7 @@ set search_path = public
 as $$
 declare
   v_seats int; v_form_arch text; v_members uuid[];
-  v_govt_seats int; v_contra int; v_maj int; v_crises int := 0; v_conf int; v_gid uuid; v_mod_form numeric; v_ceil numeric;
+  v_govt_seats int; v_contra int; v_maj int; v_crises int := 0; v_conf int; v_gid uuid; v_mod_form numeric; v_ceil numeric; v_obj uuid;
   v_base int := case when p_type = 'minority' then 30 else 50 end;  -- minority govts start lower
 begin
   select coalesce(legislature_seats, 0) into v_seats from public.nations where id = p_nation;
@@ -156,6 +156,9 @@ begin
   if p_source is not null then
     insert into public.government_agenda (government_id, type, params, status)
       select v_gid, type, params, 'pending' from public.negotiation_terms where negotiation_id = p_source;
+    -- …and takes on the national objective the host queued for it, if any (schema/139).
+    select objective_id into v_obj from public.negotiations where id = p_source;
+    if v_obj is not null then perform public._agenda_add(v_gid, v_obj); end if;
   end if;
 
   return v_conf;
@@ -520,6 +523,10 @@ begin
   -- Confidence on the sitting government. Self-filters to January, a no-op the other eleven months.
   begin perform public._resolve_vacant_cabinet(v_tick);
   exception when others then raise warning 'tick %: vacant-cabinet penalty failed — %', v_tick, sqlerrm; end;
+  -- Empty agenda (schema/139): each January, a government holding no national objectives loses
+  -- −3% Government Confidence and −2% Party Popularity. Self-filters to January.
+  begin perform public._resolve_agenda_neglect(v_tick);
+  exception when others then raise warning 'tick %: agenda-neglect penalty failed — %', v_tick, sqlerrm; end;
   -- Military builds (schema/129): every tick, matured Expand orders deliver typed units to bases.
   begin perform public._resolve_military_builds(v_tick);
   exception when others then raise warning 'tick %: military builds failed — %', v_tick, sqlerrm; end;

@@ -454,26 +454,6 @@
   .evtab .ev .eff{margin-top:11px}
   .evtab .feed .empty{border:1px dashed var(--line2);border-radius:13px;padding:34px 18px;text-align:center;color:var(--soft);font-size:13px;font-style:italic}
 
-  /* Wiki (Nationpedia) authoring tab. Scoped under .wktab so generic names don't collide. */
-  .wktab .sub code{font-family:'Space Mono',monospace;font-size:11px;background:var(--chip);padding:1px 5px;border-radius:5px}
-  /* top bar: new + existing-article chips */
-  .wktab .wkbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
-  .wktab .wknew{flex:none;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);border:1px solid transparent;border-radius:9px;padding:9px 14px;cursor:pointer}
-  .wktab .wknew:hover{filter:brightness(.97)}
-  .wktab .wklist{display:flex;flex-wrap:wrap;gap:6px}
-  .wktab .wklist .empty{font-style:italic;color:var(--soft);font-size:12.5px}
-  .wktab .wkitem{display:inline-flex;align-items:baseline;gap:7px;border:1px solid var(--line2);background:var(--surface);border-radius:8px;padding:6px 11px;cursor:pointer;font-size:13px}
-  .wktab .wkitem:hover{border-color:var(--indigo)}
-  .wktab .wkitem.on{border-color:var(--indigo);background:var(--indigo-soft)}
-  .wktab .wkitem b{font-weight:700}
-  .wktab .wkitem span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
-  /* editor | preview split */
-  .wktab .wksplit{display:grid;grid-template-columns:minmax(320px,440px) 1fr;gap:22px;align-items:start}
-  .wktab .wksplit > *{min-width:0}
-  .wktab .wkpv-col{position:sticky;top:16px}
-  .wktab .wkpv-hd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);font-weight:700;margin:0 0 10px}
-  .wktab .wkpv{border:1px solid var(--line);border-radius:14px;padding:24px clamp(16px,2vw,28px);background:var(--surface);overflow:hidden;max-height:none}
-  @media(max-width:900px){.wktab .wksplit{grid-template-columns:1fr}.wktab .wkpv-col{position:static}}
   @media(max-width:720px){.adminbody{flex-direction:column}.vtabs{flex-direction:row;flex-wrap:wrap;width:auto;position:static}}
   @media(max-width:560px){.wrap2{padding:28px 16px 64px}}
   /* Corporations tab — admin Creator for firms (corporations table). */
@@ -596,7 +576,6 @@
         <button class="vtab" data-tab="corporations" type="button">Corporations</button>
         <button class="vtab" data-tab="world-events" type="button">World Events</button>
         <button class="vtab" data-tab="world-map" type="button">World Map</button>
-        <button class="vtab" data-tab="wiki" type="button">Wiki</button>
       </nav>
       <div class="tabwrap">
       <div class="tabpane" data-tab="nations">
@@ -856,7 +835,7 @@
                     <div class="f"><label>Objective name</label><input type="text" id="obName"></div>
                     <div class="f"><label>Description</label><textarea id="obDesc"></textarea></div>
                     <div class="f"><label>Number of ticks <span class="hint">turns the nation has to complete it</span></label><input type="number" min="1" step="1" id="obTicks"></div>
-                    <div class="f" style="margin-bottom:0"><label>Assigned nation <span class="hint">the nation that must complete this objective</span></label><select id="obNation"></select></div>
+                    <div class="f" style="margin-bottom:0"><label>For nation <span class="hint">which nation may take this on — it’s assigned to a government in-game, not here</span></label><select id="obNation"></select></div>
                   </div>
                   <div class="card">
                     <div class="sechd">Objective — complete when ALL conditions hold</div>
@@ -1048,7 +1027,8 @@
                       <option value="bidding">Bidding</option>
                       <option value="turning_point">Turning Point</option>
                     </select></div>
-                    <div class="f" style="margin-bottom:0"><label>Description <span class="hint" id="weDescHint">the prompt players see</span></label><textarea id="weDesc"></textarea></div>
+                    <div class="f"><label>Description <span class="hint" id="weDescHint">the prompt players see</span></label><textarea id="weDesc"></textarea></div>
+                    <div class="f" style="margin-bottom:0"><label>Resolution description <span class="hint">shown when the event ends · tokens: {event}, {winner}, {loser}, {winning_side}</span></label><textarea id="weResolution" placeholder="e.g. {winner} seized the prize while {loser} came away with nothing."></textarea></div>
                   </div>
                   <div class="card" id="weNationsCard"><!-- filled by renderNationsCard (varies by type) --></div>
                   <div class="card" id="weTypeBox"><!-- filled by renderType --></div>
@@ -1087,22 +1067,6 @@
           <div class="wm-inspect" id="wmInspect" hidden></div>
         </div>
       </div>
-      <div class="tabpane" data-tab="wiki" hidden>
-        <div class="wktab">
-          <p class="sub" style="margin:0 0 14px">Write Nationpedia articles — players read them under <b>Wiki</b>. The preview updates as you type. Markup: <code>[[Title]]</code> or <code>[[Title|label]]</code> to link another article, <code>**bold**</code>, <code>[1]</code> for a reference marker, and a blank line for a new paragraph.</p>
-          <div class="wkbar">
-            <button class="wknew" id="wkNew" type="button">+ New article</button>
-            <div class="wklist" id="wkList"><span class="empty">Loading…</span></div>
-          </div>
-          <div class="wksplit">
-            <div id="wkFormHost"></div>
-            <div class="wkpv-col">
-              <div class="wkpv-hd">Live preview</div>
-              <div class="wkpv wk-article" id="wkPreview"><div class="wk-empty">Enter a title to preview…</div></div>
-            </div>
-          </div>
-        </div>
-      </div>
       </div><!-- /tabwrap -->
     </div><!-- /adminbody -->
   </div>
@@ -1117,7 +1081,7 @@
     import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget, polTgtLabel } from '/policies.js';
     import { CONV_ROMAN, convRoman, adoptLines, activeLines, lawLines } from '/convictions.js';
     import { MINISTRIES } from '/ministries.js';
-    import { mountWikiEditor } from '/wiki-editor.js';
+    import { condText as objCondText, rewardText as objRewardText } from '/objectives.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
@@ -1815,7 +1779,6 @@
         if (tab === 'corporations') loadCorporations();
         if (tab === 'world-events') loadWorldEvents();
         if (tab === 'world-map') initWorldMap();
-        if (tab === 'wiki') initWiki();
       });
     });
 
@@ -1866,50 +1829,6 @@
       } catch (e) { document.getElementById('pactNote').textContent = e.message || 'Couldn’t remove the pact.'; }
     }
     document.getElementById('pactAdd').addEventListener('click', addPact);
-
-    // ---- Wiki (Nationpedia) authoring (admin; wiki_articles table, RLS) ----------------------
-    // The article list + the shared structured editor (/wiki-editor.js) — the SAME editor the
-    // player page mounts, so there is one source for authoring. Clicking a list chip loads it into
-    // the editor; "+ New article" blanks it. Admins may delete (canDelete) and edit anything (the
-    // is_admin RLS in schema/105 is the real gate).
-    var WK = { rows: [], inited: false };
-    var WK_EDITOR = null;
-    function renderWkList() {
-      var list = document.getElementById('wkList');
-      if (!WK.rows.length) { list.innerHTML = '<span class="empty">No articles yet.</span>'; return; }
-      list.innerHTML = WK.rows.map(function (r) {
-        return '<button class="wkitem" type="button" data-id="' + r.id + '"><b>' + esc(r.title) + '</b><span>' + esc(r.kind || '') + '</span></button>';
-      }).join('');
-      list.querySelectorAll('[data-id]').forEach(function (b) {
-        b.onclick = function () { var r = WK.rows.find(function (x) { return x.id === b.dataset.id; }); if (r && WK_EDITOR) WK_EDITOR.loadRow(r); };
-      });
-    }
-    async function loadWiki() {
-      var list = document.getElementById('wkList'); list.innerHTML = '<span class="empty">Loading…</span>';
-      const { data, error } = await supabase.from('wiki_articles').select('id, title, kind, definition').order('title');
-      if (error) { list.innerHTML = '<span class="empty">Could not load articles.</span>'; return; }
-      WK.rows = data || []; renderWkList();
-    }
-    function initWiki() {
-      if (!WK.inited) {
-        WK.inited = true;
-        WK_EDITOR = mountWikiEditor({
-          supabase: supabase,
-          host: document.getElementById('wkFormHost'),
-          previewEl: document.getElementById('wkPreview'),
-          knownTitles: function () { return new Set(WK.rows.map(function (r) { return r.title.toLowerCase(); })); },
-          userId: null,       // admin inserts: author_id stays null; is_admin RLS bypasses the own-check
-          canDelete: true,
-          onSaved: function (title) {
-            loadWiki().then(function () {
-              if (title) { var saved = WK.rows.find(function (r) { return r.title.toLowerCase() === String(title).toLowerCase(); }); if (saved) WK_EDITOR.loadRow(saved); }
-            });
-          }
-        });
-        document.getElementById('wkNew').onclick = function () { WK_EDITOR.newArticle(); };
-      }
-      loadWiki();
-    }
 
     // ---- World Map editor (admin; world_hexes table, is_admin RLS) -------------------
     // A field of pointy-top axial hexes. A hex row exists only when it's land or carries
@@ -3433,8 +3352,6 @@
       var OBJ = null, objEditingId = null, objSaving = false, objCache = [], objNations = [], objContinents = [], objHexes = [];
 
       var n = function (v) { return Number(v) || 0; };
-      var sgn = function (v) { return (n(v) > 0 ? '+' : n(v) < 0 ? '−' : '') + Math.abs(n(v)); };
-      var money = function (v) { return (n(v) >= 0 ? '+' : '−') + '₣' + Math.abs(n(v)) + 'B'; };
       function natName(id) { var m = objNations.filter(function (x) { return x.id === id; })[0]; return (m && m.name) || id || '—'; }
       // A hex is keyed by its axial coords "q,r"; its option/preview label is its map name (or
       // the coords) plus the nation that holds it.
@@ -3516,7 +3433,7 @@
         ds.oninput = function (e) { OBJ.desc = e.target.value; renderObjPreview(); };
         tk.oninput = function (e) { OBJ.ticks = Math.max(1, parseInt(e.target.value, 10) || 1); renderObjPreview(); };
         var nt = document.getElementById('obNation');
-        nt.innerHTML = '<option value="">Any nation — unassigned</option>' + objNations.map(function (na) {
+        nt.innerHTML = '<option value="">Any nation — available to all</option>' + objNations.map(function (na) {
           return '<option value="' + esc(na.id) + '"' + (OBJ.nation === na.id ? ' selected' : '') + '>' + esc(na.name || na.id) + '</option>';
         }).join('');
         nt.onchange = function () { OBJ.nation = this.value || ''; renderObjPreview(); };
@@ -3559,36 +3476,10 @@
       function renderRewards() { renderRows(OBJ.rewards, 'obRewards', REWARD_DEFS, REWARD_ORDER, renderRewards, null); }
 
       // ----- preview rail: render each condition/reward as a readable line -----
-      function condText(c) {
-        switch (c.kind) {
-          case 'stat_up': return 'Increase ' + c.stat + ' by ' + n(c.amount);
-          case 'stat_down': return 'Decrease ' + c.stat + ' by ' + n(c.amount);
-          case 'prod_up': return 'Increase ' + c.resource + ' production by ' + n(c.amount);
-          case 'budget': return 'Hold at least ₣' + n(c.amount) + 'B Budget';
-          case 'debt_down': return 'Reduce Debt by ' + n(c.pct) + '%';
-          case 'fdi': return 'Hold FDI tokens in at least ' + n(c.count) + ' countr' + (n(c.count) === 1 ? 'y' : 'ies');
-          case 'trade': return 'Keep at least ' + n(c.count) + ' Trade Agreement' + (n(c.count) === 1 ? '' : 's') + ' active';
-          case 'mil_dom': return 'Hold more Military in ' + (c.continent || '—') + ' than any other nation';
-          case 'gdp_up': return 'Grow GDP by ' + n(c.pct) + '%';
-          case 'allies': return 'Have ' + n(c.count) + ' all' + (n(c.count) === 1 ? 'y' : 'ies') + ' in ' + (c.continent || '—');
-          case 'units': return 'Field more than ' + n(c.count) + ' ' + c.unit;
-          case 'relations': return 'Relations with ' + natName(c.nation) + ' above ' + n(c.value);
-          case 'seize': return 'Seize territory ' + hexLabel(c.hex);
-        }
-        return '';
-      }
-      function rewardText(r) {
-        switch (r.kind) {
-          case 'popularity': return sgn(r.amount) + ' Party Popularity';
-          case 'confidence': return sgn(r.amount) + ' Government Confidence';
-          case 'onhand': return sgn(r.amount) + ' ' + r.resource + ' on hand';
-          case 'budget': return money(r.amount) + ' Budget';
-          case 'relations': return sgn(r.amount) + ' Relations with ' + natName(r.nation);
-          case 'debt': return money(r.amount) + ' Debt';
-          case 'stat': return sgn(r.amount) + ' ' + r.stat;
-        }
-        return '';
-      }
+      // Condition / reward text via the shared one source (/objectives.js); nation + hex lookups
+      // are this page's, injected as context.
+      function condText(c) { return objCondText(c, { natName: natName, hexLabel: hexLabel }); }
+      function rewardText(r) { return objRewardText(r, { natName: natName }); }
       function renderObjPreview() {
         var box = document.getElementById('obPrev'); if (!box || !OBJ) return;
         var conds = '<div class="pvobj"><div class="tl">' + whoPrefix(OBJ.nation) + 'Complete within ' + n(OBJ.ticks) + ' tick' + (n(OBJ.ticks) === 1 ? '' : 's') + ' — all of</div>' +
@@ -3639,16 +3530,20 @@
       function effStr(e) { var v = Number(e.v) || 0, s = (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); return (e.t === 'Budget' || e.t === 'Debt' || e.t === 'Income') ? e.t + ' ' + (v >= 0 ? '+' : '−') + '₣' + Math.abs(v) + 'B' : esc(e.t || '?') + ' ' + s; }
 
       function blankEvent() {
-        return { name: 'New World Event', image: '', type: 'decision', scope: 'nations', nations: [], desc: '',
+        return { name: 'New World Event', image: '', type: 'decision', scope: 'nations', nations: [], desc: '', resolution: '',
           options: [{ label: 'Option A', effects: [] }, { label: 'Option B', effects: [] }],
           mutual: { contribution: [], effects: [] }, competitive: { stat: 'Budget', sideA: [], sideB: [], winEffects: [] },
-          bidding: { resources: ['Military'], threshold: 3, winEffects: [], zeroEffects: [], perBid: { per: 0, effects: [] }, aftermath: {} }, turning: { effects: [] } };
+          bidding: { resources: ['Military'], threshold: 3, winEffects: [], zeroEffects: [], perBid: { per: 0, effects: [] }, hasSides: false, sides: [], aftermath: {} }, turning: { effects: [] } };
       }
+      // Transient side ids — used only as DOM/selector keys within a session (sides carry no
+      // cross-reload reference), so they're regenerated on every normalize from this counter.
+      var weSideSeq = 0;
       // Harden the shape so an older/partial row can't crash the editor.
       function normalizeEvent(def) {
         var d = (def && typeof def === 'object') ? def : blankEvent();
         d.type = TYPE_LABEL[d.type] ? d.type : 'decision';
         d.scope = d.scope === 'global' ? 'global' : 'nations';
+        d.resolution = typeof d.resolution === 'string' ? d.resolution : '';
         d.nations = Array.isArray(d.nations) ? d.nations : [];
         d.options = (Array.isArray(d.options) && d.options.length >= 2) ? d.options : [{ label: 'Option A', effects: [] }, { label: 'Option B', effects: [] }];
         d.options.forEach(function (o) { o.label = o.label || ''; o.effects = Array.isArray(o.effects) ? o.effects : []; });
@@ -3671,6 +3566,16 @@
         d.bidding.perBid.per = Number(d.bidding.perBid.per) || 0;
         d.bidding.perBid.effects = Array.isArray(d.bidding.perBid.effects) ? d.bidding.perBid.effects : [];
         d.bidding.aftermath = (d.bidding.aftermath && typeof d.bidding.aftermath === 'object') ? d.bidding.aftermath : {};
+        // Sides (optional): factions involved nations back. When bidding resolves, the side
+        // backed by the winning bidder prevails and its supporters share its winEffects. Side ids
+        // are transient DOM keys only, so regenerate them here.
+        d.bidding.hasSides = !!d.bidding.hasSides;
+        d.bidding.sides = (Array.isArray(d.bidding.sides) ? d.bidding.sides : []).map(function (s) {
+          s = (s && typeof s === 'object') ? s : {};
+          return { id: 'sd' + (++weSideSeq), name: String(s.name || ''), desc: String(s.desc || ''),
+                   supporters: (s.supporters && typeof s.supporters === 'object') ? s.supporters : {},
+                   winEffects: Array.isArray(s.winEffects) ? s.winEffects : [] };
+        });
         return d;
       }
       function nationName(id) { var n = NATIONS.filter(function (x) { return x.id === id; })[0]; return n ? (n.name || n.id) : id; }
@@ -3707,8 +3612,12 @@
         if (WE.type === 'decision' && (!WE.options[0].label.trim() || !WE.options[1].label.trim())) { setWeNote('Both decision options need a label.', 'error'); return; }
         if (WE.type === 'competitive' && !WE.competitive.stat) { setWeNote('Pick the stat the competitive event is bid on.', 'error'); return; }
         if (WE.type === 'bidding' && !WE.bidding.resources.length) { setWeNote('Pick at least one resource nations can bid with.', 'error'); return; }
-        // Drop aftermath effects for nations no longer involved, so a removed nation can't linger.
-        if (WE.type === 'bidding') { var keep = {}; WE.nations.forEach(function (id) { if (WE.bidding.aftermath[id]) keep[id] = WE.bidding.aftermath[id]; }); WE.bidding.aftermath = keep; }
+        // Drop aftermath effects — and side supporters — for nations no longer involved, so a
+        // removed nation can't linger in the saved definition.
+        if (WE.type === 'bidding') {
+          var keep = {}; WE.nations.forEach(function (id) { if (WE.bidding.aftermath[id]) keep[id] = WE.bidding.aftermath[id]; }); WE.bidding.aftermath = keep;
+          WE.bidding.sides.forEach(function (s) { var sup = {}; WE.nations.forEach(function (id) { if (s.supporters[id]) sup[id] = true; }); s.supporters = sup; });
+        }
         if (WE.type === 'turning_point') WE.scope = 'global';   // a turning point always hits every nation
         if (weSaving) return; weSaving = true; setWeNote('Saving…');
         try {
@@ -3775,10 +3684,11 @@
         WE = normalizeEvent(def); weEditingId = id || null;
         weSeeded = !!(weCache.filter(function (r) { return r.id === id; })[0] || {}).seeded;
         var panel = document.getElementById('weEditorPanel'); panel.hidden = false; setWeNote('');
-        var nm = document.getElementById('weName'), ds = document.getElementById('weDesc'), ty = document.getElementById('weType');
-        nm.value = WE.name || ''; ds.value = WE.desc || ''; ty.value = WE.type;
+        var nm = document.getElementById('weName'), ds = document.getElementById('weDesc'), ty = document.getElementById('weType'), rs = document.getElementById('weResolution');
+        nm.value = WE.name || ''; ds.value = WE.desc || ''; ty.value = WE.type; rs.value = WE.resolution || '';
         nm.oninput = function (e) { WE.name = e.target.value; renderPreview(); };
         ds.oninput = function (e) { WE.desc = e.target.value; renderPreview(); };
+        rs.oninput = function (e) { WE.resolution = e.target.value; renderPreview(); };
         ty.onchange = function (e) { WE.type = e.target.value; renderDescHint(); renderNationsCard(); renderType(); renderFire(); renderPreview(); };
         document.getElementById('weImgFile').onchange = function (e) { weUpload(e.target.files && e.target.files[0]); };
         document.getElementById('weImgClear').onclick = function () { WE.image = ''; renderImg(); renderPreview(); };
@@ -3839,6 +3749,7 @@
       // listSel keys the array: 'opt0' | 'opt1' | 'mutual' | 'turning'.
       function effArr(sel) {
         if (sel && sel.indexOf('baft:') === 0) { var nid = sel.slice(5); if (!Array.isArray(WE.bidding.aftermath[nid])) WE.bidding.aftermath[nid] = []; return WE.bidding.aftermath[nid]; }
+        if (sel && sel.indexOf('bside:') === 0) { var sd = WE.bidding.sides.filter(function (x) { return x.id === sel.slice(6); })[0]; return sd ? sd.winEffects : []; }
         return sel === 'opt0' ? WE.options[0].effects : sel === 'opt1' ? WE.options[1].effects : sel === 'mcontrib' ? WE.mutual.contribution : sel === 'mutual' ? WE.mutual.effects
           : sel === 'cwin' ? WE.competitive.winEffects : sel === 'bwin' ? WE.bidding.winEffects : sel === 'bzero' ? WE.bidding.zeroEffects : sel === 'bperbid' ? WE.bidding.perBid.effects : WE.turning.effects;
       }
@@ -3858,6 +3769,23 @@
           row.querySelector('.we-ex').onclick = function () { arr.splice(i, 1); renderType(); renderPreview(); };
         });
         root.querySelector('.we-eadd').onclick = function () { arr.push({ t: 'Order', v: 1 }); renderType(); renderPreview(); };
+      }
+
+      // Bidding "sides" authoring: name/description/supporters + a per-side win-effects list.
+      function biddingSidesHtml() {
+        var body = WE.bidding.sides.map(function (s) {
+          var sup = WE.nations.length
+            ? '<div class="natgrid">' + WE.nations.map(function (nid) { return '<label class="natchk"><input type="checkbox" class="we-sup" data-side="' + esc(s.id) + '" value="' + esc(nid) + '"' + (s.supporters[nid] ? ' checked' : '') + '>' + esc(nationName(nid)) + '</label>'; }).join('') + '</div>'
+            : '<p class="hint">Pick involved nations above to mark supporters.</p>';
+          return '<div class="weopt">' +
+            '<div class="f" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input class="we-sidename" data-side="' + esc(s.id) + '" type="text" placeholder="Side name" value="' + esc(s.name) + '" style="flex:1">' +
+              '<button class="xb we-sidedel" data-side="' + esc(s.id) + '" type="button" title="Remove side">×</button></div>' +
+            '<textarea class="we-sidedesc" data-side="' + esc(s.id) + '" placeholder="Describe this side…" style="width:100%;min-height:46px;margin-bottom:8px">' + esc(s.desc) + '</textarea>' +
+            '<div class="hint" style="margin-bottom:4px">Supporting nations</div>' + sup +
+            '<p class="hint" style="margin:10px 0 6px">If this side wins → supporters receive</p>' + effListHtml('bside:' + s.id) +
+          '</div>';
+        }).join('');
+        return '<div id="weSides">' + body + '<button class="add sm" id="weSideAdd" type="button">+ Add side</button></div>';
       }
 
       function renderType() {
@@ -3888,6 +3816,8 @@
             '<div class="f"><label>Threshold <span class="hint">minimum total staked to award a winner; below it, idle nations are penalised</span></label><input id="weBidThresh" type="number" min="0" step="any" value="' + (Number(WE.bidding.threshold) || 0) + '"></div>' +
             '<p class="hint" style="margin:12px 0 6px">Threshold met → reward to the highest bidder (ties share it).</p>' + effListHtml('bwin') +
             '<div class="f" style="margin-top:12px;margin-bottom:6px"><label>Threshold met · per-bid bonus <span class="hint">for every N units the winner staked (0 = off), it ALSO gains the effects below, scaled by that count</span></label><input id="weBidPer" type="number" min="0" step="any" value="' + (Number(WE.bidding.perBid.per) || 0) + '"></div>' + effListHtml('bperbid') +
+            '<div class="f" style="margin-top:16px;margin-bottom:6px"><label class="natchk" style="font-weight:600"><input type="checkbox" id="weBidHasSides"' + (WE.bidding.hasSides ? ' checked' : '') + '> This event has sides <span class="hint">factions involved nations back; when the winning bidder’s side prevails, its supporters share a reward</span></label></div>' +
+            (WE.bidding.hasSides ? biddingSidesHtml() : '') +
             '<p class="hint" style="margin:12px 0 6px">Threshold missed → penalty to each nation that staked nothing.</p>' + effListHtml('bzero') +
             '<p class="hint" style="margin:12px 0 6px">Aftermath → applied to each involved nation whatever the outcome.</p>' +
               (WE.nations.length ? WE.nations.map(function (nid) { return '<div class="weopt"><div class="hint" style="margin-bottom:6px">' + esc(nationName(nid)) + '</div>' + effListHtml('baft:' + nid) + '</div>'; }).join('')
@@ -3895,6 +3825,12 @@
           box.querySelectorAll('.we-bres').forEach(function (c) { c.onchange = function () { toggleIn(WE.bidding.resources, c.value, c.checked); renderPreview(); }; });
           document.getElementById('weBidThresh').oninput = function (e) { WE.bidding.threshold = +e.target.value || 0; renderPreview(); };
           document.getElementById('weBidPer').oninput = function (e) { WE.bidding.perBid.per = +e.target.value || 0; renderPreview(); };
+          var weHasSides = document.getElementById('weBidHasSides'); if (weHasSides) weHasSides.onchange = function (e) { WE.bidding.hasSides = e.target.checked; renderType(); renderPreview(); };
+          box.querySelectorAll('.we-sidename').forEach(function (inp) { inp.oninput = function () { var s = WE.bidding.sides.filter(function (x) { return x.id === inp.dataset.side; })[0]; if (s) { s.name = inp.value; renderPreview(); } }; });
+          box.querySelectorAll('.we-sidedesc').forEach(function (t) { t.oninput = function () { var s = WE.bidding.sides.filter(function (x) { return x.id === t.dataset.side; })[0]; if (s) s.desc = t.value; }; });
+          box.querySelectorAll('.we-sup').forEach(function (c) { c.onchange = function () { var s = WE.bidding.sides.filter(function (x) { return x.id === c.dataset.side; })[0]; if (s) { if (c.checked) s.supporters[c.value] = true; else delete s.supporters[c.value]; renderPreview(); } }; });
+          box.querySelectorAll('.we-sidedel').forEach(function (b) { b.onclick = function () { WE.bidding.sides = WE.bidding.sides.filter(function (x) { return x.id !== b.dataset.side; }); renderType(); renderPreview(); }; });
+          var weSideAdd = document.getElementById('weSideAdd'); if (weSideAdd) weSideAdd.onclick = function () { WE.bidding.sides.push({ id: 'sd' + (++weSideSeq), name: '', desc: '', supporters: {}, winEffects: [] }); renderType(); renderPreview(); };
           box.querySelectorAll('.weeffs').forEach(function (el) { bindEffList(el, el.dataset.list); });
         } else {   // turning_point
           box.innerHTML = '<div class="sechd">Turning Point <span class="hint">fires at once with no player action; hits every nation</span></div>' +
@@ -3914,6 +3850,7 @@
           '<div class="pvrow hint">' + (TYPE_LABEL[WE.type] || WE.type) + ' · ' + (WE.type === 'turning_point' || WE.scope === 'global' ? 'Global' : (WE.nations.length + ' nation' + (WE.nations.length === 1 ? '' : 's'))) + '</div>';
         if (WE.image) rows += '<div class="pvrow"><img src="' + esc(WE.image) + '" style="max-width:100%;border-radius:8px"></div>';
         if (WE.desc) rows += '<div class="pvrow" style="font-size:13px">' + esc(WE.desc) + '</div>';
+        if (WE.resolution) rows += '<div class="pvrow hint" style="font-style:italic">On resolution: ' + esc(WE.resolution) + '</div>';
         if (WE.type === 'decision') rows += WE.options.map(function (o) { return '<div class="pvrow"><b>' + esc(o.label || '—') + '</b> → ' + effEcho(o.effects); }).join('');
         else if (WE.type === 'mutual') rows += '<div class="pvrow">Each contributes ' + effEcho(WE.mutual.contribution) + ' · both gain ' + effEcho(WE.mutual.effects) + '</div>';
         else if (WE.type === 'competitive') rows += '<div class="pvrow">Bid on <b>' + esc(WE.competitive.stat) + '</b> · A: ' + (WE.competitive.sideA.map(nationName).map(esc).join(', ') || '—') + ' vs B: ' + (WE.competitive.sideB.map(nationName).map(esc).join(', ') || '—') + ' · winner gains ' + effEcho(WE.competitive.winEffects) + '</div>';
@@ -3921,6 +3858,7 @@
           rows += '<div class="pvrow">Stake <b>' + (WE.bidding.resources.map(esc).join(' / ') || '—') + '</b> · threshold <b>' + (Number(WE.bidding.threshold) || 0) + '</b></div>' +
             '<div class="pvrow hint">Met → top bidder ' + effEcho(WE.bidding.winEffects) + ' · missed → non-bidders ' + effEcho(WE.bidding.zeroEffects) + '</div>' +
             (Number(WE.bidding.perBid.per) > 0 && WE.bidding.perBid.effects.length ? '<div class="pvrow hint">Per-bid bonus → winner also ' + effEcho(WE.bidding.perBid.effects) + ' for every ' + Number(WE.bidding.perBid.per) + ' staked</div>' : '') +
+            (WE.bidding.hasSides ? WE.bidding.sides.map(function (s) { var sup = WE.nations.filter(function (id) { return s.supporters[id]; }).map(nationName).map(esc).join(', '); return '<div class="pvrow hint">Side <b>' + (esc(s.name) || '—') + '</b> (' + (sup || 'no backers') + ') wins → ' + effEcho(s.winEffects) + '</div>'; }).join('') : '') +
             WE.nations.map(function (nid) { var a = WE.bidding.aftermath[nid] || []; return a.length ? '<div class="pvrow">' + esc(nationName(nid)) + ' → ' + effEcho(a) + '</div>' : ''; }).join('');
         }
         else rows += '<div class="pvrow">Every nation → ' + effEcho(WE.turning.effects) + '</div>';

@@ -24,6 +24,7 @@ create table if not exists public.events (
 alter table public.events add column if not exists effect_target text;     -- e.g. 'Order', 'Government Confidence'
 alter table public.events add column if not exists effect_value  numeric;  -- the signed delta that was applied
 alter table public.events add column if not exists tone          text;     -- 'pos' | 'neg' | 'warn' (pill colour)
+alter table public.events add column if not exists image_url     text;     -- world-event image URL, shown small in the feed
 
 alter table public.events enable row level security;
 drop policy if exists "events_select_all" on public.events;

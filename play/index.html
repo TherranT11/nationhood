@@ -250,6 +250,25 @@
   .feed__eff.pos{color:var(--green,#16915a);background:color-mix(in srgb,var(--green,#16915a) 13%,transparent);border-color:color-mix(in srgb,var(--green,#16915a) 32%,transparent)}
   .feed__eff.neg{color:var(--red,#C42B2B);background:color-mix(in srgb,var(--red,#C42B2B) 13%,transparent);border-color:color-mix(in srgb,var(--red,#C42B2B) 32%,transparent)}
   .feed__eff.warn{color:var(--amber,#E0820E);background:color-mix(in srgb,var(--amber,#E0820E) 14%,transparent);border-color:color-mix(in srgb,var(--amber,#E0820E) 32%,transparent)}
+  .feed__img{display:block;max-width:180px;max-height:88px;width:auto;object-fit:cover;border-radius:8px;border:1px solid var(--line);margin:9px 0 2px}
+
+  /* Agenda — the government's national objectives */
+  .agenda__count{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);font-weight:700}
+  .obj-list{display:flex;flex-direction:column;gap:10px}
+  .obj-card{border:1px solid var(--line);border-radius:12px;padding:13px 15px;background:var(--field,var(--surface))}
+  .obj-card__name{font-weight:800;font-size:15px;letter-spacing:-.01em}
+  .obj-card__meta{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-top:3px}
+  .obj-conds{font-size:13.5px;color:var(--ink);margin:8px 0 2px;line-height:1.5}
+  .obj-rews{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .obj-rew{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--green,#16915a);border:1px solid color-mix(in srgb,var(--green,#16915a) 32%,transparent);background:color-mix(in srgb,var(--green,#16915a) 12%,transparent);border-radius:7px;padding:3px 9px}
+  .obj-card__foot{display:flex;justify-content:flex-end;margin-top:10px}
+  .obj-btn{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;border-radius:9px;padding:8px 14px;cursor:pointer;border:1px solid var(--line)}
+  .obj-btn:disabled{opacity:.5;cursor:default}
+  .obj-drop{background:var(--surface);color:var(--muted)} .obj-drop:hover{border-color:var(--red);color:var(--red)}
+  .obj-add{background:var(--indigo);border-color:var(--indigo);color:#fff} .obj-add:hover{filter:brightness(1.08)}
+  .agenda__addbtn{margin-top:11px;width:100%}
+  .agenda__note{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-top:11px}
+  .obj-empty{color:var(--soft);font-style:italic;font-size:13.5px}
 
   /* World Events panel — a fired decision awaiting this nation's answer. */
   .wevt{border:1px solid var(--line);border-radius:12px;padding:15px 17px;margin-bottom:12px}
@@ -327,6 +346,12 @@
       <div id="wevents"></div>
     </section>
 
+    <!-- Agenda — the government's national objectives (up to three). Hidden until there's a government. -->
+    <section class="panel" id="agendaPanel" hidden>
+      <div class="glance-hd"><span>Agenda</span><span id="agendaCount" class="agenda__count"></span></div>
+      <div id="agendaBody"></div>
+    </section>
+
     <div id="pmbar"></div>
     <div id="tradebar"></div>
     <div id="defencebar"></div>
@@ -380,6 +405,13 @@
   <div class="amodal__panel">
     <div class="amodal__hd"><b>Attack a Rival</b><button class="amodal__x" id="attackClose" type="button" aria-label="Close">&times;</button></div>
     <div class="amodal__list" id="attackList"></div>
+  </div>
+</div>
+
+<div class="amodal" id="agendaModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Add a National Objective</b><button class="amodal__x" id="agendaClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list" id="agendaAvail"></div>
   </div>
 </div>
 
@@ -505,6 +537,7 @@
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
   import { ideologyLabel } from '/archetypes.js';
   import { MINISTRIES } from '/ministries.js';
+  import { condText as objCondText, rewardText as objRewardText } from '/objectives.js';
 
   mountTopbar();   // shared top bar into #topbar + the settings gear (Log out lives there now)
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -566,12 +599,14 @@
       return;
     }
     box.innerHTML = '<ul class="feed">' + list.map(function (it) {
+      // A world event that carries an authored image shows it small, beneath the line.
+      var img = it.img ? '<img class="feed__img" src="' + esc(it.img) + '" alt="" loading="lazy">' : '';
       // A global Turning Point (major) reads as a broadcast: globe + World Event tag, highlighted.
       if (it.major) {
         return '<li class="feed__major"><span class="feed__date">' + esc(it.when) + '</span> &mdash; ' + FEED_GLOBE +
-          '<span class="feed__wetag">World Event</span><span class="feed__mtxt">' + colorize(it.body) + '</span></li>';
+          '<span class="feed__wetag">World Event</span><span class="feed__mtxt">' + colorize(it.body) + '</span>' + img + '</li>';
       }
-      return '<li class="feed__evt"><span class="feed__date">' + esc(it.when) + '</span> &mdash; ' + FEED_FLAG + colorize(it.body) + '</li>';
+      return '<li class="feed__evt"><span class="feed__date">' + esc(it.when) + '</span> &mdash; ' + FEED_FLAG + colorize(it.body) + img + '</li>';
     }).join('') + '</ul>';
   }
   document.querySelectorAll('.evchip').forEach(function (b) {
@@ -582,11 +617,18 @@
   // per party) + stored events (rally outcomes, etc. from the events table),
   // merged newest-first. Founding dates use the frozen game date for now; stored
   // events carry their own game_date.
+  // A feed row's coloured effect pill — one source, shared by the nation and Global loaders.
+  // Admin-fired / world events carry a structured effect; organic events (rallies etc.) have none.
+  function feedEff(e, currency) {
+    return (e.effect_target != null && e.effect_value != null)
+      ? ' <span class="feed__eff ' + esc(e.tone || 'warn') + '"><i>' + esc(eventEffectLabel(e.effect_target, e.effect_value, currency)) + '</i></span>' : '';
+  }
+
   async function loadFeed(nationId, nation, gameDate) {
     var box = document.getElementById('events');
     try {
       const { data: parties } = await supabase.from('parties').select('id, name, created_at').eq('nation_id', nationId);
-      const { data: evs } = await supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone').eq('nation_id', nationId);
+      const { data: evs } = await supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone, image_url').eq('nation_id', nationId);
       // Party Leader names for the formation announcements (one per party).
       var leaderBy = {};
       var pids = (parties || []).map(function (p) { return p.id; });
@@ -603,11 +645,7 @@
       });
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
       (evs || []).forEach(function (e) {
-        // Admin-fired events carry a structured effect → the coloured pill; organic
-        // events (rallies etc.) have none and narrate their outcome in the body.
-        var eff = (e.effect_target != null && e.effect_value != null)
-          ? ' <span class="feed__eff ' + esc(e.tone || 'warn') + '"><i>' + esc(eventEffectLabel(e.effect_target, e.effect_value, currency)) + '</i></span>' : '';
-        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: eventCat(e.kind), major: e.kind === 'world_broadcast', body: esc(e.body) + eff });
+        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: eventCat(e.kind), major: e.kind === 'world_broadcast', img: e.image_url || '', body: esc(e.body) + feedEff(e, currency) });
       });
       items.sort(function (a, b) { return a.created < b.created ? 1 : (a.created > b.created ? -1 : 0); });
       FEED_ITEMS = items;
@@ -616,17 +654,21 @@
     } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load events.</p>'; }
   }
 
-  // The Global feed: world-shaping Turning Points (world_broadcast), which fire to every nation
-  // identically — so they're deduped to one line each, shown with the globe rather than a flag.
+  // The Global feed: every world event that fires — the world-shaping Turning Points
+  // (world_broadcast) plus the interactive world events (world_event) as they resolve. Both fire
+  // to nations identically or per-nation; identical (created_at, body) lines are deduped to one,
+  // shown with the globe rather than a flag. Turning Points read as the major broadcast card.
   async function loadFeedGlobal(gameDate) {
     var box = document.getElementById('events');
     try {
-      const { data: evs } = await supabase.from('events').select('body, game_date, created_at').eq('kind', 'world_broadcast');
+      const { data: evs } = await supabase.from('events')
+        .select('kind, body, game_date, created_at, effect_target, effect_value, tone, image_url')
+        .in('kind', ['world_broadcast', 'world_event']);
       var seen = {}, items = [];
       (evs || []).forEach(function (e) {
         var key = (e.created_at || '') + '|' + (e.body || '');
         if (seen[key]) return; seen[key] = 1;
-        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: 'world', major: true, body: esc(e.body) });
+        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: 'world', major: e.kind === 'world_broadcast', img: e.image_url || '', body: esc(e.body) + feedEff(e, '$') });
       });
       items.sort(function (a, b) { return a.created < b.created ? 1 : (a.created > b.created ? -1 : 0); });
       FEED_ITEMS = items; FEED_FLAG = '';
@@ -871,6 +913,91 @@
     modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
     window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) close(); });
     return close;
+  }
+
+  // ---- Agenda: the government's national objectives (up to AGENDA_CAP; mirrors _agenda_cap()).
+  // Read-only for everyone; the Head of Government (amPM) adds from the nation's pool or drops.
+  // Assign / drop run through the HoG-gated RPCs (schema/139). ----
+  var AGENDA_CAP = 3, agendaBusy = false;
+  var agendaCtx = { govId: null, tick: null, held: [], avail: [] };
+  var closeAgenda = wireModalClose(document.getElementById('agendaModal'), 'agendaClose');
+
+  function objNatName(id) { var m = (FEED_NATIONS || []).filter(function (x) { return x.id === id; })[0]; return (m && m.name) || id || '—'; }
+  // One card for both the panel (mode 'held' → Drop) and the add modal (mode 'avail' → Add).
+  function objCardHtml(o, mode) {
+    var d = o.def || {};
+    var conds = (d.conditions || []).map(function (c) { return esc(objCondText(c, { natName: objNatName })); }).filter(Boolean).join(' &middot; ') || 'No conditions set';
+    var rews = (d.rewards || []).map(function (r) { var t = objRewardText(r, { natName: objNatName }); return t ? '<span class="obj-rew">' + esc(t) + '</span>' : ''; }).join('');
+    var ticks = Number(d.ticks) || 0;
+    var left = (mode === 'held' && o.deadline != null && agendaCtx.tick != null) ? Math.max(0, o.deadline - agendaCtx.tick) : null;
+    var meta = 'Complete within ' + ticks + ' tick' + (ticks === 1 ? '' : 's') + (left != null ? ' &middot; ' + left + ' left' : '');
+    var foot = !amPM ? '' : (mode === 'held'
+      ? '<div class="obj-card__foot"><button class="obj-btn obj-drop" data-drop="' + esc(o.objId) + '" type="button">Drop</button></div>'
+      : '<div class="obj-card__foot"><button class="obj-btn obj-add" data-add="' + esc(o.objId) + '" type="button">Add</button></div>');
+    return '<div class="obj-card"><span class="obj-card__name">' + esc(d.name || 'Untitled objective') + '</span>' +
+      '<div class="obj-card__meta">' + meta + '</div><div class="obj-conds">' + conds + '</div>' +
+      (rews ? '<div class="obj-rews">' + rews + '</div>' : '') + foot + '</div>';
+  }
+
+  function renderAgenda() {
+    var cnt = document.getElementById('agendaCount'), body = document.getElementById('agendaBody');
+    var held = agendaCtx.held;
+    cnt.textContent = held.length + ' / ' + AGENDA_CAP + ' active';
+    var cards = held.length
+      ? '<div class="obj-list">' + held.map(function (o) { return objCardHtml(o, 'held'); }).join('') + '</div>'
+      : '<p class="obj-empty">No objectives on the agenda yet.' + (amPM ? '' : ' Your Head of Government sets it.') + '</p>';
+    var addBtn = (amPM && held.length < AGENDA_CAP && agendaCtx.avail.length)
+      ? '<button class="obj-btn obj-add agenda__addbtn" id="agendaAdd" type="button">+ Add National Objective</button>' : '';
+    var note = (amPM && held.length >= AGENDA_CAP) ? '<div class="agenda__note">Agenda full — drop one to add another.</div>'
+      : (amPM && !agendaCtx.avail.length && held.length < AGENDA_CAP) ? '<div class="agenda__note">No objectives available for your nation yet.</div>' : '';
+    body.innerHTML = cards + addBtn + note;
+    body.querySelectorAll('[data-drop]').forEach(function (b) { b.onclick = function () { agendaAct('objective_drop', b.dataset.drop, b); }; });
+    var add = document.getElementById('agendaAdd'); if (add) add.onclick = openAgendaModal;
+  }
+
+  function openAgendaModal() {
+    var list = document.getElementById('agendaAvail');
+    list.innerHTML = agendaCtx.avail.length
+      ? agendaCtx.avail.map(function (o) { return objCardHtml(o, 'avail'); }).join('')
+      : '<p class="empty">No objectives available for your nation.</p>';
+    list.querySelectorAll('[data-add]').forEach(function (b) { b.onclick = function () { agendaAct('objective_assign', b.dataset.add, b); }; });
+    document.getElementById('agendaModal').hidden = false;
+  }
+
+  async function agendaAct(rpc, objId, btn) {
+    if (agendaBusy) return; agendaBusy = true; if (btn) btn.disabled = true;
+    try {
+      const { error } = await supabase.rpc(rpc, { p_objective: objId });
+      if (error) { ping((error.message) || 'Couldn’t update the agenda.'); if (btn) btn.disabled = false; }
+      else {
+        closeAgenda();
+        ping(rpc === 'objective_assign' ? 'Objective added to your agenda.' : 'Objective dropped.');
+        if (feedCtx) { await loadAgenda(feedCtx.nationId); await refreshFeed(); }
+      }
+    } catch (e) { ping('Couldn’t update the agenda.'); if (btn) btn.disabled = false; }
+    finally { agendaBusy = false; }
+  }
+
+  async function loadAgenda(nationId) {
+    var panel = document.getElementById('agendaPanel');
+    try {
+      const { data: gr } = await supabase.from('governments').select('id').eq('nation_id', nationId).eq('status', 'active').maybeSingle();
+      var govId = gr && gr.id;
+      if (!govId) { panel.hidden = true; agendaCtx = { govId: null, tick: null, held: [], avail: [] }; return; }
+      var tick = null; try { tick = await currentTick(); } catch (e) { tick = null; }
+      const { data: hr } = await supabase.from('government_objectives').select('objective_id, deadline_tick').eq('government_id', govId);
+      const { data: objs } = await supabase.from('objectives').select('id, definition');
+      var held = hr || [], all = objs || [], byId = {};
+      all.forEach(function (o) { byId[o.id] = o.definition || {}; });
+      var heldIds = held.map(function (r) { return r.objective_id; });
+      agendaCtx = {
+        govId: govId, tick: tick,
+        held: held.filter(function (r) { return byId[r.objective_id]; }).map(function (r) { return { objId: r.objective_id, def: byId[r.objective_id], deadline: r.deadline_tick }; }),
+        avail: all.filter(function (o) { var nn = (o.definition && o.definition.nation) || ''; return (nn === '' || nn === nationId) && heldIds.indexOf(o.id) < 0; }).map(function (o) { return { objId: o.id, def: o.definition || {} }; })
+      };
+      renderAgenda();
+      panel.hidden = false;
+    } catch (e) { panel.hidden = true; }
   }
 
   // Run a leader-action RPC: one shared double-fire lock, disable the buttons,
@@ -2005,18 +2132,20 @@
         const { data: dmin } = await supabase.rpc('is_defence_minister'); // my party holds Defence → show the Defence bar
         renderDefenceBar(dmin === true);
       } catch (e) { /* leave the PM bar hidden if the government can't be read */ }
-      // Feed nation selector: Global + every live nation; defaults to the player's own nation.
-      feedView = party.nation_id;
+      // Feed nation selector: Global + every live nation; defaults to Global (the whole world's
+      // events, world events included), with each nation's own feed one selection away.
+      feedView = 'global';
       try { const { data: nats } = await supabase.from('nations').select('id, name').eq('dormant', false).order('name'); FEED_NATIONS = nats || []; } catch (e) { FEED_NATIONS = []; }
       var fsel = document.getElementById('feedNation');
       if (fsel) {
-        fsel.innerHTML = '<option value="global">🌐 Global</option>' + FEED_NATIONS.map(function (n) {
-          return '<option value="' + esc(n.id) + '"' + (n.id === party.nation_id ? ' selected' : '') + '>' + esc(n.name || n.id) + '</option>';
+        fsel.innerHTML = '<option value="global" selected>🌐 Global</option>' + FEED_NATIONS.map(function (n) {
+          return '<option value="' + esc(n.id) + '">' + esc(n.name || n.id) + '</option>';
         }).join('');
         fsel.onchange = function () { selectFeed(this.value); };
       }
-      await loadFeed(party.nation_id, nation, gameDate);
+      await selectFeed('global');
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
+      loadAgenda(party.nation_id);   // the government's national objectives (non-blocking)
       renderInvites();   // surface any pending coalition invites (non-blocking)
       renderFormation(); // nudge a formateur to the Government page if the window is open
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));

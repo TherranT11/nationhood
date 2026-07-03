@@ -9,7 +9,7 @@ import { supabase } from '/supabase.js';
 // One nested shape for a negotiation and everything hanging off it. Each term
 // carries its author (party_id) and the set of parties that have agreed to it
 // (negotiation_term_agreements) — consensus is computed from that set + the seats.
-const SELECT = 'id, nation_id, host_party_id, status, created_at,' +
+const SELECT = 'id, nation_id, host_party_id, status, created_at, objective_id,' +
   ' negotiation_parties(party_id, status),' +
   ' negotiation_terms(id, party_id, side, type, params, redline, created_at, negotiation_term_agreements(party_id))';
 

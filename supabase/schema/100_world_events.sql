@@ -151,7 +151,7 @@ begin
   select formateur_party_id into v_form from public.governments where nation_id = p_nation and status = 'active';
   if not found then raise exception 'There is no sitting government to act for your nation.'; end if;
   if v_form is distinct from p_party then
-    raise exception 'Only the Head of Government can act on world events for your nation.'; end if;
+    raise exception 'Only the Head of Government can do that for your nation.'; end if;
 end $$;
 revoke all on function public._require_hog(text, uuid) from public, anon, authenticated;
 
@@ -218,18 +218,18 @@ begin
       -- 'world_broadcast' notice (globe + World Event tag), never in the action panel. The notice
       -- spells out what it did to every nation.
       perform public._apply_we_effects(v_nat, v_def->'turning'->'effects');
-      insert into public.events (nation_id, kind, body, game_date)
+      insert into public.events (nation_id, kind, body, game_date, image_url)
         values (v_nat, 'world_broadcast',
                 v_body || coalesce(' — All nations: ' || public._we_effects_text(v_def->'turning'->'effects') || '.', ''),
-                public.current_game_date());
+                public.current_game_date(), nullif(v_def->>'image', ''));
     else
-      insert into public.events (nation_id, kind, body, game_date)
+      insert into public.events (nation_id, kind, body, game_date, image_url)
         values (v_nat, 'world_event',
                 v_body || (case v_type when 'mutual' then ' — an agreement awaits in World Events.'
                                        when 'competitive' then ' — a sealed bid awaits in World Events.'
                                        when 'bidding' then ' — a sealed bid awaits in World Events.'
                                        else ' — a decision awaits in World Events.' end),
-                public.current_game_date());
+                public.current_game_date(), nullif(v_def->>'image', ''));
     end if;
   end loop;
 
