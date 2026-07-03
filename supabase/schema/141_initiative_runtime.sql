@@ -40,7 +40,7 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_p public.parties%rowtype; v_gov public.governments%rowtype; v_def jsonb; v_tick int;
   v_nation text; v_elig jsonb; v_dur int; v_minm int; v_maxm int; v_cost numeric;
-  v_own text; v_cadence text; v_id uuid; v_roll int; v_corp uuid;
+  v_own text; v_cadence text; v_id uuid; v_roll int; v_corp uuid; v_model text; v_cur numeric;
 begin
   v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
   if v_p.actions_remaining < 2 then raise exception 'Not enough actions left this turn (need 2).'; end if;
@@ -80,8 +80,24 @@ begin
   v_maxm := greatest(v_minm, coalesce((v_def->'lengthMonths'->>1)::int, v_minm));
   v_dur  := v_minm + floor(random() * (v_maxm - v_minm + 1))::int;   -- roll [min, max] months
 
+  -- Base cost from the authored cost basis (schema/140). 'cost' is reinterpreted per model:
+  --   flat       → $B outright;
+  --   production → $B per current unit of the resource (min one unit, so a 0-output nation still pays the rate);
+  --   gdp        → % of the nation's GDP.
+  -- The scaled models read the nation's live figures (nations.production / nations.gdp — the one
+  -- source), snapshotted here so the instance's cost is fixed for its whole run.
+  v_model := coalesce(v_def->>'costModel', 'flat');
+  v_cost  := coalesce((v_def->>'cost')::numeric, 0);
+  if v_model = 'production' then
+    select coalesce((n.production->>lower(v_def->>'resource'))::numeric, 0) into v_cur
+      from public.nations n where n.id = v_nation;
+    v_cost := greatest(coalesce(v_cur, 0), 1) * v_cost;
+  elsif v_model = 'gdp' then
+    select coalesce(n.gdp, 0) into v_cur from public.nations n where n.id = v_nation;
+    v_cost := round(coalesce(v_cur, 0) * v_cost / 100.0);
+  end if;
+
   -- Effective cost after the ownership adjustment (private −20%, state +25%).
-  v_cost := coalesce((v_def->>'cost')::numeric, 0);
   if     v_own = 'private' then v_cost := round(v_cost * 0.80);
   elsif  v_own = 'state'   then v_cost := round(v_cost * 1.25);
   end if;
