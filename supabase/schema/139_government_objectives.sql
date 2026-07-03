@@ -32,41 +32,50 @@ create policy "government_objectives_select_all" on public.government_objectives
 create or replace function public._agenda_cap()
 returns int language sql immutable as $$ select 3 $$;
 
--- Take on an objective (Head of Government, no action cost). Caps at _agenda_cap() active, and the
--- objective must belong to the nation's pool (definition.nation = this nation, or '' = available to
--- all). Starts the countdown from the current tick.
+-- Put an objective on a government's agenda — the ONE source for "add an objective to a
+-- government", used by the player RPC below AND the coalition auto-add on formation (schema/60).
+-- Best-effort + idempotent: returns false (no error) when the objective is gone, not in the
+-- government's nation pool (definition.nation = its nation or '' = all), the cap is reached, or it
+-- is already held. On success it starts the countdown and drops a feed line. INTERNAL.
+create or replace function public._agenda_add(p_gov uuid, p_objective uuid)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare v_nation text; v_def jsonb; v_onation text; v_tick int; v_ticks int;
+begin
+  if p_gov is null or p_objective is null then return false; end if;
+  select nation_id into v_nation from public.governments where id = p_gov and status = 'active';
+  if v_nation is null then return false; end if;
+  select definition into v_def from public.objectives where id = p_objective;
+  if v_def is null then return false; end if;
+  v_onation := coalesce(v_def->>'nation', '');
+  if v_onation <> '' and v_onation <> v_nation then return false; end if;
+  if (select count(*) from public.government_objectives where government_id = p_gov) >= public._agenda_cap() then return false; end if;
+  if exists (select 1 from public.government_objectives where government_id = p_gov and objective_id = p_objective) then return false; end if;
+
+  select current_tick into v_tick from public.game_state where id;
+  v_ticks := greatest(1, coalesce((v_def->>'ticks')::int, 12));
+  insert into public.government_objectives (government_id, objective_id, started_tick, deadline_tick)
+    values (p_gov, p_objective, v_tick, v_tick + v_ticks);
+  insert into public.events (nation_id, kind, body, game_date)
+    values (v_nation, 'government',
+            'The government took on the objective “' || coalesce(nullif(v_def->>'name', ''), 'a national objective') || '”.',
+            public.current_game_date());
+  return true;
+end $$;
+revoke all on function public._agenda_add(uuid, uuid) from public, anon, authenticated;
+
+-- Take on an objective (Head of Government, no action cost) via the one _agenda_add source.
 create or replace function public.objective_assign(p_objective uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_party public.parties%rowtype; v_gov public.governments%rowtype;
-        v_def jsonb; v_onation text; v_tick int; v_ticks int; v_have int;
 begin
   v_party := public._lock_party();
   select * into v_gov from public.governments where nation_id = v_party.nation_id and status = 'active';
   if not found then raise exception 'There is no sitting government to set an agenda for.'; end if;
   perform public._require_hog(v_party.nation_id, v_party.id);
-
-  select definition into v_def from public.objectives where id = p_objective;
-  if v_def is null then raise exception 'That objective no longer exists.'; end if;
-  v_onation := coalesce(v_def->>'nation', '');
-  if v_onation <> '' and v_onation <> v_party.nation_id then
-    raise exception 'That objective is not available to your nation.'; end if;
-
-  select count(*) into v_have from public.government_objectives where government_id = v_gov.id;
-  if v_have >= public._agenda_cap() then
-    raise exception 'Your government already holds the maximum of % objectives.', public._agenda_cap(); end if;
-  if exists (select 1 from public.government_objectives where government_id = v_gov.id and objective_id = p_objective) then
-    raise exception 'That objective is already on your agenda.'; end if;
-
-  select current_tick into v_tick from public.game_state where id;
-  v_ticks := greatest(1, coalesce((v_def->>'ticks')::int, 12));
-  insert into public.government_objectives (government_id, objective_id, started_tick, deadline_tick)
-    values (v_gov.id, p_objective, v_tick, v_tick + v_ticks);
-
-  insert into public.events (nation_id, party_id, kind, body, game_date)
-    values (v_party.nation_id, v_party.id, 'government',
-            'The government took on the objective “' || coalesce(nullif(v_def->>'name', ''), 'a national objective') || '”.',
-            public.current_game_date());
-  return jsonb_build_object('held', v_have + 1, 'cap', public._agenda_cap());
+  if not public._agenda_add(v_gov.id, p_objective) then
+    raise exception 'Could not add that objective — it may already be on your agenda, the agenda may be full (%), or it is not available to your nation.', public._agenda_cap();
+  end if;
+  return jsonb_build_object('held', (select count(*) from public.government_objectives where government_id = v_gov.id), 'cap', public._agenda_cap());
 end $$;
 grant execute on function public.objective_assign(uuid) to authenticated;
 
@@ -93,6 +102,32 @@ begin
   return jsonb_build_object('dropped', v_gone);
 end $$;
 grant execute on function public.objective_drop(uuid) to authenticated;
+
+-- Coalition auto-add: a negotiation may queue ONE national objective that the new government takes
+-- on the moment it forms (_seat_government, schema/60, calls _agenda_add with this). Plain uuid (no
+-- FK) so this file needn't be ordered after objectives; _agenda_add validates the objective exists.
+alter table public.negotiations add column if not exists objective_id uuid;
+
+-- The host sets (or clears, with null) the objective their coalition will take on if it forms.
+-- Host-only, no action cost; the objective must belong to the negotiation's nation pool.
+create or replace function public.coalition_set_objective(p_neg uuid, p_objective uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_n public.negotiations%rowtype; v_host public.parties%rowtype; v_onation text;
+begin
+  if auth.uid() is null then raise exception 'Not signed in.'; end if;
+  select * into v_n from public.negotiations where id = p_neg;
+  if not found then raise exception 'That negotiation is gone.'; end if;
+  if v_n.status <> 'active' then raise exception 'This agreement is already locked.'; end if;
+  select * into v_host from public.parties where id = v_n.host_party_id;
+  if v_host.user_id is distinct from auth.uid() then raise exception 'Only the host can set the objective.'; end if;
+  if p_objective is not null then
+    select coalesce(definition->>'nation', '') into v_onation from public.objectives where id = p_objective;
+    if not found then raise exception 'That objective no longer exists.'; end if;
+    if v_onation <> '' and v_onation <> v_n.nation_id then raise exception 'That objective is not available to your nation.'; end if;
+  end if;
+  update public.negotiations set objective_id = p_objective where id = p_neg;
+end $$;
+grant execute on function public.coalition_set_objective(uuid, uuid) to authenticated;
 
 -- The yearly cost of an empty agenda: each January, a sitting government holding NO objectives
 -- loses −3% Government Confidence and −2% Party Popularity, through the single _apply_policy_effect

@@ -104,7 +104,7 @@ set search_path = public
 as $$
 declare
   v_seats int; v_form_arch text; v_members uuid[];
-  v_govt_seats int; v_contra int; v_maj int; v_crises int := 0; v_conf int; v_gid uuid; v_mod_form numeric; v_ceil numeric;
+  v_govt_seats int; v_contra int; v_maj int; v_crises int := 0; v_conf int; v_gid uuid; v_mod_form numeric; v_ceil numeric; v_obj uuid;
   v_base int := case when p_type = 'minority' then 30 else 50 end;  -- minority govts start lower
 begin
   select coalesce(legislature_seats, 0) into v_seats from public.nations where id = p_nation;
@@ -156,6 +156,9 @@ begin
   if p_source is not null then
     insert into public.government_agenda (government_id, type, params, status)
       select v_gid, type, params, 'pending' from public.negotiation_terms where negotiation_id = p_source;
+    -- …and takes on the national objective the host queued for it, if any (schema/139).
+    select objective_id into v_obj from public.negotiations where id = p_source;
+    if v_obj is not null then perform public._agenda_add(v_gid, v_obj); end if;
   end if;
 
   return v_conf;

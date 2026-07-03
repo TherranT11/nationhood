@@ -125,6 +125,12 @@
   .crow .cx:hover{color:var(--red)}
   .progress{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin:14px 0 4px}
   .progress b{color:var(--ink)}
+  .objsel{margin-top:14px;padding-top:13px;border-top:1px solid var(--line2)}
+  .objsel label{display:block;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);font-weight:700;margin-bottom:7px}
+  .objsel label small{font-weight:400;letter-spacing:.02em;text-transform:none}
+  .objsel select{width:100%;background:var(--field,var(--surface));border:1px solid var(--line2);color:var(--ink);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13px;cursor:pointer}
+  .objname{font-weight:700;font-size:13.5px;color:var(--ink)}
+  .objnote{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);margin-top:7px}
   .formbtn{width:100%;margin-top:12px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:15px;border-radius:12px;cursor:pointer;color:#fff;background:var(--green);border:1.5px solid var(--green);transition:transform .12s,filter .15s}
   .formbtn:hover{transform:translateY(-1px);filter:brightness(1.05)}
   .formbtn.dis{background:#D9D6D0;border-color:#D9D6D0;cursor:not-allowed;transform:none;filter:none}
@@ -270,7 +276,7 @@
   });return p;}
 
   // ---- state ----
-  var myParty=null, HOST=null, POOL={}, CHAMBER=280, MAJORITY=141, MAXINV=5;
+  var myParty=null, HOST=null, POOL={}, OBJPOOL=[], CHAMBER=280, MAJORITY=141, MAXINV=5;
   var neg=null, amHost=false, myStatus=null, amSeated=false, locked=false;
   // Mid-term [Form Government]: true only when I lead a sitting MINORITY government and
   // I'm not in the post-renege window (that uses the government page's Install instead).
@@ -450,6 +456,18 @@
     });
     html+='<div class="progress"><b>'+c.agreed+'</b> of <b>'+c.total+'</b> terms agreed by all</div>';
 
+    // The national objective this coalition takes on the moment it forms (schema/139). Host sets it
+    // while active; everyone sees the queued one once chosen.
+    var curObj=OBJPOOL.filter(function(o){return o.id===neg.objective_id;})[0];
+    if(amHost && !locked){
+      html+='<div class="objsel"><label>National Objective <small>auto-added when the coalition forms</small></label>'+
+        '<select id="objSel"><option value="">— none —</option>'+
+        OBJPOOL.map(function(o){ return '<option value="'+esc(o.id)+'"'+(o.id===neg.objective_id?' selected':'')+'>'+esc(o.name)+'</option>'; }).join('')+
+        '</select>'+(OBJPOOL.length?'':'<div class="objnote">No objectives authored for your nation yet.</div>')+'</div>';
+    } else if(neg.objective_id && curObj){
+      html+='<div class="objsel"><label>National Objective</label><div class="objname">'+esc(curObj.name)+'</div></div>';
+    }
+
     if(locked){
       html+='<div class="committed">✓ Coalition committed &amp; saved</div>';
       // A minority government's PM can seat this coalition right now (no election).
@@ -496,6 +514,8 @@
     }
     box.innerHTML=html;
     box.querySelectorAll('.cx').forEach(function(x){x.onclick=function(){ removeParty(neg.id,x.dataset.id).then(reload).catch(err); };});
+    var os=box.querySelector('#objSel');
+    if(os) os.onchange=function(){ supabase.rpc('coalition_set_objective',{ p_neg:neg.id, p_objective:os.value||null }).then(function(r){ if(r.error) throw r.error; ping(os.value?'Objective queued for the coalition.':'Objective cleared.'); return reload(); }).catch(err); };
     var wb=box.querySelector('#withdrawBtn'), withdrawing=false;
     if(wb) wb.onclick=function(){ if(withdrawing) return; withdrawing=true; withdrawAgreement(neg.id).then(function(){ ping('Agreement reopened for editing.'); return reload(); }).catch(function(e){ withdrawing=false; err(e); }); };
     var gb=box.querySelector('#formGovBtn'), forming=false;
@@ -611,6 +631,14 @@
         .select('id,name,abbreviation,seats,popularity,archetype').eq('nation_id', party.nation_id);
       POOL={};
       (nparties||[]).forEach(function(p){ POOL[p.id]={id:p.id, abbr:(p.abbreviation||p.name.slice(0,2)).toUpperCase(), name:p.name, archetype:p.archetype, seats:p.seats||0, popularity:Number(p.popularity)||0}; });
+
+      // The national objectives this nation may take on — the pool the host can queue for the
+      // coalition (definition.nation = this nation, or '' = available to all).
+      try {
+        const { data: objs } = await supabase.from('objectives').select('id, definition');
+        OBJPOOL=(objs||[]).filter(function(o){ var nn=(o.definition&&o.definition.nation)||''; return nn===''||nn===party.nation_id; })
+          .map(function(o){ return { id:o.id, name:(o.definition&&o.definition.name)||'Untitled objective' }; });
+      } catch(e){ OBJPOOL=[]; }
 
       // Real other nations for the treaty term (mutate in place — TYPES holds it).
       try {
