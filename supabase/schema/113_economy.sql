@@ -201,4 +201,26 @@ begin
 end $$;
 revoke all on function public._resolve_economy_demands(int) from public, anon, authenticated;
 
+-- Per-nation production-rate ceilings (nations.production_ceiling, schema/10): clamp each nation's
+-- energy/food/minerals production to at most its authored ceiling. Only rows actually OVER the
+-- ceiling are touched (so it writes nothing for the common in-bounds case and never invents a
+-- resource key). Runs each tick right after the modifier bounds (schema/60), so it's a final word
+-- on output alongside a modifier's resource_ceiling — the tighter cap wins. _to_num guards a
+-- non-numeric value from aborting the tick.
+create or replace function public._apply_production_ceilings()
+returns void language plpgsql security definer set search_path = public as $$
+declare r record;
+begin
+  for r in
+    select n.id, v.res, public._to_num(n.production_ceiling->>v.res) as ceil
+      from public.nations n
+      cross join lateral (values ('energy'), ('food'), ('minerals')) as v(res)
+     where public._to_num(n.production_ceiling->>v.res) is not null
+       and public._to_num(n.production->>v.res) > public._to_num(n.production_ceiling->>v.res)
+  loop
+    perform public._nation_stat_add(r.id, 'production', r.res, 0, null, r.ceil);
+  end loop;
+end $$;
+revoke all on function public._apply_production_ceilings() from public, anon, authenticated;
+
 notify pgrst, 'reload schema';

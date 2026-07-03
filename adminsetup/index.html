@@ -638,6 +638,9 @@
           <div><label for="f-services">Services (Production)</label><input id="f-services" type="number" step="any"></div>
           <div><label for="f-diplomacy">Diplomacy (Production)</label><input id="f-diplomacy" type="number" step="any"></div>
           <div><label for="f-military-prod">Military (Production)</label><input id="f-military-prod" type="number" step="any"></div>
+          <div><label for="f-ceil-energy">Energy Ceiling <span class="hint">max production rate</span></label><input id="f-ceil-energy" type="number" min="0" step="any" value="10"></div>
+          <div><label for="f-ceil-food">Food Ceiling <span class="hint">max production rate</span></label><input id="f-ceil-food" type="number" min="0" step="any" value="10"></div>
+          <div><label for="f-ceil-minerals">Minerals Ceiling <span class="hint">max production rate</span></label><input id="f-ceil-minerals" type="number" min="0" step="any" value="10"></div>
         </div>
         <div class="declsec">
           <h3 class="declsec__h">National Identity &amp; Declarations</h3>
@@ -1247,6 +1250,10 @@
       setVal('f-energy', pr.energy); setVal('f-food', pr.food); setVal('f-minerals', pr.minerals);
       setVal('f-goods', pr.goods); setVal('f-services', pr.services); setVal('f-diplomacy', pr.diplomacy);
       setVal('f-military-prod', pr.military);
+      var pc = n.production_ceiling || {};   // production-rate ceilings (default 10 if unset)
+      setVal('f-ceil-energy', pc.energy != null ? pc.energy : 10);
+      setVal('f-ceil-food', pc.food != null ? pc.food : 10);
+      setVal('f-ceil-minerals', pc.minerals != null ? pc.minerals : 10);
       fillDeclFields(n);
       fillPolFields(n);
     }
@@ -1522,6 +1529,12 @@
       var v = float ? parseFloat(raw) : parseInt(raw, 10);
       return isNaN(v) ? 0 : v;
     }
+    // A production ceiling: blank/invalid defaults to 10 (NOT 0 — a 0 ceiling would clamp that
+    // resource's output to zero every tick). Floored at 0. Decimals allowed (production is numeric).
+    function numCeil(id) {
+      var v = parseFloat(document.getElementById(id).value);
+      return isNaN(v) ? 10 : Math.max(0, v);
+    }
 
     document.getElementById('addForm').addEventListener('submit', async function (e) {
       e.preventDefault();
@@ -1569,6 +1582,9 @@
           goods: num('f-goods', true), services: num('f-services', true), military: num('f-military-prod', true),
           diplomacy: num('f-diplomacy', true)
         }),
+        // Per-nation production-rate ceilings for the three raw resources (default 10). The tick
+        // clamps energy/food/minerals output to these (schema/113 _apply_production_ceilings).
+        production_ceiling: { energy: numCeil('f-ceil-energy'), food: numCeil('f-ceil-food'), minerals: numCeil('f-ceil-minerals') },
         declarations: collectDeclarations(),
         policies: collectNationPolicies()
       };
