@@ -2,7 +2,7 @@
 // used by the admin Objectives Builder (adminsetup) and the player Agenda (home page). The two
 // context-dependent lookups — a nation's name and a hex's label — are INJECTED via ctx, since each
 // page holds its own nation + hex data; everything else is self-contained here.
-export function objNum(v) { return Number(v) || 0; }
+function objNum(v) { return Number(v) || 0; }
 function sgn(v) { var x = objNum(v); return (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x); }
 function money(v) { var x = objNum(v); return (x >= 0 ? '+' : '−') + '₣' + Math.abs(x) + 'B'; }
 
