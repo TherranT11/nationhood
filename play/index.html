@@ -596,7 +596,11 @@
     var box = document.getElementById('events');
     try {
       const { data: parties } = await supabase.from('parties').select('id, name, created_at').eq('nation_id', nationId);
-      const { data: evs } = await supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone, image_url').eq('nation_id', nationId);
+      // Falls back to the pre-image_url column set if that column isn't migrated yet, so a stray
+      // schema lag can't silently drop every stored event (rallies, fundraising, etc.).
+      var evsRes = await supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone, image_url').eq('nation_id', nationId);
+      if (evsRes.error) evsRes = await supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone').eq('nation_id', nationId);
+      const evs = evsRes.data;
       // Party Leader names for the formation announcements (one per party).
       var leaderBy = {};
       var pids = (parties || []).map(function (p) { return p.id; });
@@ -629,9 +633,9 @@
   async function loadFeedGlobal(gameDate) {
     var box = document.getElementById('events');
     try {
-      const { data: evs } = await supabase.from('events')
-        .select('kind, body, game_date, created_at, effect_target, effect_value, tone, image_url')
-        .order('created_at', { ascending: false });
+      var evsRes = await supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone, image_url').order('created_at', { ascending: false });
+      if (evsRes.error) evsRes = await supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone').order('created_at', { ascending: false });   // image_url not migrated
+      var evs = evsRes.data;
       var seen = {}, items = [];
       (evs || []).forEach(function (e) {
         if (e.kind === 'world_broadcast') { var key = (e.created_at || '') + '|' + (e.body || ''); if (seen[key]) return; seen[key] = 1; }
