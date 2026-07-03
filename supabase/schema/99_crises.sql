@@ -61,6 +61,14 @@ create table if not exists public.nation_crises (
   unique (nation_id, crisis_id)
 );
 
+-- Custom crisis stats (admin-authored per crisis: definition.customStats = [{name,start,growth}]).
+-- stat_values holds THIS instance's live value per stat name {name: 0..100}, seeded from `start`
+-- on fire and nudged by `growth` each tick; laws/minister actions and thresholds move it via the
+-- 'stat:<name>' effect target. fired_thresholds records the indices of "If STAT reaches X then Y"
+-- rules that have already fired on this instance, so each fires ONCE.
+alter table public.nation_crises add column if not exists stat_values      jsonb not null default '{}'::jsonb;
+alter table public.nation_crises add column if not exists fired_thresholds  jsonb not null default '[]'::jsonb;
+
 alter table public.nation_crises enable row level security;
 drop policy if exists "nation_crises_select_all" on public.nation_crises;
 create policy "nation_crises_select_all" on public.nation_crises for select using (true);
@@ -142,20 +150,56 @@ begin
 end $$;
 revoke all on function public._crisis_triggers_met(text, jsonb) from public, anon, authenticated;
 
+-- Custom crisis stats. _crisis_seed_stats builds a fresh {name: start} value map from a crisis
+-- definition (clamped 0..100), stamped onto nation_crises.stat_values when the crisis fires.
+-- _crisis_grow_stats returns the map advanced one tick — each stat's current value (or its start
+-- if not yet present) plus its `growth`, re-clamped 0..100. Both drop orphaned keys (only the
+-- currently-defined stats survive) and dedupe by name, so a renamed/removed stat can't linger.
+create or replace function public._crisis_seed_stats(p_def jsonb)
+returns jsonb language sql stable as $$
+  select coalesce(jsonb_object_agg(name, val), '{}'::jsonb) from (
+    select distinct on (s->>'name') s->>'name' as name,
+           least(100, greatest(0, coalesce((s->>'start')::numeric, 0))) as val
+      from jsonb_array_elements(coalesce(p_def->'customStats', '[]'::jsonb)) s
+     where nullif(s->>'name', '') is not null
+  ) q;
+$$;
+revoke all on function public._crisis_seed_stats(jsonb) from public, anon, authenticated;
+
+create or replace function public._crisis_grow_stats(p_def jsonb, p_sv jsonb)
+returns jsonb language sql stable as $$
+  select coalesce(jsonb_object_agg(name, val), '{}'::jsonb) from (
+    select distinct on (s->>'name') s->>'name' as name,
+           least(100, greatest(0,
+             coalesce((p_sv->>(s->>'name'))::numeric, coalesce((s->>'start')::numeric, 0))
+             + coalesce((s->>'growth')::numeric, 0))) as val
+      from jsonb_array_elements(coalesce(p_def->'customStats', '[]'::jsonb)) s
+     where nullif(s->>'name', '') is not null
+  ) q;
+$$;
+revoke all on function public._crisis_grow_stats(jsonb, jsonb) from public, anon, authenticated;
+
 -- True when a crisis definition's `endIf` resolvers hold — the "Crisis immediately ends if"
 -- conditions. definition.endMode picks the match: 'any' (default — any holds, OR) or 'all'
--- (every one holds, AND). Same {target, op, value} shape; an unreadable target doesn't hold.
--- No endIf → never auto-resolves.
-create or replace function public._crisis_resolve_met(p_nation text, p_def jsonb)
+-- (every one holds, AND). Same {target, op, value} shape; a 'stat:<name>' target reads THIS
+-- instance's custom stat from p_sv, every other target the nation's live stat. An unreadable
+-- target doesn't hold. No endIf → never auto-resolves.
+drop function if exists public._crisis_resolve_met(text, jsonb);   -- superseded by the (text,jsonb,jsonb) form
+create or replace function public._crisis_resolve_met(p_nation text, p_def jsonb, p_sv jsonb)
 returns boolean language plpgsql stable security definer set search_path = public as $$
-declare v_ends jsonb := p_def->'endIf'; v_t jsonb; v_cur numeric; v_all boolean; v_met boolean;
+declare v_ends jsonb := p_def->'endIf'; v_t jsonb; v_cur numeric; v_all boolean; v_met boolean; v_tgt text;
 begin
   if v_ends is null or jsonb_typeof(v_ends) <> 'array' or jsonb_array_length(v_ends) = 0 then
     return false;
   end if;
   v_all := coalesce(p_def->>'endMode', 'any') = 'all';   -- absent → 'any' (existing crises)
   for v_t in select value from jsonb_array_elements(v_ends) loop
-    v_cur := public._nation_stat_get(p_nation, v_t->>'target');
+    v_tgt := v_t->>'target';
+    if left(coalesce(v_tgt, ''), 5) = 'stat:' then
+      v_cur := public._to_num(p_sv->>substr(v_tgt, 6));   -- a custom crisis stat (this instance)
+    else
+      v_cur := public._nation_stat_get(p_nation, v_tgt);
+    end if;
     v_met := v_cur is not null and public._crisis_cmp(v_cur, coalesce(v_t->>'op', '>='), coalesce((v_t->>'value')::numeric, 0));
     if v_all then
       if not v_met then return false; end if;     -- AND: first miss → not all met
@@ -165,7 +209,7 @@ begin
   end loop;
   return v_all;   -- AND with no misses → true; OR with no hits → false
 end $$;
-revoke all on function public._crisis_resolve_met(text, jsonb) from public, anon, authenticated;
+revoke all on function public._crisis_resolve_met(text, jsonb, jsonb) from public, anon, authenticated;
 
 -- Add a delta to a nation's on-hand stockpile of one resource (energy/food/minerals/goods/
 -- services/military), floored at 0. ONE source for moving on_hand from a crisis — used by the
@@ -186,14 +230,48 @@ revoke all on function public._nation_onhand_add(text, text, numeric) from publi
 -- on-hand routing, the confidence-collapse hook and popularity floors.
 create or replace function public._apply_crisis_effect(p_id uuid, p_nation text, p_eff jsonb)
 returns void language plpgsql security definer set search_path = public as $$
+declare v_key text;
 begin
   if (p_eff->>'t') = 'Crisis Meter' then
     update public.nation_crises set meter = greatest(0, meter + coalesce((p_eff->>'v')::numeric, 0)) where id = p_id;
+  elsif left(coalesce(p_eff->>'t', ''), 5) = 'stat:' then
+    -- A custom crisis stat on THIS instance: nudge stat_values[<name>], clamped 0..100.
+    v_key := substr(p_eff->>'t', 6);
+    update public.nation_crises
+       set stat_values = jsonb_set(coalesce(stat_values, '{}'::jsonb), array[v_key],
+             to_jsonb(least(100, greatest(0, coalesce((stat_values->>v_key)::numeric, 0) + coalesce((p_eff->>'v')::numeric, 0)))))
+     where id = p_id;
   else
     perform public._apply_policy_effect(p_nation, p_eff);
   end if;
 end $$;
 revoke all on function public._apply_crisis_effect(uuid, text, jsonb) from public, anon, authenticated;
+
+-- "If [STAT] reaches [X] then [Y]" threshold rules (definition.thresholds = [{stat,op,value,
+-- effects:[eff]}]). Each fires ONCE per instance: for every rule not yet in p_fired whose custom
+-- stat now satisfies its op/value, apply its effects and record the rule's index. Returns the
+-- updated fired-index array (the caller persists it). Effects ride _apply_crisis_effect (one
+-- source), so a rule can move another custom stat, the Crisis Meter, or a national stat.
+create or replace function public._crisis_fire_thresholds(p_id uuid, p_nation text, p_def jsonb, p_sv jsonb, p_fired jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_ths jsonb := p_def->'thresholds'; v_t jsonb; v_i int := 0; v_cur numeric; v_eff jsonb; v_fired jsonb := coalesce(p_fired, '[]'::jsonb);
+begin
+  if v_ths is null or jsonb_typeof(v_ths) <> 'array' then return v_fired; end if;
+  for v_t in select value from jsonb_array_elements(v_ths) loop
+    if not (v_fired @> to_jsonb(v_i)) then         -- skip rules already fired on this instance
+      v_cur := public._to_num(p_sv->>(v_t->>'stat'));
+      if v_cur is not null and public._crisis_cmp(v_cur, coalesce(v_t->>'op', '>='), coalesce((v_t->>'value')::numeric, 0)) then
+        for v_eff in select value from jsonb_array_elements(coalesce(v_t->'effects', '[]'::jsonb)) loop
+          perform public._apply_crisis_effect(p_id, p_nation, v_eff);
+        end loop;
+        v_fired := v_fired || to_jsonb(v_i);
+      end if;
+    end if;
+    v_i := v_i + 1;
+  end loop;
+  return v_fired;
+end $$;
+revoke all on function public._crisis_fire_thresholds(uuid, text, jsonb, jsonb, jsonb) from public, anon, authenticated;
 
 -- Apply a stage's "Effect when stage activated" list (definition stage.onActivate) — the effects
 -- that land the moment the crisis enters that stage (on fire for stage 1, on escalation for 2-4).
@@ -280,6 +358,7 @@ returns void language plpgsql security definer set search_path = public as $$
 declare
   v_n text; v_c record; v_active record; v_new_id uuid;
   v_def jsonb; v_stage jsonb; v_growth text; v_inc numeric; v_at numeric;
+  v_sv jsonb; v_fired jsonb; v_meter numeric;
 begin
   -- FIRE  (dormant nations are inert — they neither host crises nor get auto-scheduled)
   for v_n in select id from public.nations where not coalesce(dormant, false) loop
@@ -294,7 +373,8 @@ begin
           continue;   -- Phase 1: fire once per nation per crisis
         end if;
         if public._crisis_triggers_met(v_n, v_c.definition) then
-          insert into public.nation_crises (nation_id, crisis_id) values (v_n, v_c.id)   -- stage 1, meter 0 by default
+          insert into public.nation_crises (nation_id, crisis_id, stat_values)   -- stage 1, meter 0 by default; custom stats seeded
+            values (v_n, v_c.id, public._crisis_seed_stats(v_c.definition))
             returning id into v_new_id;
           perform public._apply_stage_activate(v_new_id, v_n, v_c.definition->'stages'->0);   -- stage 1's on-activation effects
           perform public._crisis_emerged_event(v_n, v_c.definition->>'name');
@@ -307,14 +387,28 @@ begin
 
   -- GROW + ESCALATE
   for v_active in
-    select nc.id, nc.nation_id, nc.stage, nc.meter, c.definition
+    select nc.id, nc.nation_id, nc.stage, nc.meter, nc.stat_values, nc.fired_thresholds, c.definition
       from public.nation_crises nc join public.crises c on c.id = nc.crisis_id
      where nc.status = 'active'
   loop
     begin
-      -- "Crisis immediately ends if": resolvers checked first, so even a persistent
-      -- terminal crisis can subside once the nation recovers past an endIf threshold.
-      if public._crisis_resolve_met(v_active.nation_id, v_active.definition) then
+      -- Custom crisis stats advance one tick (grow by each stat's per-tick growth), then any
+      -- "If STAT reaches X then Y" threshold that just crossed fires once. Both run even at the
+      -- terminal stage, so a persistent crisis's stats keep moving and can still resolve it.
+      v_sv := public._crisis_grow_stats(v_active.definition, v_active.stat_values);
+      if v_sv is distinct from v_active.stat_values then
+        update public.nation_crises set stat_values = v_sv where id = v_active.id;
+      end if;
+      v_fired := public._crisis_fire_thresholds(v_active.id, v_active.nation_id, v_active.definition, v_sv, v_active.fired_thresholds);
+      if v_fired is distinct from v_active.fired_thresholds then
+        update public.nation_crises set fired_thresholds = v_fired where id = v_active.id;
+      end if;
+      -- Threshold effects may have moved custom stats or the meter — re-read both, so the endIf
+      -- test and the escalation check below see this tick's threshold changes.
+      select stat_values, meter into v_sv, v_meter from public.nation_crises where id = v_active.id;
+      -- "Crisis immediately ends if": resolvers checked next, so even a persistent terminal
+      -- crisis can subside once the nation (or a custom stat) recovers past an endIf threshold.
+      if public._crisis_resolve_met(v_active.nation_id, v_active.definition, v_sv) then
         update public.nation_crises set status = 'resolved' where id = v_active.id;
         insert into public.events (nation_id, party_id, kind, body, game_date, tone)
         values (v_active.nation_id, null, 'crisis',
@@ -330,7 +424,7 @@ begin
                        else coalesce(v_growth::numeric, 1) end;
       v_at     := nullif(v_stage->>'at', '')::numeric;
       update public.nation_crises set meter = meter + v_inc where id = v_active.id;
-      if v_at is not null and (v_active.meter + v_inc) >= v_at then
+      if v_at is not null and (v_meter + v_inc) >= v_at then
         if v_active.stage + 1 >= 5 then
           perform public._crisis_reach_terminal(v_active.id, v_active.nation_id, v_def);
         else
@@ -478,9 +572,10 @@ begin
   if not found then raise exception 'That crisis no longer exists.'; end if;
   v_name := v_def->>'name';
 
-  insert into public.nation_crises (nation_id, crisis_id, stage, meter, status)
-       values (p_nation, p_crisis, 1, 0, 'active')
-  on conflict (nation_id, crisis_id) do update set stage = 1, meter = 0, status = 'active'
+  insert into public.nation_crises (nation_id, crisis_id, stage, meter, status, stat_values, fired_thresholds)
+       values (p_nation, p_crisis, 1, 0, 'active', public._crisis_seed_stats(v_def), '[]'::jsonb)
+  on conflict (nation_id, crisis_id) do update set stage = 1, meter = 0, status = 'active',
+       stat_values = public._crisis_seed_stats(v_def), fired_thresholds = '[]'::jsonb
   returning id into v_id;
   perform public._apply_stage_activate(v_id, p_nation, v_def->'stages'->0);   -- stage 1's on-activation effects
   perform public._crisis_emerged_event(p_nation, v_name);

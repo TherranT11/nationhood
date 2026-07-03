@@ -183,12 +183,14 @@
   // symbol by the crisis builder (adminsetup OPS: < ≤ > ≥ =), so it renders raw, exactly as the
   // builder's own preview does. endMode 'all' joins with " and ", else " or " (the default, matching
   // the server). Returns null when there's no endIf — then it can only be managed, never ended.
+  // A target string, humanised — strips the 'stat:' prefix off a custom crisis stat.
+  function tgtLabel(t) { return (typeof t === 'string' && t.slice(0, 5) === 'stat:') ? t.slice(5) : t; }
   function endCondText(def) {
     var conds = Array.isArray(def.endIf) ? def.endIf.filter(function (c) { return c && c.target; }) : [];
     if (!conds.length) return null;
     var join = (def.endMode === 'all') ? ' and ' : ' or ';
     return conds.map(function (c) {
-      return c.target + ' ' + (c.op || '≥') + ' ' + (c.value != null ? c.value : 0);
+      return tgtLabel(c.target) + ' ' + (c.op || '≥') + ' ' + (c.value != null ? c.value : 0);
     }).join(join);
   }
 
@@ -233,6 +235,21 @@
           '<div class="eff-body"><b>Meter / tick</b><p>Left unaddressed, the crisis climbs toward the next stage each month.</p></div></div>' : '');
     }
     html += '</section>';
+
+    // custom crisis stats — live indicators the government's laws / minister actions move,
+    // seeded on fire and nudged each tick (schema/99). Shown so the head of government can see
+    // what their actions are shifting and how close a stat is to an end-condition or threshold.
+    var cstats = Array.isArray(def.customStats) ? def.customStats.filter(function (s) { return s && s.name; }) : [];
+    if (cstats.length) {
+      var sv = nc.stat_values || {};
+      html += '<section class="mod"><div class="mod__hd">Crisis Indicators</div><div style="display:flex;flex-direction:column;gap:13px">' +
+        cstats.map(function (s) {
+          var v = Math.round(Number(sv[s.name] != null ? sv[s.name] : s.start) || 0);
+          var pct = Math.max(0, Math.min(100, v));
+          return '<div><div class="meterline" style="margin-bottom:6px;display:flex;justify-content:space-between"><span>' + esc(s.name) + '</span><span>' + v + ' / 100</span></div>' +
+            '<div class="conf__bar"><div class="conf__fill" style="width:' + pct + '%"></div></div></div>';
+        }).join('') + '</div></section>';
+    }
 
     // management options (current stage's actions)
     var acts = (!terminal && Array.isArray(st.actions)) ? st.actions : [];
@@ -296,7 +313,7 @@
   async function load() {
     // The live crisis instance + its embedded definition. Must still be active.
     const { data: nc, error } = await supabase.from('nation_crises')
-      .select('id, nation_id, stage, meter, status, crises(definition)')
+      .select('id, nation_id, stage, meter, status, stat_values, crises(definition)')
       .eq('id', id).maybeSingle();
     if (error || !nc || nc.status !== 'active' || !nc.crises || !nc.crises.definition) { notFound(); return; }
     var def = nc.crises.definition;
