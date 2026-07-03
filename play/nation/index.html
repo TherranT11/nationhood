@@ -212,7 +212,7 @@
     return '<section class="panel"><h2>Cities</h2>' + body + '</section>';
   }
 
-  function render(nation, slots, gov, pmParty, pmPol, others, viewId, cities){
+  function render(nation, slots, gov, pmParty, pmPol, others, viewId, cities, mayorAbbr){
     var vals = nation.declarations || {};
     var slotBySlug = {}; slots.forEach(function(s){ slotBySlug[s.slug] = s; });
     // This slot's current value — via the shared one-source helper (see util.js).
@@ -350,7 +350,7 @@
       // The viewed nation's continent = the one most of its hexes sit on (drives [Continent]).
       var cc = {}; hexData.forEach(function (h) { if (h.nation_id === viewId && h.continent) cc[h.continent] = (cc[h.continent] || 0) + 1; });
       NMAP.focusContinent = Object.keys(cc).sort(function (a, b) { return cc[b] - cc[a]; })[0] || null;
-      render(nation, slots || [], gov, pmParty, pmPol, others || [], viewId, cities);
+      render(nation, slots || [], gov, pmParty, pmPol, others || [], viewId, cities, mayorAbbr);
     } catch (e) {
       fail('Couldn’t load the nation right now. Refresh to try again.');
     }
