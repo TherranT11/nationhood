@@ -57,6 +57,13 @@
   .srow .sv{font-weight:700;font-size:13.5px;text-align:right;color:var(--ink)}
   .srow .sv small{font-family:'Space Mono',monospace;font-weight:700;font-size:10px;color:var(--soft);margin-left:5px}
   .srow .sv.good{color:var(--green)} .srow .sv.warn{color:var(--amber)} .srow .sv.bad{color:var(--red)}
+  .rel{display:flex;align-items:center;gap:9px;margin:11px 0 2px;padding-top:11px;border-top:1px solid var(--line,#E7E5E0)}
+  .rel-k{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft,#8d8d95)}
+  .rel-dots{display:flex;gap:3px;flex:1}
+  .rdot{width:11px;height:11px;border-radius:50%;background:var(--chip,#F4F3EF);border:1px solid var(--line,#E7E5E0)}
+  .rdot.on.good{background:var(--green);border-color:var(--green)} .rdot.on.warn{background:var(--amber);border-color:var(--amber)} .rdot.on.bad{background:var(--red);border-color:var(--red)}
+  .rel-v{font-family:'Space Mono',monospace;font-size:11px;font-weight:700}
+  .rel-v.good{color:var(--green)} .rel-v.warn{color:var(--amber)} .rel-v.bad{color:var(--red)}
 
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -97,7 +104,15 @@
   // flag-fallback badge tint). Cycled by position.
   var ACCENTS = ['var(--red)', 'var(--blue)', 'var(--amber)', 'var(--green)', 'var(--indigo)'];
 
-  function render(nations, govByNation, leaderByParty, titleSlot, partyById){
+  // Relations 1–10 as a 10-dot meter (1 dot = 1), coloured by band: 1–3 red, 4–7 yellow, 8–10 green.
+  function relBand(v){ return v <= 3 ? 'bad' : v <= 7 ? 'warn' : 'good'; }
+  function relMeter(v){
+    var band = relBand(v), dots = '';
+    for (var d = 1; d <= 10; d++) dots += '<span class="rdot' + (d <= v ? ' on ' + band : '') + '"></span>';
+    return '<div class="rel"><span class="rel-k">Relations</span><div class="rel-dots">' + dots + '</div><span class="rel-v ' + band + '">' + v + '/10</span></div>';
+  }
+
+  function render(nations, govByNation, leaderByParty, titleSlot, partyById, relMap){
     if (!nations.length){ fail('No other nations have been founded yet.'); return; }
 
     var cards = nations.map(function(n, i){
@@ -153,6 +168,7 @@
           '<div class="who"><span class="ttl">' + esc(hogTitle) + '</span> &mdash; <b>' + hog + '</b>' + hogTag + '</div>' +
           '<span class="govtype">' + esc(govType) + '</span>' +
         '</div>' +
+        relMeter((relMap && relMap[n.id] != null) ? relMap[n.id] : 5) +
         '<div class="wstats">' + statsHtml + '</div>' +
       '</article>';
     }).join('');
@@ -213,7 +229,15 @@
       var currency = (home && home.economy && home.economy.currency) || '$';
       setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
-      render(nations, govByNation, leaderByParty, titleSlot, partyById);
+
+      // Relations 1–10 between the player's nation and each other nation (symmetric; missing = 5).
+      var relMap = {};
+      try {
+        const { data: rels } = await supabase.from('nation_relations').select('nation_a, nation_b, value')
+          .or('nation_a.eq.' + party.nation_id + ',nation_b.eq.' + party.nation_id);
+        (rels || []).forEach(function (r) { relMap[r.nation_a === party.nation_id ? r.nation_b : r.nation_a] = r.value; });
+      } catch (e) { relMap = {}; }
+      render(nations, govByNation, leaderByParty, titleSlot, partyById, relMap);
     } catch (e) {
       fail('Couldn’t load the world right now. Refresh to try again.');
     }

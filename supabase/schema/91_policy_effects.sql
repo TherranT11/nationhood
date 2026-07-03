@@ -155,6 +155,25 @@ begin
     -- (0..100), the same government-only scope as Party Popularity above.
     when 'Popularity Ceiling' then
       update public.parties set pop_ceiling = greatest(0, least(100, pop_ceiling + v_v)) where nation_id = p_nation and in_government;
+    -- Popularity Floor → the support floor of every party currently IN GOVERNMENT (same scope).
+    -- A DROP drags the standing popularity down with it by the SAME amount (the base that never
+    -- abandons you shrank), never below the new floor / 0; a RISE lifts popularity up to at least
+    -- the new floor. The floor itself stays within [0, that party's ceiling].
+    when 'Popularity Floor' then
+      for r in select id, popularity, pop_floor, pop_ceiling from public.parties where nation_id = p_nation and in_government loop
+        v_new := greatest(0, least(coalesce(r.pop_ceiling, 100), coalesce(r.pop_floor, 0) + v_v));   -- the new floor
+        if v_v < 0 then
+          update public.parties
+             set pop_floor  = v_new,
+                 popularity = greatest(v_new, coalesce(r.popularity, 0) - (coalesce(r.pop_floor, 0) - v_new))
+           where id = r.id;
+        else
+          update public.parties
+             set pop_floor  = v_new,
+                 popularity = least(coalesce(r.pop_ceiling, 100), greatest(coalesce(r.popularity, 0), v_new))
+           where id = r.id;
+        end if;
+      end loop;
     else
       -- "<Resource> on hand" → the spendable stockpile (Military / Energy / Food / Minerals /
       -- Services / Goods), floored at 0 by _nation_onhand_add (schema/99, late-bound). Distinct

@@ -661,6 +661,11 @@
           <p class="declsec__sub">The starting option for each policy. Players can propose changes later. A policy left at its default applies that default automatically.</p>
           <div id="polFields" class="declgrid"><p class="empty">Loading policies…</p></div>
         </div>
+        <div class="declsec">
+          <h3 class="declsec__h">Relations</h3>
+          <p class="declsec__sub">This nation's standing with every other nation, 1–10 (5 = neutral). Shown on the World page as a 10-dot meter — red 1–3, yellow 4–7, green 8–10. Symmetric, so it's the same from either side.</p>
+          <div id="relFields" class="declgrid"><p class="empty">Loading relations…</p></div>
+        </div>
         <button class="btn btn-solid btn-full" type="submit" id="addBtn">Add</button>
         <button class="btn btn-ghost btn-full" type="button" id="cancelEdit" hidden style="margin-top:8px">Cancel edit</button>
         <div class="note" id="addNote" role="status" aria-live="polite"></div>
@@ -1246,6 +1251,7 @@
     function startEdit(n) {
       editing = n;
       fillForm(n);
+      loadRelFields(n.id);
       document.getElementById('formTitle').textContent = 'Edit ' + (n.name || 'Nation');
       document.getElementById('addBtn').textContent = 'Save changes';
       document.getElementById('cancelEdit').hidden = false;
@@ -1257,6 +1263,7 @@
       document.getElementById('addForm').reset();
       resetDeclFields();
       resetPolFields();
+      loadRelFields(null);
       document.getElementById('f-regime').value = '17';
       document.getElementById('f-ceiling').value = '';
       document.getElementById('formTitle').textContent = 'Add Nation';
@@ -1265,6 +1272,36 @@
       addNote.textContent = ''; addNote.className = 'note';
     }
     document.getElementById('cancelEdit').addEventListener('click', cancelEdit);
+
+    // Relations 1–10 with every OTHER nation (nation_relations, schema/137). For a new nation
+    // there's no id yet, so all default to 5; on save we upsert each via relation_set once the
+    // nation exists. Reuses nationsCache (the loaded nation list) — one source for the roster.
+    async function loadRelFields(editingId) {
+      var box = document.getElementById('relFields'); if (!box) return;
+      var relMap = {};
+      if (editingId) {
+        try {
+          const { data: rels } = await supabase.from('nation_relations').select('nation_a, nation_b, value')
+            .or('nation_a.eq.' + editingId + ',nation_b.eq.' + editingId);
+          (rels || []).forEach(function (r) { relMap[r.nation_a === editingId ? r.nation_b : r.nation_a] = r.value; });
+        } catch (e) { relMap = {}; }
+      }
+      var others = nationsCache.filter(function (n) { return n.id !== editingId; });
+      box.innerHTML = others.length
+        ? others.map(function (n) {
+            return '<div><label for="rel-' + esc(n.id) + '">Relations with ' + esc(n.name || n.id) + '</label>' +
+              '<input id="rel-' + esc(n.id) + '" type="number" min="1" max="10" step="1" data-rel="' + esc(n.id) + '" value="' + (relMap[n.id] != null ? relMap[n.id] : 5) + '"></div>';
+          }).join('')
+        : '<p class="empty">No other nations yet — add another nation to set relations.</p>';
+    }
+    // Persist every relation input against the (now-saved) nation. Best-effort per pair.
+    async function saveRelations(nationId) {
+      var inputs = document.querySelectorAll('#relFields [data-rel]');
+      for (var i = 0; i < inputs.length; i++) {
+        var other = inputs[i].dataset.rel, v = Math.max(1, Math.min(10, parseInt(inputs[i].value, 10) || 5));
+        try { await supabase.rpc('relation_set', { p_a: nationId, p_b: other, p_v: v }); } catch (e) { /* per-pair best-effort */ }
+      }
+    }
 
     // --- Per-nation declaration fields in the nation form -------------------
     // Built from the live slot definitions so the admin sets each nation's
@@ -1396,6 +1433,7 @@
         if (error) throw error;
         var list = data || [];
         nationsCache = list;
+        loadRelFields(editing ? editing.id : null);   // relations roster follows the nation list
         if (!list.length) { box.innerHTML = '<p class="empty">No nations yet.</p>'; return; }
         box.innerHTML = list.map(function (n) {
           var s = n.stats || {}, e = n.economy || {}, pr = n.production || {};
@@ -1534,6 +1572,7 @@
         // saved regime now (schema/98) rather than waiting for the next tick. Non-fatal —
         // the nation is already saved; a tick would apply the same transition regardless.
         try { await supabase.rpc('admin_sync_one_party', { p_nation: editing ? editing.id : data.id }); } catch (e) { /* applied on next tick */ }
+        await saveRelations(editing ? editing.id : data.id);   // upsert relations now the nation exists
         addNote.textContent = editing ? ('Saved changes to “' + name + '”.') : ('Added “' + name + '”. It’s now joinable on the nation-select screen.');
         addNote.className = 'note ok';
         if (editing) cancelEdit(); else { e.target.reset(); resetDeclFields(); resetPolFields(); }
@@ -3574,11 +3613,13 @@
       // 'Budget, Diplomacy, …' the spec names). Read straight off POL_TGT (the one source for
       // these lists, line ~1545) rather than re-listing them. Government-internal targets are
       // out of scope for a nation-facing world event, so only these two groups are exposed.
-      // Effect targets: national stats, resource PRODUCTION (bare names → production.*), and
-      // resource ON HAND ("X on hand" → the spendable on_hand stockpile). Military lives only
-      // on hand, so it appears in that group alone.
+      // Effect targets: national stats, GOVERNMENT (Government Confidence + Party Popularity, both
+      // handled by _apply_policy_effect), resource PRODUCTION (bare names → production.*), and
+      // resource ON HAND ("X on hand" → the spendable on_hand stockpile). Military lives only on
+      // hand, so it appears in that group alone.
       var WE_ONHAND = ['Military', 'Energy', 'Food', 'Minerals', 'Services', 'Goods'];
-      var WE_TGT = { National: POL_TGT.National, 'Resource (Production)': POL_TGT.Resource, 'Resource (On Hand)': WE_ONHAND.map(function (r) { return r + ' on hand'; }) };
+      var WE_TGT = { National: POL_TGT.National, Government: ['Government Confidence', 'Party Popularity', 'Popularity Floor'],
+                     'Resource (Production)': POL_TGT.Resource, 'Resource (On Hand)': WE_ONHAND.map(function (r) { return r + ' on hand'; }) };
       // Competitive bid stat — production/national only (on-hand + Military aren't readable via
       // _nation_stat_get, so they can't be bid on).
       var WE_STATS = POL_TGT.National.concat(POL_TGT.Resource);
@@ -3597,7 +3638,7 @@
         return { name: 'New World Event', image: '', type: 'decision', scope: 'nations', nations: [], desc: '',
           options: [{ label: 'Option A', effects: [] }, { label: 'Option B', effects: [] }],
           mutual: { contribution: [], effects: [] }, competitive: { stat: 'Budget', sideA: [], sideB: [], winEffects: [] },
-          bidding: { resources: ['Military'], threshold: 3, winEffects: [], zeroEffects: [], aftermath: {} }, turning: { effects: [] } };
+          bidding: { resources: ['Military'], threshold: 3, winEffects: [], zeroEffects: [], perBid: { per: 0, effects: [] }, aftermath: {} }, turning: { effects: [] } };
       }
       // Harden the shape so an older/partial row can't crash the editor.
       function normalizeEvent(def) {
@@ -3622,6 +3663,9 @@
         d.bidding.threshold = Number(d.bidding.threshold) || 0;
         d.bidding.winEffects = Array.isArray(d.bidding.winEffects) ? d.bidding.winEffects : [];
         d.bidding.zeroEffects = Array.isArray(d.bidding.zeroEffects) ? d.bidding.zeroEffects : [];
+        d.bidding.perBid = (d.bidding.perBid && typeof d.bidding.perBid === 'object') ? d.bidding.perBid : {};
+        d.bidding.perBid.per = Number(d.bidding.perBid.per) || 0;
+        d.bidding.perBid.effects = Array.isArray(d.bidding.perBid.effects) ? d.bidding.perBid.effects : [];
         d.bidding.aftermath = (d.bidding.aftermath && typeof d.bidding.aftermath === 'object') ? d.bidding.aftermath : {};
         return d;
       }
@@ -3792,7 +3836,7 @@
       function effArr(sel) {
         if (sel && sel.indexOf('baft:') === 0) { var nid = sel.slice(5); if (!Array.isArray(WE.bidding.aftermath[nid])) WE.bidding.aftermath[nid] = []; return WE.bidding.aftermath[nid]; }
         return sel === 'opt0' ? WE.options[0].effects : sel === 'opt1' ? WE.options[1].effects : sel === 'mcontrib' ? WE.mutual.contribution : sel === 'mutual' ? WE.mutual.effects
-          : sel === 'cwin' ? WE.competitive.winEffects : sel === 'bwin' ? WE.bidding.winEffects : sel === 'bzero' ? WE.bidding.zeroEffects : WE.turning.effects;
+          : sel === 'cwin' ? WE.competitive.winEffects : sel === 'bwin' ? WE.bidding.winEffects : sel === 'bzero' ? WE.bidding.zeroEffects : sel === 'bperbid' ? WE.bidding.perBid.effects : WE.turning.effects;
       }
       function effListHtml(sel) {
         var arr = effArr(sel);
@@ -3839,12 +3883,14 @@
               '<div class="natgrid">' + BID_RESOURCES.map(function (r) { return '<label class="natchk"><input type="checkbox" class="we-bres" value="' + esc(r) + '"' + (WE.bidding.resources.indexOf(r) >= 0 ? ' checked' : '') + '>' + esc(r) + '</label>'; }).join('') + '</div></div>' +
             '<div class="f"><label>Threshold <span class="hint">minimum total staked to award a winner; below it, idle nations are penalised</span></label><input id="weBidThresh" type="number" min="0" step="any" value="' + (Number(WE.bidding.threshold) || 0) + '"></div>' +
             '<p class="hint" style="margin:12px 0 6px">Threshold met → reward to the highest bidder (ties share it).</p>' + effListHtml('bwin') +
+            '<div class="f" style="margin-top:12px;margin-bottom:6px"><label>Threshold met · per-bid bonus <span class="hint">for every N units the winner staked (0 = off), it ALSO gains the effects below, scaled by that count</span></label><input id="weBidPer" type="number" min="0" step="any" value="' + (Number(WE.bidding.perBid.per) || 0) + '"></div>' + effListHtml('bperbid') +
             '<p class="hint" style="margin:12px 0 6px">Threshold missed → penalty to each nation that staked nothing.</p>' + effListHtml('bzero') +
             '<p class="hint" style="margin:12px 0 6px">Aftermath → applied to each involved nation whatever the outcome.</p>' +
               (WE.nations.length ? WE.nations.map(function (nid) { return '<div class="weopt"><div class="hint" style="margin-bottom:6px">' + esc(nationName(nid)) + '</div>' + effListHtml('baft:' + nid) + '</div>'; }).join('')
                                  : '<p class="hint">Pick involved nations above to set their aftermath.</p>');
           box.querySelectorAll('.we-bres').forEach(function (c) { c.onchange = function () { toggleIn(WE.bidding.resources, c.value, c.checked); renderPreview(); }; });
           document.getElementById('weBidThresh').oninput = function (e) { WE.bidding.threshold = +e.target.value || 0; renderPreview(); };
+          document.getElementById('weBidPer').oninput = function (e) { WE.bidding.perBid.per = +e.target.value || 0; renderPreview(); };
           box.querySelectorAll('.weeffs').forEach(function (el) { bindEffList(el, el.dataset.list); });
         } else {   // turning_point
           box.innerHTML = '<div class="sechd">Turning Point <span class="hint">fires at once with no player action; hits every nation</span></div>' +
@@ -3870,6 +3916,7 @@
         else if (WE.type === 'bidding') {
           rows += '<div class="pvrow">Stake <b>' + (WE.bidding.resources.map(esc).join(' / ') || '—') + '</b> · threshold <b>' + (Number(WE.bidding.threshold) || 0) + '</b></div>' +
             '<div class="pvrow hint">Met → top bidder ' + effEcho(WE.bidding.winEffects) + ' · missed → non-bidders ' + effEcho(WE.bidding.zeroEffects) + '</div>' +
+            (Number(WE.bidding.perBid.per) > 0 && WE.bidding.perBid.effects.length ? '<div class="pvrow hint">Per-bid bonus → winner also ' + effEcho(WE.bidding.perBid.effects) + ' for every ' + Number(WE.bidding.perBid.per) + ' staked</div>' : '') +
             WE.nations.map(function (nid) { var a = WE.bidding.aftermath[nid] || []; return a.length ? '<div class="pvrow">' + esc(nationName(nid)) + ' → ' + effEcho(a) + '</div>' : ''; }).join('');
         }
         else rows += '<div class="pvrow">Every nation → ' + effEcho(WE.turning.effects) + '</div>';
