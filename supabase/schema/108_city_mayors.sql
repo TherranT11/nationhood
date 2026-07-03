@@ -11,6 +11,9 @@
 
 alter table public.cities add column if not exists mayor_name text;
 alter table public.cities add column if not exists mayor_election_tick int;
+-- The party that holds the mayoralty, set when a candidate wins (schema/110); null = an
+-- unaffiliated (seeded NPC) mayor. on delete set null so a dissolved party leaves an independent.
+alter table public.cities add column if not exists mayor_party_id uuid references public.parties (id) on delete set null;
 
 -- The NPC name draw is the shared _random_name (schema/50) now — drop the city-specific copy.
 drop function if exists public._random_person_name(text);
