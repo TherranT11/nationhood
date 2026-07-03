@@ -1094,6 +1094,19 @@
     import { MINISTRIES } from '/ministries.js';
     import { condText as objCondText, rewardText as objRewardText } from '/objectives.js';
 
+    // ONE image-upload path: push a file to a Supabase storage bucket (optionally under a folder)
+    // and return its public URL. Shared by the world-event image and the nation flag. Throws on
+    // oversize / not-signed-in / upload error so callers show one message.
+    async function uploadToStorage(bucket, folder, file) {
+      if (file.size > 2 * 1024 * 1024) throw new Error('That image is over 2 MB.');
+      var u = (await supabase.auth.getUser()).data.user; if (!u) throw new Error('Not signed in.');
+      var ext = ((file.name || '').split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+      var path = (folder ? folder + '/' : '') + u.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+      var up = await supabase.storage.from(bucket).upload(path, file, { cacheControl: '3600', upsert: false });
+      if (up.error) throw new Error(up.error.message);
+      return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+    }
+
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
     var adminView = document.getElementById('adminView');
@@ -1262,17 +1275,9 @@
     document.getElementById('f-flagfile').addEventListener('change', async function (e) {
       var file = e.target.files && e.target.files[0], note = document.getElementById('f-flagnote');
       if (!file) return;
-      if (file.size > 2 * 1024 * 1024) { note.textContent = 'That image is over 2 MB.'; e.target.value = ''; return; }
       note.textContent = 'Uploading…';
-      try {
-        var u = (await supabase.auth.getUser()).data.user; if (!u) throw new Error('Not signed in.');
-        var ext = ((file.name || '').split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-        var path = 'flags/' + u.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
-        var up = await supabase.storage.from('world-event-images').upload(path, file, { cacheControl: '3600', upsert: false });
-        if (up.error) throw new Error(up.error.message);
-        setFlag(supabase.storage.from('world-event-images').getPublicUrl(path).data.publicUrl);
-        note.textContent = 'Flag uploaded.';
-      } catch (err) { note.textContent = 'Upload failed: ' + (err.message || err); }
+      try { setFlag(await uploadToStorage('world-event-images', 'flags', file)); note.textContent = 'Flag uploaded.'; }
+      catch (err) { note.textContent = 'Upload failed: ' + (err.message || err); e.target.value = ''; }
     });
 
     // Relations 1–10 with every OTHER nation (nation_relations, schema/137). For a new nation
@@ -3489,7 +3494,7 @@
         function renderObjCrisis() {
           cSel.hidden = !cOn.checked;
           cSel.innerHTML = objCrises.length
-            ? objCrises.map(function (c) { return '<option value="' + esc(c.id) + '"' + (OBJ.requires_crisis === c.id ? ' selected' : '') + '>' + esc(c.name) + (c.nation ? ' (' + esc(natName(c.nation)) + ')' : '') + '</option>'; }).join('')
+            ? objCrises.map(function (c) { return '<option value="' + esc(c.id) + '"' + (OBJ.requires_crisis === c.id ? ' selected' : '') + '>' + esc(crisisOptLabel(c)) + '</option>'; }).join('')
             : '<option value="">— no crises authored yet —</option>';
         }
         cOn.checked = !!OBJ.requires_crisis;
@@ -3509,7 +3514,7 @@
           if (p.t === 'cont') return '<select data-prop="' + p.p + '">' + (objContinents.length ? objContinents : ['—']).map(function (o) { return '<option' + (o === val ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
           if (p.t === 'nat') return '<select data-prop="' + p.p + '">' + (objNations.length ? objNations.map(function (na) { return '<option value="' + esc(na.id) + '"' + (na.id === val ? ' selected' : '') + '>' + esc(na.name || na.id) + '</option>'; }).join('') : '<option value="">— no nations —</option>') + '</select>';
           if (p.t === 'hex') return '<select data-prop="' + p.p + '">' + (objHexes.length ? objHexes.map(function (h) { var k = hexKey(h); return '<option value="' + esc(k) + '"' + (k === val ? ' selected' : '') + '>' + esc(hexOptLabel(h)) + '</option>'; }).join('') : '<option value="">— no assigned hexes —</option>') + '</select>';
-          if (p.t === 'crisis') return '<select data-prop="' + p.p + '">' + (objCrises.length ? objCrises.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === val ? ' selected' : '') + '>' + esc(c.name) + (c.nation ? ' (' + esc(natName(c.nation)) + ')' : '') + '</option>'; }).join('') : '<option value="">— no crises authored —</option>') + '</select>';
+          if (p.t === 'crisis') return '<select data-prop="' + p.p + '">' + (objCrises.length ? objCrises.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === val ? ' selected' : '') + '>' + esc(crisisOptLabel(c)) + '</option>'; }).join('') : '<option value="">— no crises authored —</option>') + '</select>';
           return '';
         }).join('');
       }
@@ -3538,7 +3543,10 @@
       // ----- preview rail: render each condition/reward as a readable line -----
       // Condition / reward text via the shared one source (/objectives.js); nation + hex lookups
       // are this page's, injected as context.
-      function crisisLabel(id) { var c = objCrises.filter(function (x) { return x.id === id; })[0]; return c ? (c.name + (c.nation ? ' (' + natName(c.nation) + ')' : '')) : (id || '—'); }
+      // ONE crisis label — "name (nation)" — shared by the gate selector, the End-Crisis condition
+      // option, and condText's crisisLabel. Callers building HTML wrap it in esc().
+      function crisisOptLabel(c) { return (c.name || 'Untitled crisis') + (c.nation ? ' (' + natName(c.nation) + ')' : ''); }
+      function crisisLabel(id) { var c = objCrises.filter(function (x) { return x.id === id; })[0]; return c ? crisisOptLabel(c) : (id || '—'); }
       function condText(c) { return objCondText(c, { natName: natName, hexLabel: hexLabel, crisisLabel: crisisLabel }); }
       function rewardText(r) { return objRewardText(r, { natName: natName }); }
       function renderObjPreview() {
@@ -3774,15 +3782,9 @@
       async function weUpload(file) {
         var note = document.getElementById('weImgNote');
         if (!file) return;
-        if (file.size > 2 * 1024 * 1024) { note.textContent = 'That image is over 2 MB.'; return; }
         note.textContent = 'Uploading…';
         try {
-          var u = (await supabase.auth.getUser()).data.user; if (!u) throw new Error('Not signed in.');
-          var ext = ((file.name || '').split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-          var path = u.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
-          var up = await supabase.storage.from('world-event-images').upload(path, file, { cacheControl: '3600', upsert: false });
-          if (up.error) throw new Error(up.error.message);
-          WE.image = supabase.storage.from('world-event-images').getPublicUrl(path).data.publicUrl;
+          WE.image = await uploadToStorage('world-event-images', '', file);
           note.textContent = 'Image uploaded.'; renderImg(); renderPreview();
         } catch (e) { note.textContent = 'Upload failed: ' + (e.message || e); }
       }
