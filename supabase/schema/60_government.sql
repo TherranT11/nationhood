@@ -520,6 +520,10 @@ begin
   -- Confidence on the sitting government. Self-filters to January, a no-op the other eleven months.
   begin perform public._resolve_vacant_cabinet(v_tick);
   exception when others then raise warning 'tick %: vacant-cabinet penalty failed — %', v_tick, sqlerrm; end;
+  -- Empty agenda (schema/139): each January, a government holding no national objectives loses
+  -- −3% Government Confidence and −2% Party Popularity. Self-filters to January.
+  begin perform public._resolve_agenda_neglect(v_tick);
+  exception when others then raise warning 'tick %: agenda-neglect penalty failed — %', v_tick, sqlerrm; end;
   -- Military builds (schema/129): every tick, matured Expand orders deliver typed units to bases.
   begin perform public._resolve_military_builds(v_tick);
   exception when others then raise warning 'tick %: military builds failed — %', v_tick, sqlerrm; end;

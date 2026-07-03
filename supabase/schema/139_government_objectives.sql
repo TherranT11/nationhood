@@ -94,4 +94,33 @@ begin
 end $$;
 grant execute on function public.objective_drop(uuid) to authenticated;
 
+-- The yearly cost of an empty agenda: each January, a sitting government holding NO objectives
+-- loses −3% Government Confidence and −2% Party Popularity, through the single _apply_policy_effect
+-- clamp (schema/91; confidence 0–100 with the collapse hook, popularity on the in-government
+-- parties). Called from _advance_tick (schema/60); self-filters to January, a no-op otherwise.
+-- (Note: an objective past its deadline still counts as held — expiry/scoring is a later slice.)
+create or replace function public._resolve_agenda_neglect(p_tick int)
+returns void language plpgsql security definer set search_path = public as $$
+declare n record; v_held int;
+begin
+  if (p_tick - 1) % 12 <> 0 then return; end if;   -- January only (tick 1, 13, 25, …)
+  for n in
+    select g.id as gov_id, g.nation_id
+      from public.governments g
+      join public.nations nat on nat.id = g.nation_id
+     where g.status = 'active' and not coalesce(nat.dormant, false)
+  loop
+    select count(*) into v_held from public.government_objectives where government_id = n.gov_id;
+    if v_held = 0 then
+      perform public._apply_policy_effect(n.nation_id, jsonb_build_object('t', 'Government Confidence', 'v', -3));
+      perform public._apply_policy_effect(n.nation_id, jsonb_build_object('t', 'Party Popularity', 'v', -2));
+      insert into public.events (nation_id, kind, body, game_date)
+        values (n.nation_id, 'government',
+                'The government set no national objectives this year — confidence fell (−3%) and party popularity slipped (−2%).',
+                public.current_game_date());
+    end if;
+  end loop;
+end $$;
+revoke all on function public._resolve_agenda_neglect(int) from public, anon, authenticated;
+
 notify pgrst, 'reload schema';
