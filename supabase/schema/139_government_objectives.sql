@@ -51,8 +51,10 @@ begin
   -- Crisis gate: an objective marked "only available if a crisis is active" can only be taken while
   -- that crisis is live on the nation (a nation_crises row, status 'active').
   if coalesce(v_def->>'requires_crisis', '') <> '' then
+    -- Compare the crisis id as text (never cast the jsonb value to uuid — a malformed value must
+    -- fail to match, not raise, since _agenda_add is best-effort from _seat_government on formation).
     if not exists (select 1 from public.nation_crises
-                    where nation_id = v_nation and crisis_id = (v_def->>'requires_crisis')::uuid and status = 'active') then
+                    where nation_id = v_nation and crisis_id::text = v_def->>'requires_crisis' and status = 'active') then
       return false;
     end if;
   end if;
