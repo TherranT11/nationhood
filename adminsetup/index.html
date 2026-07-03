@@ -1081,6 +1081,7 @@
     import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget, polTgtLabel } from '/policies.js';
     import { CONV_ROMAN, convRoman, adoptLines, activeLines, lawLines } from '/convictions.js';
     import { MINISTRIES } from '/ministries.js';
+    import { condText as objCondText, rewardText as objRewardText } from '/objectives.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
@@ -3351,8 +3352,6 @@
       var OBJ = null, objEditingId = null, objSaving = false, objCache = [], objNations = [], objContinents = [], objHexes = [];
 
       var n = function (v) { return Number(v) || 0; };
-      var sgn = function (v) { return (n(v) > 0 ? '+' : n(v) < 0 ? '−' : '') + Math.abs(n(v)); };
-      var money = function (v) { return (n(v) >= 0 ? '+' : '−') + '₣' + Math.abs(n(v)) + 'B'; };
       function natName(id) { var m = objNations.filter(function (x) { return x.id === id; })[0]; return (m && m.name) || id || '—'; }
       // A hex is keyed by its axial coords "q,r"; its option/preview label is its map name (or
       // the coords) plus the nation that holds it.
@@ -3477,36 +3476,10 @@
       function renderRewards() { renderRows(OBJ.rewards, 'obRewards', REWARD_DEFS, REWARD_ORDER, renderRewards, null); }
 
       // ----- preview rail: render each condition/reward as a readable line -----
-      function condText(c) {
-        switch (c.kind) {
-          case 'stat_up': return 'Increase ' + c.stat + ' by ' + n(c.amount);
-          case 'stat_down': return 'Decrease ' + c.stat + ' by ' + n(c.amount);
-          case 'prod_up': return 'Increase ' + c.resource + ' production by ' + n(c.amount);
-          case 'budget': return 'Hold at least ₣' + n(c.amount) + 'B Budget';
-          case 'debt_down': return 'Reduce Debt by ' + n(c.pct) + '%';
-          case 'fdi': return 'Hold FDI tokens in at least ' + n(c.count) + ' countr' + (n(c.count) === 1 ? 'y' : 'ies');
-          case 'trade': return 'Keep at least ' + n(c.count) + ' Trade Agreement' + (n(c.count) === 1 ? '' : 's') + ' active';
-          case 'mil_dom': return 'Hold more Military in ' + (c.continent || '—') + ' than any other nation';
-          case 'gdp_up': return 'Grow GDP by ' + n(c.pct) + '%';
-          case 'allies': return 'Have ' + n(c.count) + ' all' + (n(c.count) === 1 ? 'y' : 'ies') + ' in ' + (c.continent || '—');
-          case 'units': return 'Field more than ' + n(c.count) + ' ' + c.unit;
-          case 'relations': return 'Relations with ' + natName(c.nation) + ' above ' + n(c.value);
-          case 'seize': return 'Seize territory ' + hexLabel(c.hex);
-        }
-        return '';
-      }
-      function rewardText(r) {
-        switch (r.kind) {
-          case 'popularity': return sgn(r.amount) + ' Party Popularity';
-          case 'confidence': return sgn(r.amount) + ' Government Confidence';
-          case 'onhand': return sgn(r.amount) + ' ' + r.resource + ' on hand';
-          case 'budget': return money(r.amount) + ' Budget';
-          case 'relations': return sgn(r.amount) + ' Relations with ' + natName(r.nation);
-          case 'debt': return money(r.amount) + ' Debt';
-          case 'stat': return sgn(r.amount) + ' ' + r.stat;
-        }
-        return '';
-      }
+      // Condition / reward text via the shared one source (/objectives.js); nation + hex lookups
+      // are this page's, injected as context.
+      function condText(c) { return objCondText(c, { natName: natName, hexLabel: hexLabel }); }
+      function rewardText(r) { return objRewardText(r, { natName: natName }); }
       function renderObjPreview() {
         var box = document.getElementById('obPrev'); if (!box || !OBJ) return;
         var conds = '<div class="pvobj"><div class="tl">' + whoPrefix(OBJ.nation) + 'Complete within ' + n(OBJ.ticks) + ' tick' + (n(OBJ.ticks) === 1 ? '' : 's') + ' — all of</div>' +
