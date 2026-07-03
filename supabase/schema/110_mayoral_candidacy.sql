@@ -98,7 +98,7 @@ begin
     if v_best.party_id is not null then
       -- A declared candidate takes the chair (the NPC incumbent only holds an uncontested race).
       v_prize := round(0.4 * (v_city.population * v_city.pop_pct / 100.0), 1);   -- population is already in millions
-      update public.cities set mayor_name = v_best.candidate_name, mayor_election_tick = p_tick + 12 where id = v_city.id;
+      update public.cities set mayor_name = v_best.candidate_name, mayor_party_id = v_best.party_id, mayor_election_tick = p_tick + 12 where id = v_city.id;
       if v_prize > 0 then
         update public.parties                                            -- floor prize (invariant-safe)
            set pop_floor  = least(pop_ceiling, pop_floor + v_prize),

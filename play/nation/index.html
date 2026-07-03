@@ -84,6 +84,7 @@
   .citygov .g{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
   .citygov .gk{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
   .citygov .gv{font-weight:700;font-size:13px;text-align:right}
+  .citygov .mtag{font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.04em;color:var(--soft);margin-left:2px}
 
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -183,7 +184,7 @@
   // NOT stored on the city: it's the one whose name matches the declared capital_name (ONE
   // source — the declaration). Each city shows its share of the nation's population and the
   // derived headcount (stored pct × nation.population). Flavour only.
-  function citiesBox(cities, population, capitalName){
+  function citiesBox(cities, population, capitalName, mayorAbbr){
     function isCap(c){ return !!capitalName && !!c.name && c.name.trim().toLowerCase() === String(capitalName).trim().toLowerCase(); }
     var list = (cities || []).slice().sort(function(a, b){
       return ((isCap(b) ? 1 : 0) - (isCap(a) ? 1 : 0)) || (Number(b.pop_pct) || 0) - (Number(a.pop_pct) || 0) || ((a.name || '') < (b.name || '') ? -1 : 1);
@@ -196,7 +197,12 @@
           var desc = c.description ? '<div class="citydesc">' + esc(c.description) + '</div>' : '';
           // Mayor (NPC) + next election date — shown when present (cities predating mayors have none).
           var govRows = '';
-          if (c.mayor_name) govRows += '<div class="g"><span class="gk">Mayor</span><span class="gv">' + esc(c.mayor_name) + '</span></div>';
+          // Mayor + their party tag: the winning party's abbreviation, or [IND] for an
+          // unaffiliated (seeded NPC) mayor who hasn't been won in an election.
+          if (c.mayor_name) {
+            var mAbbr = (mayorAbbr && c.mayor_party_id && mayorAbbr[c.mayor_party_id]) ? mayorAbbr[c.mayor_party_id] : 'IND';
+            govRows += '<div class="g"><span class="gk">Mayor</span><span class="gv">' + esc(c.mayor_name) + ' <span class="mtag">[' + esc(mAbbr) + ']</span></span></div>';
+          }
           if (c.mayor_election_tick != null) govRows += '<div class="g"><span class="gk">Next election</span><span class="gv">' + esc(tickToDate(c.mayor_election_tick)) + '</span></div>';
           var gov = govRows ? '<div class="citygov">' + govRows + '</div>' : '';
           return '<div class="citycard"><div class="citycard__hd"><span class="cityname">' + esc(c.name || 'City') + '</span>' +
@@ -264,7 +270,7 @@
       : '<p class="empty" style="padding:20px">No declarations have been defined yet.</p>';
     var identityBox = '<section class="panel"><h2>National Identity</h2>' + declHtml + '</section>';
 
-    document.getElementById('content').innerHTML = identity + economy + identityBox + citiesBox(cities, nation.population, declValue('capital_name'));
+    document.getElementById('content').innerHTML = identity + economy + identityBox + citiesBox(cities, nation.population, declValue('capital_name'), mayorAbbr);
     document.querySelectorAll('.maptoggle .mt').forEach(function(b){
       b.onclick = function(){ document.querySelectorAll('.maptoggle .mt').forEach(function(x){ x.classList.toggle('on', x === b); }); NMAP.mode = b.dataset.m; drawNatMap(); };
     });
@@ -293,7 +299,17 @@
       // Cities roster (non-fatal: if the table isn't migrated yet, the Cities panel shows its
       // empty state rather than failing the whole page).
       var cities = [];
-      try { var cRes = await supabase.from('cities').select('id, name, pop_pct, description, mayor_name, mayor_election_tick').eq('nation_id', viewId); if (!cRes.error) cities = cRes.data || []; } catch (e) {}
+      try {
+        var cRes = await supabase.from('cities').select('id, name, pop_pct, description, mayor_name, mayor_election_tick, mayor_party_id').eq('nation_id', viewId);
+        if (cRes.error) cRes = await supabase.from('cities').select('id, name, pop_pct, description, mayor_name, mayor_election_tick').eq('nation_id', viewId);   // mayor_party_id not migrated yet
+        if (!cRes.error) cities = cRes.data || [];
+      } catch (e) {}
+      // Mayor party tag: map each elected mayor's party id → abbreviation ([IND] when unaffiliated).
+      var mayorAbbr = {};
+      var mpIds = Array.from(new Set((cities || []).map(function(c){ return c.mayor_party_id; }).filter(Boolean)));
+      if (mpIds.length) {
+        try { var mpRes = await supabase.from('parties').select('id, abbreviation').in('id', mpIds); (mpRes.data || []).forEach(function(p){ mayorAbbr[p.id] = p.abbreviation; }); } catch (e) {}
+      }
       const { data: gov } = await supabase.from('governments').select('type, confidence, formateur_party_id').eq('nation_id', viewId).eq('status', 'active').maybeSingle();
       var oRes = await supabase.from('nations').select('id, name, flag, economy, color').order('name');
       if (oRes.error) oRes = await supabase.from('nations').select('id, name, flag, economy').order('name');   // color not migrated yet
