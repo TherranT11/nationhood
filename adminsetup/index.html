@@ -661,6 +661,11 @@
           <p class="declsec__sub">The starting option for each policy. Players can propose changes later. A policy left at its default applies that default automatically.</p>
           <div id="polFields" class="declgrid"><p class="empty">Loading policies…</p></div>
         </div>
+        <div class="declsec">
+          <h3 class="declsec__h">Relations</h3>
+          <p class="declsec__sub">This nation's standing with every other nation, 1–10 (5 = neutral). Shown on the World page as a 10-dot meter — red 1–3, yellow 4–7, green 8–10. Symmetric, so it's the same from either side.</p>
+          <div id="relFields" class="declgrid"><p class="empty">Loading relations…</p></div>
+        </div>
         <button class="btn btn-solid btn-full" type="submit" id="addBtn">Add</button>
         <button class="btn btn-ghost btn-full" type="button" id="cancelEdit" hidden style="margin-top:8px">Cancel edit</button>
         <div class="note" id="addNote" role="status" aria-live="polite"></div>
@@ -1246,6 +1251,7 @@
     function startEdit(n) {
       editing = n;
       fillForm(n);
+      loadRelFields(n.id);
       document.getElementById('formTitle').textContent = 'Edit ' + (n.name || 'Nation');
       document.getElementById('addBtn').textContent = 'Save changes';
       document.getElementById('cancelEdit').hidden = false;
@@ -1257,6 +1263,7 @@
       document.getElementById('addForm').reset();
       resetDeclFields();
       resetPolFields();
+      loadRelFields(null);
       document.getElementById('f-regime').value = '17';
       document.getElementById('f-ceiling').value = '';
       document.getElementById('formTitle').textContent = 'Add Nation';
@@ -1265,6 +1272,36 @@
       addNote.textContent = ''; addNote.className = 'note';
     }
     document.getElementById('cancelEdit').addEventListener('click', cancelEdit);
+
+    // Relations 1–10 with every OTHER nation (nation_relations, schema/137). For a new nation
+    // there's no id yet, so all default to 5; on save we upsert each via relation_set once the
+    // nation exists. Reuses nationsCache (the loaded nation list) — one source for the roster.
+    async function loadRelFields(editingId) {
+      var box = document.getElementById('relFields'); if (!box) return;
+      var relMap = {};
+      if (editingId) {
+        try {
+          const { data: rels } = await supabase.from('nation_relations').select('nation_a, nation_b, value')
+            .or('nation_a.eq.' + editingId + ',nation_b.eq.' + editingId);
+          (rels || []).forEach(function (r) { relMap[r.nation_a === editingId ? r.nation_b : r.nation_a] = r.value; });
+        } catch (e) { relMap = {}; }
+      }
+      var others = nationsCache.filter(function (n) { return n.id !== editingId; });
+      box.innerHTML = others.length
+        ? others.map(function (n) {
+            return '<div><label for="rel-' + esc(n.id) + '">Relations with ' + esc(n.name || n.id) + '</label>' +
+              '<input id="rel-' + esc(n.id) + '" type="number" min="1" max="10" step="1" data-rel="' + esc(n.id) + '" value="' + (relMap[n.id] != null ? relMap[n.id] : 5) + '"></div>';
+          }).join('')
+        : '<p class="empty">No other nations yet — add another nation to set relations.</p>';
+    }
+    // Persist every relation input against the (now-saved) nation. Best-effort per pair.
+    async function saveRelations(nationId) {
+      var inputs = document.querySelectorAll('#relFields [data-rel]');
+      for (var i = 0; i < inputs.length; i++) {
+        var other = inputs[i].dataset.rel, v = Math.max(1, Math.min(10, parseInt(inputs[i].value, 10) || 5));
+        try { await supabase.rpc('relation_set', { p_a: nationId, p_b: other, p_v: v }); } catch (e) { /* per-pair best-effort */ }
+      }
+    }
 
     // --- Per-nation declaration fields in the nation form -------------------
     // Built from the live slot definitions so the admin sets each nation's
@@ -1396,6 +1433,7 @@
         if (error) throw error;
         var list = data || [];
         nationsCache = list;
+        loadRelFields(editing ? editing.id : null);   // relations roster follows the nation list
         if (!list.length) { box.innerHTML = '<p class="empty">No nations yet.</p>'; return; }
         box.innerHTML = list.map(function (n) {
           var s = n.stats || {}, e = n.economy || {}, pr = n.production || {};
@@ -1534,6 +1572,7 @@
         // saved regime now (schema/98) rather than waiting for the next tick. Non-fatal —
         // the nation is already saved; a tick would apply the same transition regardless.
         try { await supabase.rpc('admin_sync_one_party', { p_nation: editing ? editing.id : data.id }); } catch (e) { /* applied on next tick */ }
+        await saveRelations(editing ? editing.id : data.id);   // upsert relations now the nation exists
         addNote.textContent = editing ? ('Saved changes to “' + name + '”.') : ('Added “' + name + '”. It’s now joinable on the nation-select screen.');
         addNote.className = 'note ok';
         if (editing) cancelEdit(); else { e.target.reset(); resetDeclFields(); resetPolFields(); }
