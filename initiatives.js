@@ -29,7 +29,16 @@ function injectCss(){ if(document.getElementById('nini-css'))return; var s=docum
 // +25%; private → +1 Growth, state → −1D2 Unemployment & Inflation. Display only. Execution is
 // driven by ownership: private lets corporations bid (no executor picked); state requires the
 // nation's own state-owned firm in one of the initiative's authored sectors.
-function effCost(d){ var c=Number(d.cost)||0; if(d.ownership==='private')return Math.round(c*0.8); if(d.ownership==='state')return Math.round(c*1.25); return Math.round(c); }
+// Base cost from the cost basis (schema/140/141): flat → $B; production → $B per current unit of
+// the resource (min one unit); gdp → % of GDP. Reads this nation's live figures so the shown price
+// matches what the server will charge.
+function baseCost(d, nation){
+  var v=Number(d.cost)||0, model=d.costModel||'flat';
+  if(model==='production'){ var cur=Number((nation&&nation.production&&nation.production[String(d.resource||'').toLowerCase()])||0); return Math.max(cur,1)*v; }
+  if(model==='gdp'){ return Math.round(Number(nation&&nation.gdp||0)*v/100); }
+  return v;
+}
+function effCost(d, nation){ var c=baseCost(d, nation); if(d.ownership==='private')return Math.round(c*0.8); if(d.ownership==='state')return Math.round(c*1.25); return Math.round(c); }
 function ownEffect(d){ return d.ownership==='private'?'+1 Growth':d.ownership==='state'?'−1–2 Unemployment & Inflation':''; }
 
 // A nation's initiative state: the one under way (if any) and what it can enact next. Available =
@@ -37,10 +46,11 @@ function ownEffect(d){ return d.ownership==='private'?'+1 Growth':d.ownership===
 // time). Also returns the nation's placed corps for the executor picker.
 export async function fetchNationInitiatives(nationId){
   try {
-    const [defsR, mineR, corpsR] = await Promise.all([
+    const [defsR, mineR, corpsR, natR] = await Promise.all([
       supabase.from('national_initiatives').select('id, definition').order('created_at'),
       supabase.from('nation_initiatives').select('id, initiative_id, corp_id, status, started_tick, complete_tick, cost_per_tick').eq('nation_id', nationId),
-      supabase.from('corporations').select('id, name, category, type').eq('nation_id', nationId).eq('status', 'placed')
+      supabase.from('corporations').select('id, name, category, type').eq('nation_id', nationId).eq('status', 'placed'),
+      supabase.from('nations').select('gdp, production').eq('id', nationId).maybeSingle()
     ]);
     var defs = defsR.data || [], mine = mineR.data || [];
     var activeRow = mine.filter(function(r){ return r.status==='active'; })[0] || null;
@@ -52,8 +62,8 @@ export async function fetchNationInitiatives(nationId){
     });
     var active = null;
     if(activeRow){ var ad=defs.filter(function(x){ return x.id===activeRow.initiative_id; })[0]; active={ row:activeRow, def: ad?ad.definition:null }; }
-    return { active: active, available: available, corps: corpsR.data || [] };
-  } catch(e){ return { active:null, available:[], corps:[] }; }
+    return { active: active, available: available, corps: corpsR.data || [], nation: natR.data || {} };
+  } catch(e){ return { active:null, available:[], corps:[], nation:{} }; }
 }
 
 // Render into `el`. ctx = { amPM, currentTick, onEnact(initiativeId, corpId|null) }. Only the head
@@ -75,7 +85,7 @@ export function renderNationInitiatives(el, data, ctx){
     var d=row.definition||{};
     var eff=ownEffect(d), lm=d.lengthMonths||[], secs=Array.isArray(d.sectors)?d.sectors:[];
     html += '<div class="nini" data-init="'+esc(row.id)+'"><div class="nini__name">'+esc(d.name||'Initiative')+'</div>'+
-      '<div class="nini__meta">$'+effCost(d)+'B · '+(lm[0]!=null?lm[0]:'?')+'–'+(lm[1]!=null?lm[1]:'?')+' mo · '+esc(d.ownership||'unset')+(eff?' · '+eff:'')+(d.cadence==='recurring'?' · recurring':'')+'</div>'+
+      '<div class="nini__meta">$'+effCost(d, data.nation)+'B · '+(lm[0]!=null?lm[0]:'?')+'–'+(lm[1]!=null?lm[1]:'?')+' mo · '+esc(d.ownership||'unset')+(eff?' · '+eff:'')+(d.cadence==='recurring'?' · recurring':'')+'</div>'+
       '<span class="nini__gain">+'+(d.quantity||0)+' '+esc(d.resource||'')+'</span>';
     if(ctx.amPM){
       if(d.ownership==='state'){

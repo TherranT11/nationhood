@@ -10,7 +10,8 @@
 --     resource,            -- 'Energy' | 'Food' | 'Minerals' | 'Goods' | 'Services' | 'Diplomacy' | 'Military'
 --     quantity,            -- + production the finished programme adds
 --     cadence,             -- 'one_time' | 'recurring'
---     cost,                -- base $B (before the private/state adjustment)
+--     costModel,           -- 'flat' | 'production' | 'gdp' (how each nation's price is derived at enact)
+--     cost,                -- flat → $B; production → $B per current unit; gdp → % of GDP (before the private/state adjustment)
 --     lengthMonths: [min, max],
 --     ownership,           -- 'private' | 'state' (null while unset)
 --     sectors: [sector …], -- which producing sectors' corps can carry it out (private bids from any; state needs its own SO firm in one)
