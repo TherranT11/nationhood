@@ -1298,32 +1298,40 @@
     // nation exists. Reuses nationsCache (the loaded nation list) — one source for the roster.
     async function loadRelFields(editingId) {
       var box = document.getElementById('relFields'); if (!box) return;
-      var relMap = {};
+      var relMap = {}, relErr = '';
       if (editingId) {
         try {
-          const { data: rels } = await supabase.from('nation_relations').select('nation_a, nation_b, value')
+          const { data: rels, error } = await supabase.from('nation_relations').select('nation_a, nation_b, value')
             .or('nation_a.eq.' + editingId + ',nation_b.eq.' + editingId);
-          (rels || []).forEach(function (r) { relMap[r.nation_a === editingId ? r.nation_b : r.nation_a] = r.value; });
-        } catch (e) { relMap = {}; }
+          if (error) relErr = error.message || String(error);   // surface it — a missing table/RPC means relations won't save either
+          else (rels || []).forEach(function (r) { relMap[r.nation_a === editingId ? r.nation_b : r.nation_a] = r.value; });
+        } catch (e) { relErr = (e && e.message) || String(e); }
       }
       // Base relations are set with every other ACTIVE nation only — dormant nations are hidden
       // and inert, so they get their relations the moment they're activated (their own save runs
       // saveRelations over the then-current active roster). Symmetric, so one row covers the pair.
       var others = nationsCache.filter(function (n) { return n.id !== editingId && !n.dormant; });
-      box.innerHTML = others.length
+      box.innerHTML = (relErr ? '<p class="note error" style="margin-bottom:8px">Couldn’t load saved relations — ' + esc(relErr) + '</p>' : '') + (others.length
         ? others.map(function (n) {
             return '<div><label for="rel-' + esc(n.id) + '">Relations with ' + esc(n.name || n.id) + '</label>' +
               '<input id="rel-' + esc(n.id) + '" type="number" min="1" max="10" step="1" data-rel="' + esc(n.id) + '" value="' + (relMap[n.id] != null ? relMap[n.id] : 5) + '"></div>';
           }).join('')
-        : '<p class="empty">No other nations yet — add another nation to set relations.</p>';
+        : '<p class="empty">No other nations yet — add another nation to set relations.</p>');
     }
-    // Persist every relation input against the (now-saved) nation. Best-effort per pair.
+    // Persist every relation input against the (now-saved) nation via relation_set. Returns the
+    // failure count + first error message — supabase.rpc returns {error} (it does NOT throw on a
+    // DB/permission error), so we MUST check it, or a whole set of writes can silently no-op.
     async function saveRelations(nationId) {
       var inputs = document.querySelectorAll('#relFields [data-rel]');
+      var failed = 0, firstErr = '';
       for (var i = 0; i < inputs.length; i++) {
         var other = inputs[i].dataset.rel, v = Math.max(1, Math.min(10, parseInt(inputs[i].value, 10) || 5));
-        try { await supabase.rpc('relation_set', { p_a: nationId, p_b: other, p_v: v }); } catch (e) { /* per-pair best-effort */ }
+        try {
+          const { error } = await supabase.rpc('relation_set', { p_a: nationId, p_b: other, p_v: v });
+          if (error) { failed++; if (!firstErr) firstErr = error.message || String(error); }
+        } catch (e) { failed++; if (!firstErr) firstErr = (e && e.message) || String(e); }
       }
+      return { failed: failed, error: firstErr };
     }
 
     // --- Per-nation declaration fields in the nation form -------------------
@@ -1597,7 +1605,15 @@
         // saved regime now (schema/98) rather than waiting for the next tick. Non-fatal —
         // the nation is already saved; a tick would apply the same transition regardless.
         try { await supabase.rpc('admin_sync_one_party', { p_nation: editing ? editing.id : data.id }); } catch (e) { /* applied on next tick */ }
-        await saveRelations(editing ? editing.id : data.id);   // upsert relations now the nation exists
+        var relRes = await saveRelations(editing ? editing.id : data.id);   // upsert relations now the nation exists
+        if (relRes.failed) {
+          // The nation itself saved, but its relations did not — surface it loudly (a common cause
+          // is schema/137 not applied, so relation_set is missing) and keep the form for a retry.
+          addNote.textContent = 'Nation saved, but ' + relRes.failed + ' relation' + (relRes.failed === 1 ? '' : 's') + ' did not save — ' + relRes.error;
+          addNote.className = 'note error';
+          loadNations();
+          return;
+        }
         addNote.textContent = editing ? ('Saved changes to “' + name + '”.') : ('Added “' + name + '”. It’s now joinable on the nation-select screen.');
         addNote.className = 'note ok';
         if (editing) cancelEdit(); else { e.target.reset(); resetDeclFields(); resetPolFields(); }
