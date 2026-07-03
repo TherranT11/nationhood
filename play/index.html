@@ -654,26 +654,25 @@
     } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load events.</p>'; }
   }
 
-  // The Global feed: every world event that fires — the world-shaping Turning Points
-  // (world_broadcast) plus the interactive world events (world_event) as they resolve. Both fire
-  // to nations identically or per-nation; identical (created_at, body) lines are deduped to one,
-  // shown with the globe rather than a flag. Turning Points read as the major broadcast card.
+  // The Global feed: every nation's stored events, the whole world at once — so the filter chips
+  // (World / Parties / Legislative / Government) all work globally. Categorised by eventCat, shown
+  // with the globe (no single flag). Turning Points (world_broadcast) fire to every nation
+  // identically, so those — and only those — are deduped by (created_at, body) to one broadcast.
   async function loadFeedGlobal(gameDate) {
     var box = document.getElementById('events');
     try {
       const { data: evs } = await supabase.from('events')
         .select('kind, body, game_date, created_at, effect_target, effect_value, tone, image_url')
-        .in('kind', ['world_broadcast', 'world_event']);
+        .order('created_at', { ascending: false });
       var seen = {}, items = [];
       (evs || []).forEach(function (e) {
-        var key = (e.created_at || '') + '|' + (e.body || '');
-        if (seen[key]) return; seen[key] = 1;
-        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: 'world', major: e.kind === 'world_broadcast', img: e.image_url || '', body: esc(e.body) + feedEff(e, '$') });
+        if (e.kind === 'world_broadcast') { var key = (e.created_at || '') + '|' + (e.body || ''); if (seen[key]) return; seen[key] = 1; }
+        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: eventCat(e.kind), major: e.kind === 'world_broadcast', img: e.image_url || '', body: esc(e.body) + feedEff(e, '$') });
       });
       items.sort(function (a, b) { return a.created < b.created ? 1 : (a.created > b.created ? -1 : 0); });
       FEED_ITEMS = items; FEED_FLAG = '';
       renderFeed();
-    } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load world events.</p>'; }
+    } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load events.</p>'; }
   }
 
   // Nation selector: 'global' or a nation id. Loads that view and titles the panel. feedView
