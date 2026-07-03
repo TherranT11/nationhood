@@ -250,6 +250,7 @@
   .feed__eff.pos{color:var(--green,#16915a);background:color-mix(in srgb,var(--green,#16915a) 13%,transparent);border-color:color-mix(in srgb,var(--green,#16915a) 32%,transparent)}
   .feed__eff.neg{color:var(--red,#C42B2B);background:color-mix(in srgb,var(--red,#C42B2B) 13%,transparent);border-color:color-mix(in srgb,var(--red,#C42B2B) 32%,transparent)}
   .feed__eff.warn{color:var(--amber,#E0820E);background:color-mix(in srgb,var(--amber,#E0820E) 14%,transparent);border-color:color-mix(in srgb,var(--amber,#E0820E) 32%,transparent)}
+  .feed__img{display:block;max-width:180px;max-height:88px;width:auto;object-fit:cover;border-radius:8px;border:1px solid var(--line);margin:9px 0 2px}
 
   /* World Events panel — a fired decision awaiting this nation's answer. */
   .wevt{border:1px solid var(--line);border-radius:12px;padding:15px 17px;margin-bottom:12px}
@@ -566,12 +567,14 @@
       return;
     }
     box.innerHTML = '<ul class="feed">' + list.map(function (it) {
+      // A world event that carries an authored image shows it small, beneath the line.
+      var img = it.img ? '<img class="feed__img" src="' + esc(it.img) + '" alt="" loading="lazy">' : '';
       // A global Turning Point (major) reads as a broadcast: globe + World Event tag, highlighted.
       if (it.major) {
         return '<li class="feed__major"><span class="feed__date">' + esc(it.when) + '</span> &mdash; ' + FEED_GLOBE +
-          '<span class="feed__wetag">World Event</span><span class="feed__mtxt">' + colorize(it.body) + '</span></li>';
+          '<span class="feed__wetag">World Event</span><span class="feed__mtxt">' + colorize(it.body) + '</span>' + img + '</li>';
       }
-      return '<li class="feed__evt"><span class="feed__date">' + esc(it.when) + '</span> &mdash; ' + FEED_FLAG + colorize(it.body) + '</li>';
+      return '<li class="feed__evt"><span class="feed__date">' + esc(it.when) + '</span> &mdash; ' + FEED_FLAG + colorize(it.body) + img + '</li>';
     }).join('') + '</ul>';
   }
   document.querySelectorAll('.evchip').forEach(function (b) {
@@ -582,11 +585,18 @@
   // per party) + stored events (rally outcomes, etc. from the events table),
   // merged newest-first. Founding dates use the frozen game date for now; stored
   // events carry their own game_date.
+  // A feed row's coloured effect pill — one source, shared by the nation and Global loaders.
+  // Admin-fired / world events carry a structured effect; organic events (rallies etc.) have none.
+  function feedEff(e, currency) {
+    return (e.effect_target != null && e.effect_value != null)
+      ? ' <span class="feed__eff ' + esc(e.tone || 'warn') + '"><i>' + esc(eventEffectLabel(e.effect_target, e.effect_value, currency)) + '</i></span>' : '';
+  }
+
   async function loadFeed(nationId, nation, gameDate) {
     var box = document.getElementById('events');
     try {
       const { data: parties } = await supabase.from('parties').select('id, name, created_at').eq('nation_id', nationId);
-      const { data: evs } = await supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone').eq('nation_id', nationId);
+      const { data: evs } = await supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone, image_url').eq('nation_id', nationId);
       // Party Leader names for the formation announcements (one per party).
       var leaderBy = {};
       var pids = (parties || []).map(function (p) { return p.id; });
@@ -603,11 +613,7 @@
       });
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
       (evs || []).forEach(function (e) {
-        // Admin-fired events carry a structured effect → the coloured pill; organic
-        // events (rallies etc.) have none and narrate their outcome in the body.
-        var eff = (e.effect_target != null && e.effect_value != null)
-          ? ' <span class="feed__eff ' + esc(e.tone || 'warn') + '"><i>' + esc(eventEffectLabel(e.effect_target, e.effect_value, currency)) + '</i></span>' : '';
-        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: eventCat(e.kind), major: e.kind === 'world_broadcast', body: esc(e.body) + eff });
+        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: eventCat(e.kind), major: e.kind === 'world_broadcast', img: e.image_url || '', body: esc(e.body) + feedEff(e, currency) });
       });
       items.sort(function (a, b) { return a.created < b.created ? 1 : (a.created > b.created ? -1 : 0); });
       FEED_ITEMS = items;
@@ -624,15 +630,13 @@
     var box = document.getElementById('events');
     try {
       const { data: evs } = await supabase.from('events')
-        .select('kind, body, game_date, created_at, effect_target, effect_value, tone')
+        .select('kind, body, game_date, created_at, effect_target, effect_value, tone, image_url')
         .in('kind', ['world_broadcast', 'world_event']);
       var seen = {}, items = [];
       (evs || []).forEach(function (e) {
         var key = (e.created_at || '') + '|' + (e.body || '');
         if (seen[key]) return; seen[key] = 1;
-        var eff = (e.effect_target != null && e.effect_value != null)
-          ? ' <span class="feed__eff ' + esc(e.tone || 'warn') + '"><i>' + esc(eventEffectLabel(e.effect_target, e.effect_value, '$')) + '</i></span>' : '';
-        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: 'world', major: e.kind === 'world_broadcast', body: esc(e.body) + eff });
+        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: 'world', major: e.kind === 'world_broadcast', img: e.image_url || '', body: esc(e.body) + feedEff(e, '$') });
       });
       items.sort(function (a, b) { return a.created < b.created ? 1 : (a.created > b.created ? -1 : 0); });
       FEED_ITEMS = items; FEED_FLAG = '';

@@ -218,18 +218,18 @@ begin
       -- 'world_broadcast' notice (globe + World Event tag), never in the action panel. The notice
       -- spells out what it did to every nation.
       perform public._apply_we_effects(v_nat, v_def->'turning'->'effects');
-      insert into public.events (nation_id, kind, body, game_date)
+      insert into public.events (nation_id, kind, body, game_date, image_url)
         values (v_nat, 'world_broadcast',
                 v_body || coalesce(' — All nations: ' || public._we_effects_text(v_def->'turning'->'effects') || '.', ''),
-                public.current_game_date());
+                public.current_game_date(), nullif(v_def->>'image', ''));
     else
-      insert into public.events (nation_id, kind, body, game_date)
+      insert into public.events (nation_id, kind, body, game_date, image_url)
         values (v_nat, 'world_event',
                 v_body || (case v_type when 'mutual' then ' — an agreement awaits in World Events.'
                                        when 'competitive' then ' — a sealed bid awaits in World Events.'
                                        when 'bidding' then ' — a sealed bid awaits in World Events.'
                                        else ' — a decision awaits in World Events.' end),
-                public.current_game_date());
+                public.current_game_date(), nullif(v_def->>'image', ''));
     end if;
   end loop;
 
