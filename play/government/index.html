@@ -502,9 +502,9 @@
   // ---- National Objectives — the government's agenda of timed goals (schema/139). Read-only for
   // all; the Head of Government (amPM) adds from the nation's pool or drops. Rendered into
   // #natObjectives inside the Agenda panel; assign/drop go through the HoG-gated RPCs. ----
-  var NOBJ = { govId: null, nationId: null, amPM: false, tick: null, cap: 3, held: [], avail: [], natName: {}, addOpen: false, busy: false };
+  var NOBJ = { govId: null, nationId: null, amPM: false, tick: null, cap: 3, held: [], avail: [], natName: {}, crisisName: {}, addOpen: false, busy: false };
   function objCard(o, mode){
-    var d = o.def || {}, ctx = { natName: function(id){ return NOBJ.natName[id] || id || '—'; } };
+    var d = o.def || {}, ctx = { natName: function(id){ return NOBJ.natName[id] || id || '—'; }, crisisLabel: function(id){ return NOBJ.crisisName[id] || id || '—'; } };
     var conds = (d.conditions || []).map(function(c){ return esc(objCondText(c, ctx)); }).filter(Boolean).join(' &middot; ') || 'No conditions set';
     var rews = (d.rewards || []).map(function(r){ var t = objRewardText(r, ctx); return t ? '<span class="nobj-rew">' + esc(t) + '</span>' : ''; }).join('');
     var ticks = Number(d.ticks) || 0, left = (mode === 'held' && o.deadline != null && NOBJ.tick != null) ? Math.max(0, o.deadline - NOBJ.tick) : null;
@@ -550,9 +550,11 @@
       const { data: hr } = await supabase.from('government_objectives').select('objective_id, deadline_tick').eq('government_id', govId);
       const { data: objs } = await supabase.from('objectives').select('id, definition');
       const { data: nats } = await supabase.from('nations').select('id, name');
+      const { data: cris } = await supabase.from('crises').select('id, definition');
       var activeCrises = {};
       try { const { data: nc } = await supabase.from('nation_crises').select('crisis_id').eq('nation_id', nationId).eq('status', 'active'); (nc || []).forEach(function(r){ activeCrises[r.crisis_id] = 1; }); } catch (e) {}
       NOBJ.natName = {}; (nats || []).forEach(function(n){ NOBJ.natName[n.id] = n.name; });
+      NOBJ.crisisName = {}; (cris || []).forEach(function(c){ NOBJ.crisisName[c.id] = (c.definition && c.definition.name) || 'a crisis'; });
       var held = hr || [], all = objs || [], byId = {};
       all.forEach(function(o){ byId[o.id] = o.definition || {}; });
       var heldIds = held.map(function(r){ return r.objective_id; });

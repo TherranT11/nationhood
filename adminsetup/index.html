@@ -603,6 +603,15 @@
           <div class="full"><label for="f-desc">Nation Description</label><textarea id="f-desc"></textarea></div>
           <div class="full"><label for="f-analog">Analogous</label><input id="f-analog" type="text" placeholder="e.g. France"></div>
           <div><label for="f-color">Map colour</label><input id="f-color" type="color" value="#5546E8" style="width:60px;height:38px;padding:2px"></div>
+          <div class="full"><label for="f-flagfile">Nation Flag <span class="who" style="font-weight:400">optional · png/jpg/webp · max 2 MB · used from inception (no repo commit)</span></label>
+            <div style="display:flex;gap:10px;align-items:center">
+              <img id="f-flagimg" alt="" style="width:52px;height:34px;object-fit:cover;border:1px solid var(--line);border-radius:5px" hidden>
+              <input id="f-flagfile" type="file" accept="image/png,image/jpeg,image/webp" style="flex:1">
+              <button type="button" id="f-flagclear" style="width:auto;padding:9px 12px;cursor:pointer" hidden>×</button>
+            </div>
+            <input type="hidden" id="f-flag">
+            <div class="note" id="f-flagnote" style="margin-top:6px"></div>
+          </div>
           <div class="full"><label for="f-ruling">Ruling Party</label><input id="f-ruling" type="text" placeholder="one-party state only — name it and players join as factions; blank = multiparty"></div>
           <div class="full"><label style="display:flex;align-items:center;gap:9px;cursor:pointer"><input type="checkbox" id="f-dormant" style="width:auto"> <span>Dormant — fully authored but hidden &amp; inert until activated (e.g. a breakaway state a crisis spawns on its terminal stage)</span></label></div>
           <div><label for="f-pop">Starting Population</label><input id="f-pop" type="number" min="0" step="0.1" placeholder="in millions (e.g. 24.5)"></div>
@@ -1085,6 +1094,19 @@
     import { MINISTRIES } from '/ministries.js';
     import { condText as objCondText, rewardText as objRewardText } from '/objectives.js';
 
+    // ONE image-upload path: push a file to a Supabase storage bucket (optionally under a folder)
+    // and return its public URL. Shared by the world-event image and the nation flag. Throws on
+    // oversize / not-signed-in / upload error so callers show one message.
+    async function uploadToStorage(bucket, folder, file) {
+      if (file.size > 2 * 1024 * 1024) throw new Error('That image is over 2 MB.');
+      var u = (await supabase.auth.getUser()).data.user; if (!u) throw new Error('Not signed in.');
+      var ext = ((file.name || '').split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+      var path = (folder ? folder + '/' : '') + u.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+      var up = await supabase.storage.from(bucket).upload(path, file, { cacheControl: '3600', upsert: false });
+      if (up.error) throw new Error(up.error.message);
+      return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+    }
+
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
     var adminView = document.getElementById('adminView');
@@ -1198,6 +1220,7 @@
       setVal('f-name', n.name); setVal('f-desc', n.description); setVal('f-analog', n.analogous);
       setVal('f-ruling', n.ruling_party);
       document.getElementById('f-color').value = natMapColor(n);
+      setFlag(n.flag || '');
       document.getElementById('f-dormant').checked = !!n.dormant;
       setVal('f-pop', n.population); setVal('f-gdp', n.gdp);
       setVal('f-prosperity', s.prosperity); setVal('f-welfare', s.welfare); setVal('f-growth', s.growth);
@@ -1232,12 +1255,30 @@
       loadRelFields(null);
       document.getElementById('f-regime').value = '17';
       document.getElementById('f-ceiling').value = '';
+      setFlag('');
       document.getElementById('formTitle').textContent = 'Add Nation';
       document.getElementById('addBtn').textContent = 'Add';
       document.getElementById('cancelEdit').hidden = true;
       addNote.textContent = ''; addNote.className = 'note';
     }
     document.getElementById('cancelEdit').addEventListener('click', cancelEdit);
+
+    // Nation Flag — set the hidden URL + preview, and upload straight to Supabase storage (reusing
+    // the world-event-images bucket, flags/ folder), so a flag is live from inception, no repo commit.
+    function setFlag(url) {
+      document.getElementById('f-flag').value = url || '';
+      var img = document.getElementById('f-flagimg'), clr = document.getElementById('f-flagclear');
+      if (url) { img.src = url; img.hidden = false; clr.hidden = false; } else { img.hidden = true; img.removeAttribute('src'); clr.hidden = true; }
+      document.getElementById('f-flagnote').textContent = '';
+    }
+    document.getElementById('f-flagclear').addEventListener('click', function () { document.getElementById('f-flagfile').value = ''; setFlag(''); });
+    document.getElementById('f-flagfile').addEventListener('change', async function (e) {
+      var file = e.target.files && e.target.files[0], note = document.getElementById('f-flagnote');
+      if (!file) return;
+      note.textContent = 'Uploading…';
+      try { setFlag(await uploadToStorage('world-event-images', 'flags', file)); note.textContent = 'Flag uploaded.'; }
+      catch (err) { note.textContent = 'Upload failed: ' + (err.message || err); e.target.value = ''; }
+    });
 
     // Relations 1–10 with every OTHER nation (nation_relations, schema/137). For a new nation
     // there's no id yet, so all default to 5; on save we upsert each via relation_set once the
@@ -1478,6 +1519,7 @@
         analogous: document.getElementById('f-analog').value.trim() || null,
         ruling_party: document.getElementById('f-ruling').value.trim() || null,
         color: document.getElementById('f-color').value || null,
+        flag: document.getElementById('f-flag').value || null,   // uploaded flag URL (Supabase storage), or null
         dormant: document.getElementById('f-dormant').checked,
         population: num('f-pop', true), gdp: num('f-gdp'),
         legislature_seats: num('f-seats'),
@@ -3336,9 +3378,10 @@
         allies:    { label: 'X Allies in [continent]',              parts: [{ p: 'count', t: 'num' }, { p: 'continent', t: 'cont' }] },
         units:     { label: 'More than X [unit]',                    parts: [{ p: 'count', t: 'num' }, { p: 'unit', t: 'sel', opts: OBJ_UNITS }] },
         relations: { label: 'Relations with [nation] above Y',       parts: [{ p: 'nation', t: 'nat' }, { p: 'value', t: 'num' }] },
-        seize:     { label: 'Seize Territory [hex]',                  parts: [{ p: 'hex', t: 'hex' }] }
+        seize:     { label: 'Seize Territory [hex]',                  parts: [{ p: 'hex', t: 'hex' }] },
+        end_crisis:{ label: 'End the crisis [crisis]',                parts: [{ p: 'crisis', t: 'crisis' }] }
       };
-      var COND_ORDER = ['stat_up', 'stat_down', 'prod_up', 'budget', 'debt_down', 'fdi', 'trade', 'mil_dom', 'gdp_up', 'allies', 'units', 'relations', 'seize'];
+      var COND_ORDER = ['stat_up', 'stat_down', 'prod_up', 'budget', 'debt_down', 'fdi', 'trade', 'mil_dom', 'gdp_up', 'allies', 'units', 'relations', 'seize', 'end_crisis'];
 
       var REWARD_DEFS = {
         popularity: { label: 'Party Popularity +X',          parts: [{ p: 'amount', t: 'num' }] },
@@ -3372,6 +3415,7 @@
         if (part.t === 'cont') return objContinents[0] || '';
         if (part.t === 'nat') return (objNations[0] || {}).id || '';
         if (part.t === 'hex') return objHexes.length ? hexKey(objHexes[0]) : '';
+        if (part.t === 'crisis') return (objCrises[0] || {}).id || '';
         return 1;   // num
       }
       function blankItem(kind, defs) { var d = defs[kind]; var o = { kind: kind }; d.parts.forEach(function (p) { o[p.p] = partDefault(p); }); return o; }
@@ -3450,7 +3494,7 @@
         function renderObjCrisis() {
           cSel.hidden = !cOn.checked;
           cSel.innerHTML = objCrises.length
-            ? objCrises.map(function (c) { return '<option value="' + esc(c.id) + '"' + (OBJ.requires_crisis === c.id ? ' selected' : '') + '>' + esc(c.name) + (c.nation ? ' (' + esc(natName(c.nation)) + ')' : '') + '</option>'; }).join('')
+            ? objCrises.map(function (c) { return '<option value="' + esc(c.id) + '"' + (OBJ.requires_crisis === c.id ? ' selected' : '') + '>' + esc(crisisOptLabel(c)) + '</option>'; }).join('')
             : '<option value="">— no crises authored yet —</option>';
         }
         cOn.checked = !!OBJ.requires_crisis;
@@ -3470,6 +3514,7 @@
           if (p.t === 'cont') return '<select data-prop="' + p.p + '">' + (objContinents.length ? objContinents : ['—']).map(function (o) { return '<option' + (o === val ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
           if (p.t === 'nat') return '<select data-prop="' + p.p + '">' + (objNations.length ? objNations.map(function (na) { return '<option value="' + esc(na.id) + '"' + (na.id === val ? ' selected' : '') + '>' + esc(na.name || na.id) + '</option>'; }).join('') : '<option value="">— no nations —</option>') + '</select>';
           if (p.t === 'hex') return '<select data-prop="' + p.p + '">' + (objHexes.length ? objHexes.map(function (h) { var k = hexKey(h); return '<option value="' + esc(k) + '"' + (k === val ? ' selected' : '') + '>' + esc(hexOptLabel(h)) + '</option>'; }).join('') : '<option value="">— no assigned hexes —</option>') + '</select>';
+          if (p.t === 'crisis') return '<select data-prop="' + p.p + '">' + (objCrises.length ? objCrises.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === val ? ' selected' : '') + '>' + esc(crisisOptLabel(c)) + '</option>'; }).join('') : '<option value="">— no crises authored —</option>') + '</select>';
           return '';
         }).join('');
       }
@@ -3498,7 +3543,11 @@
       // ----- preview rail: render each condition/reward as a readable line -----
       // Condition / reward text via the shared one source (/objectives.js); nation + hex lookups
       // are this page's, injected as context.
-      function condText(c) { return objCondText(c, { natName: natName, hexLabel: hexLabel }); }
+      // ONE crisis label — "name (nation)" — shared by the gate selector, the End-Crisis condition
+      // option, and condText's crisisLabel. Callers building HTML wrap it in esc().
+      function crisisOptLabel(c) { return (c.name || 'Untitled crisis') + (c.nation ? ' (' + natName(c.nation) + ')' : ''); }
+      function crisisLabel(id) { var c = objCrises.filter(function (x) { return x.id === id; })[0]; return c ? crisisOptLabel(c) : (id || '—'); }
+      function condText(c) { return objCondText(c, { natName: natName, hexLabel: hexLabel, crisisLabel: crisisLabel }); }
       function rewardText(r) { return objRewardText(r, { natName: natName }); }
       function renderObjPreview() {
         var box = document.getElementById('obPrev'); if (!box || !OBJ) return;
@@ -3733,15 +3782,9 @@
       async function weUpload(file) {
         var note = document.getElementById('weImgNote');
         if (!file) return;
-        if (file.size > 2 * 1024 * 1024) { note.textContent = 'That image is over 2 MB.'; return; }
         note.textContent = 'Uploading…';
         try {
-          var u = (await supabase.auth.getUser()).data.user; if (!u) throw new Error('Not signed in.');
-          var ext = ((file.name || '').split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-          var path = u.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
-          var up = await supabase.storage.from('world-event-images').upload(path, file, { cacheControl: '3600', upsert: false });
-          if (up.error) throw new Error(up.error.message);
-          WE.image = supabase.storage.from('world-event-images').getPublicUrl(path).data.publicUrl;
+          WE.image = await uploadToStorage('world-event-images', '', file);
           note.textContent = 'Image uploaded.'; renderImg(); renderPreview();
         } catch (e) { note.textContent = 'Upload failed: ' + (e.message || e); }
       }
