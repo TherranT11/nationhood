@@ -88,6 +88,7 @@ declare
   v_def jsonb; v_status text; v_total numeric; v_max numeric; v_thresh numeric;
   v_targets text[]; v_nat text; v_amt numeric; v_name text; v_body text; v_aft jsonb;
   v_bres text; v_bamt numeric; v_astr text; v_per numeric; v_mult numeric;
+  v_side jsonb; v_sup text; v_sidenames text := '';
 begin
   select definition, status into v_def, v_status from public.world_event_instances where id = p_instance for update;
   if not found or v_status <> 'active' then return; end if;
@@ -113,7 +114,21 @@ begin
             from jsonb_array_elements(coalesce(v_def->'bidding'->'perBid'->'effects', '[]'::jsonb)) e));
       end if;
     end loop;
-    v_body := v_name || ' — the commitment met the threshold; the strongest bidder is rewarded.';
+    -- Sides (optional): the side a top bidder backs prevails; each such side awards its winEffects
+    -- to every nation that supports it. Ties may crown more than one side.
+    if coalesce((v_def->'bidding'->>'hasSides')::boolean, false) then
+      for v_side in select value from jsonb_array_elements(coalesce(v_def->'bidding'->'sides', '[]'::jsonb)) loop
+        if exists (select 1 from public.world_event_bids b
+                    where b.instance_id = p_instance and b.amount = v_max and (v_side->'supporters') ? b.nation_id) then
+          for v_sup in select jsonb_object_keys(coalesce(v_side->'supporters', '{}'::jsonb)) loop
+            perform public._apply_we_effects(v_sup, v_side->'winEffects');
+          end loop;
+          v_sidenames := v_sidenames || case when v_sidenames = '' then '' else ', ' end || coalesce(nullif(v_side->>'name', ''), 'a faction');
+        end if;
+      end loop;
+    end if;
+    v_body := v_name || ' — the commitment met the threshold; the strongest bidder is rewarded.'
+              || case when v_sidenames <> '' then ' ' || v_sidenames || ' prevailed.' else '' end;
   else
     -- Threshold missed: every involved nation that staked nothing takes the penalty.
     foreach v_nat in array v_targets loop
