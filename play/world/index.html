@@ -32,7 +32,7 @@
   @media(max-width:760px){.grid{grid-template-columns:1fr}}
 
   .wcard{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;display:flex;flex-direction:column}
-  .wc-top{display:flex;align-items:center;gap:13px}
+  .wc-top{display:flex;align-items:flex-start;gap:13px}
   .emb{width:96px;height:64px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-weight:700;font-size:26px;color:#fff;background:var(--acc)}
   .emb.img{object-fit:contain;border:1px solid var(--line);background:var(--chip)}
   .wc-id{flex:1;min-width:0}
@@ -57,13 +57,12 @@
   .srow .sv{font-weight:700;font-size:13.5px;text-align:right;color:var(--ink)}
   .srow .sv small{font-family:'Space Mono',monospace;font-weight:700;font-size:10px;color:var(--soft);margin-left:5px}
   .srow .sv.good{color:var(--green)} .srow .sv.warn{color:var(--amber)} .srow .sv.bad{color:var(--red)}
-  .rel{display:flex;align-items:center;gap:9px;margin:11px 0 2px;padding-top:11px;border-top:1px solid var(--line,#E7E5E0)}
-  .rel-k{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft,#8d8d95)}
-  .rel-dots{display:flex;gap:3px;flex:1}
-  .rdot{width:11px;height:11px;border-radius:50%;background:var(--chip,#F4F3EF);border:1px solid var(--line,#E7E5E0)}
+  .rel{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:5px;margin-left:8px}
+  .rel-dots{display:flex;gap:3px}
+  .rdot{width:10px;height:10px;border-radius:50%;background:var(--chip,#F4F3EF);border:1px solid var(--line,#E7E5E0)}
   .rdot.on.good{background:var(--green);border-color:var(--green)} .rdot.on.warn{background:var(--amber);border-color:var(--amber)} .rdot.on.bad{background:var(--red);border-color:var(--red)}
-  .rel-v{font-family:'Space Mono',monospace;font-size:11px;font-weight:700}
-  .rel-v.good{color:var(--green)} .rel-v.warn{color:var(--amber)} .rel-v.bad{color:var(--red)}
+  .rel-lbl{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
+  .rel-lbl.good{color:var(--green)} .rel-lbl.warn{color:var(--amber)} .rel-lbl.bad{color:var(--red)}
 
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -104,12 +103,14 @@
   // flag-fallback badge tint). Cycled by position.
   var ACCENTS = ['var(--red)', 'var(--blue)', 'var(--amber)', 'var(--green)', 'var(--indigo)'];
 
-  // Relations 1–10 as a 10-dot meter (1 dot = 1), coloured by band: 1–3 red, 4–7 yellow, 8–10 green.
+  // Relations 1–10 as a 10-dot meter (1 dot = 1), coloured + named by band: 1–3 Antagonistic (red),
+  // 4–7 Neutral (yellow), 8–10 Friendly (green). Sits top-right of each nation card.
   function relBand(v){ return v <= 3 ? 'bad' : v <= 7 ? 'warn' : 'good'; }
+  function relLabel(v){ return v <= 3 ? 'Antagonistic' : v <= 7 ? 'Neutral' : 'Friendly'; }
   function relMeter(v){
     var band = relBand(v), dots = '';
     for (var d = 1; d <= 10; d++) dots += '<span class="rdot' + (d <= v ? ' on ' + band : '') + '"></span>';
-    return '<div class="rel"><span class="rel-k">Relations</span><div class="rel-dots">' + dots + '</div><span class="rel-v ' + band + '">' + v + '/10</span></div>';
+    return '<div class="rel"><div class="rel-dots">' + dots + '</div><span class="rel-lbl ' + band + '">' + relLabel(v) + ' &middot; ' + v + '/10</span></div>';
   }
 
   function render(nations, govByNation, leaderByParty, titleSlot, partyById, relMap){
@@ -157,9 +158,10 @@
           '<span class="sv ' + statBand(k, num) + '">' + esc(statLabel(k, num) || '—') + ' <small>' + num + '</small></span></div>';
       }).join('');
 
+      var relVal = (relMap && relMap[n.id] != null) ? relMap[n.id] : 5;
       return '<article class="wcard" style="--acc:' + acc + '">' +
         '<div class="wc-top">' + badge +
-          '<div class="wc-id"><h2>' + esc(formalName) + '</h2></div></div>' +
+          '<div class="wc-id"><h2>' + esc(formalName) + '</h2></div>' + relMeter(relVal) + '</div>' +
         '<div class="figs">' +
           '<div class="fig"><div class="k">GDP</div><div class="v">' + esc(currency) + (n.gdp != null ? esc(fmtGdp(n.gdp)) : '—') + '</div></div>' +
           '<div class="fig"><div class="k">Population</div><div class="v">' + (n.population != null ? esc(fmtPop(n.population)) : '—') + '</div></div>' +
@@ -168,7 +170,6 @@
           '<div class="who"><span class="ttl">' + esc(hogTitle) + '</span> &mdash; <b>' + hog + '</b>' + hogTag + '</div>' +
           '<span class="govtype">' + esc(govType) + '</span>' +
         '</div>' +
-        relMeter((relMap && relMap[n.id] != null) ? relMap[n.id] : 5) +
         '<div class="wstats">' + statsHtml + '</div>' +
       '</article>';
     }).join('');
