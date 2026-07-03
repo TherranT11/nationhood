@@ -137,9 +137,10 @@
   // ---- Law mode: pick a policy + the option to enact, preview its effects for this
   // nation, then queue it or send it to the floor (mirrors the declaration flow). ----
   var lawBusy = false;
-  async function renderLawMode(currentPolicies, nation, pendingPolicies) {
+  async function renderLawMode(currentPolicies, nation, pendingPolicies, partySeats) {
     currentPolicies = currentPolicies || {};
     pendingPolicies = pendingPolicies || {};   // policyId → true for a bill already on the floor/agenda
+    var noSeats = Number(partySeats) < 1;      // a party with no legislature seats can't author a bill (server enforces too)
     var pop = Number((nation && nation.population) || 0), pros = Number((nation && nation.stats && nation.stats.prosperity) || 10);
     document.querySelector('.phead .eye').textContent = 'Legislature · Law';
     document.querySelector('.phead h1').textContent = 'Propose a Law';
@@ -302,9 +303,10 @@
       // One pending bill per policy: if this policy already has one on the floor/agenda, the
       // chamber won't take another until it resolves (the server enforces this too).
       var blocked = !!pendingPolicies[curPolicy().id];
-      var ok = !blocked && sel.proposed != null && sel.proposed !== inForceIdx() && !lawBusy;
+      var ok = !noSeats && !blocked && sel.proposed != null && sel.proposed !== inForceIdx() && !lawBusy;
       floorBtn.disabled = !ok; agendaBtn.disabled = !ok;
-      if (!lawBusy) note.textContent = blocked ? 'A bill to change this policy is already before the chamber — it must resolve first.'
+      if (!lawBusy) note.textContent = noSeats ? 'Your party holds no legislature seats — win seats at an election before you can propose a bill.'
+        : blocked ? 'A bill to change this policy is already before the chamber — it must resolve first.'
         : ok ? 'Ready to propose — choose how.' : 'Pick a rung to propose it.';
     }
 
@@ -537,7 +539,7 @@
     if (!user) return; // redirected to login
     var party = null, nation = null;
     try {
-      ({ data: party } = await supabase.from('parties').select('name, archetype, nation_id, funds, actions_remaining').eq('user_id', user.id).single());
+      ({ data: party } = await supabase.from('parties').select('name, archetype, nation_id, funds, actions_remaining, seats').eq('user_id', user.id).single());
       if (!party) { window.location.replace('/nation-select/'); return; }
       ({ data: nation } = await supabase.from('nations').select('name, flag, economy, declarations, policies, population, stats, electoral_threshold').eq('id', party.nation_id).single());
       const nationName = (nation && nation.name) || party.nation_id;
@@ -564,7 +566,7 @@
           if (p.kind === 'law' && (p.status === 'voting' || p.status === 'agenda') && p.payload && p.payload.policy_id) pendingPolicies[p.payload.policy_id] = true;
         });
       } catch (e) { /* leave empty → server still blocks a duplicate */ }
-      renderLawMode((nation && nation.policies) || {}, nation || {}, pendingPolicies);
+      renderLawMode((nation && nation.policies) || {}, nation || {}, pendingPolicies, (party && party.seats) || 0);
     }
   })();
 </script>

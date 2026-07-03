@@ -253,13 +253,17 @@ begin
 
   if p_to_floor then
     v_party := public._begin_action(0);          -- requires >= 1 action
-    if public._party_seats(v_party.nation_id) = 0 then raise exception 'The assembly is vacant — hold an election before bringing measures to the floor.'; end if;
   else
     v_party := public._lock_party();
     select greatest(v_cur + 1, coalesce(max(scheduled_tick), v_cur) + 1)
       into v_sched
       from public.proposals where nation_id = v_party.nation_id and status = 'agenda';
   end if;
+
+  -- A party that holds no legislature seats has no standing on the floor — it cannot
+  -- author a bill (whether queued on the agenda or sent straight to the floor). The
+  -- client also greys the propose buttons out; this is the server-authoritative gate.
+  if v_party.seats < 1 then raise exception 'A party with no legislature seats cannot propose a bill.'; end if;
 
   -- No-op guard: don't let a party spend an action to propose the option already in force.
   if public._nation_policy_option(v_party.nation_id, p_policy) = p_option then

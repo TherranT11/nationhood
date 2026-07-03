@@ -674,6 +674,9 @@
             <div id="m-effects"></div>
             <button class="btn btn-ghost" type="button" id="m-addEffect" style="margin-top:8px">+ Add effect</button>
             <div class="modsummary"><div class="modsummary__h">What this modifier does</div><ul id="m-sumList" class="mcard__efflist"></ul></div>
+            <label style="margin-top:12px">Trigger conditions <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">— the modifier auto-applies to ANY non-dormant nation that meets ALL of these (none = only manual assignment)</span></label>
+            <div id="m-startconds"></div>
+            <button class="btn btn-ghost" type="button" id="m-addStartCond" style="margin-top:8px">+ Add trigger condition</button>
             <label style="margin-top:12px">End conditions <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">— the modifier lifts itself once ALL of these are met (none = stays until removed)</span></label>
             <div id="m-endconds"></div>
             <button class="btn btn-ghost" type="button" id="m-addCond" style="margin-top:8px">+ Add end condition</button>
@@ -800,9 +803,19 @@
                     <div class="addrow"><button class="add" id="cbAddTrig" type="button">+ condition</button></div>
                   </div>
                   <div class="card">
+                    <div class="sechd">Create stat <span class="hint">custom crisis stats · laws &amp; minister actions move them; the end-conditions and thresholds below read them</span></div>
+                    <div id="cbStats"></div>
+                    <div class="addrow"><button class="add" id="cbAddStat" type="button">+ stat</button></div>
+                  </div>
+                  <div class="card">
                     <div class="sechd">Crisis immediately ends if <span class="seg" id="cbEndMode"><span data-m="all">All</span><span data-m="any">Any</span></span></div>
                     <div id="cbEndIf"></div>
                     <div class="addrow"><button class="add" id="cbAddEnd" type="button">+ condition</button></div>
+                  </div>
+                  <div class="card">
+                    <div class="sechd">If a stat reaches a value <span class="hint">fires its effect once — the tick the stat first crosses</span></div>
+                    <div id="cbThresholds"></div>
+                    <div class="addrow"><button class="add" id="cbAddThresh" type="button">+ threshold</button></div>
                   </div>
                   <div class="card">
                     <div class="sechd">Stages</div>
@@ -2958,7 +2971,22 @@
       var ONHAND_RES = ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Military'];
       var EFF_TGT = { Crisis: ['Crisis Meter'], National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Income', 'Regime'], Government: ['Government Confidence', 'Party Popularity'], Resource: RES, 'On hand': ONHAND_RES.map(function (r) { return r + ' on hand'; }) };
 
-      function effTgt(sel) { var h = ''; Object.keys(EFF_TGT).forEach(function (g) { h += '<optgroup label="' + g + '">' + EFF_TGT[g].map(function (t) { return '<option' + (t === sel ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</optgroup>'; }); return h; }
+      // The crisis's custom stats that have a name — ONE source for every dropdown/preview
+      // that lists them (effect targets, endIf targets, thresholds, preview).
+      function namedStats() { return ((CRISIS && CRISIS.customStats) || []).filter(function (s) { return s && s.name; }); }
+      // Custom crisis stats as an effect/condition target group. Their target string is
+      // 'stat:<name>' (distinct from a national stat of the same name); '' when none defined.
+      function statOpts(sel) {
+        var cs = namedStats();
+        if (!cs.length) return '';
+        return '<optgroup label="Crisis Stat">' + cs.map(function (s) {
+          var v = 'stat:' + s.name;
+          return '<option value="' + esc(v) + '"' + (v === sel ? ' selected' : '') + '>' + esc(s.name) + '</option>';
+        }).join('') + '</optgroup>';
+      }
+      // Display label for a target string — strips the 'stat:' prefix off a custom crisis stat.
+      function tgtLabel(t) { return (typeof t === 'string' && t.slice(0, 5) === 'stat:') ? t.slice(5) : t; }
+      function effTgt(sel) { var h = ''; Object.keys(EFF_TGT).forEach(function (g) { h += '<optgroup label="' + g + '">' + EFF_TGT[g].map(function (t) { return '<option' + (t === sel ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</optgroup>'; }); return h + statOpts(sel); }
       function trigTgt(sel) {
         var h = '<optgroup label="National">' + EFF_TGT.National.map(o).join('') + '</optgroup>' +
           '<optgroup label="Government">' + EFF_TGT.Government.map(o).join('') + '</optgroup>' +
@@ -2970,7 +2998,7 @@
       function eff(t, v) { return { t: t, v: v }; }
       function signed(v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); }
       function effScaleStr(e) { return isMoneyTarget(e.t) ? (e.scale === 'perm' ? ' /M pop' : e.scale === 'pop' ? ' ×pop×prosp' : '') : ''; }
-      function effStr(e) { if (e.t === 'Budget' || e.t === 'Debt') return e.t + ' ' + (e.v > 0 ? '+' : '−') + '₣' + Math.abs(e.v) + 'B' + effScaleStr(e); if (e.t === 'Crisis Meter') return 'Crisis ' + signed(e.v); return e.t + ' ' + signed(e.v) + effScaleStr(e); }
+      function effStr(e) { if (e.t === 'Budget' || e.t === 'Debt') return e.t + ' ' + (e.v > 0 ? '+' : '−') + '₣' + Math.abs(e.v) + 'B' + effScaleStr(e); if (e.t === 'Crisis Meter') return 'Crisis ' + signed(e.v); return tgtLabel(e.t) + ' ' + signed(e.v) + effScaleStr(e); }
       function newAction(type) { return { type: type, decision: '', ministry: 'Interior', cause: '', cost: [], mech: 'roll', direct: [eff('Crisis Meter', -2)], stat: 'Charisma', needed: 12, success: [eff('Crisis Meter', -3)], failure: [eff('Order', -1)], eventSuccess: '', eventFail: '', lawName: '', lawEffect: [eff('Crisis Meter', -4)] }; }
       function blankStage() { return { name: '', desc: '', growth: 1, at: 10, onActivate: [], actions: [] }; }
       function blankCrisis() {
@@ -2978,6 +3006,7 @@
           name: 'New Crisis', desc: '',
           triggers: [{ target: 'Government Confidence', op: '<', value: 20 }], triggerMode: 'all',
           endIf: [], endMode: 'any',
+          customStats: [], thresholds: [],
           stages: [blankStage(), blankStage(), blankStage(), blankStage(), { descReached: '', reached: [], resolution: 'ends' }]
         };
       }
@@ -2990,6 +3019,8 @@
         c.endIf = Array.isArray(c.endIf) ? c.endIf : [];
         c.triggerMode = (c.triggerMode === 'any') ? 'any' : 'all';   // default ALL (existing behaviour)
         c.endMode = (c.endMode === 'all') ? 'all' : 'any';           // default ANY (existing behaviour)
+        c.customStats = Array.isArray(c.customStats) ? c.customStats : [];   // [{name,start,growth}]
+        c.thresholds  = Array.isArray(c.thresholds)  ? c.thresholds  : [];   // [{stat,op,value,effects:[eff]}]
         c.stages = Array.isArray(c.stages) ? c.stages : [];
         for (var i = 0; i < 4; i++) { var s = c.stages[i] = c.stages[i] || blankStage(); s.actions = Array.isArray(s.actions) ? s.actions : []; s.onActivate = Array.isArray(s.onActivate) ? s.onActivate : []; }
         var t = c.stages[4] = c.stages[4] || { descReached: '', reached: [], resolution: 'ends' };
@@ -3091,13 +3122,15 @@
         document.getElementById('cbFireNation').innerHTML = live.length
           ? live.map(function (n) { return '<option value="' + esc(n.id) + '">' + esc(n.name || n.id) + '</option>'; }).join('')
           : '<option value="">— no live nations —</option>';
-        renderTriggers(); renderEndIf(); renderTabs(); renderStage(); renderPreview();
+        renderTriggers(); renderCustomStats(); renderEndIf(); renderThresholds(); renderTabs(); renderStage(); renderPreview();
         panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
 
       // ----- condition lists (triggers + "ends if") — one renderer, two callers -----
       // mode is 'all' (AND) or 'any' (OR); it sets the join word AND lights the All/Any toggle.
-      function renderCondList(list, boxId, mode, segId, rerender) {
+      // withStats appends the custom-stat target group (endIf can test them; triggers can't —
+      // no crisis instance exists yet when triggers are evaluated).
+      function renderCondList(list, boxId, mode, segId, rerender, withStats) {
         var seg = document.getElementById(segId);
         if (seg) seg.querySelectorAll('span').forEach(function (sp) { sp.classList.toggle('on', sp.dataset.m === mode); });
         var joinWord = (mode === 'any') ? 'OR' : 'AND';
@@ -3105,7 +3138,7 @@
         list.forEach(function (t, i) {
           if (i > 0) { var a = document.createElement('div'); a.className = 'andtag'; a.textContent = joinWord; box.appendChild(a); }
           var row = document.createElement('div'); row.className = 'trow';
-          row.innerHTML = '<select class="tt">' + trigTgt(t.target) + '</select>' +
+          row.innerHTML = '<select class="tt">' + trigTgt(t.target) + (withStats ? statOpts(t.target) : '') + '</select>' +
             '<select class="to">' + OPS.map(function (op) { return '<option' + (op === t.op ? ' selected' : '') + '>' + op + '</option>'; }).join('') + '</select>' +
             '<input class="tv" type="number" step="any" value="' + t.value + '"><button class="xb" type="button">×</button>';
           row.querySelector('.tt').onchange = function (e) { t.target = e.target.value; renderPreview(); };
@@ -3115,8 +3148,57 @@
           box.appendChild(row);
         });
       }
-      function renderTriggers() { renderCondList(CRISIS.triggers, 'cbTriggers', CRISIS.triggerMode || 'all', 'cbTrigMode', renderTriggers); }
-      function renderEndIf()   { renderCondList(CRISIS.endIf,    'cbEndIf',    CRISIS.endMode || 'any',     'cbEndMode',  renderEndIf); }
+      function renderTriggers() { renderCondList(CRISIS.triggers, 'cbTriggers', CRISIS.triggerMode || 'all', 'cbTrigMode', renderTriggers, false); }
+      function renderEndIf()   { renderCondList(CRISIS.endIf,    'cbEndIf',    CRISIS.endMode || 'any',     'cbEndMode',  renderEndIf, true); }
+
+      // ----- custom crisis stats + thresholds -----
+      // Re-render everything that references a custom stat by name (its dropdowns rebuild), so a
+      // renamed/added/removed stat propagates to the endIf targets, threshold list, and effects.
+      function refreshStatRefs() { renderEndIf(); renderThresholds(); renderStage(); renderPreview(); }
+      function renderCustomStats() {
+        var box = document.getElementById('cbStats'); box.innerHTML = '';
+        CRISIS.customStats.forEach(function (s, i) {
+          var row = document.createElement('div'); row.className = 'trow';
+          row.innerHTML =
+            '<input class="cs-name" type="text" placeholder="Stat name" value="' + (s.name || '').replace(/"/g, '&quot;') + '">' +
+            '<input class="cs-start" type="number" min="1" max="100" step="1" title="Starting value (1–100)" value="' + (s.start != null ? s.start : 50) + '">' +
+            '<input class="cs-growth" type="number" step="any" title="Per-tick growth (may be negative)" value="' + (s.growth != null ? s.growth : 1) + '">' +
+            '<button class="xb" type="button">×</button>';
+          // KNOWN LIMITATION: renaming a stat does NOT rewrite effect/endIf/threshold references
+          // to it (they keep the old 'stat:<old>' target). Those orphaned refs degrade gracefully
+          // at runtime — an effect writes a phantom key the next grow drops, an endIf reads null
+          // and stays unmet — so nothing breaks; just re-pick the stat in those rows after a rename.
+          row.querySelector('.cs-name').oninput = function (e) { s.name = e.target.value; refreshStatRefs(); };
+          row.querySelector('.cs-start').oninput = function (e) { s.start = Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 1)); renderPreview(); };
+          row.querySelector('.cs-growth').oninput = function (e) { s.growth = parseFloat(e.target.value) || 0; renderPreview(); };
+          row.querySelector('.xb').onclick = function () { CRISIS.customStats.splice(i, 1); renderCustomStats(); refreshStatRefs(); };
+          box.appendChild(row);
+        });
+      }
+      function renderThresholds() {
+        var box = document.getElementById('cbThresholds'); box.innerHTML = '';
+        var cs = namedStats();
+        if (!cs.length) { box.innerHTML = '<p class="hint" style="margin:0">Create a stat above, then add a threshold that reacts to it.</p>'; return; }
+        CRISIS.thresholds.forEach(function (th, i) {
+          // Each threshold: the stat/op/value controls on one .trow (4-col grid), then its
+          // "then" effect list full-width below (the grid can't hold the effects block inline).
+          var wrap = document.createElement('div');
+          wrap.style.cssText = 'border:1px solid var(--line);border-radius:10px;padding:10px 11px;margin-bottom:10px';
+          wrap.innerHTML =
+            '<div class="trow" style="margin-bottom:0">' +
+              '<select class="th-stat">' + cs.map(function (s) { return '<option value="' + esc(s.name) + '"' + (s.name === th.stat ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select>' +
+              '<select class="th-op">' + OPS.map(function (op) { return '<option' + (op === th.op ? ' selected' : '') + '>' + op + '</option>'; }).join('') + '</select>' +
+              '<input class="th-val" type="number" step="any" value="' + (th.value != null ? th.value : 80) + '"><button class="xb" type="button">×</button>' +
+            '</div>' +
+            '<div class="clause" style="margin-top:8px">Then apply</div><div class="theff">' + effRowsHtml('thr:' + i, 'effects') + '</div>';
+          wrap.querySelector('.th-stat').onchange = function (e) { th.stat = e.target.value; renderPreview(); };
+          wrap.querySelector('.th-op').onchange = function (e) { th.op = e.target.value; renderPreview(); };
+          wrap.querySelector('.th-val').oninput = function (e) { th.value = parseFloat(e.target.value) || 0; renderPreview(); };
+          wrap.querySelector('.xb').onclick = function () { CRISIS.thresholds.splice(i, 1); renderThresholds(); renderPreview(); };
+          box.appendChild(wrap);
+        });
+        wireEffRows(box, renderThresholds);   // each threshold's effect rows redraw the thresholds section
+      }
 
       // ----- stage tabs -----
       function renderTabs() {
@@ -3134,7 +3216,15 @@
       }
 
       // ----- effect-row helpers -----
-      function getList(ai, list) { var owner = ai === 's5' ? CRISIS.stages[4] : ai === 'stage' ? CRISIS.stages[activeStage] : CRISIS.stages[activeStage].actions[+ai]; if (!Array.isArray(owner[list])) owner[list] = []; return owner[list]; }
+      function getList(ai, list) {
+        var owner = ai === 's5' ? CRISIS.stages[4]
+                  : ai === 'stage' ? CRISIS.stages[activeStage]
+                  : (typeof ai === 'string' && ai.slice(0, 4) === 'thr:') ? CRISIS.thresholds[+ai.slice(4)]   // a threshold's effect list
+                  : CRISIS.stages[activeStage].actions[+ai];
+        if (!owner) return [];
+        if (!Array.isArray(owner[list])) owner[list] = [];
+        return owner[list];
+      }
       function effRowsHtml(ai, list) {
         var arr = getList(ai, list);
         return arr.map(function (e, ri) {
@@ -3148,17 +3238,20 @@
         }).join('') +
           '<button class="addeff" data-ai="' + ai + '" data-list="' + list + '" type="button">+ effect</button>';
       }
-      function wireEffRows(scope) {
+      // `rerender` is the redraw to run after a structural change (default the stage editor;
+      // the thresholds section passes renderThresholds so its own effect rows redraw in place).
+      function wireEffRows(scope, rerender) {
+        var rr = rerender || renderStage;
         scope.querySelectorAll('.effrow').forEach(function (row) {
           var ai = row.dataset.ai, list = row.dataset.list, ri = +row.dataset.ri, arr = getList(ai, list);
           // Re-render on target change so the money-scaling selector appears/disappears; drop a
           // stale scale when the target is no longer a money one.
-          row.querySelector('.et').onchange = function (e) { arr[ri].t = e.target.value; if (!isMoneyTarget(arr[ri].t)) delete arr[ri].scale; renderStage(); };
+          row.querySelector('.et').onchange = function (e) { arr[ri].t = e.target.value; if (!isMoneyTarget(arr[ri].t)) delete arr[ri].scale; rr(); };
           row.querySelector('.ev').oninput = function (e) { arr[ri].v = parseFloat(e.target.value) || 0; renderPreview(); };
           var escSel = row.querySelector('.esc'); if (escSel) escSel.onchange = function (e) { arr[ri].scale = e.target.value; renderPreview(); };
-          row.querySelector('.erx').onclick = function () { arr.splice(ri, 1); renderStage(); };
+          row.querySelector('.erx').onclick = function () { arr.splice(ri, 1); rr(); };
         });
-        scope.querySelectorAll('.addeff').forEach(function (b) { b.onclick = function () { getList(b.dataset.ai, b.dataset.list).push(eff('Crisis Meter', -2)); renderStage(); }; });
+        scope.querySelectorAll('.addeff').forEach(function (b) { b.onclick = function () { getList(b.dataset.ai, b.dataset.list).push(eff('Crisis Meter', -2)); rr(); }; });
       }
 
       // ----- on-hand resource cost (minister actions): {r: key, n: amount}; required + spent on attempt -----
@@ -3301,12 +3394,19 @@
       function renderPreview() {
         var box = document.getElementById('cbPrev');
         var trig = CRISIS.triggers.map(function (t) { return esc(t.target + ' ' + t.op + ' ' + t.value); }).join('<br>' + (CRISIS.triggerMode === 'any' ? 'OR' : 'AND') + ' ');
-        var ends = CRISIS.endIf.map(function (t) { return esc(t.target + ' ' + t.op + ' ' + t.value); }).join('<br>' + (CRISIS.endMode === 'all' ? 'AND' : 'OR') + ' ');
+        var ends = CRISIS.endIf.map(function (t) { return esc(tgtLabel(t.target) + ' ' + t.op + ' ' + t.value); }).join('<br>' + (CRISIS.endMode === 'all' ? 'AND' : 'OR') + ' ');
+        var statList = namedStats()
+          .map(function (s) { return esc(s.name + ' · start ' + (s.start != null ? s.start : 0) + ' · ' + (s.growth >= 0 ? '+' : '') + (s.growth || 0) + '/tick'); }).join('<br>');
+        var thr = (CRISIS.thresholds || []).map(function (th) {
+          return esc(tgtLabel(th.stat) + ' ' + th.op + ' ' + th.value) + ' → ' + ((th.effects || []).map(effStr).map(esc).join(' · ') || '—');
+        }).join('<br>');
         var scopeName = CRISIS.nation ? ((crisNationById(CRISIS.nation) || {}).name || CRISIS.nation) : '';
         var h = '<div class="pvname">' + esc(CRISIS.name || 'Untitled crisis') + '</div><div class="pvdesc">' + esc(CRISIS.desc || '') + '</div>' +
           '<div class="pvtrig"><div class="tl">Scope</div>' + (scopeName ? esc(scopeName) : 'Any nation (global)') + '</div>' +
           '<div class="pvtrig"><div class="tl">Triggers when</div>' + (trig || '—') + '</div>' +
-          (CRISIS.endIf.length ? '<div class="pvtrig"><div class="tl">Ends when</div>' + ends + '</div>' : '');
+          (statList ? '<div class="pvtrig"><div class="tl">Crisis stats</div>' + statList + '</div>' : '') +
+          (CRISIS.endIf.length ? '<div class="pvtrig"><div class="tl">Ends when</div>' + ends + '</div>' : '') +
+          (thr ? '<div class="pvtrig"><div class="tl">Thresholds</div>' + thr + '</div>' : '');
         for (var i = 0; i < 4; i++) {
           var s = CRISIS.stages[i];
           h += '<div class="pvstage"><div class="sn">' + (i + 1) + '. ' + esc(s.name || '—') + '</div><div class="sg">climbs ' + growthLabel(s.growth) + '/tick · escalates at ' + (s.at || 10) + ' · ≈' + ticksToNext(s.growth, s.at) + ' ticks</div>';
@@ -3340,6 +3440,14 @@
       var fb = document.getElementById('cbFireBtn'); if (fb) fb.onclick = forceFireCrisis;
       var at = document.getElementById('cbAddTrig'); if (at) at.onclick = function () { if (!CRISIS) return; CRISIS.triggers.push({ target: 'Order', op: '<', value: 8 }); renderTriggers(); renderPreview(); };
       var ae = document.getElementById('cbAddEnd'); if (ae) ae.onclick = function () { if (!CRISIS) return; CRISIS.endIf.push({ target: 'Order', op: '≥', value: 12 }); renderEndIf(); renderPreview(); };
+      var ast = document.getElementById('cbAddStat'); if (ast) ast.onclick = function () { if (!CRISIS) return; CRISIS.customStats.push({ name: '', start: 50, growth: 1 }); renderCustomStats(); };
+      var atr = document.getElementById('cbAddThresh'); if (atr) atr.onclick = function () {
+        if (!CRISIS) return;
+        var cs = namedStats();
+        if (!cs.length) { setCrisNote('Create a stat first, then add a threshold.', 'error'); return; }
+        CRISIS.thresholds.push({ stat: cs[0].name, op: '≥', value: 80, effects: [eff('Order', -3)] });
+        renderThresholds(); renderPreview();
+      };
       // All / Any toggles — set the list's match mode, re-render (join word) and the preview.
       (document.getElementById('cbTrigMode') || {}).onclick = function (e) { var m = e.target.dataset.m; if (!CRISIS || !m) return; CRISIS.triggerMode = m; renderTriggers(); renderPreview(); };
       (document.getElementById('cbEndMode')  || {}).onclick = function (e) { var m = e.target.dataset.m; if (!CRISIS || !m) return; CRISIS.endMode = m; renderEndIf(); renderPreview(); };
@@ -3935,7 +4043,7 @@
     })();
 
     // ---- National Modifiers (admin CRUD; writes go straight to the tables via is_admin RLS) ----
-    var modEditing = null, modsCache = [], assignCache = {}, effectsCache = {}, condsCache = {};   // *Cache: modifier_id -> [...]
+    var modEditing = null, modsCache = [], assignCache = {}, effectsCache = {}, condsCache = {}, startCondsCache = {};   // *Cache: modifier_id -> [...]
     var EFFECT_TYPES = [
       { v: 'archetype_pop_ceiling', label: 'Archetype Popularity Ceiling', target: 'archetype' },
       { v: 'archetype_pop_floor',   label: 'Archetype Popularity Floor',   target: 'archetype' },
@@ -4097,6 +4205,10 @@
     ];
     var ECONOMY = ['unemployment', 'inflation', 'budget', 'debt', 'gdp', 'population'];
     var COND_OPTS = CONDITION_TYPES.map(function (t) { return '<option value="' + t.v + '">' + esc(t.label) + '</option>'; }).join('');
+    // Trigger (start) conditions can't test 'months active' — the nation isn't carrying the
+    // modifier yet, so there's no clock to age — so that option is dropped from the picker.
+    var START_COND_OPTS = CONDITION_TYPES.filter(function (t) { return t.base !== 'duration'; })
+      .map(function (t) { return '<option value="' + t.v + '">' + esc(t.label) + '</option>'; }).join('');
     function condInfo(v) { return CONDITION_TYPES.filter(function (x) { return x.v === v; })[0] || { base: 'stat', op: 'gte', target: 'none', label: v }; }
     function niceKey(k) { return k === 'gdp' ? 'GDP' : k === 'image' ? statName(k) : cap(k); } // one source for a metric/stat key's label
     function condKeyOpts(target) {
@@ -4123,16 +4235,18 @@
       sel.innerHTML = condKeyOpts(target);
       if (prev) sel.value = prev;
     }
-    function addCondRow(c) {
+    // The cond-row builder is shared by the trigger (start) and end lists — pass the container
+    // and its option set (start drops 'duration'). ONE source for both; the DB tables mirror.
+    function addCondRow(container, c, optsHtml) {
       c = c || {};
       var row = document.createElement('div');
       row.className = 'effrow';
       row.innerHTML =
-        '<div><label>When</label><select class="cond-type">' + COND_OPTS + '</select></div>' +
+        '<div><label>When</label><select class="cond-type">' + (optsHtml || COND_OPTS) + '</select></div>' +
         '<div><label>Target</label><select class="cond-key"></select></div>' +
         '<div><label>Value</label><input class="cond-value" type="number" step="0.1" value="0"></div>' +
         '<button class="eff-del" type="button" aria-label="Remove condition">&times;</button>';
-      document.getElementById('m-endconds').appendChild(row);
+      container.appendChild(row);
       var typeSel = row.querySelector('.cond-type');
       if (c.cond_type) typeSel.value = c.cond_type + '_' + (c.cond_op || 'gte');
       typeSel.addEventListener('change', function () { syncCondKey(row); });
@@ -4142,12 +4256,12 @@
       row.querySelector('.eff-del').addEventListener('click', function () { row.remove(); }); // conditions are optional → no auto re-add
       return row;
     }
-    function setCondRows(cs) {
-      document.getElementById('m-endconds').innerHTML = '';
-      (cs || []).forEach(addCondRow);   // none = no rows (end conditions are optional)
+    function setCondRows(container, cs, optsHtml) {
+      container.innerHTML = '';
+      (cs || []).forEach(function (c) { addCondRow(container, c, optsHtml); });   // none = no rows (optional)
     }
-    function readCondRows() {
-      return Array.prototype.slice.call(document.querySelectorAll('#m-endconds .effrow')).map(function (row) {
+    function readCondRows(container) {
+      return Array.prototype.slice.call(container.querySelectorAll('.effrow')).map(function (row) {
         var info = condInfo(row.querySelector('.cond-type').value);
         return {
           cond_type: info.base, cond_op: info.op,
@@ -4156,7 +4270,9 @@
         };
       });
     }
-    document.getElementById('m-addCond').addEventListener('click', function () { addCondRow(); });
+    var startCondsBox = document.getElementById('m-startconds'), endCondsBox = document.getElementById('m-endconds');
+    document.getElementById('m-addCond').addEventListener('click', function () { addCondRow(endCondsBox); });
+    document.getElementById('m-addStartCond').addEventListener('click', function () { addCondRow(startCondsBox, null, START_COND_OPTS); });
 
     function renderModNations(selected) {
       var box = document.getElementById('m-nations'), sel = selected || [];
@@ -4177,11 +4293,14 @@
         if (eEffs) throw eEffs;
         const { data: conds, error: eConds } = await supabase.from('modifier_end_conditions').select('*');
         if (eConds) throw eConds;
+        const { data: starts, error: eStarts } = await supabase.from('modifier_start_conditions').select('*');
+        if (eStarts) throw eStarts;
         modsCache = mods || [];
-        assignCache = {}; effectsCache = {}; condsCache = {};
+        assignCache = {}; effectsCache = {}; condsCache = {}; startCondsCache = {};
         (links || []).forEach(function (l) { (assignCache[l.modifier_id] = assignCache[l.modifier_id] || []).push(l.nation_id); });
         (effs || []).forEach(function (x) { (effectsCache[x.modifier_id] = effectsCache[x.modifier_id] || []).push(x); });
         (conds || []).forEach(function (x) { (condsCache[x.modifier_id] = condsCache[x.modifier_id] || []).push(x); });
+        (starts || []).forEach(function (x) { (startCondsCache[x.modifier_id] = startCondsCache[x.modifier_id] || []).push(x); });
         if (!modsCache.length) { box.innerHTML = '<p class="empty">No modifiers yet.</p>'; return; }
         box.innerHTML = modsCache.map(function (m) {
           var effRows = (effectsCache[m.id] || []).map(function (x) {
@@ -4189,12 +4308,14 @@
             return '<li>' + esc(effInfo(x.effect_type).label) + (kl ? ' · ' + esc(kl) : '') + ' · ' + esc(String(x.effect_value)) + '</li>';
           }).join('');
           var condRows = (condsCache[m.id] || []).map(function (c) { return '<li>' + esc(condText(c)) + '</li>'; }).join('');
+          var startRows = (startCondsCache[m.id] || []).map(function (c) { return '<li>' + esc(condText(c)) + '</li>'; }).join('');
           var names = (assignCache[m.id] || []).map(function (nid) { var n = nationsCache.filter(function (x) { return x.id === nid; })[0]; return n ? n.name : nid; });
           return '<div class="mcard ' + esc(m.color || 'yellow') + '"><div class="mcard__top"><div>' +
             '<div class="mcard__name">' + esc(m.name) + '</div><ul class="mcard__efflist">' + (effRows || '<li>No effects</li>') + '</ul></div>' +
             '<div class="mcard__btns"><button class="ed" type="button" data-id="' + esc(m.id) + '">Edit</button>' +
             '<button class="rm" type="button" data-id="' + esc(m.id) + '">Remove</button></div></div>' +
             (m.description ? '<div class="mcard__desc">' + esc(m.description) + '</div>' : '') +
+            (startRows ? '<div class="mcard__nations">Triggers when ALL: <ul class="mcard__efflist">' + startRows + '</ul></div>' : '') +
             '<div class="mcard__nations">' + (condRows ? 'Ends when ALL: <ul class="mcard__efflist">' + condRows + '</ul>' : 'No end conditions — stays until removed') + '</div>' +
             '<div class="mcard__nations">' + (names.length ? 'Assigned: ' + esc(names.join(', ')) : 'Not assigned to any nation') + '</div></div>';
         }).join('');
@@ -4209,7 +4330,8 @@
       document.getElementById('m-color').value = m.color || 'yellow';
       document.getElementById('m-desc').value = m.description || '';
       setEffectRows(effectsCache[m.id] || []);
-      setCondRows(condsCache[m.id] || []);
+      setCondRows(startCondsBox, startCondsCache[m.id] || [], START_COND_OPTS);
+      setCondRows(endCondsBox, condsCache[m.id] || []);
       renderModNations(assignCache[m.id] || []);
       document.getElementById('modFormTitle').textContent = 'Edit ' + (m.name || 'Modifier');
       document.getElementById('modBtn').textContent = 'Save changes';
@@ -4222,7 +4344,8 @@
       document.getElementById('modForm').reset();
       document.getElementById('m-color').value = 'yellow';
       setEffectRows([]);
-      setCondRows([]);
+      setCondRows(startCondsBox, []);
+      setCondRows(endCondsBox, []);
       renderModNations([]);
       document.getElementById('modFormTitle').textContent = 'Add Modifier';
       document.getElementById('modBtn').textContent = 'Add Modifier';
@@ -4239,7 +4362,8 @@
       if (!name) { modNote.textContent = 'Enter a modifier name.'; modNote.className = 'note error'; return; }
       var effects = readEffectRows();
       if (!effects.length) { modNote.textContent = 'Add at least one effect.'; modNote.className = 'note error'; return; }
-      var conditions = readCondRows();   // end conditions are optional
+      var startConditions = readCondRows(startCondsBox);   // trigger conditions are optional
+      var conditions = readCondRows(endCondsBox);          // end conditions are optional
       var row = {
         name: name,
         color: document.getElementById('m-color').value,
@@ -4272,6 +4396,13 @@
         if (conditions.length) {
           const { error: eInsC } = await supabase.from('modifier_end_conditions').insert(conditions.map(function (c) { return { modifier_id: id, cond_type: c.cond_type, cond_op: c.cond_op, cond_key: c.cond_key, cond_value: c.cond_value }; }));
           if (eInsC) throw eInsC;
+        }
+        // Reset trigger (start) conditions to exactly the rows on screen (may be none).
+        const { error: eDelS } = await supabase.from('modifier_start_conditions').delete().eq('modifier_id', id);
+        if (eDelS) throw eDelS;
+        if (startConditions.length) {
+          const { error: eInsS } = await supabase.from('modifier_start_conditions').insert(startConditions.map(function (c) { return { modifier_id: id, cond_type: c.cond_type, cond_op: c.cond_op, cond_key: c.cond_key, cond_value: c.cond_value }; }));
+          if (eInsS) throw eInsS;
         }
         // Reset the assignment to the checked set, preserving since_tick for nations
         // that stay (so a 'duration' clock isn't restarted by an unrelated edit);
