@@ -536,6 +536,62 @@
   .crtab .li .lval{font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;text-align:right;white-space:nowrap}
   .crtab .li .del{border:none;background:none;color:var(--soft);cursor:pointer;font-size:14px;padding:0 2px} .crtab .li .del:hover{color:var(--red)}
   .crtab .empty{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft);padding:12px;text-align:center;border:1px dashed var(--line2);border-radius:10px}
+
+  /* National Initiative Builder — scoped under .ibuild so its generic class names don't collide
+     with other tabs; uses the shared theme vars so it flips light/dark like the rest of adminsetup. */
+  .ibuild{--energy:#E0820E;--food:#16915a;--minerals:#a9805a;--goods:#5546E8;--services:#1f86d6;--diplomacy:#17b0b8;--military:#C42B2B}
+  .ibuild .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px}
+  .ibuild .sec-h{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);font-weight:700;margin-bottom:14px}
+  .ibuild .flabel{font-size:12.5px;font-weight:600;margin:14px 0 8px}
+  .ibuild .flabel:first-of-type{margin-top:0}
+  .ibuild .flabel .hint{font-weight:400;color:var(--soft);font-size:11.5px}
+  .ibuild input[type=text],.ibuild input[type=number],.ibuild textarea,.ibuild select{width:100%;background:var(--field,#FCFBF9);border:1px solid var(--line2);color:var(--ink);border-radius:10px;padding:11px 12px;font-size:14px;outline:none;font-family:inherit}
+  .ibuild textarea{min-height:60px;resize:vertical;line-height:1.5;font-size:13px}
+  .ibuild input:focus,.ibuild textarea:focus,.ibuild select:focus{border-color:var(--indigo)}
+  .ibuild .two{display:flex;gap:10px}.ibuild .two>*{flex:1}
+  .ibuild .seg{display:flex;gap:8px}
+  .ibuild .seg button{flex:1;background:var(--field,#FCFBF9);border:1px solid var(--line2);color:var(--muted);border-radius:10px;padding:12px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .ibuild .seg button.on{border-color:var(--indigo);background:var(--indigo-soft);color:var(--indigo)}
+  .ibuild .stepper{display:flex;align-items:center;border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:var(--field,#FCFBF9);width:150px}
+  .ibuild .stepper button{width:44px;height:44px;border:none;background:transparent;color:var(--muted);font-size:19px;cursor:pointer}
+  .ibuild .stepper button:hover{color:var(--ink)}
+  .ibuild .stepper .v{flex:1;text-align:center;font-family:'Space Mono',monospace;font-weight:700;font-size:16px}
+  .ibuild .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+  @media(max-width:560px){.ibuild .tiles{grid-template-columns:repeat(2,1fr)}}
+  .ibuild .tile{display:flex;align-items:center;gap:9px;border:1px solid var(--line2);background:var(--field,#FCFBF9);border-radius:10px;padding:10px 11px;cursor:pointer;user-select:none}
+  .ibuild .tile.on{border-color:var(--indigo);background:var(--indigo-soft)}
+  .ibuild .tile.dis{opacity:.5;pointer-events:none}
+  .ibuild .cb{width:17px;height:17px;border-radius:5px;border:1.5px solid var(--soft);flex:none;display:grid;place-items:center;color:#fff;font-size:10px}
+  .ibuild .tile.on .cb{background:var(--indigo);border-color:var(--indigo)}
+  .ibuild .tlabel{font-size:12px;font-weight:600;line-height:1.15}
+  .ibuild .gpill{display:inline-flex;align-items:center;gap:9px;border:1px solid var(--line2);border-radius:24px;padding:9px 15px;cursor:pointer;font-weight:700;font-size:13.5px;color:var(--muted);background:var(--field,#FCFBF9);margin-bottom:11px;user-select:none}
+  .ibuild .gpill.on{background:var(--indigo-soft);color:var(--indigo);border-color:var(--indigo)}
+  .ibuild .corphint{font-size:12px;color:var(--soft);font-family:'Space Mono',monospace;padding:12px;border:1px dashed var(--line2);border-radius:10px;text-align:center}
+  .ibuild .ownfx{border-radius:10px;padding:12px 13px;font-size:12px;line-height:1.55;margin-top:11px}
+  .ibuild .ownfx.priv{background:var(--indigo-soft);border:1px solid var(--indigo)}
+  .ibuild .ownfx.state{background:var(--amber-soft,#FBF0DD);border:1px solid var(--amber)}
+  .ibuild .ownfx b{color:var(--ink)}
+  .ibuild .fxchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .ibuild .fx{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;border-radius:6px;padding:4px 8px}
+  .ibuild .fx.good{background:var(--green-soft,#E5F4EC);border:1px solid var(--green);color:var(--green)}
+  .ibuild .fx.bad{background:var(--red-soft,#FBEAE9);border:1px solid var(--red);color:var(--red)}
+  .ibuild .corprow{display:flex;align-items:center;gap:10px;border:1px solid var(--line2);background:var(--field,#FCFBF9);border-radius:10px;padding:10px 12px;margin-bottom:7px;cursor:pointer;user-select:none}
+  .ibuild .corprow.on{border-color:var(--green);background:var(--green-soft,#E5F4EC)}
+  .ibuild .corprow .cb2{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--soft);flex:none;display:grid;place-items:center;color:#fff;font-size:10px}
+  .ibuild .corprow.on .cb2{background:var(--green);border-color:var(--green)}
+  .ibuild .cinfo{flex:1;min-width:0}
+  .ibuild .cinfo b{font-size:13px;font-weight:700}
+  .ibuild .cinfo span{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);letter-spacing:.03em;display:block;margin-top:2px}
+  .ibuild .ctype{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:5px;padding:3px 7px;flex:none}
+  .ibuild .ctype.priv{color:var(--indigo);background:var(--indigo-soft)}
+  .ibuild .ctype.state{color:var(--amber);background:var(--amber-soft,#FBF0DD)}
+  .ibuild .chipeff{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;border-radius:8px;padding:5px 10px}
+  .ibuild .chipeff .d{width:8px;height:8px;border-radius:2px}
+  .ibuild .preview{background:var(--field,#FCFBF9);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .ibuild .preview .pl{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:9px}
+  .ibuild .preview h3{font-size:16px;font-weight:800;margin-bottom:6px}
+  .ibuild .preview .meta{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7}
+  .ibuild .preview .meta b{color:var(--ink)}
 </style>
 </head>
 <body>
@@ -572,6 +628,7 @@
         <button class="vtab" data-tab="inactivity" type="button">Inactivity</button>
         <button class="vtab" data-tab="crises" type="button">Crises</button>
         <button class="vtab" data-tab="objectives" type="button">Objectives</button>
+        <button class="vtab" data-tab="initiatives" type="button">Initiatives</button>
         <button class="vtab" data-tab="events" type="button">Events</button>
         <button class="vtab" data-tab="corporations" type="button">Corporations</button>
         <button class="vtab" data-tab="world-events" type="button">World Events</button>
@@ -881,6 +938,81 @@
             </div>
             <div class="note" id="obNote" role="status" aria-live="polite" style="margin-top:14px"></div>
           </div>
+        </div>
+      </div>
+      <div class="tabpane" data-tab="initiatives" hidden>
+        <div class="ibuild">
+          <div class="panel" style="margin-bottom:14px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+              <h2 style="margin:0">National Initiatives</h2>
+              <button class="btn btn-solid" id="iNew" type="button">+ New initiative</button>
+            </div>
+            <p class="sub" style="margin:0 0 12px">A national programme: a nation spends over time to permanently raise a production output, carried out by a private or state-owned corporation in that sector. Authoring only for now — the runtime lands in a later slice.</p>
+            <div id="iList"><p class="empty">Loading…</p></div>
+          </div>
+
+          <div class="card">
+            <div class="sec-h">Identity</div>
+            <div class="flabel">Name</div>
+            <input type="text" id="i-name" placeholder="e.g. Deep-Sea Oil Drilling">
+            <div class="flabel">Description</div>
+            <textarea id="i-desc" placeholder="What the programme does…"></textarea>
+          </div>
+
+          <div class="card">
+            <div class="sec-h">Effect</div>
+            <div class="two">
+              <div style="flex:1.4"><div class="flabel">Resource</div><select id="i-resource"></select></div>
+              <div><div class="flabel">Quantity <span class="hint">(+ production)</span></div>
+                <div class="stepper"><button id="i-qminus" type="button">−</button><span class="v" id="i-qty">1</span><button id="i-qplus" type="button">+</button></div>
+              </div>
+            </div>
+            <div class="flabel">Cadence</div>
+            <div class="seg" id="i-cadence">
+              <button data-cad="one_time" type="button" class="on">One-time</button>
+              <button data-cad="recurring" type="button">Recurring</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="sec-h">Execution</div>
+            <div class="flabel">Private enterprise or state sanctioned? <span class="hint">— reveals the corporations that could carry it out</span></div>
+            <div class="seg" id="i-ownership">
+              <button data-own="private" type="button">Private Enterprise</button>
+              <button data-own="state" type="button">State Sanctioned</button>
+            </div>
+            <div id="i-ownfx"></div>
+            <div id="i-corps" style="margin-top:12px"></div>
+          </div>
+
+          <div class="card">
+            <div class="sec-h">Cost &amp; Timeframe</div>
+            <div class="two">
+              <div><div class="flabel">Cost <span class="hint">($B)</span></div><input id="i-cost" type="number" value="120"></div>
+              <div><div class="flabel">Length <span class="hint">(months, min–max)</span></div>
+                <div class="two"><input id="i-minM" type="number" value="16"><input id="i-maxM" type="number" value="36"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="sec-h">Which nations can do it</div>
+            <div id="i-gpill"></div>
+            <div class="tiles" id="i-nations"></div>
+          </div>
+
+          <div class="card">
+            <div class="sec-h">Event text</div>
+            <div class="flabel">Event description when started</div>
+            <textarea id="i-startEvent" placeholder="Fires in the nation's event feed the moment it's enacted…"></textarea>
+            <div class="flabel">Event description when finished</div>
+            <textarea id="i-finishEvent" placeholder="Fires when the programme completes and the production increase lands…"></textarea>
+          </div>
+
+          <div class="preview" id="i-preview"></div>
+          <button class="btn btn-solid btn-full" id="i-save" type="button" style="margin-top:14px">Save Initiative</button>
+          <button class="btn btn-ghost btn-full" id="i-cancel" type="button" hidden style="margin-top:8px">Cancel edit</button>
+          <div class="note" id="i-note" role="status" aria-live="polite" style="margin-top:12px"></div>
         </div>
       </div>
       <div class="tabpane" data-tab="events" hidden>
@@ -1864,6 +1996,7 @@
         if (tab === 'inactivity') loadInactivity();
         if (tab === 'crises') loadCrises();
         if (tab === 'objectives') loadObjectives();
+        if (tab === 'initiatives') loadInitiatives();
         if (tab === 'events') loadEvents();
         if (tab === 'corporations') loadCorporations();
         if (tab === 'world-events') loadWorldEvents();
@@ -3708,6 +3841,211 @@
       document.getElementById('obSave').onclick = saveObjective;
 
       return loadObjectives;
+    })();
+
+    // ---- National Initiatives (admin authoring; one JSONB definition per initiative, is_admin
+    // RLS, schema/140). AUTHORING ONLY — a nation carrying one out (spend over time → raise a
+    // production output) and the player UI are later slices. Self-contained IIFE (reuses the
+    // .ibuild shell); returns loadInitiatives(). Corps come live from the corporations table; a
+    // resource's eligible sectors are DERIVED from CATEGORY_BONUS (one source, corporations.js). ----
+    var loadInitiatives = (function () {
+      var RESOURCES = ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy', 'Military'];
+      var PRIVATE_DISCOUNT = 0.20, STATE_MARKUP = 0.25;
+      // The corp sectors that produce a resource, derived from CATEGORY_BONUS so it can't drift from
+      // the sector→production mapping. Military has no producing sector → it runs as a direct programme.
+      function resourceCategories(res) {
+        return CATEGORIES.filter(function (c) { return (CATEGORY_BONUS[c] || {}).tag === '+ ' + res + ' production'; });
+      }
+      var CORPS = [], INAT = [];   // placed corporations + live nations, fetched once
+      var IN = null, iEditId = null, iSaving = false, iCache = [];
+
+      function iBlank() {
+        return { name: '', description: '', resource: 'Energy', quantity: 1, cadence: 'one_time',
+          ownership: null, corps: {}, cost: 120, minM: 16, maxM: 36, global: false, nations: {},
+          startEvent: '', finishEvent: '' };
+      }
+      // Stored definition → editor state (corps/nations as {id:true} sets).
+      function iNormalize(def) {
+        var d = (def && typeof def === 'object') ? def : {}, s = iBlank();
+        s.name = d.name || ''; s.description = d.description || '';
+        s.resource = RESOURCES.indexOf(d.resource) >= 0 ? d.resource : 'Energy';
+        s.quantity = Math.max(1, parseInt(d.quantity, 10) || 1);
+        s.cadence = d.cadence === 'recurring' ? 'recurring' : 'one_time';
+        s.cost = parseInt(d.cost, 10) || 0;
+        var lm = Array.isArray(d.lengthMonths) ? d.lengthMonths : [16, 36];
+        s.minM = parseInt(lm[0], 10) || 0; s.maxM = parseInt(lm[1], 10) || 0;
+        s.ownership = (d.ownership === 'private' || d.ownership === 'state') ? d.ownership : null;
+        s.global = d.eligibleNations === '*';
+        if (!s.global && Array.isArray(d.eligibleNations)) d.eligibleNations.forEach(function (id) { s.nations[id] = true; });
+        (Array.isArray(d.executors) ? d.executors : []).forEach(function (id) { s.corps[id] = true; });
+        s.startEvent = d.startEvent || ''; s.finishEvent = d.finishEvent || '';
+        return s;
+      }
+      function iEffCost() {
+        if (IN.ownership === 'private') return Math.round(IN.cost * (1 - PRIVATE_DISCOUNT));
+        if (IN.ownership === 'state')   return Math.round(IN.cost * (1 + STATE_MARKUP));
+        return IN.cost;
+      }
+      function iOwnOf(type) { return type === 'so' ? 'state' : 'private'; }
+      function iQualifying() {
+        if (!IN.ownership) return [];
+        var nats = IN.global ? null : IN.nations, cats = resourceCategories(IN.resource);
+        return CORPS.filter(function (c) {
+          if (nats && !nats[c.nation]) return false;
+          if (iOwnOf(c.type) !== IN.ownership) return false;
+          return cats.indexOf(c.sector) >= 0;
+        });
+      }
+      function iRefreshCorps() { IN.corps = {}; iQualifying().forEach(function (c) { IN.corps[c.id] = true; }); }
+      function iNatName(id) { var n = INAT.filter(function (x) { return x.id === id; })[0]; return n ? (n.name || id) : id; }
+
+      function iRenderResource() { document.getElementById('i-resource').innerHTML = RESOURCES.map(function (r) { return '<option' + (r === IN.resource ? ' selected' : '') + '>' + r + '</option>'; }).join(''); }
+      function iRenderCadence() { document.querySelectorAll('#i-cadence [data-cad]').forEach(function (b) { b.classList.toggle('on', IN.cadence === b.dataset.cad); }); }
+      function iRenderOwnfx() {
+        var el = document.getElementById('i-ownfx');
+        if (!IN.ownership) { el.className = ''; el.innerHTML = ''; return; }
+        var eff = iEffCost();
+        if (IN.ownership === 'private') {
+          el.className = 'ownfx priv';
+          el.innerHTML = '<b>Private enterprise.</b> Corporations bid competitively for the contract, driving the price down — and the private investment stimulates the economy.' +
+            '<div class="fxchips"><span class="fx good">Cost −' + Math.round(PRIVATE_DISCOUNT * 100) + '% → $' + eff + 'B</span><span class="fx good">+1 Growth</span></div>';
+        } else {
+          el.className = 'ownfx state';
+          el.innerHTML = '<b>State sanctioned.</b> Run directly by the state without competitive tender, so it costs more — but the public programme puts people to work and eases prices.' +
+            '<div class="fxchips"><span class="fx bad">Cost +' + Math.round(STATE_MARKUP * 100) + '% → $' + eff + 'B</span><span class="fx good">−1D2 Unemployment</span><span class="fx good">−1D2 Inflation</span></div>';
+        }
+      }
+      function iRenderOwnership() {
+        document.querySelectorAll('#i-ownership [data-own]').forEach(function (b) { b.classList.toggle('on', IN.ownership === b.dataset.own); });
+        iRenderOwnfx();
+        var box = document.getElementById('i-corps');
+        if (!IN.ownership) { box.innerHTML = '<div class="corphint">Choose private or state to see the eligible corporations.</div>'; return; }
+        var q = iQualifying();
+        if (!q.length) { box.innerHTML = '<div class="corphint">No ' + IN.ownership + ' corporations in this sector among the eligible nations — this would run as a direct government programme.</div>'; return; }
+        box.innerHTML = q.map(function (c) {
+          var cls = iOwnOf(c.type) === 'private' ? 'priv' : 'state';
+          return '<div class="corprow' + (IN.corps[c.id] ? ' on' : '') + '" data-corp="' + esc(c.id) + '">' +
+            '<span class="cb2">' + (IN.corps[c.id] ? '✓' : '') + '</span>' +
+            '<div class="cinfo"><b>' + esc(c.name) + '</b><span>' + esc(iNatName(c.nation)) + ' · ' + esc(c.sector) + '</span></div>' +
+            '<span class="ctype ' + cls + '">' + (c.type === 'so' ? 'State' : 'Private') + '</span></div>';
+        }).join('');
+        box.querySelectorAll('[data-corp]').forEach(function (r) { r.onclick = function () { var id = r.dataset.corp; IN.corps[id] = !IN.corps[id]; iRenderOwnership(); iRenderPreview(); }; });
+      }
+      function iRenderNations() {
+        var el = document.getElementById('i-gpill');
+        el.className = 'gpill' + (IN.global ? ' on' : '');
+        el.innerHTML = '🌐 Global — every nation';
+        el.onclick = function () { IN.global = !IN.global; iRefreshCorps(); iRenderNations(); iRenderOwnership(); iRenderPreview(); };
+        document.getElementById('i-nations').innerHTML = INAT.map(function (n) {
+          var on = IN.global || IN.nations[n.id];
+          return '<div class="tile' + (on ? ' on' : '') + (IN.global ? ' dis' : '') + '" data-nat="' + esc(n.id) + '"><span class="cb">' + (on ? '✓' : '') + '</span><span class="tlabel">' + esc(n.name || n.id) + '</span></div>';
+        }).join('');
+        document.querySelectorAll('#i-nations [data-nat]').forEach(function (t) { t.onclick = function () { IN.nations[t.dataset.nat] = !IN.nations[t.dataset.nat]; iRefreshCorps(); iRenderNations(); iRenderOwnership(); iRenderPreview(); }; });
+      }
+      function iRenderPreview() {
+        var col = 'var(--' + IN.resource.toLowerCase() + ')';
+        var chosen = iQualifying().filter(function (c) { return IN.corps[c.id]; }).map(function (c) { return c.name; });
+        var execTxt = !IN.ownership ? '—' : ((IN.ownership === 'private' ? 'Private' : 'State') + ' · ' + (chosen.length ? chosen.join(', ') : 'direct programme'));
+        var costTxt = IN.ownership ? ('$' + iEffCost() + 'B') : ('$' + IN.cost + 'B');
+        var fxTxt = IN.ownership === 'private' ? '+1 Growth' : IN.ownership === 'state' ? '−1–2 Unemployment · −1–2 Inflation' : '—';
+        var elig = IN.global ? 'Every nation' : (Object.keys(IN.nations).filter(function (k) { return IN.nations[k]; }).map(iNatName).join(', ') || 'none');
+        document.getElementById('i-preview').innerHTML =
+          '<div class="pl">Preview</div><h3>' + esc(IN.name || 'Untitled Initiative') + '</h3>' +
+          '<span class="chipeff" style="background:rgba(127,127,127,.08);border:1px solid ' + col + ';color:' + col + '"><span class="d" style="background:' + col + '"></span>+' + IN.quantity + ' ' + esc(IN.resource) + '</span>' +
+          '<div class="meta"><b>' + costTxt + '</b> · <b>' + IN.minM + '–' + IN.maxM + ' mo</b> · ' + (IN.cadence === 'recurring' ? 'Recurring' : 'One-time') + '<br>' +
+          'On enact: <b>' + fxTxt + '</b><br>Executor: <b>' + esc(execTxt) + '</b><br>Eligible: <b>' + esc(elig) + '</b></div>';
+      }
+      // Fill the form inputs from IN, then run the dynamic renders.
+      function iRenderEditor() {
+        document.getElementById('i-name').value = IN.name;
+        document.getElementById('i-desc').value = IN.description;
+        document.getElementById('i-qty').textContent = IN.quantity;
+        document.getElementById('i-cost').value = IN.cost;
+        document.getElementById('i-minM').value = IN.minM;
+        document.getElementById('i-maxM').value = IN.maxM;
+        document.getElementById('i-startEvent').value = IN.startEvent;
+        document.getElementById('i-finishEvent').value = IN.finishEvent;
+        iRenderResource(); iRenderCadence(); iRenderOwnership(); iRenderNations(); iRenderPreview();
+        document.getElementById('i-cancel').hidden = !iEditId;
+        document.getElementById('i-save').textContent = iEditId ? 'Save changes' : 'Save Initiative';
+      }
+
+      function setINote(msg, kind) { var n = document.getElementById('i-note'); if (n) { n.textContent = msg || ''; n.className = 'note' + (kind ? ' ' + kind : ''); } }
+      function iRenderList() {
+        var box = document.getElementById('iList');
+        if (!iCache.length) { box.innerHTML = '<p class="empty">No initiatives yet. Click “New initiative” to create one.</p>'; return; }
+        box.innerHTML = iCache.map(function (row) {
+          var d = row.definition || {}, n = (d.eligibleNations === '*') ? 'Global' : ((d.eligibleNations || []).length + ' nation' + ((d.eligibleNations || []).length === 1 ? '' : 's'));
+          return '<div class="plcard"><div><div class="plcard__name">' + esc(d.name || 'Untitled initiative') + '</div>' +
+            '<div class="plcard__meta">+' + (d.quantity || 0) + ' ' + esc(d.resource || '—') + ' · ' + esc(d.ownership || 'unset') + ' · ' + n + '</div></div>' +
+            '<div class="plcard__btns"><button class="ed" data-id="' + row.id + '" type="button">Edit</button><button class="rm" data-id="' + row.id + '" type="button">Remove</button></div></div>';
+        }).join('');
+        box.querySelectorAll('.ed').forEach(function (b) { b.onclick = function () { var r = iCache.filter(function (x) { return x.id === b.dataset.id; })[0]; if (r) { IN = iNormalize(r.definition); iEditId = r.id; iRenderEditor(); setINote(''); document.getElementById('i-name').scrollIntoView({ behavior: 'smooth', block: 'center' }); } }; });
+        box.querySelectorAll('.rm').forEach(function (b) { b.onclick = function () { iRemove(b.dataset.id); }; });
+      }
+      function iNew() { IN = iBlank(); iEditId = null; iRenderEditor(); setINote(''); }
+      async function iRemove(id) {
+        if (!confirm('Delete this initiative?')) return;
+        try {
+          const { error } = await supabase.from('national_initiatives').delete().eq('id', id); if (error) throw error;
+          if (iEditId === id) iNew();
+          loadInitiatives();
+        } catch (e) { setINote('Delete failed: ' + (e.message || e), 'error'); }
+      }
+      async function iSave() {
+        if (iSaving) return;
+        if (!IN.name.trim()) { setINote('Enter an initiative name.', 'error'); return; }
+        var def = {
+          name: IN.name.trim(), description: IN.description.trim(),
+          resource: IN.resource, quantity: IN.quantity, cadence: IN.cadence,
+          cost: IN.cost, lengthMonths: [IN.minM, IN.maxM], ownership: IN.ownership,
+          executors: iQualifying().filter(function (c) { return IN.corps[c.id]; }).map(function (c) { return c.id; }),
+          eligibleNations: IN.global ? '*' : Object.keys(IN.nations).filter(function (k) { return IN.nations[k]; }),
+          startEvent: IN.startEvent.trim(), finishEvent: IN.finishEvent.trim()
+        };
+        iSaving = true; setINote('Saving…');
+        try {
+          if (iEditId) { const { error } = await supabase.from('national_initiatives').update({ definition: def }).eq('id', iEditId); if (error) throw error; }
+          else { const { data, error } = await supabase.from('national_initiatives').insert({ definition: def }).select('id').single(); if (error) throw error; iEditId = data.id; }
+          setINote('Saved “' + def.name + '”.', 'ok');
+          loadInitiatives();
+        } catch (e) { setINote(/(policy|permission|row-level)/i.test(e.message || '') ? 'Only the admin can do that.' : ('Save failed: ' + (e.message || e)), 'error'); }
+        iSaving = false;
+      }
+
+      async function loadInitiatives() {
+        // Corps + live nations, fetched once (best-effort — the builder still opens without them).
+        if (!CORPS.length) {
+          try { const { data } = await supabase.from('corporations').select('id, nation_id, name, category, type').eq('status', 'placed'); CORPS = (data || []).map(function (c) { return { id: c.id, nation: c.nation_id, name: c.name, sector: c.category, type: c.type }; }); } catch (e) { CORPS = []; }
+        }
+        if (!INAT.length) {
+          try { const { data } = await supabase.from('nations').select('id, name, dormant').order('name'); INAT = (data || []).filter(function (n) { return !n.dormant; }); } catch (e) { INAT = []; }
+        }
+        var box = document.getElementById('iList');
+        try { const { data, error } = await supabase.from('national_initiatives').select('id, definition').order('created_at', { ascending: true }); if (error) throw error; iCache = data || []; }
+        catch (e) { box.innerHTML = '<p class="empty">Couldn’t load initiatives.</p>'; return; }
+        iRenderList();
+        iRenderEditor();   // re-render the editor now that corps/nations are available
+      }
+
+      // Static bindings (wired once at module load; the .ibuild elements exist by then).
+      IN = iBlank();
+      document.getElementById('iNew').onclick = iNew;
+      document.getElementById('i-save').onclick = iSave;
+      document.getElementById('i-cancel').onclick = iNew;
+      document.getElementById('i-name').oninput = function () { IN.name = this.value; iRenderPreview(); };
+      document.getElementById('i-desc').oninput = function () { IN.description = this.value; };
+      document.getElementById('i-resource').onchange = function () { IN.resource = this.value; iRefreshCorps(); iRenderOwnership(); iRenderPreview(); };
+      document.getElementById('i-qminus').onclick = function () { if (IN.quantity > 1) { IN.quantity--; document.getElementById('i-qty').textContent = IN.quantity; iRenderPreview(); } };
+      document.getElementById('i-qplus').onclick = function () { IN.quantity++; document.getElementById('i-qty').textContent = IN.quantity; iRenderPreview(); };
+      document.querySelectorAll('#i-cadence [data-cad]').forEach(function (b) { b.onclick = function () { IN.cadence = b.dataset.cad; iRenderCadence(); iRenderPreview(); }; });
+      document.querySelectorAll('#i-ownership [data-own]').forEach(function (b) { b.onclick = function () { IN.ownership = b.dataset.own; iRefreshCorps(); iRenderOwnership(); iRenderPreview(); }; });
+      document.getElementById('i-cost').oninput = function () { IN.cost = parseInt(this.value, 10) || 0; iRenderOwnfx(); iRenderPreview(); };
+      document.getElementById('i-minM').oninput = function () { IN.minM = parseInt(this.value, 10) || 0; iRenderPreview(); };
+      document.getElementById('i-maxM').oninput = function () { IN.maxM = parseInt(this.value, 10) || 0; iRenderPreview(); };
+      document.getElementById('i-startEvent').oninput = function () { IN.startEvent = this.value; };
+      document.getElementById('i-finishEvent').oninput = function () { IN.finishEvent = this.value; };
+      return loadInitiatives;
     })();
 
     // ---- World Events (admin authoring; one JSONB definition per event, is_admin RLS) ----
