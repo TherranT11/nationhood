@@ -644,6 +644,11 @@ begin
   -- is the last word each tick. Isolated like every other step.
   begin perform public._apply_modifier_bounds();
   exception when others then raise warning 'tick %: modifier bounds failed — %', v_tick, sqlerrm; end;
+  -- National Initiatives (schema/141): drain each active initiative's monthly cost and land the
+  -- production raise on the ones that complete this tick — BEFORE the ceiling clamp below, so a
+  -- completion's output gain is capped the same tick rather than overshooting for one month.
+  begin perform public._advance_initiatives(v_tick);
+  exception when others then raise warning 'tick %: initiatives failed — %', v_tick, sqlerrm; end;
   -- Per-nation production ceilings (schema/113): clamp energy/food/minerals output to each nation's
   -- authored ceiling, right after the modifier bounds so the tighter of the two caps holds.
   begin perform public._apply_production_ceilings();

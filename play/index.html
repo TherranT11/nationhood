@@ -508,6 +508,7 @@
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
+  import { fetchNationInitiatives, renderNationInitiatives } from '/initiatives.js';
   import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
   import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, STANDING_COST, PRODUCE_COST, PRODUCE_COOLDOWN } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
@@ -2041,6 +2042,21 @@
       renderInvites();   // surface any pending coalition invites (non-blocking)
       renderFormation(); // nudge a formateur to the Government page if the window is open
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));
+      // National Initiatives panel: what's available + the one under way. The HoG enacts through
+      // initiative_enact (2 AP) via performAction (AP + feed refresh), then the panel reloads.
+      function loadInitiatives(){
+        fetchNationInitiatives(party.nation_id).then(function(data){
+          renderNationInitiatives(document.getElementById('homeInitiatives'), data, {
+            amPM: amPM, currentTick: curTick,
+            onEnact: function(id, corp){
+              performAction(function(){ return supabase.rpc('initiative_enact', { p_initiative: id, p_corp: corp }); },
+                function(d){ return 'Initiative under way — completes in ~' + d.months + ' month' + (d.months===1?'':'s') + '.'; })
+                .then(function(){ loadInitiatives(); });
+            }
+          });
+        });
+      }
+      loadInitiatives(); // National Initiatives panel (available + the one under way); HoG can enact
       loadCrises();      // active national crises (non-blocking); reveals its panel only if any exist
 
       if (nation && nation.flag) {

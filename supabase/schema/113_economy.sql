@@ -154,7 +154,7 @@ grant execute on function public.economy_produce() to authenticated;
 -- from _advance_tick (schema/60); self-filters to June so it's safe to call each tick.
 create or replace function public._resolve_economy_demands(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_n record; v_year int; v_d jsonb; v_food boolean; v_goods boolean; v_serv boolean; v_mil boolean; v_msg text;
+declare v_n record; v_year int; v_d jsonb; v_food boolean; v_goods boolean; v_serv boolean; v_mil boolean; v_msg text; v_unmet int; v_conf int;
 begin
   if ((p_tick - 1) % 12) + 1 <> 6 then return; end if;   -- June only
   v_year := 1980 + (p_tick - 1) / 12;
@@ -183,6 +183,19 @@ begin
     if not v_serv  then perform public._nation_stat_add(v_n.id, 'stats', 'welfare', -1, 1, 20); end if;
     if not v_mil   then perform public._nation_stat_add(v_n.id, 'on_hand', 'military', -1, 0, null); end if;
 
+    -- The government answers for the shortfall: for EACH of the four demands it missed, every
+    -- coalition party loses 1% popularity and the government loses 2% confidence. Both ride
+    -- _apply_policy_effect (schema/91) — the one source that scopes Party Popularity to the
+    -- in-government parties (floored) and Government Confidence to the active row (and fires the
+    -- ≤10 confidence-collapse snap election). No government / no coalition → the calls no-op.
+    v_unmet := (case when v_food then 0 else 1 end) + (case when v_goods then 0 else 1 end)
+             + (case when v_serv then 0 else 1 end) + (case when v_mil then 0 else 1 end);
+    v_conf := 2 * v_unmet;   -- confidence penalty magnitude, one source (used by the effect + the event line)
+    if v_unmet > 0 then
+      perform public._apply_policy_effect(v_n.id, jsonb_build_object('t', 'Party Popularity', 'v', -v_unmet));
+      perform public._apply_policy_effect(v_n.id, jsonb_build_object('t', 'Government Confidence', 'v', -v_conf));
+    end if;
+
     -- Reset for the next cycle (next June).
     update public.nations
        set demands = jsonb_build_object('year', v_year + 1, 'food', false, 'goods', false, 'services', false, 'military', false)
@@ -194,7 +207,9 @@ begin
                     else 'Food ran short — Order −1. ' end)
           || (case when v_goods then '' else 'Goods ran short — Prosperity −1. ' end)
           || (case when v_serv  then '' else 'Services ran short — Welfare −1. ' end)
-          || (case when v_mil   then '' else 'Military upkeep went unpaid — the forces shrank. ' end);
+          || (case when v_mil   then '' else 'Military upkeep went unpaid — the forces shrank. ' end)
+          || (case when v_unmet > 0 then 'The coalition answered for it — Party Popularity −' || v_unmet
+                    || '%, Government Confidence −' || v_conf || '%. ' else '' end);
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_n.id, null, 'economy', btrim(v_msg), public.current_game_date());
   end loop;
