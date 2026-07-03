@@ -196,8 +196,8 @@
     return '<div class="irow' + (isNet ? ' net' : '') + '"><span class="ik">' + label + (sub ? ' <small>' + sub + '</small>' : '') + '</span>' +
       '<span class="iv ' + cls + '">' + (arw ? '<span class="arw">' + arw + '</span>' : '') + sign + fmtB(delta) + '</span></div>';
   }
-  // Projected Impact: fiscal delta (vs the rung in force) + the proposed rung's standing effects +
-  // tags — the same policies.js helpers (and therefore the same numbers) as the propose preview.
+  // Projected Impact: the net recurring + one-time fiscal figures + the proposed rung's standing
+  // effects + tags — the same policies.js helpers (same numbers) as the propose preview.
   function impactCard(p, def, ci, pi){
     if (!def) return '';
     var opts = policyOptions(def), co = opts[ci], po = opts[pi];
