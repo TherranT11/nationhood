@@ -118,7 +118,7 @@
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, effectText, fiscalFactor, optMoney, isTradePolicy, tradeEffectText } from '/policies.js';
+  import { policyOptions, policyOptionIdx, effectText, optMoney, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
   import { isMonarchy, regimeText } from '/ladders.js';
 
@@ -183,7 +183,7 @@
     // The option in force for this nation (one source: policies.js).
     function inForceIdx() { return policyOptionIdx(curDef(), currentPolicies, curPolicy().id); }
 
-    // Money helpers (fiscalFactor/optMoney/fiscalDelta) live in policies.js — ONE source shared
+    // Money helpers (optMoney/fiscalNet/optOneTimeMoney) live in policies.js — ONE source shared
     // with the Legislature bill view. They scale by THIS nation's pop/prosperity, passed in here.
     function rungMeta(o) {   // short fiscal summary line under a rung's name
       var m = optMoney(o, pop, pros), net = m.Income + m.Budget;
@@ -217,21 +217,21 @@
       return '<div class="frow' + (isNet ? ' net' : '') + '"><div class="fk">' + label + (sub ? '<small>' + sub + '</small>' : '') + '</div>' +
         '<div class="fdir ' + cls + '">' + dir + '</div><div class="fval ' + cls + '">' + sign + fmtB(delta) + '</div></div>';
     }
-    // Fiscal impact = the change in each money target between the rung in force and the proposed
-    // rung (one source: the options' money effects). Debt is a liability, so up is bad there.
+    // Fiscal impact, as two single figures (one source: policies.js money helpers):
+    //   • Net fiscal impact — the recurring change vs the rung in force, netted across Income +
+    //     Budget − Debt (Debt is a liability), per year.
+    //   • One-time cost — the up-front money the proposed rung applies on enactment (its 'once' /
+    //     finite money), netted. Kept here (not in the effects list) so money reads as one thing.
     function renderFiscal() {
       var box = document.getElementById('l-fiscal');
       if (sel.proposed == null) { box.innerHTML = '<p class="none">—</p>'; return; }
-      var opts = policyOptions(curDef()), cm = optMoney(opts[inForceIdx()], pop, pros), pm = optMoney(opts[sel.proposed], pop, pros);
-      var dInc = pm.Income - cm.Income, dBud = pm.Budget - cm.Budget, dDebt = pm.Debt - cm.Debt;
+      var opts = policyOptions(curDef());
+      var netY = fiscalNet(opts[inForceIdx()], opts[sel.proposed], pop, pros);
+      var oneT = optOneTimeMoney(opts[sel.proposed], pop, pros);
       var rows = [];
-      if (Math.abs(dInc) >= 0.005) rows.push(fRow('National Income', 'per year', dInc, true));
-      if (Math.abs(dBud) >= 0.005) rows.push(fRow('Treasury / Budget', 'per year', dBud, true));
-      if (Math.abs(dDebt) >= 0.005) rows.push(fRow('National Debt', 'liability', dDebt, false));
-      if (!rows.length) { box.innerHTML = '<p class="none">No change to the budget.</p>'; return; }
-      var html = rows.join('');
-      if (rows.length >= 2) html += fRow('Net annual change', '', dInc + dBud - dDebt, true, true);
-      box.innerHTML = html;
+      if (Math.abs(netY) >= 0.005) rows.push(fRow('Net fiscal impact', 'per year', netY, true, true));
+      if (Math.abs(oneT) >= 0.005) rows.push(fRow('One-time cost', 'on enactment', oneT, true));
+      box.innerHTML = rows.length ? rows.join('') : '<p class="none">No change to the budget.</p>';
     }
     // Standing (non-money) effects of the proposed rung, with their cadence, plus its identity tags.
     function renderEffects() {
@@ -246,9 +246,9 @@
         html += effRow({ text: 'In force now · ' + tradeEffectText(curOpt), cls: '' }, 'now');
         html += effRow({ text: 'If enacted · ' + tradeEffectText(o), cls: '' }, 'while in force');
       }
-      // Show every effect except the recurring money summarised in the fiscal block above.
-      // One-time and finite-duration money stay here so nothing the option does goes unshown.
-      var effs = (o.effects || []).filter(function (e) { return !fiscalFactor(e); });
+      // Non-money standing effects only — ALL money (recurring, one-time and finite) is summarised
+      // in the fiscal block above, so it reads as one figure instead of being split across sections.
+      var effs = (o.effects || []).filter(function (e) { return !isMoneyTarget(e.t); });
       html += effs.map(function (e) { var t = effectText(e, pop, pros); return effRow(t, t.cad); }).join('');
       effBox.innerHTML = html || '<p class="none">No standing effects beyond the budget.</p>';
       tagBox.innerHTML = (o.tags || []).map(function (t) { return '<span class="ltag">' + esc(t) + '</span>'; }).join('');

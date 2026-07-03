@@ -35,6 +35,11 @@ alter table public.nations add column if not exists election_frequency_months in
 alter table public.nations add column if not exists electoral_threshold numeric not null default 0;
 alter table public.nations add column if not exists analogous text;
 alter table public.nations add column if not exists production jsonb not null default '{}'::jsonb;
+-- Per-nation production-rate ceiling for the three raw resources (default 10; editable in the nation
+-- form, backfilled onto existing nations). The tick clamps energy/food/minerals production to these
+-- (_apply_production_ceilings, schema/113) — the same cap a modifier's resource_ceiling applies, so a
+-- nation can't out-produce its ceiling.
+alter table public.nations add column if not exists production_ceiling jsonb not null default '{"energy":10,"food":10,"minerals":10}'::jsonb;
 alter table public.nations add column if not exists next_election_tick int;
 alter table public.nations add column if not exists ruling_party text;
 alter table public.nations add column if not exists former_ruling_party text;
@@ -162,3 +167,7 @@ update public.nations
      'military', coalesce((production->>'military')::numeric,  0)
    )
  where on_hand = '{}'::jsonb;
+
+-- New columns above (e.g. production_ceiling) need PostgREST to reload its schema cache before
+-- the API exposes them to the adminsetup write.
+notify pgrst, 'reload schema';

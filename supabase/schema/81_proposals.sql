@@ -230,6 +230,10 @@ begin
       perform public._apply_declaration(v_p.nation_id, v_p.payload->>'slug', v_p.payload->>'value');
     elsif v_p.kind = 'law' then
       perform public._apply_law(v_p.nation_id, (v_p.payload->>'policy_id')::uuid, (v_p.payload->>'option_idx')::int);
+      -- The party that authored a passed law is rewarded +2% Party Popularity, capped like any
+      -- popularity gain — _apply_conviction_effect (schema/94, resolved at runtime) is the one
+      -- source for that two-step ceiling clamp. Passes once (status flips to 'passed' above).
+      perform public._apply_conviction_effect(v_p.party_id, v_p.nation_id, jsonb_build_object('t', 'Party Popularity', 'v', 2));
     elsif v_p.kind = 'regime' then
       perform public._apply_regime_change(v_p.nation_id, (v_p.payload->>'target')::int);
     elsif v_p.kind = 'threshold' then

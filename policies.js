@@ -52,11 +52,33 @@ export function optMoney(o, pop, pros) {
   });
   return m;
 }
+// The single net ₣B of a { Income, Budget, Debt } map: assets add, Debt (a liability) subtracts.
+// ONE source for the "which money targets are a cost" convention — every net figure reads it.
+export function moneyNet(m) { return m.Income + m.Budget - m.Debt; }
 // The fiscal CHANGE from the rung in force to the proposed rung (proposed − current), per
 // money target — what enacting the bill does to the budget. ONE source for both views.
 export function fiscalDelta(curOpt, propOpt, pop, pros) {
   var cm = optMoney(curOpt, pop, pros), pm = optMoney(propOpt, pop, pros);
   return { Income: pm.Income - cm.Income, Budget: pm.Budget - cm.Budget, Debt: pm.Debt - cm.Debt };
+}
+// The recurring fiscal change as a SINGLE net ₣B/yr figure: Income + Budget − Debt (Debt is a
+// liability, so more of it is a cost). ONE source for the "Net fiscal impact" line in the propose
+// preview and the Legislature bill view.
+export function fiscalNet(curOpt, propOpt, pop, pros) {
+  return moneyNet(fiscalDelta(curOpt, propOpt, pop, pros));
+}
+// The up-front money an option applies once, netted to a single ₣B figure: its NON-recurring
+// money effects (cadence 'once' or finite-duration — anything fiscalFactor leaves out), summed
+// as Income + Budget − Debt (Debt is a liability, so it counts as a cost). Absolute (these fire
+// on enactment regardless of the current rung), unlike the recurring fiscalDelta. ONE source for
+// the "one-time cost" line so the recurring and one-time money never split across the preview.
+export function optOneTimeMoney(o, pop, pros) {
+  var m = { Income: 0, Budget: 0, Debt: 0 };
+  ((o && o.effects) || []).forEach(function (e) {
+    if (!isMoneyTarget(e.t) || fiscalFactor(e)) return;   // recurring money is the /year delta, not here
+    m[e.t] += policyMoney(Number(e.v) || 0, e.scale, pop, pros);
+  });
+  return moneyNet(m);
 }
 
 // Two policy targets are scoped to the parties in government (schema/91 _apply_policy_effect),
