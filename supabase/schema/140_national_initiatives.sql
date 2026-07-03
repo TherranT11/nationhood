@@ -13,7 +13,7 @@
 --     cost,                -- base $B (before the private/state adjustment)
 --     lengthMonths: [min, max],
 --     ownership,           -- 'private' | 'state' (null while unset)
---     executors: [corp_id … ],   -- the selected qualifying corporations (empty = direct programme)
+--     sectors: [sector …], -- which producing sectors' corps can carry it out (private bids from any; state needs its own SO firm in one)
 --     eligibleNations,     -- '*' for every nation, else [nation_id …]
 --     startEvent, finishEvent
 --   }
