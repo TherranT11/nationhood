@@ -77,7 +77,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
   import { fetchPolicies } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, effectText, isTradePolicy, tradeEffectText } from '/policies.js';
+  import { policyOptions, policyOptionIdx, effectText, optMoney, moneyNet, isMoneyTarget, isTradePolicy, tradeEffectText } from '/policies.js';
 
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -92,10 +92,17 @@
     var opts = policyOptions(def);
     var cur = policyOptionIdx(def, overrides, p.id);
     var o = opts[cur] || {};
-    var effs = (o.effects || []).filter(function(e){ return (e && e.cad) !== 'once'; });  // standing effects (per tick / per year), not the one-time enactment ones
+    // Recurring money → ONE net figure (Income + Budget − Debt, per year — its ongoing contribution
+    // to the budget); the rest of the standing effects (stats) list individually. One-time 'once'
+    // effects are excluded — they fired when the policy was enacted.
+    var netY = moneyNet(optMoney(o, pop, pros));
+    var netLine = Math.abs(netY) >= 0.005
+      ? '<div class="peff ' + (netY > 0 ? 'pos' : 'neg') + '"><b>Net fiscal impact ' + (netY > 0 ? '+' : '−') + '₣' + Math.abs(netY).toFixed(2) + 'B</b><span class="cad">per year</span></div>'
+      : '';
+    var effs = (o.effects || []).filter(function(e){ return (e && e.cad) !== 'once' && !isMoneyTarget(e.t); });  // non-money standing stats
     // Trade rungs carry their standing modifiers (import ×, tariff) outside the effects list — surface the in-force rung's.
     var tradeLine = isTradePolicy(def) ? '<div class="peff wide"><b>' + esc(tradeEffectText(o)) + '</b><span class="cad">while in force</span></div>' : '';
-    var effHtml = (tradeLine + effs.map(function(e){ var t = effectText(e, pop, pros); return '<div class="peff ' + t.cls + '"><b>' + esc(t.text) + '</b><span class="cad">' + t.cad + '</span></div>'; }).join('')) ||
+    var effHtml = (netLine + tradeLine + effs.map(function(e){ var t = effectText(e, pop, pros); return '<div class="peff ' + t.cls + '"><b>' + esc(t.text) + '</b><span class="cad">' + t.cad + '</span></div>'; }).join('')) ||
       '<div class="peff none">No standing effects.</div>';
     return '<div class="pcard">' +
       '<div class="pcard__hd"><b>' + esc(def.name || 'Policy') + '</b><span class="ptype">' + esc(def.type || 'policy') + '</span></div>' +
