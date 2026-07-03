@@ -124,14 +124,16 @@ begin
   if v_n.produce_until_tick is not null and v_tick < v_n.produce_until_tick then
     raise exception 'Production is on cooldown — % tick(s) left.', (v_n.produce_until_tick - v_tick); end if;
   v_prod := coalesce(v_n.production, '{}'::jsonb);
-  -- Only the six tradeable resources move; any other on-hand keys are preserved by the merge.
+  -- Each produced resource tops up its own on-hand stockpile; any other on-hand keys are preserved
+  -- by the merge. Diplomacy stockpiles like the rest — produced, banked, and spent (e.g. bidding).
   v_add := jsonb_build_object(
-    'energy',   coalesce((v_n.on_hand->>'energy')::numeric, 0)   + coalesce((v_prod->>'energy')::numeric, 0),
-    'food',     coalesce((v_n.on_hand->>'food')::numeric, 0)     + coalesce((v_prod->>'food')::numeric, 0),
-    'minerals', coalesce((v_n.on_hand->>'minerals')::numeric, 0) + coalesce((v_prod->>'minerals')::numeric, 0),
-    'goods',    coalesce((v_n.on_hand->>'goods')::numeric, 0)    + coalesce((v_prod->>'goods')::numeric, 0),
-    'services', coalesce((v_n.on_hand->>'services')::numeric, 0) + coalesce((v_prod->>'services')::numeric, 0),
-    'military', coalesce((v_n.on_hand->>'military')::numeric, 0)  + coalesce((v_prod->>'military')::numeric, 0)
+    'energy',    coalesce((v_n.on_hand->>'energy')::numeric, 0)    + coalesce((v_prod->>'energy')::numeric, 0),
+    'food',      coalesce((v_n.on_hand->>'food')::numeric, 0)      + coalesce((v_prod->>'food')::numeric, 0),
+    'minerals',  coalesce((v_n.on_hand->>'minerals')::numeric, 0)  + coalesce((v_prod->>'minerals')::numeric, 0),
+    'goods',     coalesce((v_n.on_hand->>'goods')::numeric, 0)     + coalesce((v_prod->>'goods')::numeric, 0),
+    'services',  coalesce((v_n.on_hand->>'services')::numeric, 0)  + coalesce((v_prod->>'services')::numeric, 0),
+    'military',  coalesce((v_n.on_hand->>'military')::numeric, 0)  + coalesce((v_prod->>'military')::numeric, 0),
+    'diplomacy', coalesce((v_n.on_hand->>'diplomacy')::numeric, 0) + coalesce((v_prod->>'diplomacy')::numeric, 0)
   );
   update public.nations set on_hand = coalesce(on_hand, '{}'::jsonb) || v_add, produce_until_tick = v_tick + 12 where id = v_p.nation_id;
   update public.parties set actions_remaining = actions_remaining - 5 where id = v_p.id;

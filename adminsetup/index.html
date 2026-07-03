@@ -1286,7 +1286,10 @@
           (rels || []).forEach(function (r) { relMap[r.nation_a === editingId ? r.nation_b : r.nation_a] = r.value; });
         } catch (e) { relMap = {}; }
       }
-      var others = nationsCache.filter(function (n) { return n.id !== editingId; });
+      // Base relations are set with every other ACTIVE nation only — dormant nations are hidden
+      // and inert, so they get their relations the moment they're activated (their own save runs
+      // saveRelations over the then-current active roster). Symmetric, so one row covers the pair.
+      var others = nationsCache.filter(function (n) { return n.id !== editingId && !n.dormant; });
       box.innerHTML = others.length
         ? others.map(function (n) {
             return '<div><label for="rel-' + esc(n.id) + '">Relations with ' + esc(n.name || n.id) + '</label>' +
@@ -1530,11 +1533,12 @@
           goods: num('f-goods'), services: num('f-services'), diplomacy: num('f-diplomacy'),
           military: num('f-military-prod')
         },
-        // Starting on-hand equals production, 1:1, for every tradeable resource (Energy 1 → 1
-        // on hand), Military included. Merge so editing never drops keys trading may change.
+        // Starting on-hand equals production, 1:1, for every produced resource (Energy 1 → 1 on
+        // hand), Military and Diplomacy included. Merge so editing never drops keys trading may change.
         on_hand: Object.assign({}, (editing && editing.on_hand) || {}, {
           energy: num('f-energy'), food: num('f-food'), minerals: num('f-minerals'),
-          goods: num('f-goods'), services: num('f-services'), military: num('f-military-prod')
+          goods: num('f-goods'), services: num('f-services'), military: num('f-military-prod'),
+          diplomacy: num('f-diplomacy')
         }),
         declarations: collectDeclarations(),
         policies: collectNationPolicies()
@@ -3617,7 +3621,7 @@
       // handled by _apply_policy_effect), resource PRODUCTION (bare names → production.*), and
       // resource ON HAND ("X on hand" → the spendable on_hand stockpile). Military lives only on
       // hand, so it appears in that group alone.
-      var WE_ONHAND = ['Military', 'Energy', 'Food', 'Minerals', 'Services', 'Goods'];
+      var WE_ONHAND = ['Military', 'Energy', 'Food', 'Minerals', 'Services', 'Goods', 'Diplomacy'];
       var WE_TGT = { National: POL_TGT.National, Government: ['Government Confidence', 'Party Popularity', 'Popularity Floor'],
                      'Resource (Production)': POL_TGT.Resource, 'Resource (On Hand)': WE_ONHAND.map(function (r) { return r + ' on hand'; }) };
       // Competitive bid stat — production/national only (on-hand + Military aren't readable via

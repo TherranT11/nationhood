@@ -43,7 +43,7 @@ returns numeric language sql stable security definer set search_path = public as
     when 'Services'  then coalesce((select (on_hand->>'services')::numeric  from public.nations where id = p_nation), 0)
     when 'Goods'     then coalesce((select (on_hand->>'goods')::numeric     from public.nations where id = p_nation), 0)
     when 'Budget'    then coalesce((select (economy->>'budget')::numeric    from public.nations where id = p_nation), 0)
-    when 'Diplomacy' then coalesce((select (production->>'diplomacy')::numeric from public.nations where id = p_nation), 0)
+    when 'Diplomacy' then coalesce((select (on_hand->>'diplomacy')::numeric   from public.nations where id = p_nation), 0)
     when 'Army'      then coalesce((select sum(armies)    from public.military_bases where nation_id = p_nation), 0)
     when 'Fleets'    then coalesce((select sum(fleets)    from public.military_bases where nation_id = p_nation), 0)
     when 'Air Wings' then coalesce((select sum(air_wings) from public.military_bases where nation_id = p_nation), 0)
@@ -64,13 +64,9 @@ begin
     when 'Food'      then perform public._nation_onhand_add(p_nation, 'food',     -p_amount);
     when 'Minerals'  then perform public._nation_onhand_add(p_nation, 'minerals', -p_amount);
     when 'Services'  then perform public._nation_onhand_add(p_nation, 'services', -p_amount);
-    when 'Goods'     then perform public._nation_onhand_add(p_nation, 'goods',    -p_amount);
+    when 'Goods'     then perform public._nation_onhand_add(p_nation, 'goods',     -p_amount);
     when 'Budget'    then perform public._nation_budget_add(p_nation, -p_amount);
-    when 'Diplomacy' then
-      update public.nations
-         set production = jsonb_set(coalesce(production, '{}'::jsonb), '{diplomacy}',
-               to_jsonb(greatest(0, coalesce((production->>'diplomacy')::numeric, 0) - p_amount)))
-       where id = p_nation;
+    when 'Diplomacy' then perform public._nation_onhand_add(p_nation, 'diplomacy', -p_amount);
     when 'Army', 'Fleets', 'Air Wings' then
       v_col := case p_resource when 'Army' then 'armies' when 'Fleets' then 'fleets' else 'air_wings' end;
       v_left := floor(p_amount)::int;

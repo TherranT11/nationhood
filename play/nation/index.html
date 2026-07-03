@@ -114,8 +114,9 @@
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">' + msg + '</div></div>'; }
   function cap(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
-  // The domestic production resources (Diplomacy is foreign, shown elsewhere).
-  var ECON = ['energy', 'food', 'minerals', 'goods', 'services', 'military'];
+  // The domestic production resources shown in the strip. Each accrues an on-hand stockpile
+  // through the produce tick (schema/113), Diplomacy included — produced, banked, and spent.
+  var ECON = ['energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy'];
 
   // ---- World map mini-view (the Nation panel's Map box; reads the shared world_hexes) ----
   // NMAP holds the land hexes + a colour per nation; drawNatMap fits the painted world into
