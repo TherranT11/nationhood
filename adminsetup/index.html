@@ -3336,9 +3336,10 @@
         allies:    { label: 'X Allies in [continent]',              parts: [{ p: 'count', t: 'num' }, { p: 'continent', t: 'cont' }] },
         units:     { label: 'More than X [unit]',                    parts: [{ p: 'count', t: 'num' }, { p: 'unit', t: 'sel', opts: OBJ_UNITS }] },
         relations: { label: 'Relations with [nation] above Y',       parts: [{ p: 'nation', t: 'nat' }, { p: 'value', t: 'num' }] },
-        seize:     { label: 'Seize Territory [hex]',                  parts: [{ p: 'hex', t: 'hex' }] }
+        seize:     { label: 'Seize Territory [hex]',                  parts: [{ p: 'hex', t: 'hex' }] },
+        end_crisis:{ label: 'End the crisis [crisis]',                parts: [{ p: 'crisis', t: 'crisis' }] }
       };
-      var COND_ORDER = ['stat_up', 'stat_down', 'prod_up', 'budget', 'debt_down', 'fdi', 'trade', 'mil_dom', 'gdp_up', 'allies', 'units', 'relations', 'seize'];
+      var COND_ORDER = ['stat_up', 'stat_down', 'prod_up', 'budget', 'debt_down', 'fdi', 'trade', 'mil_dom', 'gdp_up', 'allies', 'units', 'relations', 'seize', 'end_crisis'];
 
       var REWARD_DEFS = {
         popularity: { label: 'Party Popularity +X',          parts: [{ p: 'amount', t: 'num' }] },
@@ -3372,6 +3373,7 @@
         if (part.t === 'cont') return objContinents[0] || '';
         if (part.t === 'nat') return (objNations[0] || {}).id || '';
         if (part.t === 'hex') return objHexes.length ? hexKey(objHexes[0]) : '';
+        if (part.t === 'crisis') return (objCrises[0] || {}).id || '';
         return 1;   // num
       }
       function blankItem(kind, defs) { var d = defs[kind]; var o = { kind: kind }; d.parts.forEach(function (p) { o[p.p] = partDefault(p); }); return o; }
@@ -3470,6 +3472,7 @@
           if (p.t === 'cont') return '<select data-prop="' + p.p + '">' + (objContinents.length ? objContinents : ['—']).map(function (o) { return '<option' + (o === val ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
           if (p.t === 'nat') return '<select data-prop="' + p.p + '">' + (objNations.length ? objNations.map(function (na) { return '<option value="' + esc(na.id) + '"' + (na.id === val ? ' selected' : '') + '>' + esc(na.name || na.id) + '</option>'; }).join('') : '<option value="">— no nations —</option>') + '</select>';
           if (p.t === 'hex') return '<select data-prop="' + p.p + '">' + (objHexes.length ? objHexes.map(function (h) { var k = hexKey(h); return '<option value="' + esc(k) + '"' + (k === val ? ' selected' : '') + '>' + esc(hexOptLabel(h)) + '</option>'; }).join('') : '<option value="">— no assigned hexes —</option>') + '</select>';
+          if (p.t === 'crisis') return '<select data-prop="' + p.p + '">' + (objCrises.length ? objCrises.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === val ? ' selected' : '') + '>' + esc(c.name) + (c.nation ? ' (' + esc(natName(c.nation)) + ')' : '') + '</option>'; }).join('') : '<option value="">— no crises authored —</option>') + '</select>';
           return '';
         }).join('');
       }
@@ -3498,7 +3501,8 @@
       // ----- preview rail: render each condition/reward as a readable line -----
       // Condition / reward text via the shared one source (/objectives.js); nation + hex lookups
       // are this page's, injected as context.
-      function condText(c) { return objCondText(c, { natName: natName, hexLabel: hexLabel }); }
+      function crisisLabel(id) { var c = objCrises.filter(function (x) { return x.id === id; })[0]; return c ? (c.name + (c.nation ? ' (' + natName(c.nation) + ')' : '')) : (id || '—'); }
+      function condText(c) { return objCondText(c, { natName: natName, hexLabel: hexLabel, crisisLabel: crisisLabel }); }
       function rewardText(r) { return objRewardText(r, { natName: natName }); }
       function renderObjPreview() {
         var box = document.getElementById('obPrev'); if (!box || !OBJ) return;

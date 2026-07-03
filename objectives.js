@@ -10,6 +10,7 @@ export function condText(c, ctx) {
   ctx = ctx || {};
   var natName = ctx.natName || function (id) { return id || '—'; };
   var hexLabel = ctx.hexLabel || function (k) { return k || '—'; };
+  var crisisLabel = ctx.crisisLabel || function (k) { return k || '—'; };
   switch (c.kind) {
     case 'stat_up':   return 'Increase ' + c.stat + ' by ' + objNum(c.amount);
     case 'stat_down': return 'Decrease ' + c.stat + ' by ' + objNum(c.amount);
@@ -24,6 +25,7 @@ export function condText(c, ctx) {
     case 'units':     return 'Field more than ' + objNum(c.count) + ' ' + c.unit;
     case 'relations': return 'Relations with ' + natName(c.nation) + ' above ' + objNum(c.value);
     case 'seize':     return 'Seize territory ' + hexLabel(c.hex);
+    case 'end_crisis': return 'End the crisis: ' + crisisLabel(c.crisis);
   }
   return '';
 }
