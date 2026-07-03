@@ -2971,10 +2971,13 @@
       var ONHAND_RES = ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Military'];
       var EFF_TGT = { Crisis: ['Crisis Meter'], National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Income', 'Regime'], Government: ['Government Confidence', 'Party Popularity'], Resource: RES, 'On hand': ONHAND_RES.map(function (r) { return r + ' on hand'; }) };
 
+      // The crisis's custom stats that have a name — ONE source for every dropdown/preview
+      // that lists them (effect targets, endIf targets, thresholds, preview).
+      function namedStats() { return ((CRISIS && CRISIS.customStats) || []).filter(function (s) { return s && s.name; }); }
       // Custom crisis stats as an effect/condition target group. Their target string is
       // 'stat:<name>' (distinct from a national stat of the same name); '' when none defined.
       function statOpts(sel) {
-        var cs = ((CRISIS && CRISIS.customStats) || []).filter(function (s) { return s && s.name; });
+        var cs = namedStats();
         if (!cs.length) return '';
         return '<optgroup label="Crisis Stat">' + cs.map(function (s) {
           var v = 'stat:' + s.name;
@@ -3161,6 +3164,10 @@
             '<input class="cs-start" type="number" min="1" max="100" step="1" title="Starting value (1–100)" value="' + (s.start != null ? s.start : 50) + '">' +
             '<input class="cs-growth" type="number" step="any" title="Per-tick growth (may be negative)" value="' + (s.growth != null ? s.growth : 1) + '">' +
             '<button class="xb" type="button">×</button>';
+          // KNOWN LIMITATION: renaming a stat does NOT rewrite effect/endIf/threshold references
+          // to it (they keep the old 'stat:<old>' target). Those orphaned refs degrade gracefully
+          // at runtime — an effect writes a phantom key the next grow drops, an endIf reads null
+          // and stays unmet — so nothing breaks; just re-pick the stat in those rows after a rename.
           row.querySelector('.cs-name').oninput = function (e) { s.name = e.target.value; refreshStatRefs(); };
           row.querySelector('.cs-start').oninput = function (e) { s.start = Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 1)); renderPreview(); };
           row.querySelector('.cs-growth').oninput = function (e) { s.growth = parseFloat(e.target.value) || 0; renderPreview(); };
@@ -3170,21 +3177,25 @@
       }
       function renderThresholds() {
         var box = document.getElementById('cbThresholds'); box.innerHTML = '';
-        var cs = (CRISIS.customStats || []).filter(function (s) { return s && s.name; });
+        var cs = namedStats();
         if (!cs.length) { box.innerHTML = '<p class="hint" style="margin:0">Create a stat above, then add a threshold that reacts to it.</p>'; return; }
         CRISIS.thresholds.forEach(function (th, i) {
-          var row = document.createElement('div'); row.className = 'trow';
-          row.style.flexWrap = 'wrap';
-          row.innerHTML =
-            '<select class="th-stat">' + cs.map(function (s) { return '<option value="' + esc(s.name) + '"' + (s.name === th.stat ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select>' +
-            '<select class="th-op">' + OPS.map(function (op) { return '<option' + (op === th.op ? ' selected' : '') + '>' + op + '</option>'; }).join('') + '</select>' +
-            '<input class="th-val" type="number" step="any" value="' + (th.value != null ? th.value : 80) + '"><button class="xb" type="button">×</button>' +
-            '<div class="theff" style="flex:1 1 100%;margin-top:6px">' + effRowsHtml('thr:' + i, 'effects') + '</div>';
-          row.querySelector('.th-stat').onchange = function (e) { th.stat = e.target.value; renderPreview(); };
-          row.querySelector('.th-op').onchange = function (e) { th.op = e.target.value; renderPreview(); };
-          row.querySelector('.th-val').oninput = function (e) { th.value = parseFloat(e.target.value) || 0; renderPreview(); };
-          row.querySelector('.xb').onclick = function () { CRISIS.thresholds.splice(i, 1); renderThresholds(); renderPreview(); };
-          box.appendChild(row);
+          // Each threshold: the stat/op/value controls on one .trow (4-col grid), then its
+          // "then" effect list full-width below (the grid can't hold the effects block inline).
+          var wrap = document.createElement('div');
+          wrap.style.cssText = 'border:1px solid var(--line);border-radius:10px;padding:10px 11px;margin-bottom:10px';
+          wrap.innerHTML =
+            '<div class="trow" style="margin-bottom:0">' +
+              '<select class="th-stat">' + cs.map(function (s) { return '<option value="' + esc(s.name) + '"' + (s.name === th.stat ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select>' +
+              '<select class="th-op">' + OPS.map(function (op) { return '<option' + (op === th.op ? ' selected' : '') + '>' + op + '</option>'; }).join('') + '</select>' +
+              '<input class="th-val" type="number" step="any" value="' + (th.value != null ? th.value : 80) + '"><button class="xb" type="button">×</button>' +
+            '</div>' +
+            '<div class="clause" style="margin-top:8px">Then apply</div><div class="theff">' + effRowsHtml('thr:' + i, 'effects') + '</div>';
+          wrap.querySelector('.th-stat').onchange = function (e) { th.stat = e.target.value; renderPreview(); };
+          wrap.querySelector('.th-op').onchange = function (e) { th.op = e.target.value; renderPreview(); };
+          wrap.querySelector('.th-val').oninput = function (e) { th.value = parseFloat(e.target.value) || 0; renderPreview(); };
+          wrap.querySelector('.xb').onclick = function () { CRISIS.thresholds.splice(i, 1); renderThresholds(); renderPreview(); };
+          box.appendChild(wrap);
         });
         wireEffRows(box, renderThresholds);   // each threshold's effect rows redraw the thresholds section
       }
@@ -3384,7 +3395,7 @@
         var box = document.getElementById('cbPrev');
         var trig = CRISIS.triggers.map(function (t) { return esc(t.target + ' ' + t.op + ' ' + t.value); }).join('<br>' + (CRISIS.triggerMode === 'any' ? 'OR' : 'AND') + ' ');
         var ends = CRISIS.endIf.map(function (t) { return esc(tgtLabel(t.target) + ' ' + t.op + ' ' + t.value); }).join('<br>' + (CRISIS.endMode === 'all' ? 'AND' : 'OR') + ' ');
-        var statList = (CRISIS.customStats || []).filter(function (s) { return s && s.name; })
+        var statList = namedStats()
           .map(function (s) { return esc(s.name + ' · start ' + (s.start != null ? s.start : 0) + ' · ' + (s.growth >= 0 ? '+' : '') + (s.growth || 0) + '/tick'); }).join('<br>');
         var thr = (CRISIS.thresholds || []).map(function (th) {
           return esc(tgtLabel(th.stat) + ' ' + th.op + ' ' + th.value) + ' → ' + ((th.effects || []).map(effStr).map(esc).join(' · ') || '—');
@@ -3432,7 +3443,7 @@
       var ast = document.getElementById('cbAddStat'); if (ast) ast.onclick = function () { if (!CRISIS) return; CRISIS.customStats.push({ name: '', start: 50, growth: 1 }); renderCustomStats(); };
       var atr = document.getElementById('cbAddThresh'); if (atr) atr.onclick = function () {
         if (!CRISIS) return;
-        var cs = (CRISIS.customStats || []).filter(function (s) { return s && s.name; });
+        var cs = namedStats();
         if (!cs.length) { setCrisNote('Create a stat first, then add a threshold.', 'error'); return; }
         CRISIS.thresholds.push({ stat: cs[0].name, op: '≥', value: 80, effects: [eff('Order', -3)] });
         renderThresholds(); renderPreview();
