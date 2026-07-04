@@ -55,8 +55,11 @@
   .law__meta{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
   /* Stat categories — a header (ministry/portfolio) over a row of three stat boxes. */
   .cat{margin-top:22px}
-  .cat__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:baseline;gap:8px}
+  .cat__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;user-select:none}
+  .cat__k::-webkit-details-marker{display:none}
   .cat__sub{font-size:9.5px;letter-spacing:.06em;color:var(--soft)}
+  .cat__chev{margin-left:auto;width:16px;height:16px;flex:none;stroke:var(--soft);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}
+  .cat[open] .cat__chev{transform:rotate(180deg)}
   .cat__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
   @media(max-width:560px){.cat__grid{grid-template-columns:1fr}}
   .mbox{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
@@ -103,68 +106,68 @@
           </div>
         </section>
 
-        <section class="cat">
-          <div class="cat__k">Head of Government</div>
+        <details class="cat" open>
+          <summary class="cat__k">Head of Government <svg class="cat__chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
           <div class="cat__grid">
             <div class="mbox"><div class="mbox__k">Bureaucracy</div><div class="mbox__v">Level 3</div></div>
             <div class="mbox"><div class="mbox__k">Growth</div><div class="mbox__v">+2.4%</div></div>
             <div class="mbox"><div class="mbox__k">Budget Balance</div><div class="mbox__v">&minus;$10.0 bn</div></div>
           </div>
-        </section>
+        </details>
 
-        <section class="cat">
-          <div class="cat__k">Finance</div>
+        <details class="cat" open>
+          <summary class="cat__k">Finance <svg class="cat__chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
           <div class="cat__grid">
             <div class="mbox"><div class="mbox__k">Tax Burden</div><div class="mbox__v">48%</div></div>
             <div class="mbox"><div class="mbox__k">Debt</div><div class="mbox__v">$168 bn</div></div>
             <div class="mbox"><div class="mbox__k">Interest Rates</div><div class="mbox__v">4.5%</div></div>
           </div>
-        </section>
+        </details>
 
-        <section class="cat">
-          <div class="cat__k">Interior <span class="cat__sub">Minor Stats</span></div>
+        <details class="cat" open>
+          <summary class="cat__k">Interior <span class="cat__sub">Minor Stats</span> <svg class="cat__chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
           <div class="cat__grid">
             <div class="mbox"><div class="mbox__k">Crime</div><div class="mbox__v">Moderate</div></div>
             <div class="mbox"><div class="mbox__k">Immigration</div><div class="mbox__v">+120k/yr</div></div>
             <div class="mbox"><div class="mbox__k">Extremism</div><div class="mbox__v">Low</div></div>
           </div>
-        </section>
+        </details>
 
-        <section class="cat">
-          <div class="cat__k">Economy <span class="cat__sub">Minor Stats</span></div>
+        <details class="cat" open>
+          <summary class="cat__k">Economy <span class="cat__sub">Minor Stats</span> <svg class="cat__chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
           <div class="cat__grid">
             <div class="mbox"><div class="mbox__k">Unemployment</div><div class="mbox__v">9%</div></div>
             <div class="mbox"><div class="mbox__k">Poverty</div><div class="mbox__v">14%</div></div>
             <div class="mbox"><div class="mbox__k">Wages</div><div class="mbox__v">Rising</div></div>
           </div>
-        </section>
+        </details>
 
-        <section class="cat">
-          <div class="cat__k">Labor, Health and Social Affairs</div>
+        <details class="cat" open>
+          <summary class="cat__k">Labor, Health and Social Affairs <svg class="cat__chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
           <div class="cat__grid">
             <div class="mbox"><div class="mbox__k">Prosperity</div><div class="mbox__v">High</div></div>
             <div class="mbox"><div class="mbox__k">Press Freedoms</div><div class="mbox__v">Strong</div></div>
             <div class="mbox"><div class="mbox__k">Social Integration</div><div class="mbox__v">Moderate</div></div>
           </div>
-        </section>
+        </details>
 
-        <section class="cat">
-          <div class="cat__k">Defense</div>
+        <details class="cat" open>
+          <summary class="cat__k">Defense <svg class="cat__chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
           <div class="cat__grid">
             <div class="mbox"><div class="mbox__k">Armed Forces Funding</div><div class="mbox__v">$34 bn</div></div>
             <div class="mbox"><div class="mbox__k">Military Research</div><div class="mbox__v">Level 2</div></div>
             <div class="mbox"><div class="mbox__k">Cybersecurity</div><div class="mbox__v">Developing</div></div>
           </div>
-        </section>
+        </details>
 
-        <section class="cat">
-          <div class="cat__k">Environment</div>
+        <details class="cat" open>
+          <summary class="cat__k">Environment <svg class="cat__chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
           <div class="cat__grid">
             <div class="mbox"><div class="mbox__k">CO&#8322; Emissions</div><div class="mbox__v">210 Mt/yr</div></div>
             <div class="mbox"><div class="mbox__k">Global Warming</div><div class="mbox__v">+1.3&deg;C</div></div>
             <div class="mbox"><div class="mbox__k">Energy Availability</div><div class="mbox__v">Stable</div></div>
           </div>
-        </section>
+        </details>
       </div>
     </main>
   </div>
