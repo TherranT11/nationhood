@@ -217,20 +217,24 @@ export function renderJointNegotiations(el, data, ctx){
       actions+'</div>';
   }).join('');
 
-  async function call(fn, args, okReset){
+  // One in-flight write at a time; outcomes surface through the shared home toast (ctx.notify).
+  async function call(fn, args, okMsg){
     if(busy) return; busy = true;
-    try { const { error } = await supabase.rpc(fn, args); if(error) throw error; if(ctx.onChange) ctx.onChange(); }
-    catch(e){ alert(e.message || 'That could not be completed.'); }
+    try {
+      const { error } = await supabase.rpc(fn, args); if(error) throw error;
+      if(okMsg && ctx.notify) ctx.notify(okMsg);
+      if(ctx.onChange) ctx.onChange();
+    } catch(e){ if(ctx.notify) ctx.notify(e.message || 'That could not be completed.'); }
     busy = false;
   }
   el.querySelectorAll('[data-do]').forEach(function(b){ b.onclick=function(){
     var id=b.dataset.id, act=b.dataset.do;
     if(act==='counter'){ var box=el.querySelector('.jcounter[data-id="'+id+'"]'); if(box) box.hidden=!box.hidden; return; }
     if(act==='decline' && !confirm('Decline this joint project?')) return;
-    call(act==='accept'?'joint_accept':'joint_decline', { p_proposal: id });
+    call(act==='accept'?'joint_accept':'joint_decline', { p_proposal: id }, act==='accept'?'Joint project agreed — under way.':'Proposal declined.');
   }; });
   el.querySelectorAll('[data-cshare]').forEach(function(b){ b.onclick=function(){
-    var id=b.closest('.jcounter').dataset.id; call('joint_counter', { p_proposal: id, p_share: parseInt(b.dataset.cshare,10) });
+    var id=b.closest('.jcounter').dataset.id; call('joint_counter', { p_proposal: id, p_share: parseInt(b.dataset.cshare,10) }, 'Counter-offer sent.');
   }; });
   el.querySelectorAll('[data-send]').forEach(function(b){ b.onclick=function(){
     var id=b.dataset.send, inp=el.querySelector('[data-msg="'+id+'"]'); var v=inp?inp.value.trim():'';
