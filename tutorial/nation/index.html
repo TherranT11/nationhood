@@ -34,11 +34,25 @@
   .gear__menu[hidden]{display:none}
   .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red,#C42B2B);cursor:pointer}
   .gear__item:hover{background:var(--chip)}
-  .main{flex:1;padding:22px clamp(16px,3vw,40px);min-width:0;display:flex;align-items:center;justify-content:center}
-  .ph{max-width:460px;text-align:center;color:var(--muted)}
-  .ph .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
-  .ph h1{font-size:clamp(24px,4vw,32px);font-weight:900;letter-spacing:-.02em;color:var(--ink);margin:8px 0 10px}
-  .ph p{font-size:14px}
+  .main{flex:1;padding:26px clamp(16px,3vw,40px) 56px;min-width:0}
+  .page{max-width:900px;margin:0 auto}
+  .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
+  .page h1{font-size:clamp(26px,4vw,36px);font-weight:900;letter-spacing:-.025em;color:var(--ink);margin:6px 0 22px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .card__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
+  /* A law phasing in — name, level transition, effect chips, and a progress bar. */
+  .law{border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .law__top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .law__name{font-size:16px;font-weight:800;letter-spacing:-.01em;color:var(--ink)}
+  .law__lvl{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--muted);white-space:nowrap}
+  .law__arrow{color:var(--indigo)}
+  .law__chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .chip{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.02em;padding:5px 10px;border-radius:8px}
+  .chip--cost{color:#C42B2B;background:#FAEAEA}
+  .chip--good{color:#16915a;background:#E6F4EC}
+  .law__bar{height:8px;border-radius:5px;background:var(--chip);border:1px solid var(--line);overflow:hidden;margin-bottom:7px}
+  .law__bar span{display:block;height:100%;background:var(--indigo)}
+  .law__meta{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -61,10 +75,24 @@
         <a class="nav__i" href="/tutorial/wiki/"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>      </nav>
     </aside>
     <main class="main">
-      <div class="ph">
-        <div class="eyebrow">Tutorial</div>
+      <div class="page">
+        <div class="eyebrow">The Republic of Sessau</div>
         <h1>Nation</h1>
-        <p>This tutorial screen is a blank scaffold, ready to be built. Add its content in this file.</p>
+        <section class="card">
+          <div class="card__k">Laws Being Implemented</div>
+          <div class="law">
+            <div class="law__top">
+              <div class="law__name">Federal Police Budget</div>
+              <div class="law__lvl">Level 3 <span class="law__arrow">&rarr;</span> Level 4</div>
+            </div>
+            <div class="law__chips">
+              <span class="chip chip--cost">&minus;$16.2 bn/year</span>
+              <span class="chip chip--good">+2 Order</span>
+            </div>
+            <div class="law__bar"><span style="width:80%"></span></div>
+            <div class="law__meta"><span>Implementing</span><span>3 months remaining</span></div>
+          </div>
+        </section>
       </div>
     </main>
   </div>
