@@ -167,6 +167,47 @@ export async function resetTutorial() {
   }
 }
 
+// Wire the shared tutorial chrome present on every section page: the mobile
+// bottom-nav active state + "More" sheet, the top-right gear dropdown, and the
+// Exit Tutorial control (confirm → reset → back to the real app). One source,
+// so all ten scaffolds stay identical without copy-pasted handlers. A no-op for
+// any element a page happens not to carry.
+export function mountTutorialChrome() {
+  const path = location.pathname;
+
+  // Mobile bottom nav: highlight the current tab, wire the More sheet.
+  document.querySelectorAll('.botnav__i[href]').forEach((a) => {
+    if (a.getAttribute('href') === path) a.classList.add('active');
+  });
+  const moreBtn = document.getElementById('moreBtn');
+  const moreSheet = document.getElementById('moreSheet');
+  const moreLinks = ['/tutorial/inbox/', '/tutorial/trade/', '/tutorial/conflict/', '/tutorial/forum/', '/tutorial/wiki/'];
+  if (moreLinks.indexOf(path) >= 0 && moreBtn) moreBtn.classList.add('active');
+  if (moreBtn && moreSheet) {
+    moreBtn.addEventListener('click', () => { moreSheet.hidden = !moreSheet.hidden; });
+    moreSheet.addEventListener('click', (e) => { if (e.target === moreSheet) moreSheet.hidden = true; });
+  }
+
+  // Top-right gear dropdown.
+  const gearBtn = document.getElementById('gearBtn');
+  const gearMenu = document.getElementById('gearMenu');
+  if (gearBtn && gearMenu) {
+    gearBtn.addEventListener('click', (e) => { e.stopPropagation(); gearMenu.hidden = !gearMenu.hidden; });
+    document.addEventListener('click', (e) => {
+      if (!gearMenu.hidden && !gearBtn.contains(e.target) && !gearMenu.contains(e.target)) gearMenu.hidden = true;
+    });
+  }
+
+  // Exit Tutorial: confirm, wipe progress, return to the real app.
+  const exit = document.getElementById('exitTutorial');
+  if (exit) exit.addEventListener('click', async () => {
+    if (!confirm('Exit the tutorial and reset your progress? Next time you start the tutorial it begins from scratch.')) return;
+    exit.disabled = true; exit.textContent = 'Exiting…';
+    try { await resetTutorial(); } catch (e) { /* reset is best-effort; leave anyway */ }
+    window.location.href = '/home/';
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Shared game-clock + weekly-action widget (top-right on every in-game screen)
 // ---------------------------------------------------------------------------

@@ -101,31 +101,9 @@
   </div></div></div>
 <script type="module">
   import { isConfigured } from '/supabase.js';
-  import { requireUser, resetTutorial } from '/tutorial/shell.js';
+  import { requireUser, mountTutorialChrome } from '/tutorial/shell.js';
   if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
-
-  // Mobile bottom nav: highlight the current tab + wire the More sheet.
-  var _p = location.pathname;
-  document.querySelectorAll('.botnav__i[href]').forEach(function(a){ if (a.getAttribute('href') === _p) a.classList.add('active'); });
-  var _more = ['/tutorial/inbox/','/tutorial/trade/','/tutorial/conflict/','/tutorial/forum/','/tutorial/wiki/'];
-  var _mb = document.getElementById('moreBtn'), _ms = document.getElementById('moreSheet');
-  if (_more.indexOf(_p) >= 0 && _mb) _mb.classList.add('active');
-  if (_mb && _ms) {
-    _mb.addEventListener('click', function(){ _ms.hidden = !_ms.hidden; });
-    _ms.addEventListener('click', function(e){ if (e.target === _ms) _ms.hidden = true; });
-  }
-  var _ex = document.getElementById('exitTutorial');
-  if (_ex) _ex.addEventListener('click', async function(){
-    if (!confirm('Exit the tutorial and reset your progress? Next time you start the tutorial it begins from scratch.')) return;
-    _ex.disabled = true; _ex.textContent = 'Exiting\u2026';
-    try { await resetTutorial(); } catch (e) {}
-    window.location.href = '/home/';
-  });
-  var _g = document.getElementById('gearBtn'), _gm = document.getElementById('gearMenu');
-  if (_g && _gm) {
-    _g.addEventListener('click', function(e){ e.stopPropagation(); _gm.hidden = !_gm.hidden; });
-    document.addEventListener('click', function(e){ if (!_gm.hidden && !_g.contains(e.target) && !_gm.contains(e.target)) _gm.hidden = true; });
-  }
+  mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
 </script>
 </body>
 </html>
