@@ -568,7 +568,7 @@ begin
   )
   insert into public.events (nation_id, party_id, kind, body, game_date)
     select nation_id, party_id, 'declaration',
-           'A measure reached the floor: ' || title || '.', public.current_game_date()
+           'A measure has reached the floor in the ' || public._legislature_of(nation_id) || ': ' || title || '.', public.current_game_date()
     from promoted;
   -- Floor measures resolve now if they have stood their full 6-tick window OR their outcome is
   -- already locked by an outright chamber majority (_proposal_locked, schema/81) — the latter
