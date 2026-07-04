@@ -102,7 +102,7 @@ begin
   if v_partner is null then raise exception 'That joint project has no partner nation set.'; end if;
   if v_partner = v_p.nation_id then raise exception 'A joint project needs a different partner nation.'; end if;
 
-  if p_share not in (0, 25, 50) then raise exception 'The partner can be asked to cover 0%, 25% or 50%.'; end if;
+  if p_share not in (0, 25, 50) then raise exception 'The partner can be asked to cover 0%%, 25%% or 50%%.'; end if;
   if lower(coalesce(p_ownership, '')) not in ('private', 'state') then raise exception 'Choose private enterprise or state sanctioned.'; end if;
   if lower(p_ownership) = 'state' and p_corp is null then raise exception 'Choose a state-owned corporation to carry out this initiative.'; end if;
 
@@ -150,7 +150,7 @@ create or replace function public.joint_counter(p_proposal uuid, p_share int)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_role text; v_pr public.joint_proposals%rowtype;
 begin
-  if p_share not in (0, 25, 50) then raise exception 'Offer 0%, 25% or 50%.'; end if;
+  if p_share not in (0, 25, 50) then raise exception 'Offer 0%%, 25%% or 50%%.'; end if;
   v_role := public._joint_role(p_proposal);
   if v_role is null then raise exception 'You are not part of this negotiation.'; end if;
   select * into v_pr from public.joint_proposals where id = p_proposal for update;
