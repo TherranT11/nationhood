@@ -39,6 +39,64 @@ function hexRound(q, r) {
 }
 export function pixToAxial(px, py, s, ox, oy) { var x = px - ox, y = py - oy, r = y / (1.5 * s), q = x / (Math.sqrt(3) * s) - r / 2; return hexRound(q, r); }
 
+// Paint a nation mini-map into `cv` (canvas) fitted to `box` (its sized parent). One source for
+// the mini-map, shared by the live Nation page and the tutorial. opts:
+//   hexes:  [{ q, r, terrain, nation_id, continent }] (the world_hexes rows)
+//   natColor: { nationId: '#rrggbb' } (from nationColors())
+//   viewedId: the nation to highlight/focus
+//   mode: 'nation' (viewed nation in colour, rest greyed) | 'continent' | 'world' (all nations)
+//   focusContinent: the continent to frame in 'continent' mode
+// Returns true if it painted any land, false if there was none (caller shows its own fallback).
+export function drawNationMiniMap(cv, box, opts) {
+  if (!cv || !box) return false;
+  var o = opts || {}, mode = o.mode || 'nation', viewedId = o.viewedId, fc = o.focusContinent;
+  var natColor = o.natColor || {};
+  var land = (o.hexes || []).filter(function (h) { return h.terrain === 'land'; });
+  if (!land.length) return false;
+  var DPR = window.devicePixelRatio || 1, W = box.clientWidth, H = box.clientHeight;
+  cv.width = W * DPR; cv.height = H * DPR; var ctx = cv.getContext('2d'); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  var hmap = {}; land.forEach(function (h) { hmap[h.q + ',' + h.r] = h; });
+  var landAt = function (q, r) { return hmap[q + ',' + r] || null; };
+  // Fit/centre on the FOCUS hexes: Nation = the viewed nation's hexes; Continent = its
+  // continent's hexes; World = the whole painted world. M = hexes of context around the focus.
+  var focused = mode === 'nation' ? land.filter(function (h) { return h.nation_id === viewedId; })
+              : (mode === 'continent' && fc) ? land.filter(function (h) { return h.continent === fc; })
+              : null;
+  var focus = (focused && focused.length) ? focused : land;   // no focus hexes → show the world
+  var M = (focused && focused.length) ? 1.5 : 2.5;
+  var minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+  focus.forEach(function (h) { var p = axialToPix(h.q, h.r, 1, 0, 0); minx = Math.min(minx, p.x); maxx = Math.max(maxx, p.x); miny = Math.min(miny, p.y); maxy = Math.max(maxy, p.y); });
+  minx -= M * Math.sqrt(3); maxx += M * Math.sqrt(3); miny -= M * 1.5; maxy += M * 1.5;
+  var pad = 6, bw = (maxx - minx) || 1, bh = (maxy - miny) || 1, s = Math.min((W - 2 * pad) / bw, (H - 2 * pad) / bh);
+  var ox = pad - minx * s + ((W - 2 * pad) - bw * s) / 2, oy = pad - miny * s + ((H - 2 * pad) - bh * s) / 2;
+  var cs = [pixToAxial(0, 0, s, ox, oy), pixToAxial(W, 0, s, ox, oy), pixToAxial(0, H, s, ox, oy), pixToAxial(W, H, s, ox, oy)];
+  var qs = cs.map(function (c) { return c[0]; }), rs = cs.map(function (c) { return c[1]; });
+  var QA = Math.min.apply(null, qs) - 1, QB = Math.max.apply(null, qs) + 1, RA = Math.min.apply(null, rs) - 1, RB = Math.max.apply(null, rs) + 1;
+  ctx.clearRect(0, 0, W, H); ctx.fillStyle = '#bcd9e6'; ctx.fillRect(0, 0, W, H);
+  for (var r = RA; r <= RB; r++) for (var q = QA; q <= QB; q++) {
+    var p = axialToPix(q, r, s, ox, oy); if (p.x < -s * 2 || p.x > W + s * 2 || p.y < -s * 2 || p.y > H + s * 2) continue;
+    var h = hmap[q + ',' + r];
+    hexPath(ctx, p.x, p.y, s * 0.96);
+    if (h) {
+      if (mode === 'nation') ctx.fillStyle = (h.nation_id && h.nation_id === viewedId) ? (natColor[h.nation_id] || '#5546E8') : '#cdc6b8';
+      else if (mode === 'continent' && fc && h.continent !== fc) ctx.fillStyle = '#cdc6b8';   // off-continent land greyed
+      else ctx.fillStyle = h.nation_id ? (natColor[h.nation_id] || '#9a8f7d') : '#e9e3d4';    // continent/world: each nation its colour
+      ctx.fill();
+    } else { ctx.fillStyle = ((q + r) % 2 === 0) ? '#bcd9e6' : '#a9cdde'; ctx.fill(); }
+    ctx.lineWidth = 1; ctx.strokeStyle = h ? 'rgba(120,110,90,.25)' : 'rgba(110,150,170,.28)'; ctx.stroke();
+  }
+  for (var r2 = RA; r2 <= RB; r2++) for (var q2 = QA; q2 <= QB; q2++) {
+    if (!landAt(q2, r2)) continue;
+    var p2 = axialToPix(q2, r2, s, ox, oy); if (p2.x < -s * 2 || p2.x > W + s * 2 || p2.y < -s * 2 || p2.y > H + s * 2) continue;
+    borderEdges(landAt, q2, r2).forEach(function (ed) {
+      var e = hexEdge(p2.x, p2.y, s * 0.96, ed.d);
+      ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2);
+      if (ed.sea) { ctx.strokeStyle = '#7fa9bd'; ctx.lineWidth = 1.6; } else { ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.2; } ctx.stroke();
+    });
+  }
+  return true;
+}
+
 function corner(cx, cy, s, i) { var a = Math.PI / 180 * (60 * i - 90); return { x: cx + s * Math.cos(a), y: cy + s * Math.sin(a) }; }
 export function hexPath(ctx, cx, cy, s) { ctx.beginPath(); for (var i = 0; i < 6; i++) { var c = corner(cx, cy, s, i); i ? ctx.lineTo(c.x, c.y) : ctx.moveTo(c.x, c.y); } ctx.closePath(); }
 export function hexEdge(cx, cy, s, d) { var a = corner(cx, cy, s, d), b = corner(cx, cy, s, d + 1); return { x1: a.x, y1: a.y, x2: b.x, y2: b.y }; }

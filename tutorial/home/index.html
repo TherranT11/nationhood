@@ -56,6 +56,14 @@
   .stat__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
   .stat__v{font-size:20px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin-top:9px;line-height:1.2}
   .stat__sub{font-weight:600;font-size:15px;color:var(--muted)}
+  /* Territory map — pulls the live in-game Sessau nation. Left column under the stats. */
+  .terr{margin-top:16px;display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  @media(max-width:760px){.terr{grid-template-columns:1fr}}
+  .terr__card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .terr__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:12px}
+  .map__ph{position:relative;aspect-ratio:4/3;background:var(--chip);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+  .natmap{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .map__none{position:relative;z-index:1}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -86,6 +94,12 @@
           <div class="stat"><div class="stat__k">Party Leader</div><div class="stat__v">Allen Droulez <span class="stat__sub">(42)</span></div></div>
           <div class="stat"><div class="stat__k">Seats</div><div class="stat__v">114</div></div>
           <div class="stat"><div class="stat__k">Party Approval</div><div class="stat__v">32%</div></div>
+        </div>
+        <div class="terr">
+          <div class="terr__card">
+            <div class="terr__k">Territory</div>
+            <div class="map__ph" id="natMapBox"><canvas class="natmap" id="natMap"></canvas><span class="map__none" id="natMapNone">Loading map&hellip;</span></div>
+          </div>
         </div>
       </div>
     </main>
@@ -121,9 +135,40 @@
     </div>
   </div>
 <script type="module">
-  import { isConfigured } from '/supabase.js';
+  import { supabase, isConfigured } from '/supabase.js';
   import { requireUser, mountTutorialChrome, getTutorialProgress, updateProfile } from '/tutorial/shell.js';
+  import { nationColors, drawNationMiniMap } from '/hexmap.js';
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
+
+  // Territory map: pull the real in-game Sessau nation's hexes (world_hexes + nations are
+  // world-readable) and render it with the shared mini-map renderer. Non-fatal: any failure
+  // leaves a quiet "Map unavailable" placeholder.
+  (async () => {
+    const box = document.getElementById('natMapBox'), cv = document.getElementById('natMap'), none = document.getElementById('natMapNone');
+    if (!box || !cv) return;
+    const unavailable = () => { if (none) { none.style.display = ''; none.textContent = 'Map unavailable'; } cv.style.display = 'none'; };
+    if (!isConfigured) { unavailable(); return; } // local dev: nothing to pull
+    try {
+      let nRes = await supabase.from('nations').select('id, name, color').order('name');
+      if (nRes.error) nRes = await supabase.from('nations').select('id, name').order('name'); // color not migrated yet
+      const nations = nRes.data || [];
+      // Match the nations list order used everywhere (by name) so palette colours agree.
+      const sessau = nations.find((n) => (n.name || '').trim().toLowerCase() === 'sessau')
+                  || nations.find((n) => (n.name || '').toLowerCase().includes('sessau'));
+      if (!sessau) { unavailable(); return; }
+      let hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id, continent');
+      if (hr.error) hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id'); // continent not migrated yet
+      const opts = { hexes: hr.error ? [] : (hr.data || []), natColor: nationColors(nations), viewedId: sessau.id, mode: 'nation' };
+      const paint = () => {
+        const ok = drawNationMiniMap(cv, box, opts);
+        if (none) none.style.display = ok ? 'none' : '';
+        cv.style.display = ok ? 'block' : 'none';
+        if (none && !ok) none.textContent = 'Map unavailable';
+      };
+      paint();
+      window.addEventListener('resize', paint);
+    } catch (e) { unavailable(); }
+  })();
 
   // Welcome modal: shown by default (blocks interaction until "Let's Begin"),
   // once per tutorial run. Persisted in tutorial_state so it clears on reset and
