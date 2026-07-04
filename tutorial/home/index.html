@@ -34,6 +34,16 @@
   .gear__menu[hidden]{display:none}
   .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red,#C42B2B);cursor:pointer}
   .gear__item:hover{background:var(--chip)}
+  /* Blocking welcome modal — covers everything (gear z-70, botnav z-50) until dismissed. */
+  .welcome{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:rgba(21,21,27,.55);padding:22px}
+  .welcome[hidden]{display:none}
+  .welcome__box{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:30px 28px;max-width:440px;width:100%;box-shadow:0 40px 80px -24px rgba(0,0,0,.5)}
+  .welcome__ey{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--indigo);margin-bottom:12px}
+  .welcome__t{font-size:24px;font-weight:900;letter-spacing:-.02em;color:var(--ink);margin-bottom:14px}
+  .welcome__p{font-size:15px;line-height:1.6;color:var(--muted);margin-bottom:12px}
+  .welcome__p b{color:var(--ink);font-weight:700}
+  .welcome__btn{margin-top:8px;width:100%;font-family:'Space Mono',monospace;font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;background:var(--indigo);color:#fff;border:none;border-radius:12px;padding:14px;cursor:pointer;transition:filter .15s}
+  .welcome__btn:hover{filter:brightness(1.07)}
   .main{flex:1;padding:26px clamp(16px,3vw,40px) 56px;min-width:0}
   .page{max-width:900px;margin:0 auto}
   .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
@@ -99,11 +109,39 @@
     <a href="/tutorial/forum/"><svg viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/></svg><span>Forum</span></a>
     <a href="/tutorial/wiki/"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span>Wiki</span></a>
   </div></div></div>
+  <!-- Shown by default so it blocks the page from first paint; the script hides it if already dismissed. -->
+  <div class="welcome" id="welcome">
+    <div class="welcome__box" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
+      <div class="welcome__ey">Getting Started</div>
+      <div class="welcome__t" id="welcomeTitle">Welcome to Nationhood</div>
+      <p class="welcome__p">Nationhood is an online, persistent world where every <b>8 hours</b> the game advances.</p>
+      <p class="welcome__p">The tutorial is not that. It is a turn-based breakdown of Nationhood, so you can learn the game in real time.</p>
+      <p class="welcome__p">After the tutorial, you'll be prompted to join the game &mdash; where time advances every 8 hours.</p>
+      <button class="welcome__btn" id="welcomeBegin" type="button">Let's Begin</button>
+    </div>
+  </div>
 <script type="module">
   import { isConfigured } from '/supabase.js';
-  import { requireUser, mountTutorialChrome } from '/tutorial/shell.js';
-  if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
+  import { requireUser, mountTutorialChrome, getTutorialProgress, updateProfile } from '/tutorial/shell.js';
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
+
+  // Welcome modal: shown by default (blocks interaction until "Let's Begin"),
+  // once per tutorial run. Persisted in tutorial_state so it clears on reset and
+  // never nags on later home visits. The auth guard rides along on the same call.
+  const welcome = document.getElementById('welcome');
+  const welcomeBegin = document.getElementById('welcomeBegin');
+  let welcomeUser = null;
+  (async () => {
+    if (!isConfigured) return; // local dev: keep it shown, no persistence
+    welcomeUser = await requireUser();
+    if (!welcomeUser) return;  // requireUser has redirected to login
+    const progress = await getTutorialProgress(welcomeUser.id);
+    if (progress && progress.welcomed) welcome.hidden = true; // already seen
+  })();
+  welcomeBegin.addEventListener('click', () => {
+    welcome.hidden = true;
+    if (isConfigured && welcomeUser) updateProfile({ tutorial_welcomed: true }); // best-effort persist
+  });
 </script>
 </body>
 </html>
