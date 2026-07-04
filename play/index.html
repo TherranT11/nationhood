@@ -86,6 +86,7 @@
   .lead b{display:block;font-weight:800;font-size:17px;letter-spacing:-.01em;color:var(--ink);margin-bottom:7px;padding-right:52px}
   .lead__lane{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
   .lead__desc{display:block;font-size:12px;line-height:1.4;color:var(--muted);margin-top:8px}
+  .lead__tag{display:inline-block;margin-top:9px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);border:1px solid var(--indigo);padding:3px 8px;border-radius:20px}
   .leadbar__sub{color:var(--muted);font-size:13px;margin:-6px 0 14px}
 
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--bg);font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:13px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
@@ -1745,6 +1746,20 @@
     } catch (e) { box.innerHTML = ''; }
   }
 
+  // Flag the Negotiate action when the player has open coalition talks (hosting or invited) —
+  // the same activeTalks() the modal lists, so the tag and the list can't disagree.
+  async function refreshNegotiateTag() {
+    var btn = document.getElementById('act-negotiate');
+    if (!btn || !myPartyId) return;
+    try {
+      var open = activeTalks(await fetchNegotiations(), myPartyId).length;
+      var tag = btn.querySelector('.lead__tag');
+      if (!open) { if (tag) tag.remove(); return; }
+      if (!tag) { tag = document.createElement('span'); tag.className = 'lead__tag'; btn.appendChild(tag); }
+      tag.textContent = 'Open Negotiations' + (open > 1 ? ' · ' + open : '');
+    } catch (e) { /* leave the button untagged on failure */ }
+  }
+
   // Pending coalition invites surface as banners on Home: Decline, or Enter Talks
   // (which accepts and opens the negotiation page).
   async function renderInvites() {
@@ -2065,6 +2080,7 @@
       await selectFeed('global');
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
       renderInvites();   // surface any pending coalition invites (non-blocking)
+      refreshNegotiateTag();   // tag the Negotiate action if the player has open coalition talks (non-blocking)
       renderFormation(); // nudge a formateur to the Government page if the window is open
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));
       // National Initiatives panel: what's available + the one under way. The Minister of Economic
