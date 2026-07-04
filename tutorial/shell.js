@@ -35,6 +35,7 @@ export async function getTutorialProgress(userId) {
     const s = data.tutorial_state || {}; // all tutorial fields live in one jsonb blob
     return {
       party: s.party,
+      welcomed: !!s.welcomed, // dismissed the home welcome modal at least once
       governmentFormed: !!s.government_formed,
       theoTask: s.theo_task || null,
       actions: s.party_actions ?? 3, // 0 stays 0; missing/null defaults to 3

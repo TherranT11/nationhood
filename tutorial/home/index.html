@@ -34,6 +34,16 @@
   .gear__menu[hidden]{display:none}
   .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red,#C42B2B);cursor:pointer}
   .gear__item:hover{background:var(--chip)}
+  /* Blocking welcome modal — covers everything (gear z-70, botnav z-50) until dismissed. */
+  .welcome{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:rgba(21,21,27,.55);padding:22px}
+  .welcome[hidden]{display:none}
+  .welcome__box{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:30px 28px;max-width:440px;width:100%;box-shadow:0 40px 80px -24px rgba(0,0,0,.5)}
+  .welcome__ey{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--indigo);margin-bottom:12px}
+  .welcome__t{font-size:24px;font-weight:900;letter-spacing:-.02em;color:var(--ink);margin-bottom:14px}
+  .welcome__p{font-size:15px;line-height:1.6;color:var(--muted);margin-bottom:12px}
+  .welcome__p b{color:var(--ink);font-weight:700}
+  .welcome__btn{margin-top:8px;width:100%;font-family:'Space Mono',monospace;font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;background:var(--indigo);color:#fff;border:none;border-radius:12px;padding:14px;cursor:pointer;transition:filter .15s}
+  .welcome__btn:hover{filter:brightness(1.07)}
   .main{flex:1;padding:26px clamp(16px,3vw,40px) 56px;min-width:0}
   .page{max-width:900px;margin:0 auto}
   .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
@@ -46,6 +56,20 @@
   .stat__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
   .stat__v{font-size:20px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin-top:9px;line-height:1.2}
   .stat__sub{font-weight:600;font-size:15px;color:var(--muted)}
+  /* Territory map — pulls the live in-game Sessau nation. Left column under the stats. */
+  .terr{margin-top:16px;display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  @media(max-width:760px){.terr{grid-template-columns:1fr}}
+  .terr__card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .terr__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:12px}
+  .map__ph{position:relative;aspect-ratio:4/3;background:var(--chip);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+  .natmap{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .map__none{position:relative;z-index:1}
+  .terr{align-items:start}
+  .snap__list{display:flex;flex-direction:column}
+  .snap__row{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .snap__row:last-child{border-bottom:none}
+  .snap__row dt{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);flex:none;padding-top:2px}
+  .snap__row dd{font-size:14px;font-weight:600;color:var(--ink);text-align:right}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -77,6 +101,27 @@
           <div class="stat"><div class="stat__k">Seats</div><div class="stat__v">114</div></div>
           <div class="stat"><div class="stat__k">Party Approval</div><div class="stat__v">32%</div></div>
         </div>
+        <div class="terr">
+          <div class="terr__card">
+            <div class="terr__k">Territory</div>
+            <div class="map__ph" id="natMapBox"><canvas class="natmap" id="natMap"></canvas><span class="map__none" id="natMapNone">Loading map&hellip;</span></div>
+          </div>
+          <div class="terr__card">
+            <div class="terr__k">Nation Snapshot</div>
+            <dl class="snap__list">
+              <div class="snap__row"><dt>Capital</dt><dd>Seyonne</dd></div>
+              <div class="snap__row"><dt>Official Language</dt><dd>Sessauan</dd></div>
+              <div class="snap__row"><dt>Religion</dt><dd>81% Solvsrist, 16% Al-Makiran</dd></div>
+              <div class="snap__row"><dt>Demonym</dt><dd>Sessauan</dd></div>
+              <div class="snap__row"><dt>Government</dt><dd>Parliamentary Republic</dd></div>
+              <div class="snap__row"><dt>Prime Minister</dt><dd>Allen Droulez (FS)</dd></div>
+              <div class="snap__row"><dt>President of the Assembly</dt><dd>Marchand Herot (FS)</dd></div>
+              <div class="snap__row"><dt>Legislature</dt><dd>National Assembly</dd></div>
+              <div class="snap__row"><dt>Population</dt><dd>48,000,000</dd></div>
+              <div class="snap__row"><dt>GDP</dt><dd>$468 Billion</dd></div>
+            </dl>
+          </div>
+        </div>
       </div>
     </main>
   </div>
@@ -99,11 +144,70 @@
     <a href="/tutorial/forum/"><svg viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/></svg><span>Forum</span></a>
     <a href="/tutorial/wiki/"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span>Wiki</span></a>
   </div></div></div>
+  <!-- Shown by default so it blocks the page from first paint; the script hides it if already dismissed. -->
+  <div class="welcome" id="welcome">
+    <div class="welcome__box" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
+      <div class="welcome__ey">Getting Started</div>
+      <div class="welcome__t" id="welcomeTitle">Welcome to Nationhood</div>
+      <p class="welcome__p">Nationhood is an online, persistent world where every <b>8 hours</b> the game advances.</p>
+      <p class="welcome__p">The tutorial is not that. It is a turn-based breakdown of Nationhood, so you can learn the game in real time.</p>
+      <p class="welcome__p">After the tutorial, you'll be prompted to join the game &mdash; where time advances every 8 hours.</p>
+      <button class="welcome__btn" id="welcomeBegin" type="button">Let's Begin</button>
+    </div>
+  </div>
 <script type="module">
-  import { isConfigured } from '/supabase.js';
-  import { requireUser, mountTutorialChrome } from '/tutorial/shell.js';
-  if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
+  import { supabase, isConfigured } from '/supabase.js';
+  import { requireUser, mountTutorialChrome, getTutorialProgress, updateProfile } from '/tutorial/shell.js';
+  import { nationColors, drawNationMiniMap } from '/hexmap.js';
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
+
+  // Territory map: pull the real in-game Sessau nation's hexes (world_hexes + nations are
+  // world-readable) and render it with the shared mini-map renderer. Non-fatal: any failure
+  // leaves a quiet "Map unavailable" placeholder.
+  (async () => {
+    const box = document.getElementById('natMapBox'), cv = document.getElementById('natMap'), none = document.getElementById('natMapNone');
+    if (!box || !cv) return;
+    const unavailable = () => { if (none) { none.style.display = ''; none.textContent = 'Map unavailable'; } cv.style.display = 'none'; };
+    if (!isConfigured) { unavailable(); return; } // local dev: nothing to pull
+    try {
+      let nRes = await supabase.from('nations').select('id, name, color').order('name');
+      if (nRes.error) nRes = await supabase.from('nations').select('id, name').order('name'); // color not migrated yet
+      const nations = nRes.data || [];
+      // Match the nations list order used everywhere (by name) so palette colours agree.
+      const sessau = nations.find((n) => (n.name || '').trim().toLowerCase() === 'sessau')
+                  || nations.find((n) => (n.name || '').toLowerCase().includes('sessau'));
+      if (!sessau) { unavailable(); return; }
+      let hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id, continent');
+      if (hr.error) hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id'); // continent not migrated yet
+      const opts = { hexes: hr.error ? [] : (hr.data || []), natColor: nationColors(nations), viewedId: sessau.id, mode: 'nation' };
+      const paint = () => {
+        const ok = drawNationMiniMap(cv, box, opts);
+        if (none) none.style.display = ok ? 'none' : '';
+        cv.style.display = ok ? 'block' : 'none';
+        if (none && !ok) none.textContent = 'Map unavailable';
+      };
+      paint();
+      window.addEventListener('resize', paint);
+    } catch (e) { unavailable(); }
+  })();
+
+  // Welcome modal: shown by default (blocks interaction until "Let's Begin"),
+  // once per tutorial run. Persisted in tutorial_state so it clears on reset and
+  // never nags on later home visits. The auth guard rides along on the same call.
+  const welcome = document.getElementById('welcome');
+  const welcomeBegin = document.getElementById('welcomeBegin');
+  let welcomeUser = null;
+  (async () => {
+    if (!isConfigured) return; // local dev: keep it shown, no persistence
+    welcomeUser = await requireUser();
+    if (!welcomeUser) return;  // requireUser has redirected to login
+    const progress = await getTutorialProgress(welcomeUser.id);
+    if (progress && progress.welcomed) welcome.hidden = true; // already seen
+  })();
+  welcomeBegin.addEventListener('click', () => {
+    welcome.hidden = true;
+    if (isConfigured && welcomeUser) updateProfile({ tutorial_welcomed: true }); // best-effort persist
+  });
 </script>
 </body>
 </html>
