@@ -57,21 +57,19 @@
   .stat__v{font-size:20px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin-top:9px;line-height:1.2}
   .stat__sub{font-weight:600;font-size:15px;color:var(--muted)}
   /* Territory map — pulls the live in-game Sessau nation. Left column under the stats. */
-  .terr{margin-top:16px;display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  .terr{margin-top:16px;display:grid;grid-template-columns:repeat(2,1fr);gap:14px;align-items:start}
   @media(max-width:760px){.terr{grid-template-columns:1fr}}
   .terr__card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
   .terr__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:12px}
   .map__ph{position:relative;aspect-ratio:4/3;background:var(--chip);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
   .natmap{position:absolute;inset:0;width:100%;height:100%;display:block}
   .map__none{position:relative;z-index:1}
-  .terr{align-items:start}
   .snap__list{display:flex;flex-direction:column}
   .snap__row{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--line)}
   .snap__row:last-child{border-bottom:none}
   .snap__row dt{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);flex:none;padding-top:2px}
   .snap__row dd{font-size:14px;font-weight:600;color:var(--ink);text-align:right}
-  /* Party approval trend — sparkline with two views. Full width below the map + snapshot. */
-  .appr{grid-column:1/-1}
+  /* Party approval trend — line chart with two views. Shares its row with Elections. */
   .appr__head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
   .appr__tabs{display:flex;gap:6px}
   .appr__tab{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:7px 11px;cursor:pointer;transition:background .15s,color .15s}
@@ -80,8 +78,15 @@
   .appr__now{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
   .appr__val{font-size:28px;font-weight:900;letter-spacing:-.02em;color:var(--ink)}
   .appr__delta{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft)}
-  .appr__spark{width:100%;height:72px;display:block;color:var(--indigo)}
-  .appr__axis{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-top:6px}
+  .appr__chart{width:100%;height:150px;display:block;color:var(--indigo)}
+  .appr__grid{stroke:var(--line);stroke-width:1}
+  .appr__axis-x{stroke:var(--soft);stroke-width:1}
+  .appr__lbl{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;fill:var(--soft)}
+  /* Elections — countdown to the next general election. */
+  .elec__when{font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin-bottom:14px}
+  .elec__when b{color:var(--indigo)}
+  .elec__bar{height:8px;border-radius:5px;background:var(--chip);border:1px solid var(--line);overflow:hidden;margin-bottom:16px}
+  .elec__bar span{display:block;height:100%;background:var(--indigo)}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -143,8 +148,16 @@
             </div>
           </div>
           <div class="appr__now"><span class="appr__val" id="apprVal">32%</span><span class="appr__delta" id="apprDelta"></span></div>
-          <svg class="appr__spark" id="apprSpark" role="img" aria-label="Party approval trend"></svg>
-          <div class="appr__axis"><span id="apprStart"></span><span id="apprEnd"></span></div>
+          <svg class="appr__chart" id="apprSpark" role="img" aria-label="Party approval trend"></svg>
+        </div>
+        <div class="elec terr__card">
+          <div class="terr__k">Elections</div>
+          <div class="elec__when">Election in <b>May, 1984</b></div>
+          <div class="elec__bar"><span style="width:0%"></span></div>
+          <dl class="snap__list">
+            <div class="snap__row"><dt>Months Elapsed</dt><dd>0</dd></div>
+            <div class="snap__row"><dt>Months Remaining</dt><dd>48</dd></div>
+          </dl>
         </div>
       </div>
     </main>
@@ -215,38 +228,59 @@
     } catch (e) { unavailable(); }
   })();
 
-  // Party approval sparkline (tutorial data). "Last 12 Months" trends 23% → 32%;
-  // "Since Last Election" is flat — the leadership win was only weeks ago.
+  // Party approval line chart (tutorial data), with a percentage Y axis and a month X axis.
+  // "Last 12 Months" trends 23% → 32%; "Since Last Election" is flat — the win was weeks ago.
   (() => {
     const svg = document.getElementById('apprSpark');
     if (!svg) return;
     const valEl = document.getElementById('apprVal'), deltaEl = document.getElementById('apprDelta');
-    const startEl = document.getElementById('apprStart'), endEl = document.getElementById('apprEnd');
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
     const VIEWS = {
-      '12m':  { data: [23, 24, 24, 26, 25, 27, 28, 29, 28, 30, 31, 32], start: '12 months ago', end: 'Now', delta: '▲ 9 pts over 12 months' },
-      'elec': { data: [32, 32], start: 'Last election', end: 'Now', delta: 'No change since the election' },
+      '12m': {
+        data: [23, 24, 24, 26, 25, 27, 28, 29, 28, 30, 31, 32],
+        labels: ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'],
+        delta: '▲ 9 pts over 12 months',
+      },
+      'elec': { data: [32, 32], labels: ['Election', 'Now'], delta: 'No change since the election' },
     };
     let current = '12m';
     function render(view) {
       current = view;
-      const cfg = VIEWS[view], d = cfg.data, n = d.length;
-      const H = 72, pad = 6, W = Math.max(120, Math.round(svg.clientWidth || 300));
-      const min = Math.min.apply(null, d), max = Math.max.apply(null, d), span = (max - min) || 1;
-      const x = (i) => n === 1 ? W / 2 : pad + (i / (n - 1)) * (W - 2 * pad);
-      const y = (v) => max === min ? H / 2 : H - pad - ((v - min) / span) * (H - 2 * pad);
-      const line = d.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ');
-      const area = 'M' + x(0).toFixed(1) + ' ' + (H - pad) + ' ' +
-        d.map((v, i) => 'L' + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ') +
-        ' L' + x(n - 1).toFixed(1) + ' ' + (H - pad) + ' Z';
+      const cfg = VIEWS[view], d = cfg.data, labels = cfg.labels, n = d.length;
+      const W = Math.max(200, Math.round(svg.clientWidth || 320)), H = 150;
+      const x0 = 40, x1 = W - 14, y0 = 10, y1 = H - 26;            // plot rect (gutters for axis labels)
+      // Y domain: nice bounds on a step of 5, with a little headroom around the data.
+      const dMin = Math.min.apply(null, d), dMax = Math.max.apply(null, d);
+      const yMin = Math.floor((dMin - 3) / 5) * 5, yMax = Math.max(yMin + 5, Math.ceil((dMax + 2) / 5) * 5);
+      const xi = (i) => n === 1 ? (x0 + x1) / 2 : x0 + (i / (n - 1)) * (x1 - x0);
+      const yv = (v) => y1 - ((v - yMin) / (yMax - yMin)) * (y1 - y0);
+      // Horizontal gridlines + Y tick labels (every 5%).
+      let g = '';
+      for (let t = yMin; t <= yMax; t += 5) {
+        const gy = yv(t).toFixed(1);
+        g += '<line class="appr__grid" x1="' + x0 + '" y1="' + gy + '" x2="' + x1 + '" y2="' + gy + '"/>';
+        g += '<text class="appr__lbl" x="' + (x0 - 8) + '" y="' + gy + '" text-anchor="end" dominant-baseline="middle">' + t + '%</text>';
+      }
+      // X tick labels: all points when few, else 5 evenly spaced. Anchor the ends inward.
+      const idxs = n <= 6 ? d.map((_, i) => i) : [0, 3, 6, 9, n - 1];
+      let xl = '';
+      idxs.forEach((i) => {
+        const anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
+        xl += '<text class="appr__lbl" x="' + xi(i).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="' + anchor + '">' + esc(labels[i]) + '</text>';
+      });
+      const line = d.map((v, i) => (i ? 'L' : 'M') + xi(i).toFixed(1) + ' ' + yv(v).toFixed(1)).join(' ');
+      const area = 'M' + xi(0).toFixed(1) + ' ' + y1 + ' ' +
+        d.map((v, i) => 'L' + xi(i).toFixed(1) + ' ' + yv(v).toFixed(1)).join(' ') +
+        ' L' + xi(n - 1).toFixed(1) + ' ' + y1 + ' Z';
       svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-      svg.innerHTML =
+      svg.innerHTML = g +
+        '<line class="appr__axis-x" x1="' + x0 + '" y1="' + y1 + '" x2="' + x1 + '" y2="' + y1 + '"/>' +
         '<path d="' + area + '" fill="rgba(85,70,232,.12)"/>' +
         '<path d="' + line + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
-        '<circle cx="' + x(n - 1).toFixed(1) + '" cy="' + y(d[n - 1]).toFixed(1) + '" r="3.2" fill="currentColor"/>';
+        '<circle cx="' + xi(n - 1).toFixed(1) + '" cy="' + yv(d[n - 1]).toFixed(1) + '" r="3.2" fill="currentColor"/>' +
+        xl;
       valEl.textContent = d[n - 1] + '%';
       deltaEl.textContent = cfg.delta;
-      startEl.textContent = cfg.start;
-      endEl.textContent = cfg.end;
     }
     const tabs = document.querySelectorAll('.appr__tab');
     tabs.forEach((t) => t.addEventListener('click', () => {
