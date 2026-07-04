@@ -330,6 +330,7 @@
     </section>
 
     <div id="pmbar"></div>
+    <div id="econdevbar"></div>
     <div id="tradebar"></div>
     <div id="defencebar"></div>
 
@@ -677,7 +678,7 @@
   // topbar action budget + toast. setActions is the one place that reflects the
   // action count — it updates the label AND gates every action button (0 →
   // disabled), so the buttons are correct on load and after every action.
-  var partyActions = 0, feedCtx = null, acting = false, actionBtns = [], myPartyId = null, amPM = false, myCurrency = '$';
+  var partyActions = 0, feedCtx = null, acting = false, actionBtns = [], myPartyId = null, amPM = false, isEconDevMin = false, myCurrency = '$';
   // No-confidence is nation-wide cooldown-gated: while nocoUntilTick is in the future the
   // action stays disabled for everyone in the nation, on top of the usual AP gate.
   // Produce (the PM action) is nation-wide cooldown-gated the same way no-confidence is.
@@ -1893,6 +1894,25 @@
     if (ta) ta.addEventListener('click', function () { window.location.href = '/play/trade-agreement/'; });
   }
 
+  // The Minister of Economic Development container — shown only to the party holding the
+  // Economic Development portfolio, directly below the Prime Minister bar. Its Initiative action
+  // (2 AP) is the entry point to the National Initiatives panel lower on the page, where the
+  // minister enacts a programme (server gate: initiative_enact, schema/141).
+  function renderEconDevBar(isEconDevMin) {
+    var el = document.getElementById('econdevbar');
+    if (!el) return;
+    if (!isEconDevMin) { el.innerHTML = ''; return; }
+    el.innerHTML = '<section class="panel leadbar">' +
+      '<div class="glance-hd"><span>Minister of Economic Development &middot; This Week’s Action</span></div>' +
+      '<p class="leadbar__sub">Your party holds the Economic Development portfolio. Launch a national initiative to permanently raise a production output.</p>' +
+      '<div class="leadbar__grid">' +
+        '<button class="lead" type="button" id="econdev-initiative" data-cost="2"><b>Initiative</b><span class="lead__lane">National Initiatives</span><span class="lead__desc">Enact a national programme — a lasting boost to a resource.</span></button>' +
+      '</div></section>';
+    el.querySelectorAll('.lead').forEach(stampCost);
+    var b = document.getElementById('econdev-initiative');
+    if (b) b.addEventListener('click', function () { var t = document.getElementById('homeInitiatives'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+  }
+
   // The Minister of Defence container — shown only to the party holding the Defence
   // portfolio, above the Party Leader actions. Build Military Base is live (opens a modal);
   // Expand, Deploy and Technology land in later slices (shown "Soon").
@@ -2025,6 +2045,9 @@
         renderTradeBar(tmin === true);
         const { data: dmin } = await supabase.rpc('is_defence_minister'); // my party holds Defence → show the Defence bar
         renderDefenceBar(dmin === true);
+        const { data: edmin } = await supabase.rpc('is_economic_development_minister'); // holds Economic Development → enacts initiatives
+        isEconDevMin = edmin === true;
+        renderEconDevBar(isEconDevMin);
       } catch (e) { /* leave the PM bar hidden if the government can't be read */ }
       // Feed nation selector: Global + every live nation; defaults to Global (the whole world's
       // events, world events included), with each nation's own feed one selection away.
@@ -2042,14 +2065,15 @@
       renderInvites();   // surface any pending coalition invites (non-blocking)
       renderFormation(); // nudge a formateur to the Government page if the window is open
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));
-      // National Initiatives panel: what's available + the one under way. The HoG enacts through
-      // initiative_enact (2 AP) via performAction (AP + feed refresh), then the panel reloads.
+      // National Initiatives panel: what's available + the one under way. The Minister of Economic
+      // Development enacts through initiative_enact (2 AP) via performAction (AP + feed refresh),
+      // then the panel reloads.
       function loadInitiatives(){
         fetchNationInitiatives(party.nation_id).then(function(data){
           renderNationInitiatives(document.getElementById('homeInitiatives'), data, {
-            amPM: amPM, currentTick: curTick,
-            onEnact: function(id, corp){
-              performAction(function(){ return supabase.rpc('initiative_enact', { p_initiative: id, p_corp: corp }); },
+            canEnact: isEconDevMin, currentTick: curTick,
+            onEnact: function(id, own, corp){
+              performAction(function(){ return supabase.rpc('initiative_enact', { p_initiative: id, p_ownership: own, p_corp: corp }); },
                 function(d){ return 'Initiative under way — completes in ~' + d.months + ' month' + (d.months===1?'':'s') + '.'; })
                 .then(function(){ loadInitiatives(); });
             }

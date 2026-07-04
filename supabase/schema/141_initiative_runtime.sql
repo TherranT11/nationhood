@@ -1,11 +1,21 @@
--- 141 · National Initiatives — RUNTIME. The head of government enacts an authored initiative
--- (schema/140): the treasury pays its cost over a rolled duration, then it lands a PERMANENT
--- production increase. On-enact effects: private → +1 Growth; state → −1D2 Unemployment & Inflation.
--- One initiative at a time per nation. A one-time initiative is gone once carried out here; a
--- recurring one can be enacted again after it completes.
+-- 141 · National Initiatives — RUNTIME. The Minister of Economic Development enacts an authored
+-- initiative (schema/140): the treasury pays its cost over a rolled duration, then it lands a
+-- PERMANENT production increase. On-enact effects: private → +1 Growth; state → −1D2 Unemployment
+-- & Inflation. One initiative at a time per nation. A one-time initiative is gone once carried out
+-- here; a recurring one can be enacted again after it completes.
 -- Depends on: 140 (national_initiatives), 91 (_apply_policy_effect / _nation_budget_add /
--- _nation_stat_add), 40 (_begin_action), 47 (corporations), 60 (advance_tick hook). Run after 140.
+-- _nation_stat_add), 40 (_begin_action), 47 (corporations), 60 (advance_tick hook),
+-- 114 (_party_holds_ministry). Run after 140.
 -- ===========================================================================
+
+-- Is the signed-in player's party the Minister of Economic Development? Drives the home action
+-- container + the enact controls in the National Initiatives panel. Mirrors is_trade_minister
+-- (schema/114) through the shared _party_holds_ministry helper.
+create or replace function public.is_economic_development_minister()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select public._party_holds_ministry(id, 'Economic Development') from public.parties where user_id = auth.uid()), false);
+$$;
+grant execute on function public.is_economic_development_minister() to authenticated;
 
 -- Per-nation live initiative instances. World-readable (players see progress, like nation_crises);
 -- NO client writes — only the enact RPC + tick (both security definer) touch it.
@@ -28,14 +38,16 @@ create policy "nation_initiatives_select_all" on public.nation_initiatives for s
 -- (No insert/update/delete policy: clients never write; the enact RPC + tick are security definer.)
 
 -- ---------------------------------------------------------------------------
--- initiative_enact(initiative, corp): the head of government starts a national initiative.
--- Gated to the formateur of the active government; costs 2 party actions. Rolls the duration in
--- [min,max], applies the ownership on-enact effects, and books the instance (its cost drains over
--- the duration via the tick). The cost is NOT paid up front — it's spread across the months.
--- corp is required for a STATE initiative (the nation's own state-owned firm in an authorised
--- sector) and ignored for a PRIVATE one (corporations bid); it's flavour for now (named in events).
+-- initiative_enact(initiative, ownership, corp): the Minister of Economic Development starts a
+-- national initiative. Gated to the party holding that portfolio; costs 2 party actions. The Minister
+-- picks the execution model — 'private' (corporations bid, −20%, +1 Growth) or 'state' (the nation's
+-- own state-owned firm in an authorised sector, +25%, −1D2 Unemployment & Inflation). Rolls the
+-- duration in [min,max], applies that model's on-enact effects, and books the instance (its cost
+-- drains over the duration via the tick — NOT paid up front). corp is required for 'state' (the
+-- SO firm) and ignored for 'private'.
 -- ---------------------------------------------------------------------------
-create or replace function public.initiative_enact(p_initiative uuid, p_corp uuid default null)
+drop function if exists public.initiative_enact(uuid, uuid);
+create or replace function public.initiative_enact(p_initiative uuid, p_ownership text, p_corp uuid default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_p public.parties%rowtype; v_gov public.governments%rowtype; v_def jsonb; v_tick int;
@@ -48,8 +60,8 @@ begin
 
   select * into v_gov from public.governments where nation_id = v_nation and status = 'active';
   if not found then raise exception 'There is no sitting government to enact an initiative.'; end if;
-  if v_gov.formateur_party_id is distinct from v_p.id then
-    raise exception 'Only the head of government can enact a national initiative.';
+  if not public._party_holds_ministry(v_p.id, 'Economic Development') then
+    raise exception 'Only the Minister of Economic Development can enact a national initiative.';
   end if;
 
   select definition into v_def from public.national_initiatives where id = p_initiative;
@@ -75,7 +87,10 @@ begin
     raise exception 'That one-time initiative has already been carried out here.';
   end if;
 
-  v_own  := v_def->>'ownership';
+  -- The Minister picks the execution model at enact.
+  v_own := lower(coalesce(p_ownership, ''));
+  if v_own not in ('private', 'state') then raise exception 'Choose private enterprise or state sanctioned.'; end if;
+
   v_minm := greatest(1, coalesce((v_def->'lengthMonths'->>0)::int, 12));
   v_maxm := greatest(v_minm, coalesce((v_def->'lengthMonths'->>1)::int, v_minm));
   v_dur  := v_minm + floor(random() * (v_maxm - v_minm + 1))::int;   -- roll [min, max] months
@@ -147,7 +162,7 @@ begin
   return jsonb_build_object('id', v_id, 'months', v_dur, 'complete_tick', v_tick + v_dur,
                             'actions', v_p.actions_remaining - 2);
 end $$;
-grant execute on function public.initiative_enact(uuid, uuid) to authenticated;
+grant execute on function public.initiative_enact(uuid, text, uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- The per-tick pass (called by advance_tick, schema/60). For each ACTIVE instance: drain this

@@ -179,6 +179,7 @@
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
   import { condText as objCondText, rewardText as objRewardText } from '/objectives.js';
   import { esc, majority, declaredValue, loadHogTitleSlot } from '/util.js';
+  import { fetchAdministrations, renderAdministrations } from '/administrations.js';
   import { partyColor, ideologyLabel } from '/archetypes.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
   import { MINISTRIES } from '/ministries.js';
@@ -481,7 +482,9 @@
       '<div class="govgrid">' +
         '<div class="panel"><h2>Agenda &amp; National Objectives</h2>' + agendaHtml + '<div id="natObjectives"></div></div>' +
         '<div class="panel"><h2>The Cabinet</h2>' + cabinetHtml + '</div>' +
-      '</div>';
+      '</div>' +
+      // 6 — the collapsible Administration History (past + current governments and their events).
+      '<div id="adminHistory"></div>';
 
     box.querySelectorAll('.enact').forEach(function(b){
       if (b.disabled) return;   // a gated Fulfill (no recipient / no eligible politician)
@@ -661,6 +664,11 @@
       }
       render(govt, NATION || {}, parties || [], agenda, amPM, formation, pmLeader, formateurPols, polsByParty, appts);
       loadNatObjectives(govt && govt.id, NATION_ID, amPM);   // fill the National Objectives area (non-blocking)
+      // Administration History (collapsible, past + current governments) — non-blocking enhancement.
+      var ahTick = null; try { ahTick = await currentTick(); } catch (e) { /* duration falls back to the formed tick */ }
+      fetchAdministrations(NATION_ID).then(function(ah){
+        renderAdministrations(document.getElementById('adminHistory'), ah, { currentTick: ahTick, hogTitle: HOG_TITLE });
+      }).catch(function(){ /* history is a non-critical add-on */ });
     } catch (e) {
       document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">Couldn’t load the government right now. Refresh to try again.</div></div>';
     }
