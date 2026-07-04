@@ -241,7 +241,7 @@ begin
     end if;
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_p.nation_id, v_p.party_id, 'declaration',
-              'The assembly passed a measure: ' || v_p.title || '.', public.current_game_date());
+              'The ' || public._legislature_of(v_p.nation_id) || ' passed a measure: ' || v_p.title || '.', public.current_game_date());
     return 'passed';
   end if;
 
@@ -249,7 +249,7 @@ begin
     update public.proposals set status = 'failed', resolved_tick = (select current_tick from public.game_state where id) where id = p_proposal;
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_p.nation_id, v_p.party_id, 'declaration',
-              'A measure failed for want of a majority: ' || v_p.title || '.', public.current_game_date());
+              'A measure failed for want of a majority in the ' || public._legislature_of(v_p.nation_id) || ': ' || v_p.title || '.', public.current_game_date());
     return 'failed';
   end if;
   return 'voting';
@@ -306,6 +306,16 @@ returns text language sql stable security definer set search_path = public as $$
   );
 $$;
 grant execute on function public.nation_declaration(text, text) to authenticated;
+
+-- "<Legislature name> of <Nation>" — the ONE source for how the feed names a nation's chamber, e.g.
+-- "National Assembly of Sessau". Falls back to a lowercase "legislature" / "the nation" so it reads
+-- naturally after a leading "The"/"in the".
+create or replace function public._legislature_of(p_nation text)
+returns text language sql stable security definer set search_path = public as $$
+  select coalesce(nullif(public.nation_declaration(p_nation, 'legislature_name'), ''), 'legislature')
+         || ' of ' || coalesce((select name from public.nations where id = p_nation), 'the nation');
+$$;
+grant execute on function public._legislature_of(text) to authenticated;
 
 -- Propose a declaration. p_to_floor=false → queue on the agenda (free); true →
 -- open a floor vote now (1 action), proposer auto-votes Aye, then tally.
