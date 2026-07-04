@@ -26,6 +26,14 @@
   .nav__i .label{font-family:'Space Mono',monospace;font-size:12.5px;letter-spacing:.04em}
   .nav__i:hover{color:var(--ink);background:var(--chip)}
   .nav__i.active{color:var(--indigo);background:var(--indigo-soft);font-weight:700}
+  .gear{position:fixed;top:14px;right:16px;z-index:70}
+  .gear__btn{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 10px -5px rgba(0,0,0,.25)}
+  .gear__btn:hover{color:var(--ink);border-color:var(--soft)}
+  .gear__btn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .gear__menu{position:absolute;top:46px;right:0;min-width:172px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 44px -20px rgba(0,0,0,.35);padding:6px}
+  .gear__menu[hidden]{display:none}
+  .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red,#C42B2B);cursor:pointer}
+  .gear__item:hover{background:var(--chip)}
   .main{flex:1;padding:22px clamp(16px,3vw,40px);min-width:0;display:flex;align-items:center;justify-content:center}
   .ph{max-width:460px;text-align:center;color:var(--muted)}
   .ph .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
@@ -60,6 +68,10 @@
       </div>
     </main>
   </div>
+  <div class="gear">
+    <button class="gear__btn" id="gearBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></svg></button>
+    <div class="gear__menu" id="gearMenu" hidden><button class="gear__item" id="exitTutorial" type="button">Exit Tutorial</button></div>
+  </div>
   <nav class="botnav">
     <a class="botnav__i" href="/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span>Home</span></a>
     <a class="botnav__i" href="/tutorial/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span>Nation</span></a>
@@ -77,19 +89,9 @@
   </div></div></div>
 <script type="module">
   import { isConfigured } from '/supabase.js';
-  import { requireUser } from '/tutorial/shell.js';
+  import { requireUser, mountTutorialChrome } from '/tutorial/shell.js';
   if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
-
-  // Mobile bottom nav: highlight the current tab + wire the More sheet.
-  var _p = location.pathname;
-  document.querySelectorAll('.botnav__i[href]').forEach(function(a){ if (a.getAttribute('href') === _p) a.classList.add('active'); });
-  var _more = ['/tutorial/inbox/','/tutorial/trade/','/tutorial/conflict/','/tutorial/forum/','/tutorial/wiki/'];
-  var _mb = document.getElementById('moreBtn'), _ms = document.getElementById('moreSheet');
-  if (_more.indexOf(_p) >= 0 && _mb) _mb.classList.add('active');
-  if (_mb && _ms) {
-    _mb.addEventListener('click', function(){ _ms.hidden = !_ms.hidden; });
-    _ms.addEventListener('click', function(e){ if (e.target === _ms) _ms.hidden = true; });
-  }
+  mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
 </script>
 </body>
 </html>
