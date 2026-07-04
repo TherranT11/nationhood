@@ -13,6 +13,7 @@ const CSS = `
 .nini__name{font-weight:800;font-size:14.5px;letter-spacing:-.01em}
 .nini__meta{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--muted);margin-top:5px;line-height:1.6}
 .nini__gain{display:inline-block;font-weight:700;font-size:11.5px;color:var(--indigo);border:1px solid var(--indigo);border-radius:7px;padding:2px 7px;margin-top:7px}
+.nini__jt{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--amber);border:1px solid var(--amber);border-radius:5px;padding:1px 5px;vertical-align:middle}
 .nini__bar{height:6px;border-radius:6px;background:var(--chip,#eee);margin-top:9px;overflow:hidden}
 .nini__fill{height:100%;background:var(--indigo)}
 .nini__pick{margin-top:9px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -33,11 +34,17 @@ function injectCss(){ if(document.getElementById('nini-css'))return; var s=docum
 // so the shown price matches what the server will charge. The Minister then picks the execution
 // model at enact — private (−20%, +1 Growth, firms bid) or state (+25%, −1D2 Unemployment &
 // Inflation, the nation's own SO firm in an authorised sector) — applied on top.
-function baseCost(d, nation){
+export function baseInitiativeCost(d, nation){
   var v=Number(d.cost)||0, model=d.costModel||'flat';
   if(model==='production'){ var cur=Number((nation&&nation.production&&nation.production[String(d.resource||'').toLowerCase()])||0); return Math.max(cur,1)*v; }
   if(model==='gdp'){ return Math.round(Number(nation&&nation.gdp||0)*v/100); }
   return v;
+}
+// Effective $B after the ownership adjustment (private −20% / state +25%) — the one client-side cost,
+// used by the panel and the joint-project composer so both match the server (schema/141).
+export function effectiveInitiativeCost(d, nation, ownership){
+  var c=baseInitiativeCost(d, nation);
+  return Math.round(c * (ownership==='private'?0.8:ownership==='state'?1.25:1));
 }
 
 // A nation's initiative state: the one under way (if any) and what it can enact next. Available =
@@ -65,9 +72,10 @@ export async function fetchNationInitiatives(nationId){
   } catch(e){ return { active:null, available:[], corps:[], nation:{} }; }
 }
 
-// Render into `el`. ctx = { canEnact, currentTick, onEnact(initiativeId, ownership, corpId|null) }.
-// Only the Minister of Economic Development (canEnact) sees the enact controls; everyone sees the
-// running programme + what's available.
+// Render into `el`. ctx = { canEnact, currentTick, onEnact(initiativeId, ownership, corpId|null),
+// onProposeJoint(initiativeId) }. Only the Minister of Economic Development (canEnact) sees the enact
+// controls; a joint initiative shows "Propose to partner" instead of the direct enact options.
+// Everyone sees the running programme + what's available.
 export function renderNationInitiatives(el, data, ctx){
   if(!el) return; injectCss(); ctx = ctx || {};
   var html='';
@@ -84,24 +92,30 @@ export function renderNationInitiatives(el, data, ctx){
   (data.available||[]).forEach(function(row){
     var d=row.definition||{};
     var lm=d.lengthMonths||[], secs=Array.isArray(d.sectors)?d.sectors:[];
-    var base=baseCost(d, data.nation), priv=Math.round(base*0.8), state=Math.round(base*1.25);
-    html += '<div class="nini" data-init="'+esc(row.id)+'"><div class="nini__name">'+esc(d.name||'Initiative')+'</div>'+
+    var isJoint = !!(d.joint && d.joint.partner);
+    html += '<div class="nini" data-init="'+esc(row.id)+'"'+(isJoint?' data-joint="1"':'')+'><div class="nini__name">'+esc(d.name||'Initiative')+(isJoint?' <span class="nini__jt">Joint</span>':'')+'</div>'+
       '<div class="nini__meta">'+(lm[0]!=null?lm[0]:'?')+'–'+(lm[1]!=null?lm[1]:'?')+' mo'+(d.cadence==='recurring'?' · recurring':'')+'</div>'+
       '<span class="nini__gain">+'+(d.quantity||0)+' '+esc(d.resource||'')+'</span>';
     if(ctx.canEnact){
-      // The Minister picks the execution model. State needs one of the nation's own SO firms in an
-      // authorised sector; private lets firms bid (no executor picked).
-      var so=(data.corps||[]).filter(function(c){ return c.type==='so' && secs.indexOf(c.category)>=0; });
-      html += '<div class="nini__opts">'+
-        '<button class="nini__opt" data-own="private" type="button"><b>Private Enterprise</b><span>$'+priv+'B · +1 Growth · firms bid</span></button>'+
-        (so.length
-          ? '<button class="nini__opt" data-own="state" type="button"><b>State Sanctioned</b><span>$'+state+'B · −1–2 Unemployment &amp; Inflation</span></button>'
-          : '<div class="nini__opt is-off"><b>State Sanctioned</b><span>Needs a state-owned '+esc(secs.join(' / ')||'sector')+' firm — you have none</span></div>')+
-        '</div>';
-      if(so.length){
-        html += '<div class="nini__pick" hidden><select class="nini__corp">'+
-          so.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join('')+
-          '</select><button class="nini__go" type="button">Enact (2 AP)</button></div>';
+      if(isJoint){
+        // A joint project can't be enacted directly — it's proposed to the partner nation.
+        html += '<button class="nini__go nini__go--solo" data-propose="1" type="button">Propose to partner ▸</button>';
+      } else {
+        // The Minister picks the execution model. State needs one of the nation's own SO firms in an
+        // authorised sector; private lets firms bid (no executor picked).
+        var priv=effectiveInitiativeCost(d, data.nation, 'private'), state=effectiveInitiativeCost(d, data.nation, 'state');
+        var so=(data.corps||[]).filter(function(c){ return c.type==='so' && secs.indexOf(c.category)>=0; });
+        html += '<div class="nini__opts">'+
+          '<button class="nini__opt" data-own="private" type="button"><b>Private Enterprise</b><span>$'+priv+'B · +1 Growth · firms bid</span></button>'+
+          (so.length
+            ? '<button class="nini__opt" data-own="state" type="button"><b>State Sanctioned</b><span>$'+state+'B · −1–2 Unemployment &amp; Inflation</span></button>'
+            : '<div class="nini__opt is-off"><b>State Sanctioned</b><span>Needs a state-owned '+esc(secs.join(' / ')||'sector')+' firm — you have none</span></div>')+
+          '</div>';
+        if(so.length){
+          html += '<div class="nini__pick" hidden><select class="nini__corp">'+
+            so.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join('')+
+            '</select><button class="nini__go" type="button">Enact (2 AP)</button></div>';
+        }
       }
     }
     html += '</div>';
@@ -109,6 +123,11 @@ export function renderNationInitiatives(el, data, ctx){
   el.innerHTML = html || '<p class="nini-empty">No initiatives available'+(ctx.canEnact?'':' — your Minister of Economic Development enacts these')+'.</p>';
 
   el.querySelectorAll('.nini[data-init]').forEach(function(card){
+    if(card.dataset.joint){
+      var pb=card.querySelector('[data-propose]');
+      if(pb) pb.addEventListener('click', function(){ if(ctx.onProposeJoint) ctx.onProposeJoint(card.dataset.init); });
+      return;
+    }
     var priv=card.querySelector('.nini__opt[data-own="private"]');
     var stateBtn=card.querySelector('.nini__opt[data-own="state"]');
     var pick=card.querySelector('.nini__pick'), go=card.querySelector('.nini__go');
