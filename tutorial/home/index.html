@@ -24,11 +24,18 @@
   .nav__i .label{font-family:'Space Mono',monospace;font-size:12.5px;letter-spacing:.04em}
   .nav__i:hover{color:var(--ink);background:var(--chip)}
   .nav__i.active{color:var(--indigo);background:var(--indigo-soft);font-weight:700}
-  .main{flex:1;padding:22px clamp(16px,3vw,40px);min-width:0;display:flex;align-items:center;justify-content:center}
-  .ph{max-width:460px;text-align:center;color:var(--muted)}
-  .ph .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
-  .ph h1{font-size:clamp(24px,4vw,32px);font-weight:900;letter-spacing:-.02em;color:var(--ink);margin:8px 0 10px}
-  .ph p{font-size:14px}
+  .main{flex:1;padding:26px clamp(16px,3vw,40px) 56px;min-width:0}
+  .page{max-width:900px;margin:0 auto}
+  .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
+  .page h1{font-size:clamp(26px,4vw,36px);font-weight:900;letter-spacing:-.025em;color:var(--ink);margin:6px 0 22px}
+  /* The party overview — first four home containers. */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  @media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:420px){.stats{grid-template-columns:1fr}}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .stat__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .stat__v{font-size:20px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin-top:9px;line-height:1.2}
+  .stat__sub{font-weight:600;font-size:15px;color:var(--muted)}
   @media(max-width:760px){.side{display:none}}
 </style>
 </head>
@@ -49,10 +56,15 @@
         <a class="nav__i" href="/tutorial/wiki/"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>      </nav>
     </aside>
     <main class="main">
-      <div class="ph">
-        <div class="eyebrow">Tutorial</div>
-        <h1>Home</h1>
-        <p>This tutorial screen is a blank scaffold, ready to be built. Add its content in this file.</p>
+      <div class="page">
+        <div class="eyebrow">The Republic of Sessau</div>
+        <h1>Front Sessau</h1>
+        <div class="stats">
+          <div class="stat"><div class="stat__k">Party</div><div class="stat__v">Front Sessau <span class="stat__sub">(FS)</span></div></div>
+          <div class="stat"><div class="stat__k">Party Leader</div><div class="stat__v">Allen Droulez <span class="stat__sub">(42)</span></div></div>
+          <div class="stat"><div class="stat__k">Seats</div><div class="stat__v">114</div></div>
+          <div class="stat"><div class="stat__k">Party Approval</div><div class="stat__v">32%</div></div>
+        </div>
       </div>
     </main>
   </div>
