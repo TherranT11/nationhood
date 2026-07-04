@@ -69,8 +69,7 @@
   .snap__row:last-child{border-bottom:none}
   .snap__row dt{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);flex:none;padding-top:2px}
   .snap__row dd{font-size:14px;font-weight:600;color:var(--ink);text-align:right}
-  /* Party approval trend — sparkline with two views. Full width below the map + snapshot. */
-  .appr{grid-column:1/-1}
+  /* Party approval trend — line chart with two views. Shares its row with Elections. */
   .appr__head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
   .appr__tabs{display:flex;gap:6px}
   .appr__tab{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:7px 11px;cursor:pointer;transition:background .15s,color .15s}
@@ -83,6 +82,11 @@
   .appr__grid{stroke:var(--line);stroke-width:1}
   .appr__axis-x{stroke:var(--soft);stroke-width:1}
   .appr__lbl{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;fill:var(--soft)}
+  /* Elections — countdown to the next general election. */
+  .elec__when{font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin-bottom:14px}
+  .elec__when b{color:var(--indigo)}
+  .elec__bar{height:8px;border-radius:5px;background:var(--chip);border:1px solid var(--line);overflow:hidden;margin-bottom:16px}
+  .elec__bar span{display:block;height:100%;background:var(--indigo)}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -145,6 +149,15 @@
           </div>
           <div class="appr__now"><span class="appr__val" id="apprVal">32%</span><span class="appr__delta" id="apprDelta"></span></div>
           <svg class="appr__chart" id="apprSpark" role="img" aria-label="Party approval trend"></svg>
+        </div>
+        <div class="elec terr__card">
+          <div class="terr__k">Elections</div>
+          <div class="elec__when">Election in <b>May, 1984</b></div>
+          <div class="elec__bar"><span style="width:0%"></span></div>
+          <dl class="snap__list">
+            <div class="snap__row"><dt>Months Elapsed</dt><dd>0</dd></div>
+            <div class="snap__row"><dt>Months Remaining</dt><dd>48</dd></div>
+          </dl>
         </div>
       </div>
     </main>
