@@ -561,15 +561,18 @@ begin
    where public._modifier_end_met(nm.modifier_id, nm.nation_id, nm.since_tick, v_tick);
   -- Agenda items whose scheduled month has arrived reach the floor automatically
   -- (schema/81). opened_tick starts their 6-tick window; scheduled_tick is cleared.
-  with promoted as (
-    update public.proposals set status = 'voting', opened_tick = v_tick, scheduled_tick = null
-     where status = 'agenda' and scheduled_tick is not null and scheduled_tick <= v_tick
-    returning nation_id, party_id, title
-  )
-  insert into public.events (nation_id, party_id, kind, body, game_date)
-    select nation_id, party_id, 'declaration',
-           'A measure has reached the floor in the ' || public._legislature_of(nation_id) || ': ' || title || '.', public.current_game_date()
-    from promoted;
+  -- Isolated like every other tick step — the event text must NEVER be able to abort the whole tick.
+  begin
+    with promoted as (
+      update public.proposals set status = 'voting', opened_tick = v_tick, scheduled_tick = null
+       where status = 'agenda' and scheduled_tick is not null and scheduled_tick <= v_tick
+      returning nation_id, party_id, title
+    )
+    insert into public.events (nation_id, party_id, kind, body, game_date)
+      select nation_id, party_id, 'declaration',
+             'A measure has reached the floor in the ' || public._legislature_of(nation_id) || ': ' || title || '.', public.current_game_date()
+      from promoted;
+  exception when others then raise warning 'tick %: floor promotion failed — %', v_tick, sqlerrm; end;
   -- Floor measures resolve now if they have stood their full 6-tick window OR their outcome is
   -- already locked by an outright chamber majority (_proposal_locked, schema/81) — the latter
   -- resolves on this next tick instead of lingering. A simple majority of the seats cast (Aye >
