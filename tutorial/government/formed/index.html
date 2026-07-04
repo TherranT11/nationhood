@@ -4,355 +4,56 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="/theme.js"></script>
-<title>Government · Nationhood</title>
+<title>Sessau · Government</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-  :root{
-    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
-    --line:#E7E5E0;--chip:#F4F3EF;
-    --indigo:#5546E8;--indigo-soft:#ECE9FD;
-    --red:#C42B2B;--red-soft:#FBEAE9;--amber:#E0820E;--amber-soft:#FBF0DD;--green:#16915a;--green-soft:#E5F4EC;
-    --front:#5546E8;
-  }
+  :root{--bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;--line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD}
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
-  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
   .app{display:flex;min-height:100vh}
-
-  /* sidebar */
   .side{width:236px;flex:none;background:var(--surface);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh}
-  .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px;border-bottom:1px solid var(--line);margin-bottom:8px}
-  .brand__flag{width:42px;height:26px;object-fit:cover;border:1px solid var(--line);border-radius:4px;flex:none}
-  .brand__txt{display:flex;flex-direction:column;line-height:1.25;overflow:hidden}
-  .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap}
-  .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
-  .brand__txt .party{font-weight:700}
+  .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px;border-bottom:1px solid var(--line);margin-bottom:8px;font-weight:800;letter-spacing:-.01em}
+  .brand .mark{width:30px;height:30px;border-radius:9px;background:var(--ink);display:flex;align-items:center;justify-content:center}
+  .brand .mark svg{width:17px;height:17px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   .nav{display:flex;flex-direction:column;gap:2px}
-  .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;cursor:pointer;border:1px solid transparent;transition:background .15s,color .15s}
+  .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;border:1px solid transparent;transition:background .15s,color .15s}
   .nav__i svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .nav__i .label{font-family:'Space Mono',monospace;font-size:12.5px;letter-spacing:.04em}
   .nav__i:hover{color:var(--ink);background:var(--chip)}
   .nav__i.active{color:var(--indigo);background:var(--indigo-soft);font-weight:700}
-  .nav__i.active svg{color:var(--indigo)}
-  .side__foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}
-  .me{display:flex;align-items:center;gap:10px;padding:8px 10px;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em}
-  .me__dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex:none}
-  .logout{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;background:none;border:none;cursor:pointer;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-align:left;transition:color .15s}
-  .logout:hover{color:var(--red)}
-  .logout svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-  .me b{color:var(--ink);font-weight:700}
-
-  /* main */
-  .main{flex:1;padding:22px clamp(16px,3vw,40px) 56px;min-width:0;max-width:1040px}
-  .top{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:20px}
-  .kicker{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--indigo)}
-  .top h1{font-weight:900;font-size:clamp(26px,4.5vw,38px);letter-spacing:-.03em;margin-top:4px}
-
-  .mod{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:16px}
-  .mod__hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
-  .mod__hd>span:first-child{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
-  .mod__hd .link{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);cursor:pointer;font-weight:700}
-  .mod__hd .link:hover{text-decoration:underline}
-
-  /* confidence */
-  .conf{display:flex;align-items:center;gap:24px;flex-wrap:wrap}
-  .conf__num{font-weight:900;font-size:clamp(42px,7vw,58px);color:var(--amber);line-height:.9;flex:none;letter-spacing:-.04em}
-  .conf__num span{font-size:.4em;color:var(--soft);font-weight:700}
-  .conf__mid{flex:1;min-width:230px}
-  .conf__meter{height:14px;border-radius:8px;position:relative;overflow:hidden;background:linear-gradient(90deg,var(--red-soft) 0 20%,var(--amber-soft) 20% 60%,var(--green-soft) 60% 100%)}
-  .conf__fill{position:absolute;left:0;top:0;bottom:0;width:47%;border-radius:8px;background:linear-gradient(90deg,#E0820E,#F2A93C)}
-  .conf__tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);left:50%;opacity:.35}
-  .conf__break{display:flex;flex-wrap:wrap;gap:6px;margin-top:13px}
-  .bk{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;padding:4px 10px;border-radius:20px;border:1px solid var(--line);color:var(--muted);background:var(--bg)}
-  .bk.pos{color:var(--green);border-color:color-mix(in srgb,var(--green) 35%,transparent);background:var(--green-soft)}
-  .bk.neg{color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,transparent);background:var(--red-soft)}
-  .term{text-align:right;flex:none}
-  .term .k{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
-  .term .v{font-weight:800;font-size:17px;margin-top:3px;letter-spacing:-.01em}
-  .term .s{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft)}
-
-  /* assembly */
-  .assembly svg{width:100%;height:auto;display:block;max-width:560px;margin:0 auto}
-  .seatwrap{position:relative}
-  .seatcall{position:absolute;left:50%;bottom:6px;transform:translateX(-50%);text-align:center}
-  .seatcall .g{font-weight:900;font-size:32px;color:var(--ink);line-height:1;letter-spacing:-.03em}
-  .seatcall .l{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
-  .seatcall .l b{color:var(--green)}
-  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;justify-content:center;margin-top:6px}
-  .lg{display:flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.03em;color:var(--soft)}
-  .lg .sw{width:11px;height:11px;border-radius:3px;flex:none}
-  .lg b{color:var(--ink);font-weight:700}
-  .lg.opp{opacity:.65}
-
-  .cols{display:grid;grid-template-columns:1fr 1.25fr;gap:16px}
-  @media(max-width:920px){.cols{grid-template-columns:1fr}}
-
-  /* coalition */
-  .party{display:flex;gap:13px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--line)}
-  .party:last-of-type{border-bottom:none}
-  .party__bar{width:5px;align-self:stretch;border-radius:3px;background:var(--c,var(--indigo));flex:none}
-  .party__b{flex:1;min-width:0}
-  .party__top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
-  .party__top b{font-weight:800;font-size:16px;letter-spacing:-.01em}
-  .party__top .seats{font-family:'Space Mono',monospace;font-size:13px;color:var(--muted);font-weight:700}
-  .party__role{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-top:3px}
-  .terms{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
-  .terms .t{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);background:var(--chip);border:1px solid var(--line);border-radius:6px;padding:4px 9px}
-  .mood{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;margin-top:9px}
-  .mood.good{color:var(--green)}
-  .coal__sum{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.05em;color:var(--muted);margin-top:14px;text-align:center;text-transform:uppercase}
-  .coal__sum b{color:var(--green);font-weight:700}
-  .party__arch{font-weight:800;font-size:12.5px;letter-spacing:-.01em;color:var(--ink);margin-top:3px}
-  .opp-title{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:700;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
-
-  /* cabinet */
-  .post{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
-  .post:last-child{border-bottom:none}
-  .post__pic{width:34px;height:34px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-weight:700;font-size:11px;background:var(--indigo-soft);color:var(--indigo)}
-  .post__b{flex:1;min-width:0}
-  .post__b .min{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
-  .post__b b{font-size:14.5px;display:block;line-height:1.2;font-weight:700}
-  .post__work{font-size:12px;color:var(--muted);font-family:'Space Mono',monospace;letter-spacing:.02em}
-  .ptag{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:20px;flex:none;font-weight:700}
-  .ptag.f{color:var(--front);background:var(--indigo-soft)}
-  .ptag.scandal{color:var(--red);background:var(--red-soft)}
-  .ptags{display:flex;gap:6px;flex:none;align-items:center}
-
-  @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
-  @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  .main{flex:1;padding:22px clamp(16px,3vw,40px);min-width:0;display:flex;align-items:center;justify-content:center}
+  .ph{max-width:460px;text-align:center;color:var(--muted)}
+  .ph .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
+  .ph h1{font-size:clamp(24px,4vw,32px);font-weight:900;letter-spacing:-.02em;color:var(--ink);margin:8px 0 10px}
+  .ph p{font-size:14px}
+  @media(max-width:760px){.side{display:none}}
 </style>
 </head>
 <body>
-<div class="app">
-  <aside class="side">
-    <div class="brand"><img class="brand__flag" id="flag" src="/assets/Sessau.png" alt="Flag of the Front Sessau"><div class="brand__txt"><b>Front Sessau</b><span style="visibility:hidden"><span class="party" id="party"></span> · Sessau</span></div></div>
-    <nav class="nav">
-      <a class="nav__i" href="/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
-      <a class="nav__i" href="/tutorial/party/"><svg viewBox="0 0 24 24"><path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/></svg><span class="label">Party</span></a>
-      <a class="nav__i active" href="/tutorial/government/formed/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
-      <a class="nav__i" href="/tutorial/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
-      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
-      <a class="nav__i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
-      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20v-6M10 20v-10M14 20v-7M18 20v-12"/></svg><span class="label">Market</span></a>
-      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/></svg><span class="label">Conflict</span></a>
-      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/></svg><span class="label">Forum</span></a>
-      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>
-    </nav>
-    <div class="side__foot"><div class="me"><span class="me__dot"></span><span class="label">Leader · <b>Allen Droulez</b></span></div><button class="logout" id="logout" type="button"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg><span class="label">Logout</span></button></div>
-  </aside>
-
-  <main class="main">
-    <div class="top">
-      <div><span class="kicker">Government · Sessau</span><h1>The Government</h1></div>
-    </div>
-    <div id="weekNudge"></div>
-
-    <!-- Confidence -->
-    <section class="mod">
-      <div class="mod__hd"><span>Government Confidence</span></div>
-      <div class="conf">
-        <div class="conf__num" id="confNum">—</div>
-        <div class="conf__mid">
-          <div class="conf__meter"><div class="conf__fill" id="confFill"></div><div class="conf__tick"></div></div>
-          <div class="conf__break" id="confBreak"></div>
-        </div>
-        <div class="term"><div class="k">Mandate</div><div class="v">Spring 1985</div><div class="s">next election · ~4 game-years</div></div>
+  <div class="app">
+    <aside class="side">
+      <div class="brand"><span class="mark"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg></span>Nationhood</div>
+      <nav class="nav">
+        <a class="nav__i" href="/tutorial/party/"><svg viewBox="0 0 24 24"><path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/></svg><span class="label">Party</span></a>
+        <a class="nav__i active" href="/tutorial/government/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
+        <a class="nav__i" href="/tutorial/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
+      </nav>
+    </aside>
+    <main class="main">
+      <div class="ph">
+        <div class="eyebrow">Tutorial</div>
+        <h1>Government Formed</h1>
+        <p>This tutorial step is cleared, ready to be rebuilt. Add its content in this file.</p>
       </div>
-    </section>
-
-    <!-- Assembly -->
-    <section class="mod assembly">
-      <div class="mod__hd"><span>The National Assembly</span><span class="link">No votes pending</span></div>
-      <div class="seatwrap">
-        <svg id="hemicycle" viewBox="0 0 460 250" aria-label="Seating of the 280-seat Assembly"></svg>
-        <div class="seatcall"><div class="g" id="govSeats">—</div><div class="l" id="seatLabel">government</div></div>
-      </div>
-      <div class="legend" id="legend"></div>
-    </section>
-
-    <div class="cols">
-      <!-- Coalition -->
-      <section class="mod">
-        <div class="mod__hd"><span>The Coalition</span><span class="link">Whip ▸</span></div>
-        <div id="coalition"></div>
-      </section>
-
-      <!-- Cabinet -->
-      <section class="mod">
-        <div class="mod__hd"><span>The Cabinet</span><span class="link">Reshuffle ▸</span></div>
-        <div id="cabinet"></div>
-      </section>
-    </div>
-  </main>
-</div>
-
+    </main>
+  </div>
 <script type="module">
-  import { initSidebar, PARTY, formedConfidence, logout, mountTopbar } from '/tutorial/shell.js';
-  mountTopbar();
-
-  // Not formed yet → go form one. Formed but no coalition snapshot (legacy) →
-  // also send back to re-pick. Otherwise render the screen from the snapshot.
-  window.addEventListener('nationhood:gov', (e) => {
-    if (!e.detail) window.location.replace('/tutorial/government/');
-  });
-  window.addEventListener('nationhood:coalition', (e) => {
-    if (!window.nationhoodGovernmentFormed) return;          // gov handler will redirect
-    if (e.detail) render(e.detail);
-    else window.location.replace('/tutorial/government/'); // formed, no snapshot: re-pick
-  });
-
-  function render(co){
-    const assembly = co.assembly || [];
-    const gov = assembly.filter((p) => p.gov).sort((a, b) => b.seats - a.seats); // bigger party on top
-    const opp = assembly.filter((p) => !p.gov).sort((a, b) => b.seats - a.seats);
-    const oppSeats = opp.reduce((s, p) => s + p.seats, 0);
-
-    // Confidence: coalition value (single source: formedConfidence) + the
-    // legislation adjustment from resolved bills (window.nationhoodConfidenceAdj).
-    const c = formedConfidence(co.total, co.contra);
-    const adj = window.nationhoodConfidenceAdj || 0;
-    const val = c.value + adj;
-    document.getElementById('confNum').innerHTML = val + '<span>%</span>';
-    const fill = document.getElementById('confFill'); if (fill) fill.style.width = Math.max(0, Math.min(100, val)) + '%';
-    document.getElementById('confBreak').innerHTML =
-      '<span class="bk">Base 50</span>' +
-      '<span class="bk neg">Crises -6</span>' +
-      '<span class="bk pos">Coalition size +' + c.bonus + '</span>' +
-      '<span class="bk' + (c.contra ? ' neg' : '') + '">Contradictions ' + c.contra + '</span>' +
-      (adj ? '<span class="bk ' + (adj > 0 ? 'pos' : 'neg') + '">Legislation ' + (adj > 0 ? '+' : '') + adj + '</span>' : '');
-
-    // Seat call
-    document.getElementById('govSeats').textContent = co.total;
-    const over = co.total - 141;
-    document.getElementById('seatLabel').innerHTML = 'government · majority 141 ' +
-      (co.total >= 141 ? '<b>✓ +' + over + '</b>' : '<b>' + over + '</b>');
-
-    // Legend
-    document.getElementById('legend').innerHTML = assembly.map((p) =>
-      '<span class="lg' + (p.gov ? '' : ' opp') + '"><span class="sw" style="background:' + p.color + '"></span>' +
-      (p.gov ? '<b>' + p.name + '</b> ' : p.name + ' ') + p.seats + '</span>').join('');
-
-    // Coalition
-    let html = '';
-    gov.forEach((p) => {
-      if (p.lead) {
-        const arch = (PARTY[co.playerParty] && PARTY[co.playerParty].label) || '';
-        html += coalRow('#5546E8', p.name, p.seats, arch, 'Leading party · holds the premiership', '', 'lead');
-      } else {
-        const terms = [];
-        if (p.ministry) terms.push(p.ministry + ' ministry');
-        if (p.policy) terms.push(p.policy);
-        html += coalRow(p.color, p.name, p.seats, p.arch, 'Junior partner', terms.join('|'), 'partner');
-      }
-    });
-    html += '<div class="coal__sum">Government <b>' + co.total + '</b> / 280 · opposition ' + oppSeats + '</div>';
-    html += '<div class="opp-title">Opposition</div>';
-    opp.forEach((p) => { html += coalRow(p.color, p.name, p.seats, p.arch, '', '', 'opp'); });
-    document.getElementById('coalition').innerHTML = html;
-
-    // Cabinet
-    document.getElementById('cabinet').innerHTML = renderCabinet(gov);
-
-    // Hemicycle
-    renderHemicycle(assembly);
-  }
-
-  function coalRow(color, name, seats, arch, role, terms, kind){
-    const t = terms ? '<div class="terms">' + terms.split('|').map((x) => '<span class="t">' + x + '</span>').join('') + '</div>' : '';
-    const mood = kind === 'lead' ? '<div class="mood good">● Yours</div>'
-      : kind === 'partner' ? '<div class="mood good">● Content · terms are being kept</div>' : '';
-    const roleHtml = role ? '<div class="party__role">' + role + '</div>' : '';
-    return '<div class="party"><span class="party__bar" style="--c:' + color + '"></span><div class="party__b">' +
-      '<div class="party__top"><b>' + name + '</b><span class="seats">' + seats + '</span></div>' +
-      '<div class="party__arch">' + (arch || '') + '</div>' + roleHtml + t + mood + '</div></div>';
-  }
-
-  function initials(name){
-    return name.replace(/[^A-Za-z ]/g, '').split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
-  }
-
-  // Front's standard cabinet; each coalition partner takes its demanded ministry,
-  // replacing the Front holder of that portfolio (or adding a new seat).
-  // NOTE: a partner can displace a Front minister here (e.g. National Rally takes
-  // Interior from Théo, or Liberal takes Trade from Claire Bonnet). The Party /
-  // Théo pages are static and don't reflect that yet — a known tutorial gap.
-  function renderCabinet(gov){
-    const rows = [
-      { min: 'Prime Minister', name: 'Allen Droulez · Leader of the Front', work: '', pf: 'Prime Minister', pic: 'PM', front: true },
-      { min: 'Economic Development', name: 'Margot Sève', work: 'Idle', pf: 'Economic Development', pic: 'MS', front: true },
-      { min: 'Trade', name: 'Claire Bonnet', work: 'Idle', pf: 'Trade', pic: 'CB', front: true },
-      { min: 'Interior', name: 'Théo Lefèvre', work: 'Idle', pf: 'Interior', pic: 'TL', front: true, scandal: true },
-      { min: 'Foreign Affairs', name: 'Aurélie Brun', work: 'Idle', pf: 'Foreign Affairs', pic: 'AB', front: true },
-      { min: 'Defense', name: 'Armand Roux', work: 'Idle', pf: 'Defense', pic: 'AR', front: true },
-    ];
-    gov.forEach((p) => {
-      if (p.lead || !p.ministry) return;
-      const name = p.minister || (p.name.split(' ')[0] + ' nominee');
-      const row = { min: p.ministry, name, work: 'Coalition partner', pf: p.ministry, pic: initials(name), front: false, color: p.color, party: p.name.split(' ')[0] };
-      const i = rows.findIndex((r) => r.pf === p.ministry);
-      if (i >= 0) rows[i] = row; else rows.push(row);
-    });
-    return rows.map((r) => {
-      const partyTag = r.front
-        ? '<span class="ptag f">Front</span>'
-        : '<span class="ptag" style="color:' + r.color + ';background:var(--surface);border:1px solid ' + r.color + '">' + r.party + '</span>';
-      const tags = '<span class="ptags">' + (r.scandal ? '<span class="ptag scandal">Scandal</span>' : '') + partyTag + '</span>';
-      const work = r.work ? '<span class="post__work">' + r.work + '</span>' : '';
-      return '<div class="post"><span class="post__pic">' + r.pic + '</span>' +
-        '<div class="post__b"><span class="min">' + r.min + '</span><b>' + r.name + '</b>' + work + '</div>' + tags + '</div>';
-    }).join('');
-  }
-
-  // hemicycle: 280 seats, coloured by the assembly order, gov full / opp faded
-  function renderHemicycle(assembly){
-    const SEATS = 280, ROWS = 9, RIN = 86, ROUT = 216, CX = 230, CY = 224, RAD = 3.6;
-    const radii = []; for (let r = 0; r < ROWS; r++) radii.push(RIN + (ROUT - RIN) * r / (ROWS - 1));
-    const totW = radii.reduce((a, b) => a + b, 0);
-    const per = radii.map((R) => Math.max(2, Math.round(SEATS * R / totW)));
-    let diff = SEATS - per.reduce((a, b) => a + b, 0), ri = ROWS - 1;
-    while (diff !== 0) { per[ri] += Math.sign(diff); diff -= Math.sign(diff); ri = (ri - 1 + ROWS) % ROWS; }
-    const seats = [];
-    for (let r2 = 0; r2 < ROWS; r2++) { const n = per[r2], R = radii[r2];
-      for (let i = 0; i < n; i++) { const th = Math.PI * (i + 0.5) / n; seats.push({ x: CX - R * Math.cos(th), y: CY - R * Math.sin(th), th }); } }
-    seats.sort((a, b) => a.th - b.th);
-    const PARTIES = assembly.map((p) => ({ s: p.seats, c: p.color, gov: p.gov ? 1 : 0 }));
-    const svg = document.getElementById('hemicycle'); svg.innerHTML = ''; const NS = 'http://www.w3.org/2000/svg';
-    let pi = 0, used = 0, boundaryTh = null;
-    seats.forEach((s, k) => {
-      while (pi < PARTIES.length - 1 && used >= PARTIES[pi].s) { pi++; used = 0; }
-      used++;
-      const party = PARTIES[pi] || PARTIES[PARTIES.length - 1];
-      const c = document.createElementNS(NS, 'circle');
-      c.setAttribute('cx', s.x.toFixed(1)); c.setAttribute('cy', s.y.toFixed(1)); c.setAttribute('r', RAD);
-      c.setAttribute('fill', party.c); c.setAttribute('opacity', party.gov ? '1' : '.3');
-      svg.appendChild(c);
-      if (k === 140) boundaryTh = s.th;
-    });
-    if (boundaryTh != null) {
-      const th = boundaryTh - (Math.PI / SEATS) * 0.5;
-      const x1 = CX - (RIN - 14) * Math.cos(th), y1 = CY - (RIN - 14) * Math.sin(th);
-      const x2 = CX - (ROUT + 16) * Math.cos(th), y2 = CY - (ROUT + 16) * Math.sin(th);
-      const ln = document.createElementNS(NS, 'line');
-      ln.setAttribute('x1', x1); ln.setAttribute('y1', y1); ln.setAttribute('x2', x2); ln.setAttribute('y2', y2);
-      ln.setAttribute('stroke', '#15151B'); ln.setAttribute('stroke-width', '1.4'); ln.setAttribute('stroke-dasharray', '3 3'); ln.setAttribute('opacity', '.55');
-      svg.appendChild(ln);
-      const tx = document.createElementNS(NS, 'text');
-      tx.setAttribute('x', x2); tx.setAttribute('y', y2 - 4); tx.setAttribute('fill', '#15151B');
-      tx.setAttribute('font-family', 'Space Mono, monospace'); tx.setAttribute('font-size', '9'); tx.setAttribute('text-anchor', 'middle');
-      tx.textContent = '141 majority';
-      svg.appendChild(tx);
-    }
-  }
-
-  // sidebar nav: linked items navigate; the rest just highlight (not wired)
-  document.querySelectorAll('.nav__i').forEach((i) => i.addEventListener('click', (e) => {
-    if (!i.getAttribute('href')) { e.preventDefault(); document.querySelectorAll('.nav__i').forEach((x) => x.classList.remove('active')); i.classList.add('active'); }
-  }));
-
-  const lo = document.getElementById('logout'); if (lo) lo.addEventListener('click', logout);
-  initSidebar();
+  import { isConfigured } from '/supabase.js';
+  import { requireUser } from '/tutorial/shell.js';
+  if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
 </script>
 </body>
 </html>
