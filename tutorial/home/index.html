@@ -70,6 +70,18 @@
   .snap__row:last-child{border-bottom:none}
   .snap__row dt{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);flex:none;padding-top:2px}
   .snap__row dd{font-size:14px;font-weight:600;color:var(--ink);text-align:right}
+  /* Party approval trend — sparkline with two views. Full width below the map + snapshot. */
+  .appr{grid-column:1/-1}
+  .appr__head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .appr__tabs{display:flex;gap:6px}
+  .appr__tab{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:7px 11px;cursor:pointer;transition:background .15s,color .15s}
+  .appr__tab:hover{color:var(--ink)}
+  .appr__tab.is-on{color:var(--indigo);background:var(--indigo-soft);border-color:color-mix(in srgb,var(--indigo) 30%,transparent)}
+  .appr__now{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
+  .appr__val{font-size:28px;font-weight:900;letter-spacing:-.02em;color:var(--ink)}
+  .appr__delta{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft)}
+  .appr__spark{width:100%;height:72px;display:block;color:var(--indigo)}
+  .appr__axis{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-top:6px}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -121,6 +133,18 @@
               <div class="snap__row"><dt>GDP</dt><dd>$468 Billion</dd></div>
             </dl>
           </div>
+        </div>
+        <div class="appr terr__card">
+          <div class="appr__head">
+            <div class="terr__k">Party Approval</div>
+            <div class="appr__tabs">
+              <button class="appr__tab is-on" data-view="12m" type="button">Last 12 Months</button>
+              <button class="appr__tab" data-view="elec" type="button">Since Last Election</button>
+            </div>
+          </div>
+          <div class="appr__now"><span class="appr__val" id="apprVal">32%</span><span class="appr__delta" id="apprDelta"></span></div>
+          <svg class="appr__spark" id="apprSpark" role="img" aria-label="Party approval trend"></svg>
+          <div class="appr__axis"><span id="apprStart"></span><span id="apprEnd"></span></div>
         </div>
       </div>
     </main>
@@ -189,6 +213,49 @@
       paint();
       window.addEventListener('resize', paint);
     } catch (e) { unavailable(); }
+  })();
+
+  // Party approval sparkline (tutorial data). "Last 12 Months" trends 23% → 32%;
+  // "Since Last Election" is flat — the leadership win was only weeks ago.
+  (() => {
+    const svg = document.getElementById('apprSpark');
+    if (!svg) return;
+    const valEl = document.getElementById('apprVal'), deltaEl = document.getElementById('apprDelta');
+    const startEl = document.getElementById('apprStart'), endEl = document.getElementById('apprEnd');
+    const VIEWS = {
+      '12m':  { data: [23, 24, 24, 26, 25, 27, 28, 29, 28, 30, 31, 32], start: '12 months ago', end: 'Now', delta: '▲ 9 pts over 12 months' },
+      'elec': { data: [32, 32], start: 'Last election', end: 'Now', delta: 'No change since the election' },
+    };
+    let current = '12m';
+    function render(view) {
+      current = view;
+      const cfg = VIEWS[view], d = cfg.data, n = d.length;
+      const H = 72, pad = 6, W = Math.max(120, Math.round(svg.clientWidth || 300));
+      const min = Math.min.apply(null, d), max = Math.max.apply(null, d), span = (max - min) || 1;
+      const x = (i) => n === 1 ? W / 2 : pad + (i / (n - 1)) * (W - 2 * pad);
+      const y = (v) => max === min ? H / 2 : H - pad - ((v - min) / span) * (H - 2 * pad);
+      const line = d.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ');
+      const area = 'M' + x(0).toFixed(1) + ' ' + (H - pad) + ' ' +
+        d.map((v, i) => 'L' + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ') +
+        ' L' + x(n - 1).toFixed(1) + ' ' + (H - pad) + ' Z';
+      svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+      svg.innerHTML =
+        '<path d="' + area + '" fill="rgba(85,70,232,.12)"/>' +
+        '<path d="' + line + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<circle cx="' + x(n - 1).toFixed(1) + '" cy="' + y(d[n - 1]).toFixed(1) + '" r="3.2" fill="currentColor"/>';
+      valEl.textContent = d[n - 1] + '%';
+      deltaEl.textContent = cfg.delta;
+      startEl.textContent = cfg.start;
+      endEl.textContent = cfg.end;
+    }
+    const tabs = document.querySelectorAll('.appr__tab');
+    tabs.forEach((t) => t.addEventListener('click', () => {
+      tabs.forEach((x) => x.classList.remove('is-on'));
+      t.classList.add('is-on');
+      render(t.dataset.view);
+    }));
+    window.addEventListener('resize', () => render(current));
+    render('12m');
   })();
 
   // Welcome modal: shown by default (blocks interaction until "Let's Begin"),
