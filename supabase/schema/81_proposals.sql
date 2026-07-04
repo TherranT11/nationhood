@@ -187,8 +187,8 @@ begin
   if not found then return 'gone'; end if;
   if v_p.status <> 'voting' then return v_p.status; end if;
 
-  -- A no-confidence motion resolves by its own rule (it carries UNLESS the head-of-government
-  -- party votes No) and only at the close of voting — never on the seat-majority path below.
+  -- A no-confidence motion resolves through its own helper (which carries it on the seat-majority
+  -- tally, then falls the government + calls an election) and only at the close of voting.
   if v_p.kind = 'no_confidence' then
     if not p_final then return 'voting'; end if;
     return public._resolve_no_confidence(v_p);
@@ -505,12 +505,13 @@ begin
 end $$;
 revoke all on function public._no_confidence_punish(uuid) from public, anon, authenticated;
 
--- Resolve a no-confidence motion at the close of voting. Carries unless the CURRENT head-of-
--- government party voted No; a carry punishes the government and calls an election, a failure
--- punishes the proposer. If no government sits any more (an election intervened), it lapses.
+-- Resolve a no-confidence motion at the close of voting. It carries on the SAME seat tally as any
+-- other measure — a chamber majority of Ayes — a carry punishes the government and calls an
+-- election, a failure punishes the proposer. If no government sits any more (an election intervened),
+-- it lapses. (It only fails on too few Ayes; a Nay majority never actively defeats it.)
 create or replace function public._resolve_no_confidence(p_p public.proposals)
 returns text language plpgsql security definer set search_path = public as $$
-declare v_hog uuid; v_defended boolean; v_tick int; v_hogname text;
+declare v_hog uuid; v_tick int; v_hogname text; v_maj int; v_aye int; v_nay int;
 begin
   select current_tick into v_tick from public.game_state where id;
   select formateur_party_id into v_hog from public.governments where nation_id = p_p.nation_id and status = 'active';
@@ -521,10 +522,14 @@ begin
     return 'failed';
   end if;
   select name into v_hogname from public.parties where id = v_hog;
-  -- Defended iff the government party explicitly cast a No vote.
-  v_defended := exists (select 1 from public.proposal_votes pv where pv.proposal_id = p_p.id and pv.party_id = v_hog and pv.aye = false);
 
-  if v_defended then
+  -- Carries on an outright chamber majority of Ayes, or (this always resolves at the close) a simple
+  -- majority of the seats cast — read straight off _proposal_seat_tally, the ONE tally normal
+  -- measures use. It never fails on a Nay majority; too few Ayes simply means it doesn't carry.
+  select public._majority(coalesce(legislature_seats, 0)) into v_maj from public.nations where id = p_p.nation_id;
+  select aye, nay into v_aye, v_nay from public._proposal_seat_tally(p_p.id);
+
+  if not ((v_aye >= v_maj) or (v_aye > v_nay and v_aye > 0)) then
     update public.proposals set status = 'failed', resolved_tick = v_tick where id = p_p.id;
     perform public._no_confidence_punish(p_p.party_id);
     insert into public.events (nation_id, party_id, kind, body, game_date)
