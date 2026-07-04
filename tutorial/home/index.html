@@ -69,6 +69,8 @@
   .snap__row:last-child{border-bottom:none}
   .snap__row dt{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);flex:none;padding-top:2px}
   .snap__row dd{font-size:14px;font-weight:600;color:var(--ink);text-align:right}
+  /* Party affiliation chip (colour = the party). */
+  .ptag{display:inline-block;margin-left:6px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;line-height:1.6;padding:1px 7px;border-radius:6px;color:#fff;vertical-align:middle}
   /* Party approval trend — line chart with two views. Shares its row with Elections. */
   .appr__head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
   .appr__tabs{display:flex;gap:6px}
@@ -87,6 +89,23 @@
   .elec__when b{color:var(--indigo)}
   .elec__bar{height:8px;border-radius:5px;background:var(--chip);border:1px solid var(--line);overflow:hidden;margin-bottom:16px}
   .elec__bar span{display:block;height:100%;background:var(--indigo)}
+  /* National Assembly — parliamentary breakdown. Full width below approval + elections. */
+  .assembly{grid-column:1/-1}
+  .asm__head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .asm__sub{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .asm__bar{display:flex;height:12px;border-radius:6px;overflow:hidden;margin-bottom:18px;background:var(--chip)}
+  .asm__bar span{display:block;height:100%}
+  .asm__group{margin-bottom:14px}
+  .asm__group:last-child{margin-bottom:0}
+  .asm__gk{display:flex;align-items:baseline;gap:8px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .asm__gt{color:var(--ink);font-weight:700}
+  .asm__note{text-transform:none;letter-spacing:0;color:var(--soft);font-size:10px}
+  .asm__row{display:flex;align-items:center;gap:10px;padding:8px 0}
+  .asm__dot{width:10px;height:10px;border-radius:3px;flex:none}
+  .asm__pname{flex:1;font-size:14px;font-weight:600;color:var(--ink)}
+  .asm__abbr{color:var(--soft);font-weight:600}
+  .asm__pct{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--ink)}
+  .asm__row--muted .asm__pname,.asm__row--muted .asm__pct{color:var(--muted)}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -128,11 +147,11 @@
             <dl class="snap__list">
               <div class="snap__row"><dt>Capital</dt><dd>Seyonne</dd></div>
               <div class="snap__row"><dt>Official Language</dt><dd>Sessauan</dd></div>
-              <div class="snap__row"><dt>Religion</dt><dd>81% Solvsrist, 16% Al-Makiran</dd></div>
+              <div class="snap__row"><dt>Religion</dt><dd>81% Solvarist, 16% Al-Makiran</dd></div>
               <div class="snap__row"><dt>Demonym</dt><dd>Sessauan</dd></div>
               <div class="snap__row"><dt>Government</dt><dd>Parliamentary Republic</dd></div>
-              <div class="snap__row"><dt>Prime Minister</dt><dd>Allen Droulez (FS)</dd></div>
-              <div class="snap__row"><dt>President of the Assembly</dt><dd>Marchand Herot (FS)</dd></div>
+              <div class="snap__row"><dt>Prime Minister</dt><dd>Allen Droulez <span class="ptag" style="background:#243b6b">FS</span></dd></div>
+              <div class="snap__row"><dt>President of the Assembly</dt><dd>Marchand Herot <span class="ptag" style="background:#243b6b">FS</span></dd></div>
               <div class="snap__row"><dt>Legislature</dt><dd>National Assembly</dd></div>
               <div class="snap__row"><dt>Population</dt><dd>48,000,000</dd></div>
               <div class="snap__row"><dt>GDP</dt><dd>$468 Billion</dd></div>
@@ -158,6 +177,32 @@
             <div class="snap__row"><dt>Months Elapsed</dt><dd>0</dd></div>
             <div class="snap__row"><dt>Months Remaining</dt><dd>48</dd></div>
           </dl>
+        </div>
+        <div class="assembly terr__card">
+          <div class="asm__head">
+            <div class="terr__k">National Assembly</div>
+            <div class="asm__sub">Parliamentary Breakdown &middot; 240 Seats &middot; 121 for a majority</div>
+          </div>
+          <!-- Static tutorial data. Bar widths mirror the seat percentages in the rows below
+               (seats ÷ 240); keep the two in sync if the seat counts ever change. -->
+          <div class="asm__bar">
+            <span style="width:47.5%;background:#243b6b"></span>
+            <span style="width:9.6%;background:#1f86d6"></span>
+            <span style="width:42.9%;background:#C42B2B"></span>
+          </div>
+          <div class="asm__group">
+            <div class="asm__gk">Coalition <span class="asm__gt">137 seats &middot; 57.1%</span></div>
+            <div class="asm__row"><span class="asm__dot" style="background:#243b6b"></span><span class="asm__pname">Front Sessau <span class="asm__abbr">(FS)</span></span><span class="asm__pct"><b>114</b> seats &middot; 47.5%</span></div>
+            <div class="asm__row"><span class="asm__dot" style="background:#1f86d6"></span><span class="asm__pname">Union Conservatrice <span class="asm__abbr">(UC)</span></span><span class="asm__pct"><b>23</b> seats &middot; 9.6%</span></div>
+          </div>
+          <div class="asm__group">
+            <div class="asm__gk">Opposition <span class="asm__gt">103 seats &middot; 42.9%</span></div>
+            <div class="asm__row"><span class="asm__dot" style="background:#C42B2B"></span><span class="asm__pname">Parti Socialiste Sessauan <span class="asm__abbr">(PSS)</span></span><span class="asm__pct"><b>103</b> seats &middot; 42.9%</span></div>
+          </div>
+          <div class="asm__group">
+            <div class="asm__gk">Other Parties <span class="asm__note">failed to pass threshold</span></div>
+            <div class="asm__row asm__row--muted"><span class="asm__dot" style="background:#16915a"></span><span class="asm__pname">Les Verts Sessauans <span class="asm__abbr">(LV)</span></span><span class="asm__pct">0 seats &middot; 4.3% vote</span></div>
+          </div>
         </div>
       </div>
     </main>
