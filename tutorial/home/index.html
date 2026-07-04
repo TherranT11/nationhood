@@ -64,6 +64,12 @@
   .map__ph{position:relative;aspect-ratio:4/3;background:var(--chip);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
   .natmap{position:absolute;inset:0;width:100%;height:100%;display:block}
   .map__none{position:relative;z-index:1}
+  .terr{align-items:start}
+  .snap__list{display:flex;flex-direction:column}
+  .snap__row{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .snap__row:last-child{border-bottom:none}
+  .snap__row dt{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);flex:none;padding-top:2px}
+  .snap__row dd{font-size:14px;font-weight:600;color:var(--ink);text-align:right}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -99,6 +105,21 @@
           <div class="terr__card">
             <div class="terr__k">Territory</div>
             <div class="map__ph" id="natMapBox"><canvas class="natmap" id="natMap"></canvas><span class="map__none" id="natMapNone">Loading map&hellip;</span></div>
+          </div>
+          <div class="terr__card">
+            <div class="terr__k">Nation Snapshot</div>
+            <dl class="snap__list">
+              <div class="snap__row"><dt>Capital</dt><dd>Seyonne</dd></div>
+              <div class="snap__row"><dt>Official Language</dt><dd>Sessauan</dd></div>
+              <div class="snap__row"><dt>Religion</dt><dd>81% Solvsrist, 16% Al-Makiran</dd></div>
+              <div class="snap__row"><dt>Demonym</dt><dd>Sessauan</dd></div>
+              <div class="snap__row"><dt>Government</dt><dd>Parliamentary Republic</dd></div>
+              <div class="snap__row"><dt>Prime Minister</dt><dd>Allen Droulez (FS)</dd></div>
+              <div class="snap__row"><dt>President of the Assembly</dt><dd>Marchand Herot (FS)</dd></div>
+              <div class="snap__row"><dt>Legislature</dt><dd>National Assembly</dd></div>
+              <div class="snap__row"><dt>Population</dt><dd>48,000,000</dd></div>
+              <div class="snap__row"><dt>GDP</dt><dd>$468 Billion</dd></div>
+            </dl>
           </div>
         </div>
       </div>
