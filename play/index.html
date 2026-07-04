@@ -2083,7 +2083,7 @@
               var row = (data.available||[]).filter(function(r){ return r.id===id; })[0];
               if(!row) return;
               openJointProposer({ def: row.definition, initiativeId: id, nationId: party.nation_id, nation: data.nation, corps: data.corps,
-                onDone: function(){ loadInitiatives(); loadJointInbox(); } });
+                onDone: function(){ ping('Proposal sent.'); loadInitiatives(); loadJointInbox(); } });
             }
           });
         });
@@ -2093,7 +2093,7 @@
       function loadJointInbox(){
         fetchJointNegotiations(party.nation_id).then(function(jd){
           renderJointNegotiations(document.getElementById('jointInbox'), jd, {
-            nationId: party.nation_id, isEconDevMin: isEconDevMin, amPM: amPM,
+            nationId: party.nation_id, isEconDevMin: isEconDevMin, amPM: amPM, notify: ping,
             onChange: function(){ loadJointInbox(); loadInitiatives(); selectFeed(feedView); }
           });
         });

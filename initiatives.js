@@ -25,6 +25,7 @@ const CSS = `
 .nini__opt span{display:block;font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.4}
 .nini__opt.is-sel{border-color:var(--indigo);background:var(--indigo-soft,rgba(107,92,255,.1))}
 .nini__opt.is-off{opacity:.55;cursor:default}
+.nini__pend{margin-top:9px;font-size:12px;font-style:italic;color:var(--amber,#E0820E)}
 .nini-empty{color:var(--soft);font-size:13px;font-style:italic}
 `;
 function injectCss(){ if(document.getElementById('nini-css'))return; var s=document.createElement('style'); s.id='nini-css'; s.textContent=CSS; document.head.appendChild(s); }
@@ -52,12 +53,14 @@ export function effectiveInitiativeCost(d, nation, ownership){
 // time). Also returns the nation's placed corps for the executor picker.
 export async function fetchNationInitiatives(nationId){
   try {
-    const [defsR, mineR, corpsR, natR] = await Promise.all([
+    const [defsR, mineR, corpsR, natR, jpR] = await Promise.all([
       supabase.from('national_initiatives').select('id, definition').order('created_at'),
       supabase.from('nation_initiatives').select('id, initiative_id, corp_id, status, started_tick, complete_tick, cost_per_tick').eq('nation_id', nationId),
       supabase.from('corporations').select('id, name, category, type').eq('nation_id', nationId).eq('status', 'placed'),
-      supabase.from('nations').select('gdp, production').eq('id', nationId).maybeSingle()
+      supabase.from('nations').select('gdp, production').eq('id', nationId).maybeSingle(),
+      supabase.from('joint_proposals').select('initiative_id').eq('proposer_nation', nationId).eq('status', 'pending')
     ]);
+    var pendingJoint = {}; (jpR.data || []).forEach(function(r){ pendingJoint[r.initiative_id] = true; });
     var defs = defsR.data || [], mine = mineR.data || [];
     var activeRow = mine.filter(function(r){ return r.status==='active'; })[0] || null;
     var enacted = {}; mine.forEach(function(r){ enacted[r.initiative_id]=true; });
@@ -68,8 +71,8 @@ export async function fetchNationInitiatives(nationId){
     });
     var active = null;
     if(activeRow){ var ad=defs.filter(function(x){ return x.id===activeRow.initiative_id; })[0]; active={ row:activeRow, def: ad?ad.definition:null }; }
-    return { active: active, available: available, corps: corpsR.data || [], nation: natR.data || {} };
-  } catch(e){ return { active:null, available:[], corps:[], nation:{} }; }
+    return { active: active, available: available, corps: corpsR.data || [], nation: natR.data || {}, pendingJoint: pendingJoint };
+  } catch(e){ return { active:null, available:[], corps:[], nation:{}, pendingJoint:{} }; }
 }
 
 // Render into `el`. ctx = { canEnact, currentTick, onEnact(initiativeId, ownership, corpId|null),
@@ -98,8 +101,13 @@ export function renderNationInitiatives(el, data, ctx){
       '<span class="nini__gain">+'+(d.quantity||0)+' '+esc(d.resource||'')+'</span>';
     if(ctx.canEnact){
       if(isJoint){
-        // A joint project can't be enacted directly — it's proposed to the partner nation.
-        html += '<button class="nini__go nini__go--solo" data-propose="1" type="button">Propose to partner ▸</button>';
+        // A joint project can't be enacted directly — it's proposed to the partner nation. Once a
+        // proposal is live it moves to the negotiations inbox, so show its status here instead.
+        if((data.pendingJoint||{})[row.id]){
+          html += '<div class="nini__pend">Proposal pending — see negotiations at the top of the page.</div>';
+        } else {
+          html += '<button class="nini__go nini__go--solo" data-propose="1" type="button">Propose to partner ▸</button>';
+        }
       } else {
         // The Minister picks the execution model. State needs one of the nation's own SO firms in an
         // authorised sector; private lets firms bid (no executor picked).
