@@ -69,6 +69,8 @@
   .snap__row:last-child{border-bottom:none}
   .snap__row dt{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);flex:none;padding-top:2px}
   .snap__row dd{font-size:14px;font-weight:600;color:var(--ink);text-align:right}
+  /* Party affiliation chip (colour = the party). */
+  .ptag{display:inline-block;margin-left:6px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;line-height:1.6;padding:1px 7px;border-radius:6px;color:#fff;vertical-align:middle}
   /* Party approval trend — line chart with two views. Shares its row with Elections. */
   .appr__head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
   .appr__tabs{display:flex;gap:6px}
@@ -145,11 +147,11 @@
             <dl class="snap__list">
               <div class="snap__row"><dt>Capital</dt><dd>Seyonne</dd></div>
               <div class="snap__row"><dt>Official Language</dt><dd>Sessauan</dd></div>
-              <div class="snap__row"><dt>Religion</dt><dd>81% Solvsrist, 16% Al-Makiran</dd></div>
+              <div class="snap__row"><dt>Religion</dt><dd>81% Solvarist, 16% Al-Makiran</dd></div>
               <div class="snap__row"><dt>Demonym</dt><dd>Sessauan</dd></div>
               <div class="snap__row"><dt>Government</dt><dd>Parliamentary Republic</dd></div>
-              <div class="snap__row"><dt>Prime Minister</dt><dd>Allen Droulez (FS)</dd></div>
-              <div class="snap__row"><dt>President of the Assembly</dt><dd>Marchand Herot (FS)</dd></div>
+              <div class="snap__row"><dt>Prime Minister</dt><dd>Allen Droulez <span class="ptag" style="background:#243b6b">FS</span></dd></div>
+              <div class="snap__row"><dt>President of the Assembly</dt><dd>Marchand Herot <span class="ptag" style="background:#243b6b">FS</span></dd></div>
               <div class="snap__row"><dt>Legislature</dt><dd>National Assembly</dd></div>
               <div class="snap__row"><dt>Population</dt><dd>48,000,000</dd></div>
               <div class="snap__row"><dt>GDP</dt><dd>$468 Billion</dd></div>
