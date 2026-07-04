@@ -35,6 +35,8 @@ create index if not exists modifier_effects_modifier_idx on public.modifier_effe
 --   confidence_ceiling                            (no key)                                   ✓
 --   confidence_formation                          (no key; signed — penalty < 0, bonus > 0)  ✓
 --   stat_tick                                     (effect_key = nation stat; signed per-tick delta) ✓
+--   confidence_tick                               (no key; signed per-tick delta to Government Confidence) ✓
+--   coalition_pop_tick                            (no key; signed per-tick delta to every in-government party's popularity) ✓
 --   resource_ceiling                              (effect_key = production resource)          ✓ (_apply_modifier_bounds)
 --   stat_ceiling | stat_floor                     (effect_key = nation stat)                  ✓ (_apply_modifier_bounds)
 --   regime_ceiling | regime_floor                 (no key)                                    — inert
@@ -361,6 +363,28 @@ begin
      where e.effect_type = 'stat_tick' and e.effect_key is not null and e.effect_value <> 0
   loop
     perform public._apply_modifier_stat_effect(r.nation_id, r.effect_key, r.effect_value);
+  end loop;
+  -- Government Confidence: signed per-tick delta to the active government. Routed through the effect
+  -- engine (schema/91) so the 0–100 clamp and the confidence-collapse trigger are the one source.
+  for r in
+    select nm.nation_id, sum(e.effect_value) as v
+      from public.nation_modifiers nm
+      join public.modifier_effects e on e.modifier_id = nm.modifier_id
+     where e.effect_type = 'confidence_tick' and e.effect_value <> 0
+     group by nm.nation_id
+  loop
+    perform public._apply_policy_effect(r.nation_id, jsonb_build_object('t', 'Government Confidence', 'v', r.v));
+  end loop;
+  -- Party Popularity for the governing coalition: signed per-tick delta to every in-government party,
+  -- through the same engine (the archetype ceiling/floor clamps every popularity swing uses).
+  for r in
+    select nm.nation_id, sum(e.effect_value) as v
+      from public.nation_modifiers nm
+      join public.modifier_effects e on e.modifier_id = nm.modifier_id
+     where e.effect_type = 'coalition_pop_tick' and e.effect_value <> 0
+     group by nm.nation_id
+  loop
+    perform public._apply_policy_effect(r.nation_id, jsonb_build_object('t', 'Party Popularity', 'v', r.v));
   end loop;
 end $$;
 revoke all on function public._apply_modifier_tick_effects() from public, anon, authenticated;

@@ -4435,6 +4435,8 @@
       { v: 'resource_floor',        label: 'Resource Floor',               target: 'resource' },
       { v: 'confidence_ceiling',    label: 'Government Confidence Ceiling', target: 'none' },
       { v: 'confidence_formation',  label: 'Gov Confidence Penalty/Bonus on Formation', target: 'none' },
+      { v: 'confidence_tick',       label: 'Government Confidence (per tick)', target: 'none' },
+      { v: 'coalition_pop_tick',    label: 'Party Popularity (Government Coalition, per tick)', target: 'none' },
       { v: 'stat_ceiling',          label: 'Stat Ceiling',                 target: 'stat' },
       { v: 'stat_floor',            label: 'Stat Floor',                   target: 'stat' },
       { v: 'stat_tick',             label: 'Passive Per-Tick (stat)',      target: 'stat' },
@@ -4477,6 +4479,8 @@
         case 'archetype_pop_floor':   return '<b>' + k + '</b> parties’ popularity is held at or above <b>' + v + '</b>.';
         case 'confidence_ceiling':    return 'Government Confidence is capped at <b>' + v + '</b>.';
         case 'confidence_formation':  return 'On forming government: Gov Confidence <b>' + (v >= 0 ? '+' : '') + v + '%</b>.';
+        case 'confidence_tick':       return 'Government Confidence <b>' + (v >= 0 ? '+' : '') + v + '</b> every tick.';
+        case 'coalition_pop_tick':    return 'Every governing-coalition party’s popularity <b>' + (v >= 0 ? '+' : '') + v + '</b> every tick.';
         default: return '';
       }
     }
