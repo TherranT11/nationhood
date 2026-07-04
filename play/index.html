@@ -329,6 +329,7 @@
       <div id="wevents"></div>
     </section>
 
+    <div id="jointInbox"></div>
     <div id="pmbar"></div>
     <div id="econdevbar"></div>
     <div id="tradebar"></div>
@@ -510,6 +511,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { fetchNationInitiatives, renderNationInitiatives } from '/initiatives.js';
+  import { openJointProposer, fetchJointNegotiations, renderJointNegotiations } from '/joint.js';
   import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
   import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, STANDING_COST, PRODUCE_COST, PRODUCE_COOLDOWN } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
@@ -2076,11 +2078,28 @@
               performAction(function(){ return supabase.rpc('initiative_enact', { p_initiative: id, p_ownership: own, p_corp: corp }); },
                 function(d){ return 'Initiative under way — completes in ~' + d.months + ' month' + (d.months===1?'':'s') + '.'; })
                 .then(function(){ loadInitiatives(); });
+            },
+            onProposeJoint: function(id){
+              var row = (data.available||[]).filter(function(r){ return r.id===id; })[0];
+              if(!row) return;
+              openJointProposer({ def: row.definition, initiativeId: id, nationId: party.nation_id, nation: data.nation, corps: data.corps,
+                onDone: function(){ loadInitiatives(); loadJointInbox(); } });
             }
           });
         });
       }
-      loadInitiatives(); // National Initiatives panel (available + the one under way); HoG can enact
+      // The player's live joint-project negotiations (a top-of-home card); the partner's HoG and the
+      // proposer's Econ Dev minister see it and act (accept/counter/decline) through joint.js.
+      function loadJointInbox(){
+        fetchJointNegotiations(party.nation_id).then(function(jd){
+          renderJointNegotiations(document.getElementById('jointInbox'), jd, {
+            nationId: party.nation_id, isEconDevMin: isEconDevMin, amPM: amPM,
+            onChange: function(){ loadJointInbox(); loadInitiatives(); selectFeed(feedView); }
+          });
+        });
+      }
+      loadInitiatives(); // National Initiatives panel (available + the one under way); the Econ Dev minister enacts
+      loadJointInbox();  // pending joint-project negotiations for this player (non-blocking)
       loadCrises();      // active national crises (non-blocking); reveals its panel only if any exist
 
       if (nation && nation.flag) {
