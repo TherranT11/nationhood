@@ -91,6 +91,9 @@
   .mbox--link .mbox__k{display:flex;align-items:center;justify-content:space-between;gap:8px}
   .mbox__go{color:var(--soft);font-size:15px;font-weight:700}
   .mbox--link:hover .mbox__go{color:var(--indigo)}
+  /* Colour-code a signed value: red left accent (inset so it survives hover) + red figure. */
+  .mbox--neg{box-shadow:inset 3px 0 0 #C42B2B}
+  .mbox--neg .mbox__v{color:#C42B2B}
   .mbox__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
   .mbox__v{font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin-top:8px}
   .botnav{display:none}
@@ -181,7 +184,7 @@
         <details class="cat" open>
           <summary class="cat__k">Head of Government <svg class="cat__chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
           <div class="cat__grid">
-            <a class="mbox mbox--link" href="/tutorial/budget/"><div class="mbox__k">Budget Balance <span class="mbox__go">&rsaquo;</span></div><div class="mbox__v">&minus;$10.0 bn</div></a>
+            <a class="mbox mbox--link mbox--neg" href="/tutorial/budget/"><div class="mbox__k">Budget Balance <span class="mbox__go">&rsaquo;</span></div><div class="mbox__v">&minus;$10.0 bn</div></a>
             <div class="mbox"><div class="mbox__k">Growth</div><div class="mbox__v">&minus;2.3%/yr</div></div>
             <div class="mbox"><div class="mbox__k">Bureaucracy</div><div class="mbox__v">87%</div></div>
           </div>
