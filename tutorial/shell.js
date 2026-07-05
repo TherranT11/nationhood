@@ -154,10 +154,50 @@ export async function updateProfile(patch) {
   }
 }
 
+// --- Turn state ------------------------------------------------------------
+// The tutorial runs as a session-scoped scenario. Two facts drive every
+// derived display: the turn (0 = the opening week, Dec 1979; 1 = after the
+// first Next Week, Jan 1980) and the player's floor vote on the pension bill.
+// sessionStorage is the SOLE source of truth for these, read synchronously so
+// the topbar, Home and News render in lockstep without async plumbing.
+// KNOWN LIMITATION: turn/vote are session-scoped and not re-hydrated from the
+// DB, whereas the guide step is (getTutorialProgress). A player who returns in
+// a fresh session mid-scenario resumes the tour at the right step but with the
+// chrome reset to turn 0. Acceptable for a single-sitting tutorial; wire turn/
+// vote into getTutorialProgress if cross-session resume is ever needed.
+// All numbers the scenario keys off live here as the one source.
+export const TUT_BALANCE_BASE = -10.0;   // $bn/yr — the deficit at turn 0
+export const TUT_PENSION_SAVING = 23.1;  // $bn/yr the abolition returns (bill figure)
+export const TUT_APPROVAL_BASE = 32;     // % approval at turn 0
+export const TUT_APPROVAL_DROP = 9;      // points lost to abolishing the pension
+
+export function getTutTurn() {
+  try { return Number(sessionStorage.getItem('nh-turn') || 0); } catch (e) { return 0; }
+}
+export function getFloorVote() {
+  try { return sessionStorage.getItem('nh-floor-vote'); } catch (e) { return null; }
+}
+// True once the week has advanced AND the player carried the abolition.
+export function pensionAbolished() { return getTutTurn() >= 1 && getFloorVote() === 'yes'; }
+
+export function advanceTutorialWeek() {
+  try { sessionStorage.setItem('nh-turn', '1'); } catch (e) {}
+}
+
 // Wipe the player's whole tutorial run so the next visit starts fresh from the
 // party-choice screen (no party, no government, nothing in progress). A full
 // overwrite of tutorial_state — not a merge — via the own-row update policy.
 export async function resetTutorial() {
+  // sessionStorage is the in-session source of truth (turn, floor vote, guide
+  // step, inbox replies), so a reset must clear it too or a restart in the same
+  // tab resumes mid-scenario. All tutorial keys are 'nh-' prefixed in session
+  // storage (theme lives in localStorage, so it's untouched).
+  try {
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const k = sessionStorage.key(i);
+      if (k && k.indexOf('nh-') === 0) sessionStorage.removeItem(k);
+    }
+  } catch (e) { /* storage unavailable — nothing to clear */ }
   if (!isConfigured) return true;
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -227,12 +267,19 @@ function mountTutorialTopbar() {
   const host = document.querySelector('.main .page') || document.querySelector('.main');
   if (!host || host.querySelector('.nhbar')) return;
   ensureTopbarStyles2();
+  // Date and balance follow the turn: the pension savings land once the week
+  // advances and only if the player voted to abolish it.
+  const bal = TUT_BALANCE_BASE + (pensionAbolished() ? TUT_PENSION_SAVING : 0);
+  const balTxt = (bal < 0 ? '−$' : '+$') + Math.abs(bal).toFixed(1) + ' bn/yr';
+  const balCls = bal < 0 ? 'nhbar__bal--neg' : 'nhbar__bal--pos';
+  const dateTxt = getTutTurn() >= 1 ? 'January, 1980' : 'December, 1979';
   const bar = document.createElement('div');
   bar.className = 'nhbar';
   bar.innerHTML =
     '<span class="nhbar__chip nhbar__inf" title="Influence">' +
       '<svg class="nhbar__star" viewBox="0 0 24 24"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>4</span>' +
-    '<span class="nhbar__chip nhbar__date">December, 1979</span>' +
+    '<span class="nhbar__chip nhbar__bal ' + balCls + '" title="Budget balance (per year)">' + balTxt + '</span>' +
+    '<span class="nhbar__chip nhbar__date">' + dateTxt + '</span>' +
     '<button class="nhbar__week" type="button" disabled>Next Week</button>' +
     '<button class="nhbar__theme" type="button" aria-label="Toggle dark mode">' +
       '<svg class="ic-moon" viewBox="0 0 24 24"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8z"/></svg>' +
@@ -255,8 +302,13 @@ function ensureTopbarStyles2() {
     '.nhbar__chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-family:"Space Mono",monospace;font-size:12.5px;font-weight:700}' +
     '.nhbar__inf{color:var(--ink)}' +
     '.nhbar__star{width:16px;height:16px;fill:var(--amber)}' +
+    '.nhbar__bal--neg{color:var(--red)}' +
+    '.nhbar__bal--pos{color:var(--green)}' +
     '.nhbar__date{color:var(--muted)}' +
     '.nhbar__week{font-family:"Space Mono",monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--chip);color:var(--soft);cursor:not-allowed}' +
+    '.nhbar__week--live{background:var(--indigo);border-color:var(--indigo);color:#fff;cursor:pointer}' +
+    '.nhbar__week--live:hover{filter:brightness(1.08)}' +
+    '.nhbar__week--pulse{animation:gd-pulse 1.5s ease-in-out infinite}' +
     '.nhbar__theme{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:color .15s,border-color .15s}' +
     '.nhbar__theme:hover{color:var(--ink);border-color:var(--soft)}' +
     '.nhbar__theme svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}' +
@@ -301,26 +353,71 @@ const GUIDE_STEPS = [
   { page: '/tutorial/nation/', target: '.gd-hog', ey: 'The Nation', title: 'The State of the Nation',
     body: 'This is your nation, ministry by ministry. Head of Government already tells the story — a deficit and shrinking growth. Expand the rest to see where you’re bleeding.' },
   { page: '/tutorial/nation/', target: '.nav__i[href="/tutorial/legislature/"], .botnav__i[href="/tutorial/legislature/"]',
-    ey: 'Next', title: 'The Floor', body: 'That Federal Police Budget still has to survive the floor. Time to cast your first vote.',
+    ey: 'Next', title: 'The Floor', body: 'The coalition’s next fight is already on the Assembly floor. Time to cast your first vote.',
     nav: '/tutorial/legislature/', cta: 'Legislature →', pulse: true },
 
   // Chapter 3 — The Floor Vote
-  { page: '/tutorial/legislature/', target: '.gd-floor', ey: 'On the Floor', title: 'The Federal Police Budget Bill',
-    body: 'Here’s the bill you saw being implemented — it doesn’t take effect until the Assembly passes it. 240 seats sit in the National Assembly, and <b>121</b> carry a bill.' },
+  { page: '/tutorial/legislature/', target: '.gd-floor', ey: 'On the Floor', title: 'Abolish the Civil Service Pension',
+    body: 'Proposed by Union Conservatrice — your own coalition partner. Vote no and you hurt the coalition further; vote yes and you anger the people of Sessau. 240 seats sit in the Assembly, and <b>121</b> carry a bill.' },
   { page: '/tutorial/legislature/', target: '.gd-floor .votes', ey: 'Count the Seats', title: 'Reading the Room',
-    body: 'Union Conservatrice votes with you: 23 Yes. Parti Socialiste opposes: 103 No. That leaves your <b>114 seats</b> to decide it — and right now you’ve Abstained, which loses.' },
+    body: 'UC proposed it, so they vote Yes: 23. Parti Socialiste won’t gut a workers’ pension: 103 No. That leaves your <b>114 seats</b> to decide it — and right now you’ve Abstained, which loses.' },
   { page: '/tutorial/legislature/', target: '#voteYes', ey: 'Your Call', title: 'Cast Your Vote',
-    body: 'Vote Yes to fund the Federal Police. Watch the tally move.', requires: 'vote', pulse: true },
+    body: 'There’s no clean answer here. Vote Yes to hold the coalition together — and take the hit with the public. Watch the tally move.', requires: 'vote', pulse: true },
   { page: '/tutorial/legislature/', target: '.gd-floor .tally', ey: 'Carried', title: 'It Passes',
-    body: '137 to 103 — the bill clears the floor. The Federal Police budget rises to Level 4, Order climbs, and ₣16.2bn leaves the treasury each year. Every choice has a price.' },
+    body: '137 to 103 — the bill clears the floor. The pension is abolished: the treasury saves ₣23.1bn and bureaucracy falls, but poverty climbs and the public is furious. You kept UC — at a price.' },
   { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'Up Next', title: 'In Committee',
     body: 'Les Verts want to abolish the alcohol tax — popular, but it blows a ₣22.2bn hole in revenue. Bills like this need your endorsement to reach the floor. A decision for another day.' },
   { page: '/tutorial/legislature/', target: '.nav__i[href="/tutorial/inbox/"], .botnav__i[href="/tutorial/inbox/"]',
-    ey: 'Next', title: 'The Chamber Talks Back', body: 'Passing a budget makes friends and enemies. Let’s see who’s writing to you.',
+    ey: 'Next', title: 'The Chamber Talks Back', body: 'Passing that bill makes friends and enemies. Let’s see who’s writing to you.',
     nav: '/tutorial/inbox/', cta: 'Inbox →', pulse: true },
+
+  // Chapter 4 — The Inbox
+  { page: '/tutorial/inbox/', target: '#threadList', ey: 'Your Inbox', title: 'The Chamber Talks Back',
+    body: 'Every party, minister, and lobby reaches you here. A bold subject line is unread — and carrying that pension bill already earned you three replies.' },
+  { page: '/tutorial/inbox/', target: '.mail__view', ey: 'An Ally', title: 'Union Conservatrice',
+    body: 'Your coalition partner. They congratulate you on the vote — then remind you the tax cut is overdue and the debt has broken $180 bn. Allies keep score too.' },
+  { page: '/tutorial/inbox/', target: '.reply__opts', ey: 'Your Call', title: 'You Don’t Type — You Decide',
+    body: 'Pick a reply. Reassure them the cut is coming, push back that the deficit can’t bear it, or stall. Each answer costs you something different.', requires: 'reply', pulse: true },
+  { page: '/tutorial/inbox/', target: '.reply__done', ey: 'On the Record', title: 'Words Have Weight',
+    body: 'Your reply is sent, and the effect is logged right there. This is how every relationship in Sessau is managed — one message at a time.' },
+  { page: '/tutorial/inbox/', target: '.thr[data-id="pss"]', ey: 'The Opposition', title: 'Not Everyone’s Happy',
+    body: 'Parti Socialiste is furious about the pension cut and rattling that motion of no confidence. You can’t please everyone — and you shouldn’t try. Some fights are worth having.' },
+  { page: '/tutorial/inbox/', target: '.nav__i[href="/tutorial/news/"], .botnav__i[href="/tutorial/news/"]',
+    ey: 'Next', title: 'The Country Is Watching', body: 'Your inbox is private. The papers aren’t. Let’s see how Sessau is covering the fight.',
+    nav: '/tutorial/news/', cta: 'News →', pulse: true },
+
+  // Chapter 5 — The Press (read-only)
+  { page: '/tutorial/news/', target: '.ticker', ey: 'The Press', title: 'The Heartbeat of the Nation',
+    body: 'The news is the pulse of Sessau — the ticker, the papers, the polls. It’s where the country reacts to what you do. And right now the signs are flashing: debt past ₣192bn, growth at −2.3%, approval stuck at 32%. The press won’t let you forget a single one.' },
+  { page: '/tutorial/news/', target: '.outlets', ey: 'Spin', title: 'No Neutral Truth',
+    body: 'The same story, three ways — the left calls the pension cut cruelty, the centre counts the cost, and your nationalist base calls it strength. There’s no view from nowhere in Sessau. Learn to read the spin, because the voters do.' },
+
+  // Turn 1 close — hand the loop to the player
+  { page: '/tutorial/news/', target: '.nhbar', ey: 'The Week Ahead', title: 'Advance the Week',
+    body: 'This bar rides with you everywhere: your Influence to spend, the nation’s budget balance, the date, and the button that moves time. You’ve read your nation, governed, legislated, answered the chamber, and faced the press — that’s a week in Sessau. Let’s advance the week.',
+    enableWeek: true, pulse: true },
+
+  // Turn 2 — the week has advanced; the guided tour continues
+  { page: '/tutorial/home/', target: '.nhbar__date', ey: 'Week Two', title: 'A New Week',
+    body: 'January, 1980. You advanced the week and Sessau moved with you. The date has rolled forward, and every choice you made last week has now taken effect.' },
+  { page: '/tutorial/home/', target: '.appr__factors', ey: 'The Mark', title: 'The Fallout Lands',
+    body: 'Abolishing the pension cost you nine points — approval fell to 23%, logged right here under Party Approval as a Last Factor. Nothing you do in Sessau is free.' },
+  { page: '/tutorial/home/', target: '.nhbar__bal', ey: 'The Ledger', title: 'The Other Side',
+    body: 'But the ₣23bn you saved swung the budget into surplus — up top, in green. This is the whole game: every choice trades one number for another.' },
+
+  // Turn 2 — the alcohol tax: the first choice that is truly the player's
+  { page: '/tutorial/home/', target: '.nav__i[href="/tutorial/legislature/"], .botnav__i[href="/tutorial/legislature/"]',
+    ey: 'Next', title: 'A Way Back', body: 'Your approval is bleeding at 23%. There’s a bill in committee the public loves — and this time, the call is yours. Head to the floor.',
+    nav: '/tutorial/legislature/', cta: 'Legislature →', pulse: true },
+  { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'The Bill', title: 'Abolish the Alcohol Tax',
+    body: 'Les Verts want the alcohol tax gone, and most of Sessau agrees. You didn’t get to choose on the pension — the coalition forced your hand. This one you own.' },
+  { page: '/tutorial/legislature/', target: '#acEndorse', ey: 'Your Choice', title: 'Endorse — or Don’t',
+    body: 'Endorse it and Les Verts may choose to advance it to the floor — where, if it passes, the public rewards you but ₣22.2bn leaves your budget, and your surplus with it. Your backing doesn’t carry it alone; it’s theirs to move. Leave it and keep your books, with approval where it is. No wrong answer — decide, then continue.', pulse: true },
+  { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'On the Record', title: 'Live With It',
+    body: 'Whatever you chose stands. Approval or the budget — you can rarely serve both at once, and that tension is the whole job. It only sharpens from here.' },
 ];
 
-let guideStep = 0, guideEls = null, guideReposition = null, guideGate = null;
+let guideStep = 0, guideEls = null, guideReposition = null, guideGate = null, guideGateEvent = null;
 
 async function mountGuide() {
   const path = location.pathname;
@@ -355,8 +452,10 @@ function persistStep(n) {
 
 function clearGuide() {
   if (guideReposition) { window.removeEventListener('resize', guideReposition); guideReposition = null; }
-  if (guideGate) { window.removeEventListener('nhtutorial:vote', guideGate); guideGate = null; }
+  if (guideGate) { window.removeEventListener(guideGateEvent, guideGate); guideGate = null; guideGateEvent = null; }
   if (guideEls) { guideEls.forEach((el) => el.remove()); guideEls = null; }
+  const wk = document.querySelector('.nhbar__week--pulse');
+  if (wk) wk.classList.remove('nhbar__week--pulse'); // stop the nudge; the button stays live
   document.body.style.overflow = '';
 }
 
@@ -377,17 +476,36 @@ function firstVisible(sel) {
 function renderGuideStep() {
   ensureGuideStyles();
   const s = GUIDE_STEPS[guideStep];
+  // Let the page reveal a target that may be hidden on this viewport before we
+  // locate it (e.g. the inbox reading pane is display:none on mobile until a
+  // thread is opened). Dispatched synchronously so any DOM change lands first.
+  window.dispatchEvent(new CustomEvent('nhtutorial:beforestep', { detail: { step: guideStep, target: s.target } }));
   const target = firstVisible(s.target);
   if (!target) return; // target missing (page still building?) — don't lock the screen
+  // Turn-close beat: un-grey Next Week; a real push advances the turn and tour.
+  if (s.enableWeek) {
+    const wk = document.querySelector('.nhbar__week');
+    if (wk) {
+      wk.removeAttribute('disabled');
+      wk.classList.add('nhbar__week--live', 'nhbar__week--pulse');
+      wk.onclick = async () => {
+        wk.onclick = null;                    // guard against a double push
+        await persistStep(guideStep + 1);     // advance the tour into Turn 2's first beat (guide step IS re-hydrated cross-session)
+        advanceTutorialWeek();                // Dec 1979 → Jan 1980, apply the vote's fallout (sessionStorage)
+        window.location.href = '/tutorial/home/'; // land on Home so the tour continues on the fallout
+      };
+    }
+  }
   target.scrollIntoView({ block: 'center', inline: 'nearest' });
   document.body.style.overflow = 'hidden';
 
   const parts = [0, 1, 2, 3].map(() => { const d = document.createElement('div'); d.className = 'gd-mask'; document.body.appendChild(d); return d; });
   const ring = document.createElement('div'); ring.className = 'gd-ring' + (s.pulse ? ' gd-pulse' : ''); document.body.appendChild(ring);
   const call = document.createElement('div'); call.className = 'gd-call';
-  // A `requires` step is action-gated: no Next button — the player must perform
-  // the real action (e.g. cast the vote), which fires nhtutorial:<requires>.
-  const cta = s.requires
+  // A `requires` step is action-gated (advance on nhtutorial:<requires>); an
+  // `enableWeek` step is button-driven (the topbar Next Week does the advance).
+  // Both replace the coach-mark's Next button with a passive "waiting" prompt.
+  const cta = (s.requires || s.enableWeek)
     ? '<span class="gd-call__wait">Waiting for you…</span>'
     : '<button class="gd-call__btn" type="button">' + (s.cta || 'Next') + '</button>';
   call.innerHTML =
@@ -406,15 +524,17 @@ function renderGuideStep() {
   const go = async () => {
     if (advancing) return;
     advancing = true;
-    if (guideGate) { window.removeEventListener('nhtutorial:' + s.requires, guideGate); guideGate = null; }
+    if (guideGate) { window.removeEventListener(guideGateEvent, guideGate); guideGate = null; guideGateEvent = null; }
     if (s.nav) { await persistStep(guideStep + 1); window.location.href = s.nav; } // hand-off: persist BEFORE leaving, or the next page reads a stale step and the chapter never starts
     else advanceGuide();
   };
   if (s.requires) {
     // Advance only when the page reports the real action was carried out.
     guideGate = () => go();
-    window.addEventListener('nhtutorial:' + s.requires, guideGate, { once: true });
-  } else {
+    guideGateEvent = 'nhtutorial:' + s.requires;
+    window.addEventListener(guideGateEvent, guideGate, { once: true });
+  } else if (!s.enableWeek) {
+    // enableWeek has no Next button — the topbar Next Week (wired above) advances.
     call.querySelector('.gd-call__btn').addEventListener('click', go);
   }
   if (s.nav) target.addEventListener('click', (e) => { e.preventDefault(); go(); }, { once: true });

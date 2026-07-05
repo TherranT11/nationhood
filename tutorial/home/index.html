@@ -84,6 +84,14 @@
   .appr__grid{stroke:var(--line);stroke-width:1}
   .appr__axis-x{stroke:var(--soft);stroke-width:1}
   .appr__lbl{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;fill:var(--soft)}
+  .appr__factors{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+  .appr__factors-k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:8px}
+  .factor{display:flex;align-items:center;gap:10px;padding:4px 0}
+  .factor__amt{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;min-width:44px}
+  .factor__amt--neg{color:var(--red)}
+  .factor__amt--pos{color:var(--green)}
+  .factor__what{font-size:13px;color:var(--ink)}
+  .factor--none{font-size:13px;color:var(--soft)}
   /* Elections — countdown to the next general election. */
   .elec__when{font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin-bottom:14px}
   .elec__when b{color:var(--indigo)}
@@ -136,7 +144,7 @@
           <div class="stat"><div class="stat__k">Party</div><div class="stat__v">Front Sessau <span class="stat__sub">(FS)</span></div></div>
           <div class="stat"><div class="stat__k">Party Leader</div><div class="stat__v">Allen Droulez <span class="stat__sub">(42)</span></div></div>
           <div class="stat"><div class="stat__k">Seats</div><div class="stat__v">114</div></div>
-          <div class="stat"><div class="stat__k">Party Approval</div><div class="stat__v">32%</div></div>
+          <div class="stat"><div class="stat__k">Party Approval</div><div class="stat__v" id="apprStat">32%</div></div>
         </div>
         <div class="terr">
           <div class="terr__card">
@@ -169,6 +177,10 @@
           </div>
           <div class="appr__now"><span class="appr__val" id="apprVal">32%</span><span class="appr__delta" id="apprDelta"></span></div>
           <svg class="appr__chart" id="apprSpark" role="img" aria-label="Party approval trend"></svg>
+          <div class="appr__factors">
+            <div class="appr__factors-k">Last Factors Affecting Popularity</div>
+            <div id="apprFactors"></div>
+          </div>
         </div>
         <div class="elec terr__card">
           <div class="terr__k">Elections</div>
@@ -241,7 +253,7 @@
   </div>
 <script type="module">
   import { supabase, isConfigured } from '/supabase.js';
-  import { requireUser, mountTutorialChrome, getTutorialProgress, updateProfile } from '/tutorial/shell.js';
+  import { requireUser, mountTutorialChrome, getTutorialProgress, updateProfile, pensionAbolished, TUT_APPROVAL_BASE, TUT_APPROVAL_DROP } from '/tutorial/shell.js';
   import { nationColors, drawNationMiniMap } from '/hexmap.js';
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
 
@@ -282,14 +294,27 @@
     if (!svg) return;
     const valEl = document.getElementById('apprVal'), deltaEl = document.getElementById('apprDelta');
     const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    const VIEWS = {
-      '12m': {
-        data: [23, 24, 24, 26, 25, 27, 28, 29, 28, 30, 31, 32],
-        labels: ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'],
-        delta: '▲ 9 pts over 12 months',
-      },
-      'elec': { data: [32, 32], labels: ['Election', 'Now'], delta: 'No change since the election' },
+    // The pension vote's fallout lands once the week advances: −9 pts, 32% → 23%.
+    const abolished = pensionAbolished();
+    const nowVal = TUT_APPROVAL_BASE - (abolished ? TUT_APPROVAL_DROP : 0);
+    const base12 = [23, 24, 24, 26, 25, 27, 28, 29, 28, 30, 31, 32];
+    const base12Labels = ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'];
+    const VIEWS = abolished ? {
+      '12m': { data: base12.concat([nowVal]), labels: base12Labels.concat(['Jan']), delta: '▼ ' + TUT_APPROVAL_DROP + ' pts this month' },
+      'elec': { data: [TUT_APPROVAL_BASE, nowVal], labels: ['Election', 'Now'], delta: '▼ ' + TUT_APPROVAL_DROP + ' pts since the election' },
+    } : {
+      '12m': { data: base12, labels: base12Labels, delta: '▲ 9 pts over 12 months' },
+      'elec': { data: [TUT_APPROVAL_BASE, TUT_APPROVAL_BASE], labels: ['Election', 'Now'], delta: 'No change since the election' },
     };
+    // Party Approval stat (top of page) and the "Last Factors" list track the same number.
+    const statEl = document.getElementById('apprStat');
+    if (statEl) statEl.textContent = nowVal + '%';
+    const factorsEl = document.getElementById('apprFactors');
+    if (factorsEl) {
+      factorsEl.innerHTML = abolished
+        ? '<div class="factor"><span class="factor__amt factor__amt--neg">−' + TUT_APPROVAL_DROP + '%</span><span class="factor__what">Voted to Abolish Civil Service Pension</span></div>'
+        : '<div class="factor--none">None</div>';
+    }
     let current = '12m';
     function render(view) {
       current = view;
