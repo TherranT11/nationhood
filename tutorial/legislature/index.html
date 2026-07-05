@@ -34,11 +34,49 @@
   .gear__menu[hidden]{display:none}
   .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red,#C42B2B);cursor:pointer}
   .gear__item:hover{background:var(--chip)}
-  .main{flex:1;padding:22px clamp(16px,3vw,40px);min-width:0;display:flex;align-items:center;justify-content:center}
-  .ph{max-width:460px;text-align:center;color:var(--muted)}
-  .ph .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
-  .ph h1{font-size:clamp(24px,4vw,32px);font-weight:900;letter-spacing:-.02em;color:var(--ink);margin:8px 0 10px}
-  .ph p{font-size:14px}
+  .main{flex:1;padding:26px clamp(16px,3vw,40px) 56px;min-width:0}
+  .page{max-width:900px;margin:0 auto}
+  .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
+  .page h1{font-size:clamp(26px,4vw,36px);font-weight:900;letter-spacing:-.025em;color:var(--ink);margin:6px 0 16px}
+  .actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+  .btn{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+  .btn:hover{color:var(--ink);background:var(--chip)}
+  .btn--primary{background:var(--indigo);border-color:var(--indigo);color:#fff}
+  .btn--primary:hover{filter:brightness(1.07);color:#fff}
+  .btn--yes{background:#16915a;border-color:#16915a;color:#fff}
+  .btn--yes:hover{filter:brightness(1.07);color:#fff}
+  .btn--no{background:#C42B2B;border-color:#C42B2B;color:#fff}
+  .btn--no:hover{filter:brightness(1.07);color:#fff}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .card + .card{margin-top:14px}
+  .card__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
+  /* A bill — name, description, effect chips, and (on the floor) a vote tally. */
+  .bill__name{font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--ink)}
+  .bill__desc{font-size:14px;color:var(--muted);margin-top:4px}
+  .bill__by{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.02em;color:var(--soft);margin-top:6px}
+  .bill__chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .chip{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.02em;padding:5px 10px;border-radius:8px}
+  .chip--cost{color:#C42B2B;background:#FAEAEA}
+  .chip--good{color:#16915a;background:#E6F4EC}
+  /* Vote tally */
+  .tally{position:relative;margin-top:18px}
+  .tally__bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--chip)}
+  .tally__yes{height:100%;background:#16915a}
+  .tally__no{height:100%;background:#C42B2B}
+  .tally__maj{position:absolute;top:-4px;height:22px;width:2px;background:var(--ink);transform:translateX(-1px)}
+  .tally__legend{display:flex;flex-wrap:wrap;gap:14px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.02em;color:var(--muted);margin-top:10px}
+  .tally__legend b{color:var(--ink);font-weight:700}
+  .tally__pass{color:#16915a;font-weight:700}
+  .votes{display:flex;flex-direction:column;gap:9px;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+  .vrow{display:flex;align-items:center;gap:10px}
+  .vrow__dot{width:10px;height:10px;border-radius:3px;flex:none}
+  .vrow__name{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--ink)}
+  .vrow__seats{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--muted)}
+  .vpill{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:3px 9px;border-radius:6px;min-width:44px;text-align:center}
+  .vpill--yes{color:#16915a;background:#E6F4EC}
+  .vpill--no{color:#C42B2B;background:#FAEAEA}
+  .bill__btns{display:flex;gap:10px;margin-top:18px}
+  .bill__btns .btn{flex:1;padding:12px}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -61,10 +99,55 @@
         <a class="nav__i" href="/tutorial/wiki/"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>      </nav>
     </aside>
     <main class="main">
-      <div class="ph">
-        <div class="eyebrow">Tutorial</div>
+      <div class="page">
+        <div class="eyebrow">National Assembly of Sessau</div>
         <h1>Legislature</h1>
-        <p>This tutorial screen is a blank scaffold, ready to be built. Add its content in this file.</p>
+        <div class="actions">
+          <button class="btn btn--primary" type="button">Propose New Law</button>
+          <button class="btn" type="button">Initiative</button>
+        </div>
+
+        <section class="card">
+          <div class="card__k">On the Floor</div>
+          <div class="bill__name">The Federal Police Budget Bill</div>
+          <div class="bill__desc">Raises the Federal Police budget from Level 3 to Level 4.</div>
+          <div class="bill__chips">
+            <span class="chip chip--cost">&minus;$16.2 bn/year</span>
+            <span class="chip chip--good">+2 Order</span>
+          </div>
+          <div class="tally">
+            <div class="tally__bar">
+              <span class="tally__yes" style="width:57.1%"></span>
+              <span class="tally__no" style="width:42.9%"></span>
+            </div>
+            <i class="tally__maj" style="left:50.4%"></i>
+            <div class="tally__legend">
+              <span><b>Yes 137</b></span>
+              <span><b>No 103</b></span>
+              <span>121 to pass</span>
+              <span class="tally__pass">Passing</span>
+            </div>
+          </div>
+          <div class="votes">
+            <div class="vrow"><span class="vrow__dot" style="background:#243b6b"></span><span class="vrow__name">Front Sessau <span style="color:var(--soft);font-weight:600">(FS)</span></span><span class="vrow__seats">114</span><span class="vpill vpill--yes">Yes</span></div>
+            <div class="vrow"><span class="vrow__dot" style="background:#1f86d6"></span><span class="vrow__name">Union Conservatrice <span style="color:var(--soft);font-weight:600">(UC)</span></span><span class="vrow__seats">23</span><span class="vpill vpill--yes">Yes</span></div>
+            <div class="vrow"><span class="vrow__dot" style="background:#C42B2B"></span><span class="vrow__name">Parti Socialiste Sessauan <span style="color:var(--soft);font-weight:600">(PSS)</span></span><span class="vrow__seats">103</span><span class="vpill vpill--no">No</span></div>
+          </div>
+          <div class="bill__btns">
+            <button class="btn btn--yes" type="button">Vote Yes</button>
+            <button class="btn btn--no" type="button">Vote No</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card__k">Committee</div>
+          <div class="bill__name">Abolish the Alcohol Tax</div>
+          <div class="bill__by">Proposed by Les Verts Sessauans &middot; No endorsements yet</div>
+          <div class="bill__chips">
+            <span class="chip chip--cost">&minus;$22.2 bn/year</span>
+            <span class="chip chip--good">Very popular</span>
+          </div>
+        </section>
       </div>
     </main>
   </div>
