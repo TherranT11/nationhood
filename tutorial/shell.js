@@ -401,9 +401,20 @@ const GUIDE_STEPS = [
   { page: '/tutorial/home/', target: '.nhbar__date', ey: 'Week Two', title: 'A New Week',
     body: 'January, 1980. You advanced the week and Sessau moved with you. The date has rolled forward, and every choice you made last week has now taken effect.' },
   { page: '/tutorial/home/', target: '.appr__factors', ey: 'The Mark', title: 'The Fallout Lands',
-    body: 'Every big decision leaves a mark — and it’s logged right here under Party Approval. Read what your vote on the pension cost you, or spared you. Nothing you do in Sessau is free.' },
-  { page: '/tutorial/home/', target: '.nhbar__bal', ey: 'The Ledger', title: 'Decide, Advance, Live With It',
-    body: 'Your budget balance has moved to match the vote, too. This is the whole game: make the call, advance the week, and govern through what follows. Turn two is yours.' },
+    body: 'Abolishing the pension cost you nine points — approval fell to 23%, logged right here under Party Approval as a Last Factor. Nothing you do in Sessau is free.' },
+  { page: '/tutorial/home/', target: '.nhbar__bal', ey: 'The Ledger', title: 'The Other Side',
+    body: 'But the ₣23bn you saved swung the budget into surplus — up top, in green. This is the whole game: every choice trades one number for another.' },
+
+  // Turn 2 — the alcohol tax: the first choice that is truly the player's
+  { page: '/tutorial/home/', target: '.nav__i[href="/tutorial/legislature/"], .botnav__i[href="/tutorial/legislature/"]',
+    ey: 'Next', title: 'A Way Back', body: 'Your approval is bleeding at 23%. There’s a bill in committee the public loves — and this time, the call is yours. Head to the floor.',
+    nav: '/tutorial/legislature/', cta: 'Legislature →', pulse: true },
+  { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'The Bill', title: 'Abolish the Alcohol Tax',
+    body: 'Les Verts want the alcohol tax gone, and most of Sessau agrees. You didn’t get to choose on the pension — the coalition forced your hand. This one you own.' },
+  { page: '/tutorial/legislature/', target: '#acEndorse', ey: 'Your Choice', title: 'Endorse — or Don’t',
+    body: 'Endorse it and it goes to next week’s floor: the public rewards you, but ₣22.2bn leaves your budget, and your surplus with it. Leave it and keep your books, with approval where it is. No wrong answer — decide, then continue.', pulse: true },
+  { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'On the Record', title: 'Live With It',
+    body: 'Whatever you chose stands. Approval or the budget — you can rarely serve both at once, and that tension is the whole job. It only sharpens from here.' },
 ];
 
 let guideStep = 0, guideEls = null, guideReposition = null, guideGate = null, guideGateEvent = null;

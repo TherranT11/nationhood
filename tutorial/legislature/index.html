@@ -85,6 +85,8 @@
   .bill__tick--fail{color:var(--red)}
   .btn.is-active{outline:2px solid var(--ink);outline-offset:1px}
   .bill__empty{font-size:14px;color:var(--muted);padding:6px 0 2px}
+  .bill__note{margin-top:12px;font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);text-align:center}
+  .bill__note:empty{display:none}
   .btn--ghost{background:var(--chip);border-color:var(--line);color:var(--soft)}
   .btn--ghost[disabled]{cursor:not-allowed;opacity:.65}
   .botnav{display:none}
@@ -157,15 +159,16 @@
         <section class="card gd-committee">
           <div class="card__k">Committee</div>
           <div class="bill__name">Abolish the Alcohol Tax</div>
-          <div class="bill__by">Proposed by Les Verts Sessauans &middot; No endorsements yet</div>
+          <div class="bill__by" id="acBy">Proposed by Les Verts Sessauans &middot; No endorsements yet</div>
           <div class="bill__chips">
             <span class="chip chip--cost">&minus;$22.2 bn/year</span>
             <span class="chip chip--good">Very popular</span>
           </div>
           <div class="bill__btns">
-            <button class="btn btn--ghost" type="button" disabled>Endorse</button>
-            <button class="btn btn--ghost" type="button" disabled>Conditional Endorsement</button>
+            <button class="btn btn--ghost" id="acEndorse" type="button" disabled>Endorse</button>
+            <button class="btn btn--ghost" id="acConditional" type="button" disabled>Conditional Endorsement</button>
           </div>
+          <div class="bill__note" id="acNote"></div>
         </section>
       </div>
     </main>
@@ -267,6 +270,39 @@
 
     el.voteYes.addEventListener('click', () => cast('yes'));
     el.voteNo.addEventListener('click', () => cast('no'));
+    render();
+  })();
+
+  /* Abolish the Alcohol Tax — the player's first real choice, live from turn 2.
+     Binary: Endorse it (populist — floor next week, approval up, ₣22.2bn off the
+     budget) or leave it (keep the books). Conditional Endorsement stays locked
+     as a preview of a later option. Declining is valid, so this isn't gated. */
+  (function () {
+    if (getTutTurn() < 1) return;               // greyed preview during turn 1
+    const endorse = document.getElementById('acEndorse');
+    if (!endorse) return;
+    const by = document.getElementById('acBy'), note = document.getElementById('acNote');
+    endorse.disabled = false;
+    endorse.classList.remove('btn--ghost');
+    endorse.classList.add('btn--primary');
+
+    let endorsed = false;
+    try { endorsed = sessionStorage.getItem('nh-alcohol') === 'endorse'; } catch (e) {}
+
+    function render() {
+      endorse.classList.toggle('is-active', endorsed);
+      endorse.textContent = endorsed ? 'Endorsed' : 'Endorse';
+      if (by) by.innerHTML = 'Proposed by Les Verts Sessauans &middot; ' +
+        (endorsed ? 'Endorsed by Front Sessau' : 'No endorsements yet');
+      if (note) note.textContent = endorsed
+        ? 'This bill moves to the floor next tick. Approval will rise; ₣22.2bn leaves the budget.'
+        : '';
+    }
+    endorse.addEventListener('click', () => {
+      endorsed = !endorsed;                     // click again to withdraw
+      try { endorsed ? sessionStorage.setItem('nh-alcohol', 'endorse') : sessionStorage.removeItem('nh-alcohol'); } catch (e) {}
+      render();
+    });
     render();
   })();
 </script>
