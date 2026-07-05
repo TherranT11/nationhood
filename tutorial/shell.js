@@ -230,7 +230,7 @@ function mountTutorialTopbar() {
   bar.innerHTML =
     '<span class="nhbar__chip nhbar__inf" title="Influence">' +
       '<svg class="nhbar__star" viewBox="0 0 24 24"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>4</span>' +
-    '<span class="nhbar__chip nhbar__date">March, 1980</span>' +
+    '<span class="nhbar__chip nhbar__date">December, 1979</span>' +
     '<button class="nhbar__week" type="button" disabled>Next Week</button>' +
     '<button class="nhbar__theme" type="button" aria-label="Toggle dark mode">' +
       '<svg class="ic-moon" viewBox="0 0 24 24"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8z"/></svg>' +
