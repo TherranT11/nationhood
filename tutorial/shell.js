@@ -189,8 +189,12 @@ export function alcoholResolved() {
   try { return getTutTurn() >= 2 && sessionStorage.getItem('nh-alcohol') === 'endorse'; } catch (e) { return false; }
 }
 
+export const TUT_INFLUENCE_BASE = 4;     // Influence at turn 0
+export const TUT_INFLUENCE_GAIN = 3;     // Influence accrued each turn
+
 // One source for every derived headline number, read by the topbar and Home.
 export function tutDate() { return TUT_DATES[Math.min(getTutTurn(), TUT_DATES.length - 1)]; }
+export function tutInfluence() { return TUT_INFLUENCE_BASE + TUT_INFLUENCE_GAIN * getTutTurn(); }
 export function tutBalance() {
   return TUT_BALANCE_BASE + (pensionAbolished() ? TUT_PENSION_SAVING : 0) - (alcoholResolved() ? TUT_ALCOHOL_COST : 0);
 }
@@ -304,7 +308,7 @@ function mountTutorialTopbar() {
   bar.className = 'nhbar';
   bar.innerHTML =
     '<span class="nhbar__chip nhbar__inf" title="Influence">' +
-      '<svg class="nhbar__star" viewBox="0 0 24 24"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>4</span>' +
+      '<svg class="nhbar__star" viewBox="0 0 24 24"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>' + tutInfluence() + '</span>' +
     '<span class="nhbar__chip nhbar__bal ' + balCls + '" title="Budget balance (per year)">' + balTxt + '</span>' +
     '<span class="nhbar__chip nhbar__date">' + dateTxt + '</span>' +
     '<button class="nhbar__week" type="button" disabled>Next Week</button>' +
