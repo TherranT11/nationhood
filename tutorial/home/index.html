@@ -299,10 +299,13 @@
     const turn = getTutTurn(), nowVal = tutApproval();
     const base12 = [23, 24, 24, 26, 25, 27, 28, 29, 28, 30, 31, 32];
     const base12Labels = ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'];
-    // Extend the run-up with a point per resolved turn (Jan = pension, Feb = alcohol).
+    // Extend the run-up with a point per resolved turn. Jan = pension vote; Feb
+    // holds flat (alcohol is still in committee); Mar = alcohol resolved, and
+    // from there the live point tracks current approval as the campaign moves it.
     const tail = [], tailLbl = [];
     if (turn >= 1) { tail.push(TUT_APPROVAL_BASE - TUT_APPROVAL_DROP); tailLbl.push('Jan'); }
-    if (turn >= 2) { tail.push(nowVal); tailLbl.push('Feb'); }
+    if (turn >= 2) { tail.push(TUT_APPROVAL_BASE - TUT_APPROVAL_DROP); tailLbl.push('Feb'); }
+    if (turn >= 3) { tail.push(nowVal); tailLbl.push('Mar'); }
     const data12 = base12.concat(tail), lbl12 = base12Labels.concat(tailLbl);
     const monthDelta = (arr) => {
       if (arr.length < 2) return '';

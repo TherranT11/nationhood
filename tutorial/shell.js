@@ -186,7 +186,7 @@ export function getFloorVote() {
 export function pensionAbolished() { return getTutTurn() >= 1 && getFloorVote() === 'yes'; }
 // True once the alcohol repeal resolves — the player endorsed it and a further week passed.
 export function alcoholResolved() {
-  try { return getTutTurn() >= 2 && sessionStorage.getItem('nh-alcohol') === 'endorse'; } catch (e) { return false; }
+  try { return getTutTurn() >= 3 && sessionStorage.getItem('nh-alcohol') === 'endorse'; } catch (e) { return false; }
 }
 
 export const TUT_INFLUENCE_BASE = 20;    // Influence at turn 0 (a campaign war-chest)
@@ -496,13 +496,14 @@ const GUIDE_STEPS = [
     body: 'This bar rides with you everywhere: your Influence to spend, the nation’s budget balance, the date, and the button that moves time. You’ve read your nation, governed, legislated, answered the chamber, and faced the press — that’s a week in Sessau. Let’s advance the week.',
     enableWeek: true, pulse: true },
 
-  // Turn 2 — the week has advanced; the guided tour continues
+  // Turn 1 — the week has advanced; the pension's fallout lands
   { page: '/tutorial/home/', target: '.nhbar__date', ey: 'Week Two', title: 'A New Week',
     body: 'January, 1980. You advanced the week and Sessau moved with you. The date has rolled forward, and every choice you made last week has now taken effect.' },
   { page: '/tutorial/home/', target: '.appr__factors', ey: 'The Mark', title: 'The Fallout Lands',
     body: 'Abolishing the pension cost you nine points — approval fell to 23%, logged right here under Party Approval as a Last Factor. Nothing you do in Sessau is free.' },
   { page: '/tutorial/home/', target: '.nhbar__bal', ey: 'The Ledger', title: 'The Other Side',
-    body: 'But the ₣23bn you saved swung the budget into surplus — up top, in green. This is the whole game: every choice trades one number for another.' },
+    body: 'But the ₣23bn you saved swung the budget into surplus — up top, in green. Every choice trades one number for another. A new week brings a fight that’s yours to pick. Advance.',
+    enableWeek: true, pulse: true },
 
   // Turn 2 — the alcohol tax: the first choice that is truly the player's
   { page: '/tutorial/home/', target: '.nav__i[href="/tutorial/legislature/"], .botnav__i[href="/tutorial/legislature/"]',
@@ -513,15 +514,12 @@ const GUIDE_STEPS = [
   { page: '/tutorial/legislature/', target: '#acEndorse', ey: 'Your Choice', title: 'Endorse — or Don’t',
     body: 'Endorse it and Les Verts may choose to advance it to the floor — where, if it passes, the public rewards you but ₣2.2bn leaves your budget. Your backing doesn’t carry it alone; it’s theirs to move. Leave it and keep your books, with approval where it is. No wrong answer — decide, then continue.', pulse: true },
   { page: '/tutorial/legislature/', target: '.nhbar', ey: 'The Week Ahead', title: 'See It Through',
-    body: 'Your call on the alcohol tax is made — approval or the budget, you can rarely serve both, and that’s the whole job. If you endorsed it and Les Verts carry it through, the public rewards you (+approval) and the treasury pays the bill (−₣2.2bn). Hit Next Week and advance.',
+    body: 'Your call on the alcohol tax is made — approval or the budget, you can rarely serve both, and that’s the whole job. If you endorsed it and Les Verts carry it to the floor, the reward lands next week; if not, it sits in committee. Hit Next Week and advance.',
     enableWeek: true, pulse: true },
 
-  // Turn 3 — the alcohol result is in; the election tightens
-  { page: '/tutorial/home/', target: '.appr__factors', ey: 'On the Record', title: 'It Landed',
-    body: 'There’s your alcohol call, logged above. Endorse it and approval clawed back while the treasury took the hit; leave it and your books held. Either way the wheel turns — advance once more.',
-    enableWeek: true, pulse: true },
+  // Turn 3 — six months out; the campaign opens
   { page: '/tutorial/home/', target: '.nav__i[href="/tutorial/election/"], .botnav__i[href="/tutorial/election/"]',
-    ey: 'Six Months Out', title: 'The Clock Tightens', body: 'The election is now six months away — and the Election tab is lit. Before you fight the next one, see how you won the last. Head there.',
+    ey: 'Six Months Out', title: 'The Clock Tightens', body: 'It’s now six months before the election — and the Election tab is lit. Before you fight the next one, see how you won the last, then open your campaign. Head there.',
     nav: '/tutorial/election/', cta: 'Election →', pulse: true },
   { page: '/tutorial/election/', target: '.gd-lastelec', ey: 'How You Got Here', title: 'The 1976 Election',
     body: 'This is the vote that built today’s Assembly. Front Sessau took 114 of 240 seats — a plurality, not the 121 needed to govern alone, which is exactly why you needed Union Conservatrice. In six months, you defend it.' },

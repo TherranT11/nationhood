@@ -280,11 +280,11 @@
      as a preview of a later option. Declining is valid, so this isn't gated. */
   (function () {
     const turn = getTutTurn();
-    if (turn < 1) return;                        // greyed preview during turn 1
+    if (turn < 2) return;                        // greyed preview until the turn-2 choice
     const endorse = document.getElementById('acEndorse');
     if (!endorse) return;
     const by = document.getElementById('acBy'), note = document.getElementById('acNote');
-    const locked = turn >= 2;                    // the week advanced — the choice is resolved
+    const locked = turn >= 3;                    // the week advanced — the choice is resolved
     endorse.classList.remove('btn--ghost');
     endorse.classList.add('btn--primary');
 
