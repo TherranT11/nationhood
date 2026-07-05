@@ -161,48 +161,6 @@
   .atarget__id b{font-weight:800;font-size:14.5px;letter-spacing:-.01em}
   .atarget__id span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;color:var(--soft);margin-left:6px}
   .atarget__st{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap;text-align:right}
-  /* DIRECT modal: member picker + field-action cards (reuse the .amodal shell). */
-  .dir-sub{font-size:12.5px;color:var(--muted);margin:-2px 0 4px}
-  .dir-members{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:4px}
-  .dir-mem{font-family:'Space Mono',monospace;font-size:11px;border:1px solid var(--line2);background:var(--surface);border-radius:20px;padding:7px 12px;cursor:pointer;color:var(--muted);text-align:left}
-  .dir-mem.on{border-color:var(--indigo);color:var(--indigo);font-weight:700;background:var(--indigo-soft)}
-  .dir-mem .dep{color:var(--amber);font-weight:700}
-  .dir-stats{display:flex;gap:6px;flex-wrap:wrap}
-  .dir-stat{font-family:'Space Mono',monospace;font-size:10px;background:var(--chip);border-radius:7px;padding:4px 8px;color:var(--muted)}
-  .dir-minban{margin-top:10px;padding:10px 13px;border-radius:10px;font-size:12.5px;line-height:1.45;color:var(--red);border:1px solid color-mix(in srgb,var(--red) 30%,transparent);background:color-mix(in srgb,var(--red) 8%,var(--surface))}
-  .dir-minban b{color:var(--ink)}
-  .dir-stat b{color:var(--ink)}
-  .dcard{border:1px solid var(--line);border-radius:13px;padding:14px 15px}
-  .dcard.para{border-color:color-mix(in srgb,var(--red) 35%,transparent);background:color-mix(in srgb,var(--red) 8%,var(--surface))}
-  .dcard__t{font-weight:800;font-size:15px;letter-spacing:-.01em}
-  .dcard__mech{font-family:'Space Mono',monospace;font-size:11px;color:var(--ink);margin-top:8px;background:var(--chip);border-radius:8px;padding:7px 10px}
-  .dcard__eff{font-size:12.5px;margin-top:8px;color:var(--muted);line-height:1.5}
-  .dcard__eff b{color:var(--green)} .dcard__eff b.bad{color:var(--red)}
-  .dcard__foot{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin-top:12px}
-  .dgo{background:var(--ink);color:#fff;border:none;border-radius:9px;padding:9px 16px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;font-weight:700;cursor:pointer}
-  .dgo:hover{filter:brightness(1.15)} .dgo:disabled{background:var(--line2);cursor:not-allowed}
-  .dgo.idg{background:var(--indigo)} .dgo.red{background:var(--red)}
-  .dboost{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:11px;padding:8px 10px;border:1px dashed var(--line2);border-radius:10px}
-  .dboost .bl{font-size:11px;color:var(--muted)}
-  .dstep{display:flex;align-items:center;border:1px solid var(--line2);border-radius:8px;overflow:hidden;background:var(--surface)}
-  .dstep button{width:28px;height:28px;border:none;background:transparent;font-size:14px;color:var(--muted);cursor:pointer}
-  .dstep button:disabled{color:var(--line2);cursor:not-allowed}
-  .dstep .v{min-width:34px;text-align:center;font-family:'Space Mono',monospace;font-weight:700;font-size:12px}
-  .dboost .calc{font-family:'Space Mono',monospace;font-size:10px;color:var(--indigo)}
-  .dnote{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted)} .dnote b{color:var(--ink)}
-  /* RECRUIT candidate cards (reuse the .amodal shell). */
-  .cand{display:flex;flex-direction:column;gap:9px;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;color:var(--ink);font-family:inherit;transition:border-color .15s}
-  .cand:hover{border-color:var(--indigo)}
-  .cand:disabled{opacity:.5;cursor:not-allowed}
-  .cand:disabled:hover{border-color:var(--line)}
-  .cand__top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-  .cand__name b{font-weight:800;font-size:15px;letter-spacing:-.01em}
-  .cand__tag{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);padding:4px 9px;border-radius:20px;white-space:nowrap}
-  .cand__meta{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
-  .cand__stats{display:flex;flex-wrap:wrap;gap:6px}
-  .cand__stat{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--muted);background:var(--chip);border-radius:6px;padding:4px 8px}
-  .cand__stat b{color:var(--ink)}
-  .cand__cost{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo)}
   /* NEGOTIATE modal: reuses .atarget rows; adds the Start-New button + a back link. */
   .negnew{width:100%;text-align:center;background:var(--surface);border:1px dashed var(--line2,#D9D6D0);border-radius:11px;padding:13px;cursor:pointer;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--indigo)}
   .negnew:hover{border-color:var(--indigo)}
@@ -463,7 +421,7 @@
   import { fetchNationInitiatives, renderNationInitiatives } from '/initiatives.js';
   import { openJointProposer, fetchJointNegotiations, renderJointNegotiations } from '/joint.js';
   import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
-  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, STANDING_COST, PRODUCE_COST, PRODUCE_COOLDOWN } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, PRODUCE_COST, PRODUCE_COOLDOWN } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
   import { ideologyLabel } from '/archetypes.js';
   import { MINISTRIES } from '/ministries.js';
@@ -641,9 +599,8 @@
   function setActions(n) {
     partyActions = n;
     setTopbarActions(n);
-    // Each button carries its action cost (data-cost; default 1, Standing actions
-    // STANDING_COST — stamped just below), so a button greys out the moment you can't
-    // afford it — not just at zero.
+    // Each button carries its action cost (data-cost; default 1), so a button greys
+    // out the moment you can't afford it — not just at zero.
     actionBtns.forEach(function (b) { b.disabled = n < (parseInt(b.dataset.cost, 10) || 1); });
     if (nocoBtn && nocoUntilTick > NOW_TICK) nocoBtn.disabled = true;   // cooldown overrides the AP gate
     if (produceBtn && produceUntilTick > NOW_TICK) produceBtn.disabled = true;
@@ -863,11 +820,6 @@
       ping(okMsg(data));
     } catch (e) { ping('Action failed. Try again.'); }
     finally { acting = false; setActions(partyActions); }
-  }
-  function wireAction(btn, rpc, okMsg) {
-    if (!btn) return;
-    actionBtns.push(btn);
-    btn.addEventListener('click', function () { if (!btn.disabled) performAction(function () { return supabase.rpc(rpc); }, okMsg); });
   }
 
   // LEAVE COALITION — walk out of the government (1 AP). A junior partner takes −3% Party
@@ -1287,21 +1239,17 @@
     }
   });
 
-  // Stamp every action card with its AP cost. Standing actions (data-standing) take
-  // their cost from STANDING_COST (util.js → mirrors schema/40 _standing_cost()), so the
-  // gate, the pill, and the tooltip all read one source; %COST% in the title resolves to
-  // it. data-cost-label overrides the pill text for a variable cost (Recruit: 1–2);
-  // data-soon marks a not-yet-wired action with a "Soon" pill. The gate is setActions.
+  // Stamp every action card with its AP cost from data-cost. data-cost-free marks a
+  // deferred/free action (a "Free" pill); data-soon marks a not-yet-wired action
+  // (a "Soon" pill). The action budget gate is setActions.
   function stampCost(b) {
     if (b.querySelector('.lead__cost')) return;   // already stamped (PM bar can re-render)
-    if (b.hasAttribute('data-standing')) { b.dataset.cost = STANDING_COST; b.title = b.title.replace('%COST%', STANDING_COST); }
     var pill = document.createElement('span');
     if (b.hasAttribute('data-soon')) { pill.className = 'lead__cost lead__cost--soon'; pill.textContent = 'Soon'; }
-    else if (b.hasAttribute('data-cost-free')) { pill.className = 'lead__cost'; pill.textContent = 'Free'; }   // cost is deferred (Negotiate: paid on invite/commit, not on open)
-    else { pill.className = 'lead__cost'; pill.textContent = (b.dataset.costLabel || (parseInt(b.dataset.cost, 10) || 1)) + ' AP'; }
+    else if (b.hasAttribute('data-cost-free')) { pill.className = 'lead__cost'; pill.textContent = 'Free'; }
+    else { pill.className = 'lead__cost'; pill.textContent = (parseInt(b.dataset.cost, 10) || 1) + ' AP'; }
     b.appendChild(pill);
   }
-  document.querySelectorAll('.leadbar__grid .lead').forEach(stampCost);
 
 
   // NEGOTIATE opens coalition talks (server-backed — see /negotiations.js): a
