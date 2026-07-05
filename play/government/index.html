@@ -126,19 +126,6 @@
   .polopt .role{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
   .mcard__empty{color:var(--soft);font-style:italic;font-size:13px;padding:8px 0}
 
-  /* formation-window decision card */
-  .decide{border-top:3px solid var(--tc,var(--indigo));margin-bottom:18px}
-  .decide__eye{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--indigo);font-weight:700}
-  .decide h2{font-family:inherit;text-transform:none;font-weight:900;font-size:21px;letter-spacing:-.02em;color:var(--ink);margin:6px 0 8px}
-  .decide p{color:var(--muted);font-size:13.5px;line-height:1.55;max-width:640px}
-  .decide p b{color:var(--ink);font-weight:700}
-  .decide__btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
-  .decide__hint{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);margin-top:10px}
-  .btn{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;font-weight:700;text-transform:uppercase;padding:11px 18px;border-radius:10px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:filter .15s,opacity .15s}
-  .btn:hover{filter:brightness(1.06)}
-  .btn--ghost{background:var(--surface);color:var(--indigo)}
-  .btn--danger{background:var(--red);border-color:var(--red)}
-  .btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--bg);font-family:'Space Mono',monospace;font-size:12px;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:120;max-width:90vw;text-align:center;line-height:1.55}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
@@ -312,7 +299,7 @@
   }
 
 
-  function render(govt, nation, parties, agenda, amPM, formation, pmLeader, formateurPols, polsByParty, appts){
+  function render(govt, nation, parties, agenda, amPM, pmLeader, formateurPols, polsByParty, appts){
     polsByParty = polsByParty || {};
     FULFILL = {};   // rebuilt below for each pending ministry the PM can fill
     var box = document.getElementById('content');
@@ -416,35 +403,7 @@
       agendaHtml = '<p class="muted">No coalition agenda — this government is not bound by negotiated terms.</p>';
     }
 
-    // Formation-window decision card (formateur only, the tick the government formed).
-    var f = formation || {};
-    var cardHtml = '';
-    if (f.canRenege){
-      cardHtml =
-        '<div class="panel decide">' +
-          '<span class="decide__eye">Form your government</span>' +
-          '<h2>You won the most seats</h2>' +
-          '<p>Your pre-agreed coalition has taken office. You can honour that deal, or tear it up and build a different majority — but only this turn. Breaking it costs <b>−5% Government Confidence</b> and <b>−5% of your Popularity</b>, and there’s no going back to the current coalition.</p>' +
-          '<div class="decide__btns">' +
-            '<button class="btn btn--ghost" id="enterAgreed" type="button">Enter Agreed Coalition</button>' +
-            '<button class="btn btn--danger" id="formNew" type="button">Form New Coalition</button>' +
-          '</div>' +
-        '</div>';
-    } else if (f.postRenege){
-      var hasNeg = !!f.negId;
-      cardHtml =
-        '<div class="panel decide">' +
-          '<span class="decide__eye">Form your government</span>' +
-          '<h2>Governing alone</h2>' +
-          '<p>You walked away from your coalition and now hold power as a minority. Assemble a new majority at the negotiating table before the turn ends — otherwise you stay a minority government. Sealing a new coalition costs <b>−5% Government Confidence</b> and <b>−5% of your Popularity</b>.</p>' +
-          '<div class="decide__btns">' +
-            '<button class="btn" id="installNew" type="button"' + (hasNeg ? '' : ' disabled') + '>Install New Coalition</button>' +
-          '</div>' +
-          (hasNeg ? '' : '<div class="decide__hint">No committed majority agreement yet — form one at Negotiate, then install it here.</div>') +
-        '</div>';
-    }
-
-    box.innerHTML = cardHtml +
+    box.innerHTML =
       // 1 — Government Confidence
       '<div class="panel"><h2>Government Confidence</h2>' +
         '<div class="conf__n" style="color:' + bd.color + '">' + c.toFixed(1) + '<span>%</span></div>' +
@@ -483,9 +442,6 @@
       if (b.dataset.fulfill) b.addEventListener('click', function(){ openFulfill(b.dataset.fulfill); });
       else b.addEventListener('click', function(){ enact(b.dataset.id); });
     });
-    var ea = document.getElementById('enterAgreed'); if (ea) ea.addEventListener('click', function(){ enterAgreed(govt.id); });
-    var fnb = document.getElementById('formNew');     if (fnb) fnb.addEventListener('click', renege);
-    var inb = document.getElementById('installNew');  if (inb && f.negId) inb.addEventListener('click', function(){ install(f.negId); });
   }
 
   // --- state shared by the boot + the post-enact refresh ---
@@ -611,15 +567,6 @@
         agenda = ag || [];
       }
       var amPM = !!(govt && govt.formateur_party_id === MY_PARTY_ID); // only the leading party enacts
-      // The formation-window choice (formateur-only, the tick it formed) — one
-      // source, shared with the Home banner. Loaded lazily and defensively: this
-      // optional nudge must never block the core page from rendering. render()
-      // treats a missing object as "no card", so the fallback is just {}.
-      var formation = {};
-      try {
-        const fm = await import('/formation.js');
-        formation = await fm.formationState({ id: MY_PARTY_ID, nation_id: NATION_ID });
-      } catch (e) { /* non-critical enhancement — fall through with no card */ }
       // Rosters of every governing party, in one query: the formateur's leader is the Head of
       // Government (cabinet top row), a minority government staffs the rest of the cabinet from
       // its own roster, and a coalition fills portfolios from the promised parties' rosters via
@@ -654,7 +601,7 @@
           });
         } catch (e) { /* cabinet falls back to the derived view */ }
       }
-      render(govt, NATION || {}, parties || [], agenda, amPM, formation, pmLeader, formateurPols, polsByParty, appts);
+      render(govt, NATION || {}, parties || [], agenda, amPM, pmLeader, formateurPols, polsByParty, appts);
       loadNatObjectives(govt && govt.id, NATION_ID, amPM);   // fill the National Objectives area (non-blocking)
       // Administration History (collapsible, past + current governments) — non-blocking enhancement.
       var ahTick = null; try { ahTick = await currentTick(); } catch (e) { /* duration falls back to the formed tick */ }
@@ -678,38 +625,6 @@
     finally { busy = false; }
   }
 
-
-  // [Form New Coalition]: burn the agreed deal, drop to a minority. Destructive
-  // and one-way, so confirm first. The penalty only lands later, on install.
-  async function renege(){
-    if (busy) return;
-    if (!confirm('Form a new coalition? This dissolves your agreed coalition immediately — you’ll govern alone until you seal a new majority, and you can’t return to the current deal. Building the replacement at the negotiating table costs party actions, so be sure you have some left this turn.')) return;
-    busy = true;
-    try {
-      const { error } = await supabase.rpc('coalition_renege');
-      if (error) throw error;
-      ping('Coalition dissolved — you’re governing alone. Build a new majority before the turn ends.');
-      await load();
-    } catch (e) { ping(e.message || 'Couldn’t do that right now.'); }
-    finally { busy = false; }
-  }
-
-  // [Install New Coalition]: seal the replacement (−5 Confidence, −5% Popularity).
-  async function install(negId){
-    if (busy) return;
-    busy = true;
-    try {
-      const { data, error } = await supabase.rpc('coalition_install', { p_neg: negId });
-      if (error) throw error;
-      ping('New coalition installed — Government Confidence ' + Number(data.confidence).toFixed(1) + '%, Popularity −' + data.pop_delta + '%.');
-      await load();
-    } catch (e) { ping(e.message || 'Couldn’t install that coalition.'); }
-    finally { busy = false; }
-  }
-
-  // [Enter Agreed Coalition]: keep what formed. No server action — just dismiss
-  // the prompt for this government so it doesn't nag on reload.
-  function enterAgreed(govId){ sessionStorage.setItem('govConfirmed', govId); load(); }
 
   (async () => {
     if (!isConfigured) { document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">Supabase isn’t configured.</div></div>'; return; }
