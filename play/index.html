@@ -66,15 +66,15 @@
   .crisis__stgname{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin:6px 0 9px}
   .crisis__meter{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);margin-top:5px}
 
-  /* Party Leader · This Week's Action. Enabled actions are live buttons; the
-     not-yet-wired ones are real <button disabled> (dimmed, can't click/focus).
-     Four per row (eight total). */
+  /* Action cards (the PM / ministerial "This Week's Action" bars). Enabled
+     actions are live buttons; not-yet-wired ones are real <button disabled>
+     (dimmed, can't click/focus). Four per row. */
   .leadbar__grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
   @media(max-width:700px){.leadbar__grid{grid-template-columns:repeat(2,1fr)}}
   .lead{position:relative;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:15px 16px;color:var(--muted);font-family:inherit;cursor:pointer;transition:border-color .15s,transform .12s,box-shadow .2s}
   .lead:not(:disabled):hover{border-color:var(--indigo);transform:translateY(-1px);box-shadow:0 12px 26px -18px rgba(85,70,232,.5)}
   .lead:disabled{cursor:not-allowed;opacity:.5;background:var(--chip)}
-  /* AP cost pill (top-right). The "Soon" variant marks an action not yet wired up. */
+  /* Influence cost pill (top-right). The "Soon" variant marks an action not yet wired up. */
   .lead__cost{position:absolute;top:12px;right:13px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);padding:3px 7px;border-radius:20px;white-space:nowrap}
   .lead__cost--soon{color:var(--soft);background:var(--chip)}
   .lead b{display:block;font-weight:800;font-size:17px;letter-spacing:-.01em;color:var(--ink);margin-bottom:7px;padding-right:52px}
@@ -338,7 +338,7 @@
     <div class="amodal__list" id="appointBody"></div>
     <div class="appoint__foot">
       <span class="appoint__note">Economic Development, Interior, Foreign Affairs &amp; Trade grant the appointee <b>+1 Image</b>.</span>
-      <div class="appoint__btns"><button class="noco__btn noco__cancel" id="appointCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="appointConfirm" type="button">Confirm <span class="appoint__ap">1 AP</span></button></div>
+      <div class="appoint__btns"><button class="noco__btn noco__cancel" id="appointCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="appointConfirm" type="button">Confirm <span class="appoint__ap">1 Influence</span></button></div>
     </div>
   </div>
 </div>
@@ -535,7 +535,7 @@
   // disabled), so the buttons are correct on load and after every action.
   var partyActions = 0, feedCtx = null, acting = false, actionBtns = [], myPartyId = null, amPM = false, isEconDevMin = false, myCurrency = '$';
   // Produce/Reshuffle/Election are nation-wide cooldown-gated: while the until-tick is in the
-  // future the action stays disabled for everyone in the nation, on top of the usual AP gate.
+  // future the action stays disabled for everyone in the nation, on top of the usual Influence gate.
   var NOW_TICK = 0, produceUntilTick = 0, produceBtn = null, reshuffleUntilTick = 0, reshuffleBtn = null, electionUntilTick = 0, electionBtn = null;
   function setActions(n) {
     partyActions = n;
@@ -762,10 +762,10 @@
   }
 
 
-  // BUILD MILITARY BASE — the Minister of Defence commissions a base (2 AP, $15B from the
+  // BUILD MILITARY BASE — the Minister of Defence commissions a base (2 Influence, $15B from the
   // Budget; a shortfall rolls into Debt). Home builds in your own territory; Abroad builds in
   // an allied nation — a Continent → Nation drilldown where nations you have no mutual defence
-  // pact with are disabled. Fires through performAction so the AP budget + feed refresh.
+  // pact with are disabled. Fires through performAction so the Influence budget + feed refresh.
   var buildBaseModal = document.getElementById('buildBaseModal');
   var BB = { mode: 'home', byCont: {}, allies: {} };
   function openBuildBase() {
@@ -850,7 +850,7 @@
       function (d) { return 'A new military base has been commissioned' + (d && d.abroad ? ' abroad.' : '.'); });
   });
 
-  // EXPAND MILITARY — build typed units (Army / Fleet / Air Wing) at one of your bases (1 AP).
+  // EXPAND MILITARY — build typed units (Army / Fleet / Air Wing) at one of your bases (1 Influence).
   // Each unit is paid in Military (the on_hand pool): Army 1, Fleet 2, Air Wing 1, and takes its
   // build time (1 / 3 / 2 ticks). A base holds at most 5 units (built + building). UNIT_SPEC
   // mirrors schema/129; the server is authoritative.
@@ -934,7 +934,7 @@
     };
   }
 
-  // DEPLOY MILITARY — move built units between two of your bases (1 AP, instant). Pick a source
+  // DEPLOY MILITARY — move built units between two of your bases (1 Influence, instant). Pick a source
   // base, a unit type there, and a destination; the destination can't exceed 5 units. Fires
   // deploy_military through performAction. Uses UNIT_ORDER / UNIT_SPEC / unitIcon from Expand.
   var UNIT_COL = { army: 'armies', fleet: 'fleets', air_wing: 'air_wings' };
@@ -1008,7 +1008,7 @@
   }
 
 
-  // STATEMENT — the head of government releases a written address (0 AP, $10K funds).
+  // STATEMENT — the head of government releases a written address (0 Influence, $10K funds).
   // International reaches every nation's feed; domestic stays in the home nation. The
   // server renders the wording (one source) and writes the events; we just refresh.
   var STMT = { scope: 'international', busy: false };
@@ -1050,7 +1050,7 @@
   var appointModal = document.getElementById('appointModal');
   var closeAppoint = wireModalClose(appointModal, 'appointClose');
   var appointCancel = document.getElementById('appointCancel'); if (appointCancel) appointCancel.addEventListener('click', closeAppoint);
-  // The same cabinet picker serves Appoint (formation, 1 AP) and Reshuffle (mid-term, 2 AP +
+  // The same cabinet picker serves Appoint (formation, 1 Influence) and Reshuffle (mid-term, 2 Influence +
   // popularity/Image consequences + a 6-tick cooldown). apMode tells the confirm which RPC to fire.
   var apMode = 'appoint';
   async function openAppointModal(mode) {
@@ -1058,7 +1058,7 @@
     apMode = mode === 'reshuffle' ? 'reshuffle' : 'appoint';
     var reshuffle = apMode === 'reshuffle';
     appointModal.querySelector('.amodal__hd b').textContent = reshuffle ? 'Reshuffle the Cabinet' : 'Name the Cabinet';
-    var apPill = document.querySelector('#appointConfirm .appoint__ap'); if (apPill) apPill.textContent = reshuffle ? '2 AP' : '1 AP';
+    var apPill = document.querySelector('#appointConfirm .appoint__ap'); if (apPill) apPill.textContent = reshuffle ? '2 Influence' : '1 Influence';
     var foot = appointModal.querySelector('.appoint__note');
     if (foot) foot.innerHTML = reshuffle
       ? 'Parties gain <b>+0.2%</b> popularity per ministry gained, <b>−0.3%</b> per ministry lost. Prestige posts: incoming <b>+1 Image</b>, outgoing <b>−2</b>.'
@@ -1114,7 +1114,7 @@
     }
   });
 
-  // Stamp every action card with its AP cost from data-cost. data-cost-free marks a
+  // Stamp every action card with its Influence cost from data-cost. data-cost-free marks a
   // deferred/free action (a "Free" pill); data-soon marks a not-yet-wired action
   // (a "Soon" pill). The action budget gate is setActions.
   function stampCost(b) {
@@ -1122,7 +1122,7 @@
     var pill = document.createElement('span');
     if (b.hasAttribute('data-soon')) { pill.className = 'lead__cost lead__cost--soon'; pill.textContent = 'Soon'; }
     else if (b.hasAttribute('data-cost-free')) { pill.className = 'lead__cost'; pill.textContent = 'Free'; }
-    else { pill.className = 'lead__cost'; pill.textContent = (parseInt(b.dataset.cost, 10) || 1) + ' AP'; }
+    else { pill.className = 'lead__cost'; pill.textContent = (parseInt(b.dataset.cost, 10) || 1) + ' Influence'; }
     b.appendChild(pill);
   }
 
@@ -1150,9 +1150,9 @@
       PM_ACTIONS.map(function (a) {
         // Produce, Appoint, Statement, Reshuffle and Elections are live; the rest stay dimmed scaffolds.
         var id = a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : a[0] === 'Statement' ? ' id="pm-statement"' : a[0] === 'Reshuffle' ? ' id="pm-reshuffle"' : a[0] === 'Elections' ? ' id="pm-elections"' : '';
-        // Most premiership actions spend the single weekly action (1 AP). Statement costs no
+        // Most premiership actions spend the single weekly action (1 Influence). Statement costs no
         // action (it's paid in $10K funds); Produce costs PRODUCE_COST on a cooldown;
-        // Reshuffle costs 2 AP on a 6-tick cooldown.
+        // Reshuffle costs 2 Influence on a 6-tick cooldown.
         var cost = a[0] === 'Statement' ? ' data-cost-free' : a[0] === 'Produce' ? ' data-cost="' + PRODUCE_COST + '"' : a[0] === 'Reshuffle' ? ' data-cost="2"' : '';
         return '<button class="lead" type="button"' + (id || ' disabled') + cost +
           '><b>' + a[0] + '</b><span class="lead__desc">' + a[1] + '</span></button>';
@@ -1167,8 +1167,8 @@
     }
     var apptBtn = el.querySelector('#pm-appoint');
     if (apptBtn) apptBtn.addEventListener('click', openAppointModal);
-    // Produce: run a production cycle (PRODUCE_COST AP, 12-tick nation cooldown). Fires via
-    // performAction so the AP budget + feed refresh; the returned `until` greys it out at once.
+    // Produce: run a production cycle (PRODUCE_COST Influence, 12-tick nation cooldown). Fires via
+    // performAction so the Influence budget + feed refresh; the returned `until` greys it out at once.
     produceBtn = el.querySelector('#pm-produce');
     if (produceBtn) {
       actionBtns.push(produceBtn);
@@ -1180,14 +1180,14 @@
         });
       });
     }
-    // Reshuffle: reopen the cabinet picker in reshuffle mode (2 AP, 6-tick cooldown).
+    // Reshuffle: reopen the cabinet picker in reshuffle mode (2 Influence, 6-tick cooldown).
     reshuffleBtn = el.querySelector('#pm-reshuffle');
     if (reshuffleBtn) {
       actionBtns.push(reshuffleBtn);
       reshuffleBtn.addEventListener('click', function () { if (!reshuffleBtn.disabled && !acting) openAppointModal('reshuffle'); });
     }
-    // Elections: dissolve the legislature early (1 AP, 12-tick cooldown). Fires via
-    // performAction (AP budget + feed refresh); the returned `until` greys it out at once.
+    // Elections: dissolve the legislature early (1 Influence, 12-tick cooldown). Fires via
+    // performAction (Influence budget + feed refresh); the returned `until` greys it out at once.
     // In a one-party state this calls a Party Congress; multiparty, a general election.
     electionBtn = el.querySelector('#pm-elections');
     if (electionBtn) {
@@ -1238,8 +1238,8 @@
   }
 
   // Minister of Trade bar — shown to a party that holds the Trade portfolio, above the
-  // party actions. The Import card just navigates to the Economy page (where the actual
-  // import, and its 2-AP cost, happens); the "2 AP" pill is informational here.
+  // Influence. The Import card just navigates to the Economy page (where the actual
+  // import, and its 2-Influence cost, happens); the "2 Influence" pill is informational here.
   function renderTradeBar(isTradeMin) {
     var el = document.getElementById('tradebar');
     if (!el) return;
@@ -1263,7 +1263,7 @@
 
   // The Minister of Economic Development container — shown only to the party holding the
   // Economic Development portfolio, directly below the Prime Minister bar. Its Initiative action
-  // (2 AP) is the entry point to the National Initiatives panel lower on the page, where the
+  // (2 Influence) is the entry point to the National Initiatives panel lower on the page, where the
   // minister enacts a programme (server gate: initiative_enact, schema/141).
   function renderEconDevBar(isEconDevMin) {
     var el = document.getElementById('econdevbar');
@@ -1411,7 +1411,7 @@
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));
       // National Initiatives panel: what's available + the one under way. The Minister of Economic
-      // Development enacts through initiative_enact (2 AP) via performAction (AP + feed refresh),
+      // Development enacts through initiative_enact (2 Influence) via performAction (Influence + feed refresh),
       // then the panel reloads.
       function loadInitiatives(){
         fetchNationInitiatives(party.nation_id).then(function(data){

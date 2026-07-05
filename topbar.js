@@ -1,4 +1,4 @@
-// topbar.js — the in-game top bar (Discord, party funds, party actions, date,
+// topbar.js — the in-game top bar (Discord, party funds, Influence, date,
 // and the settings gear). ONE source for every signed-in screen: a page drops
 // <div class="topbar" id="topbar"></div> at the top of <main>, calls
 // mountTopbar() once, then feeds live values via the setters as data loads.

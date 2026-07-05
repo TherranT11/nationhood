@@ -233,7 +233,7 @@
   <div class="tmodal">
     <div class="tm-h"><button class="tclose" id="sancClose">✕</button>
       <div class="tm-mode">Trade sanctions</div><div class="tm-title">Embargo a nation</div>
-      <div class="tm-sub">Bars trade both ways. Sanctioning a regime ≤4 rallies your government (+1 popularity, +2 Confidence); a democracy costs −1 Image. 3 AP to enact.</div></div>
+      <div class="tm-sub">Bars trade both ways. Sanctioning a regime ≤4 rallies your government (+1 popularity, +2 Confidence); a democracy costs −1 Image. 3 Influence to enact.</div></div>
     <div class="tm-body"><div id="sancList"></div></div>
   </div>
 </div>
@@ -353,10 +353,10 @@
     var cdLeft = num(n.produce_until_tick) - num(STATE.tick), onCd = cdLeft > 0;
     var canProduce = STATE.isHog && !onCd && num(STATE.party.actions_remaining) >= PRODUCE_COST;
     var prodLabel = onCd ? ('On cooldown · ' + cdLeft + ' tick' + (cdLeft === 1 ? '' : 's'))
-      : (num(STATE.party.actions_remaining) < PRODUCE_COST ? ('Need ' + PRODUCE_COST + ' AP') : ('Produce · ' + PRODUCE_COST + ' AP'));
+      : (num(STATE.party.actions_remaining) < PRODUCE_COST ? ('Need ' + PRODUCE_COST + ' Influence') : ('Produce · ' + PRODUCE_COST + ' Influence'));
     var prodBtn = STATE.isHog ? '<button class="actbtn" id="produceBtn"' + (canProduce ? '' : ' disabled') + '>' + prodLabel + '</button>' : '';
     var produce = '<div class="actcard"><div class="pt">Produce <span class="hogtag">Head of Government action only</span></div>' +
-      '<div class="pd">Run a production cycle to top up stockpiles: <b>' + batch + '</b>. Costs ' + PRODUCE_COST + ' AP · ' + PRODUCE_COOLDOWN + '-tick cooldown.<div class="onhand">' + strip + '</div></div>' +
+      '<div class="pd">Run a production cycle to top up stockpiles: <b>' + batch + '</b>. Costs ' + PRODUCE_COST + ' Influence · ' + PRODUCE_COOLDOWN + '-tick cooldown.<div class="onhand">' + strip + '</div></div>' +
       '<div class="cost">' + (onCd ? 'Cooldown: ' + cdLeft + ' tick' + (cdLeft === 1 ? '' : 's') + ' left' : 'On-hand shown above') + '</div>' + prodBtn + '</div>';
     // Advance Society
     var pros = num((n.stats||{}).prosperity), advCost = pros + 5, goods = num(on.goods);
@@ -503,7 +503,7 @@
       var endsIn = a.end_tick != null ? Math.max(0, a.end_tick - STATE.tick) : null;
       var lowAp = num(STATE.party.actions_remaining) < 2;
       var canDraw = STATE.isTradeMin && remaining > 0 && stock > 0 && !lowAp;
-      var why = remaining <= 0 ? 'Pool spent' : stock <= 0 ? 'No stock' : lowAp ? 'Need 2 AP' : 'Draw';
+      var why = remaining <= 0 ? 'Pool spent' : stock <= 0 ? 'No stock' : lowAp ? 'Need 2 Influence' : 'Draw';
       var btn = STATE.isTradeMin ? '<button class="tbtn" data-draw="' + esc(a.id) + '"' + (canDraw ? '' : ' disabled') + '>' + esc(why) + '</button>' : '';
       return '<div class="nrow"><div class="n-id"><div class="n-crest" style="background:' + colorFor(a.seller_nation) + '">' + esc(crestOf(sname)) + '</div>' +
         '<div class="n-meta"><div class="n-name">' + esc(sname) + '</div><div class="n-sub">' + a.qty_per_year + ' ' + esc(a.resource) + '/yr · ' + a.term_years + ' yr' + (a.term_years > 1 ? 's' : '') + ' · −' + a.discount_pct + '%</div></div></div>' +
@@ -512,7 +512,7 @@
         (endsIn != null ? '<span class="ta-stat"><b>' + endsIn + '</b> ticks left</span>' : '') + '</div>' +
         '<div class="nact">' + btn + '</div></div>';
     }).join('');
-    return '<div class="panel"><div class="panel-h"><div class="ph-t">Trade Agreements<span class="sub">draw units at the locked price · 2 AP</span></div></div>' +
+    return '<div class="panel"><div class="panel-h"><div class="ph-t">Trade Agreements<span class="sub">draw units at the locked price · 2 Influence</span></div></div>' +
       '<div style="padding:6px 16px 12px">' + rows + '</div></div>';
   }
 
@@ -636,7 +636,7 @@
     var lowAp = num(STATE.party.actions_remaining) < 2;
     var btn = document.getElementById('confirmBtn');
     btn.disabled = mx < 1 || lowAp;
-    btn.textContent = mx < 1 ? 'They have none' : (lowAp ? 'Need 2 Actions' : 'Buy ' + T.qty + ' ' + T.res + ' for ' + cur + net.toFixed(1) + 'B · 2 AP' + (net > budget ? ' (to debt)' : ''));
+    btn.textContent = mx < 1 ? 'They have none' : (lowAp ? 'Need 2 Influence' : 'Buy ' + T.qty + ' ' + T.res + ' for ' + cur + net.toFixed(1) + 'B · 2 Influence' + (net > budget ? ' (to debt)' : ''));
   }
   async function confirmImport(){
     var btn = document.getElementById('confirmBtn'); btn.disabled = true;
@@ -671,7 +671,7 @@
         : 'Regime unknown';
       var btn = byMe
         ? '<button class="liftbtn" data-lift="' + esc(n.id) + '">Lift Sanctions</button>'
-        : '<button class="enactbtn" data-sanc="' + esc(n.id) + '"' + (ap < 3 ? ' disabled' : '') + '>' + (ap < 3 ? 'Need 3 AP' : 'Enact Sanctions') + '</button>';
+        : '<button class="enactbtn" data-sanc="' + esc(n.id) + '"' + (ap < 3 ? ' disabled' : '') + '>' + (ap < 3 ? 'Need 3 Influence' : 'Enact Sanctions') + '</button>';
       return '<div class="sancrow"><div class="sc-crest" style="background:' + colorFor(n.id) + '">' + esc(crestOf(n.name)) + '</div>' +
         '<div class="sc-id"><div class="sc-nm">' + esc(n.name) + '</div><div class="sc-rg ' + (auth ? 'auth' : 'dem') + '">' + esc(hint) + '</div></div>' + btn + '</div>';
     }).join('') || '<div class="sc-rg" style="padding:14px">No other nations to sanction.</div>';
@@ -690,7 +690,7 @@
     } else {
       ping('Sanctions lifted on <b>' + esc((data && data.target) || 'the nation') + '</b>.');
     }
-    await reload();              // refreshes STATE.sanctions, AP and the partner table behind the modal
+    await reload();              // refreshes STATE.sanctions, Influence and the partner table behind the modal
     renderSanctionList();        // the modal stays open — re-render its rows with the new state
   }
   document.getElementById('sancClose').onclick = closeSanctions;
@@ -722,7 +722,7 @@
       '<div class="relnote">Treasury ' + cur + fmt(budget) + 'B · spends 2 Actions on confirm.' + (total > budget ? ' The shortfall is added to national debt.' : '') + '</div>';
     var lowAp = num(STATE.party.actions_remaining) < 2, btn = document.getElementById('drawConfirm');
     btn.disabled = mx < 1 || lowAp;
-    btn.textContent = mx < 1 ? 'Nothing to draw' : (lowAp ? 'Need 2 Actions' : 'Draw ' + D.qty + ' ' + D.a.resource + ' · 2 AP');
+    btn.textContent = mx < 1 ? 'Nothing to draw' : (lowAp ? 'Need 2 Influence' : 'Draw ' + D.qty + ' ' + D.a.resource + ' · 2 Influence');
   }
   async function confirmDraw(){
     var btn = document.getElementById('drawConfirm'); btn.disabled = true;

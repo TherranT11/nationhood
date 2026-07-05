@@ -251,7 +251,7 @@
       html += '<section class="mod"><div class="mod__hd">Options</div><div class="opts">' +
         acts.map(function (a, i) { return actionHtml(a, i, stage, amPM); }).join('') + '</div>' +
         '<div class="opthint">' + (amPM
-          ? 'Taking an action costs 2 party actions.'
+          ? 'Taking an action costs 2 Influence.'
           : 'Only the head of government can act on a national crisis.') + '</div></section>';
     }
 
@@ -268,8 +268,8 @@
     }
   }
 
-  // Head of government acts on the crisis (server-side crisis_act); 1 party action.
-  // On success, ping the outcome, sync the AP pill, and reload the whole view so the
+  // Head of government acts on the crisis (server-side crisis_act); 1 Influence.
+  // On success, ping the outcome, sync the Influence pill, and reload the whole view so the
   // meter/stage, options and history all refresh. Busy-locked against double-fire.
   async function manageCrisis(actionIdx, stage) {
     if (acting) return;

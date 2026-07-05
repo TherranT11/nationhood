@@ -293,7 +293,7 @@
     }
     if (imBuyer(a) && a.status === 'negotiating'){
       var both = a.buyer_approved && a.seller_approved;
-      btns.push('<button class="btn primary" id="commitBtn"' + (both ? '' : ' disabled') + '>' + (both ? 'Commit · 3 AP' : 'Awaiting sign-off') + '</button>');
+      btns.push('<button class="btn primary" id="commitBtn"' + (both ? '' : ' disabled') + '>' + (both ? 'Commit · 3 Influence' : 'Awaiting sign-off') + '</button>');
     }
     if (a.status === 'negotiating' || a.status === 'active') btns.push('<button class="btn danger" id="cancelBtn">Cancel agreement</button>');
     return '<div class="actrow">' + btns.join('') + '</div>';
