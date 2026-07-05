@@ -310,14 +310,16 @@ let guideStep = 0, guideEls = null, guideReposition = null;
 async function mountGuide() {
   const path = location.pathname;
   if (!GUIDE_STEPS.some((s) => s.page === path)) return; // no steps on this page
-  if (isConfigured) {
-    const user = await requireUser();
-    if (!user) return;
-    const p = await getTutorialProgress(user.id);
-    guideStep = (p && p.step) || 0;
-  } else {
-    guideStep = Number(sessionStorage.getItem('nh-guide-step') || 0); // local dev fallback
-  }
+  try {
+    if (isConfigured) {
+      const user = await requireUser();
+      if (!user) return;
+      const p = await getTutorialProgress(user.id);
+      guideStep = (p && p.step) || 0;
+    } else {
+      guideStep = Number(sessionStorage.getItem('nh-guide-step') || 0); // local dev fallback
+    }
+  } catch (e) { return; } // couldn't read progress — don't lock the screen behind a mask
   const begin = () => { const s = GUIDE_STEPS[guideStep]; if (s && s.page === path) renderGuideStep(); };
   // On Home the welcome modal blocks first; it sets nhWelcomeDone + fires
   // nhtutorial:begin in both branches (dismiss or already-seen). Cover the race either way.
@@ -331,8 +333,9 @@ async function mountGuide() {
 }
 
 function persistStep(n) {
-  if (isConfigured) updateProfile({ tutorial_step: n });          // → tutorial_state.step
-  else { try { sessionStorage.setItem('nh-guide-step', String(n)); } catch (e) {} }
+  if (isConfigured) return updateProfile({ tutorial_step: n });    // → tutorial_state.step (Promise)
+  try { sessionStorage.setItem('nh-guide-step', String(n)); } catch (e) {}
+  return Promise.resolve(true);
 }
 
 function clearGuide() {
@@ -379,8 +382,11 @@ function renderGuideStep() {
   guideReposition();
   window.addEventListener('resize', guideReposition);
 
-  const go = () => {
-    if (s.nav) { persistStep(guideStep + 1); window.location.href = s.nav; } // chapter hand-off
+  let advancing = false; // lock: the nav item and the CTA both call go()
+  const go = async () => {
+    if (advancing) return;
+    advancing = true;
+    if (s.nav) { await persistStep(guideStep + 1); window.location.href = s.nav; } // hand-off: persist BEFORE leaving, or the next page reads a stale step and the chapter never starts
     else advanceGuide();
   };
   call.querySelector('.gd-call__btn').addEventListener('click', go);
