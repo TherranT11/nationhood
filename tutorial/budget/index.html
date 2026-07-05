@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Sessau · Budget</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;--line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+  .side{width:236px;flex:none;background:var(--surface);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh;overflow-y:auto}
+  .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .brand__flag{width:42px;height:26px;object-fit:cover;border:1px solid var(--line);border-radius:4px;flex:none}
+  .brand__txt{display:flex;flex-direction:column;line-height:1.25;min-width:0;overflow:hidden}
+  .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;border:1px solid transparent;transition:background .15s,color .15s}
+  .nav__i svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .nav__i .label{font-family:'Space Mono',monospace;font-size:12.5px;letter-spacing:.04em}
+  .nav__i:hover{color:var(--ink);background:var(--chip)}
+  .nav__i.active{color:var(--indigo);background:var(--indigo-soft);font-weight:700}
+  .gear{position:fixed;top:14px;right:16px;z-index:70}
+  .gear__btn{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 10px -5px rgba(0,0,0,.25)}
+  .gear__btn:hover{color:var(--ink);border-color:var(--soft)}
+  .gear__btn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .gear__menu{position:absolute;top:46px;right:0;min-width:172px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 44px -20px rgba(0,0,0,.35);padding:6px}
+  .gear__menu[hidden]{display:none}
+  .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red,#C42B2B);cursor:pointer}
+  .gear__item:hover{background:var(--chip)}
+  .main{flex:1;padding:26px clamp(16px,3vw,40px) 56px;min-width:0}
+  .page{max-width:900px;margin:0 auto}
+  .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
+  .page h1{font-size:clamp(26px,4vw,36px);font-weight:900;letter-spacing:-.025em;color:var(--ink);margin:6px 0 22px}
+  .back{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-decoration:none;margin-bottom:14px}
+  .back:hover{color:var(--ink)}
+  .bhero{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:14px}
+  .bhero__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:8px}
+  .bhero__v{font-size:34px;font-weight:900;letter-spacing:-.03em;color:#C42B2B}
+  .bhero__u{font-size:15px;font-weight:700;color:var(--soft);margin-left:4px}
+  .bhero__chart{width:100%;height:56px;display:block;margin-top:10px}
+  .bsum{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .bsum__card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .bsum__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;margin-bottom:8px}
+  .bsum__k--rev{color:#16915a}
+  .bsum__k--spend{color:#C42B2B}
+  .bsum__v{font-size:24px;font-weight:900;letter-spacing:-.02em;color:var(--ink)}
+  .bsum__u{font-size:13px;font-weight:700;color:var(--soft);margin-left:3px}
+  .bsum__bar{height:6px;border-radius:4px;background:var(--chip);overflow:hidden;margin-top:12px}
+  .bsum__bar span{display:block;height:100%;border-radius:4px}
+  .bdebt{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:18px}
+  .bdebt__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:6px}
+  .bdebt__v{font-size:24px;font-weight:900;letter-spacing:-.02em;color:var(--ink)}
+  .bdebt__u{font-size:13px;font-weight:700;color:var(--soft);margin-left:3px}
+  .budtabs{display:flex;gap:6px;background:var(--chip);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:18px}
+  .budtab{flex:1;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:none;border:none;border-radius:9px;padding:10px;cursor:pointer;transition:background .15s,color .15s}
+  .budtab.is-on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px -1px rgba(0,0,0,.18)}
+  .budhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}
+  .budhead__t{font-size:17px;font-weight:900;letter-spacing:-.01em;color:var(--ink)}
+  .budhead__u{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
+  .budlist{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px 14px}
+  .bud{padding:14px 0;border-top:1px solid var(--line)}
+  .bud:first-child{border-top:none}
+  .bud__row{display:flex;align-items:center;gap:11px}
+  .bud__ico{width:24px;height:24px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:800;line-height:1}
+  .bud__ico--up{background:#16915a}
+  .bud__ico--down{background:#C42B2B}
+  .bud__name{flex:1;min-width:0;font-size:15px;font-weight:700;color:var(--ink)}
+  .bud__val{font-family:'Space Mono',monospace;font-size:15px;font-weight:700;display:flex;align-items:center;gap:6px;white-space:nowrap}
+  .bud__val--up{color:#16915a}
+  .bud__val--down{color:#C42B2B}
+  .bud__chev{color:var(--soft);font-size:15px}
+  .bud__sub{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:#E0820E;margin:7px 0 0 35px}
+  .bud__bar{height:6px;border-radius:4px;background:var(--chip);overflow:hidden;margin:10px 0 0 35px}
+  .bud__bar span{display:block;height:100%;border-radius:4px}
+  .bud__fill--up{background:#16915a;opacity:.55}
+  .bud__fill--down{background:#C42B2B;opacity:.5}
+  .botnav{display:none}
+  .moresheet{display:none}
+  @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
+</style>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand"><img class="brand__flag" src="/assets/Sessau.png" alt="Flag of Front Sessau" onerror="this.remove()"><div class="brand__txt"><b>Front Sessau</b><span>FS &middot; Sessau</span></div></div>
+      <nav class="nav">
+        <a class="nav__i" href="/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Nation</span></a>
+        <a class="nav__i active" href="/tutorial/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Government</span></a>
+        <a class="nav__i" href="/tutorial/inbox/"><svg viewBox="0 0 24 24"><path d="M4 13l2-8h12l2 8"/><path d="M4 13v6h16v-6"/><path d="M4 13h5l1 2h4l1-2h5"/></svg><span class="label">Inbox</span></a>
+        <a class="nav__i" href="/tutorial/news/"><svg viewBox="0 0 24 24"><path d="M5 4h11v15a1 1 0 01-1 1H5z"/><path d="M16 8h3v10a2 2 0 01-2 2"/><path d="M8 8h5M8 11h5M8 14h5"/></svg><span class="label">News</span></a>
+        <a class="nav__i" href="/tutorial/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
+        <a class="nav__i" href="/tutorial/election/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span class="label">Election</span></a>
+        <a class="nav__i" href="/tutorial/trade/"><svg viewBox="0 0 24 24"><path d="M4 9h13l-3-3"/><path d="M20 15H7l3 3"/></svg><span class="label">Trade</span></a>
+        <a class="nav__i" href="/tutorial/world/"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
+        <a class="nav__i" href="/tutorial/conflict/"><svg viewBox="0 0 24 24"><path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/></svg><span class="label">Conflict</span></a>
+        <a class="nav__i" href="/tutorial/forum/"><svg viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/></svg><span class="label">Forum</span></a>
+        <a class="nav__i" href="/tutorial/wiki/"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>      </nav>
+    </aside>
+    <main class="main">
+      <div class="page">
+        <a class="back" href="/tutorial/nation/">&lsaquo; Government</a>
+        <div class="eyebrow">The Republic of Sessau</div>
+        <h1>Budget</h1>
+
+        <div class="bhero">
+          <div class="bhero__k">Budget Balance</div>
+          <div class="bhero__v" id="balVal">&mdash;</div>
+          <svg class="bhero__chart" viewBox="0 0 300 56" preserveAspectRatio="none" aria-hidden="true">
+            <line x1="0" y1="16" x2="300" y2="16" stroke="#E7E5E0" stroke-width="1.5" stroke-dasharray="4 5" vector-effect="non-scaling-stroke"/>
+            <path d="M0 20 L60 23 L120 22 L180 30 L240 38 L300 46" fill="none" stroke="#C42B2B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+          </svg>
+        </div>
+
+        <div class="bsum">
+          <div class="bsum__card">
+            <div class="bsum__k bsum__k--rev">Revenue</div>
+            <div class="bsum__v"><span id="revTot">&mdash;</span><span class="bsum__u">bn/y</span></div>
+            <div class="bsum__bar"><span id="revBar" style="width:0;background:#16915a"></span></div>
+          </div>
+          <div class="bsum__card">
+            <div class="bsum__k bsum__k--spend">Spending</div>
+            <div class="bsum__v"><span id="spendTot">&mdash;</span><span class="bsum__u">bn/y</span></div>
+            <div class="bsum__bar"><span id="spendBar" style="width:0;background:#C42B2B"></span></div>
+          </div>
+        </div>
+
+        <div class="bdebt">
+          <div class="bdebt__k">Public Debt</div>
+          <div class="bdebt__v">$168<span class="bdebt__u">bn</span></div>
+        </div>
+
+        <div class="budtabs">
+          <button class="budtab is-on" data-tab="revenue" type="button">Revenue</button>
+          <button class="budtab" data-tab="spending" type="button">Spending</button>
+        </div>
+        <div class="budhead"><span class="budhead__t" id="budTitle">Active Revenue Items</span><span class="budhead__u">$ bn / year</span></div>
+        <div class="budlist" id="budList"></div>
+      </div>
+    </main>
+  </div>
+  <div class="gear">
+    <button class="gear__btn" id="gearBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></svg></button>
+    <div class="gear__menu" id="gearMenu" hidden><button class="gear__item" id="exitTutorial" type="button">Exit Tutorial</button></div>
+  </div>
+  <nav class="botnav">
+    <a class="botnav__i" href="/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span>Nation</span></a>
+    <a class="botnav__i" href="/tutorial/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span>Government</span></a>
+    <a class="botnav__i" href="/tutorial/inbox/"><svg viewBox="0 0 24 24"><path d="M4 13l2-8h12l2 8"/><path d="M4 13v6h16v-6"/><path d="M4 13h5l1 2h4l1-2h5"/></svg><span>Inbox</span></a>
+    <a class="botnav__i" href="/tutorial/news/"><svg viewBox="0 0 24 24"><path d="M5 4h11v15a1 1 0 01-1 1H5z"/><path d="M16 8h3v10a2 2 0 01-2 2"/><path d="M8 8h5M8 11h5M8 14h5"/></svg><span>News</span></a>
+    <a class="botnav__i" href="/tutorial/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span>Legislature</span></a>
+    <button class="botnav__i" id="moreBtn" type="button"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>
+  </nav>
+  <div class="moresheet" id="moreSheet" hidden><div class="moresheet__panel"><div class="moresheet__grid">
+    <a href="/tutorial/election/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span>Election</span></a>
+    <a href="/tutorial/trade/"><svg viewBox="0 0 24 24"><path d="M4 9h13l-3-3"/><path d="M20 15H7l3 3"/></svg><span>Trade</span></a>
+    <a href="/tutorial/world/"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span>World</span></a>
+    <a href="/tutorial/conflict/"><svg viewBox="0 0 24 24"><path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/></svg><span>Conflict</span></a>
+    <a href="/tutorial/forum/"><svg viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/></svg><span>Forum</span></a>
+    <a href="/tutorial/wiki/"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span>Wiki</span></a>
+  </div></div></div>
+<script type="module">
+  import { isConfigured } from '/supabase.js';
+  import { requireUser, mountTutorialChrome } from '/tutorial/shell.js';
+  if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
+  mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
+
+  // Budget detail (tutorial data). Line items drive everything: the balance, the
+  // Revenue/Spending totals, and the magnitude bars all derive from these arrays,
+  // so the headline number can never drift from the list. Figures reconcile with
+  // the rest of the tutorial (Alcohol Tax 22.2 = the abolish bill, Federal Police
+  // 16.2 = the law, Armed Forces 34 and Debt 168 = the Government stats).
+  const REVENUE = [
+    { name: 'Sales Tax', value: 57.0 },
+    { name: 'Wage Tax', value: 48.0, sub: '\u22123% workforce' },
+    { name: 'Corporate Income Tax', value: 24.0 },
+    { name: 'Alcohol Tax', value: 22.2 },
+    { name: 'Business Tax', value: 16.0 },
+    { name: 'Tobacco Tax', value: 9.0 },
+    { name: 'Capital Gains Tax', value: 8.0 },
+    { name: 'Inheritance Tax', value: 5.8 },
+  ];
+  const SPENDING = [
+    { name: 'Pension Insurance', value: 44.0, sub: '+11% retirees' },
+    { name: 'Healthcare', value: 40.0 },
+    { name: 'Armed Forces Funding', value: 34.0 },
+    { name: 'Education Spending', value: 22.0 },
+    { name: 'Federal Police', value: 16.2 },
+    { name: 'Child Benefit', value: 12.0 },
+    { name: 'University Funding', value: 9.0 },
+    { name: 'Civil Service Pension', value: 8.0, sub: '+11% retirees' },
+    { name: 'Interest on Public Debt (4.5%)', value: 7.6 },
+    { name: 'Basic Income Support', value: 7.2 },
+  ];
+  const TABS = {
+    revenue:  { items: REVENUE,  dir: 'up',   arrow: '\u2191', title: 'Active Revenue Items' },
+    spending: { items: SPENDING, dir: 'down', arrow: '\u2193', title: 'Active Spending Items' },
+  };
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const sum = (a) => a.reduce((t, i) => t + i.value, 0);
+
+  const totRev = sum(REVENUE), totSpend = sum(SPENDING), bal = totRev - totSpend, peak = Math.max(totRev, totSpend);
+  const balEl = document.getElementById('balVal');
+  balEl.innerHTML = (bal < 0 ? '\u2212$' : '$') + Math.abs(bal).toFixed(1) + ' bn<span class="bhero__u">/year</span>';
+  balEl.style.color = bal < 0 ? '#C42B2B' : '#16915a';
+  document.getElementById('revTot').textContent = totRev.toFixed(1);
+  document.getElementById('spendTot').textContent = totSpend.toFixed(1);
+  document.getElementById('revBar').style.width = Math.round(totRev / peak * 100) + '%';
+  document.getElementById('spendBar').style.width = Math.round(totSpend / peak * 100) + '%';
+
+  function render(tab) {
+    const cfg = TABS[tab];
+    const max = Math.max.apply(null, cfg.items.map((i) => i.value));
+    document.getElementById('budTitle').textContent = cfg.title;
+    document.getElementById('budList').innerHTML = cfg.items.map((it) => {
+      const w = Math.max(4, Math.round(it.value / max * 100));
+      return '<div class="bud">' +
+        '<div class="bud__row">' +
+          '<span class="bud__ico bud__ico--' + cfg.dir + '">' + cfg.arrow + '</span>' +
+          '<span class="bud__name">' + esc(it.name) + '</span>' +
+          '<span class="bud__val bud__val--' + cfg.dir + '">' + it.value.toFixed(1) + '<span class="bud__chev">\u203a</span></span>' +
+        '</div>' +
+        (it.sub ? '<div class="bud__sub">' + esc(it.sub) + '</div>' : '') +
+        '<div class="bud__bar"><span class="bud__fill--' + cfg.dir + '" style="width:' + w + '%"></span></div>' +
+      '</div>';
+    }).join('');
+  }
+  const tabs = document.querySelectorAll('.budtab');
+  tabs.forEach((t) => t.addEventListener('click', () => {
+    tabs.forEach((x) => x.classList.remove('is-on'));
+    t.classList.add('is-on');
+    render(t.dataset.tab);
+  }));
+  render('revenue');
+</script>
+</body>
+</html>
