@@ -75,6 +75,8 @@
   .agr__status{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.02em;margin-top:3px}
   .agr__status--ok{color:var(--green)}
   .agr__status--no{color:var(--red)}
+  .agr__status--done{color:var(--soft)}
+  .agr__item--done{opacity:.6}
   .agr__chip{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--amber);background:var(--amber-soft);border-radius:8px;padding:5px 10px;flex:none;white-space:nowrap}
   /* Stat categories — a header (ministry/portfolio) over a row of three stat boxes. */
   .cat{margin-top:22px}
@@ -137,9 +139,16 @@
         <section class="card">
           <div class="agr__head">
             <div class="card__k">Coalition Agreement</div>
-            <div class="agr__count">3/3 open</div>
+            <div class="agr__count">2/3 open</div>
           </div>
           <div class="agr__list">
+            <div class="agr__item">
+              <span class="agr__ico agr__ico--no">&#10007;</span>
+              <div class="agr__body">
+                <div class="agr__name">Reduce the tax burden by 10% <span class="ptag" style="background:var(--blue)" title="Union Conservatrice">UC</span></div>
+                <div class="agr__status agr__status--no">Not fulfilled &middot; 9 months left</div>
+              </div>
+            </div>
             <div class="agr__item">
               <span class="agr__ico agr__ico--ok">&#10003;</span>
               <div class="agr__body">
@@ -147,20 +156,12 @@
                 <div class="agr__status agr__status--ok">On track</div>
               </div>
             </div>
-            <div class="agr__item">
+            <div class="agr__item agr__item--done">
               <span class="agr__ico agr__ico--ok">&#10003;</span>
               <div class="agr__body">
-                <div class="agr__name">Raise Federal Police funding to Level 4</div>
-                <div class="agr__status agr__status--ok">On track</div>
+                <div class="agr__name">Pay 10 Influence to Front Sessau <span class="ptag" style="background:var(--navy)" title="Front Sessau">FS</span></div>
+                <div class="agr__status agr__status--done">Completed February, 1979 &middot; by UC</div>
               </div>
-            </div>
-            <div class="agr__item">
-              <span class="agr__ico agr__ico--no">&#10007;</span>
-              <div class="agr__body">
-                <div class="agr__name">Pay 10 Influence to Union Conservatrice</div>
-                <div class="agr__status agr__status--no">Not fulfilled &middot; 24 months left</div>
-              </div>
-              <span class="agr__chip">&minus;10</span>
             </div>
           </div>
         </section>
