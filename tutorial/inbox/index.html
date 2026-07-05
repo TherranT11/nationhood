@@ -34,11 +34,44 @@
   .gear__menu[hidden]{display:none}
   .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red,#C42B2B);cursor:pointer}
   .gear__item:hover{background:var(--chip)}
-  .main{flex:1;padding:22px clamp(16px,3vw,40px);min-width:0;display:flex;align-items:center;justify-content:center}
-  .ph{max-width:460px;text-align:center;color:var(--muted)}
-  .ph .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
-  .ph h1{font-size:clamp(24px,4vw,32px);font-weight:900;letter-spacing:-.02em;color:var(--ink);margin:8px 0 10px}
-  .ph p{font-size:14px}
+  .main{flex:1;padding:26px clamp(16px,3vw,40px) 56px;min-width:0}
+  .page{max-width:1000px;margin:0 auto}
+  .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
+  .page h1{font-size:clamp(26px,4vw,36px);font-weight:900;letter-spacing:-.025em;color:var(--ink);margin:6px 0 16px}
+  /* Action bar */
+  .actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+  .btn{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+  .btn:hover{color:var(--ink);background:var(--chip)}
+  .btn--primary{background:var(--indigo);border-color:var(--indigo);color:#fff}
+  .btn--primary:hover{filter:brightness(1.07);color:#fff}
+  /* Mail client — thread list + reading pane */
+  .mail{display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start}
+  .mail__list{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:2px}
+  .thr{display:flex;gap:11px;padding:11px 12px;border-radius:11px;cursor:pointer;border:1px solid transparent}
+  .thr:hover{background:var(--chip)}
+  .thr.is-active{background:var(--indigo-soft);border-color:color-mix(in srgb,var(--indigo) 25%,transparent)}
+  .thr__av{width:34px;height:34px;border-radius:9px;flex:none;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:11px;font-weight:700}
+  .thr__main{flex:1;min-width:0}
+  .thr__top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+  .thr__name{font-weight:700;font-size:13.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .thr__time{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);flex:none}
+  .thr__subj{font-size:12.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+  .thr__prev{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+  .thr__dot{width:7px;height:7px;border-radius:50%;background:var(--indigo);flex:none;align-self:center}
+  .mail__view{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;min-width:0}
+  .view__head{display:flex;align-items:center;gap:12px;padding-bottom:14px;border-bottom:1px solid var(--line);margin-bottom:16px}
+  .view__subj{font-size:17px;font-weight:800;letter-spacing:-.01em;color:var(--ink)}
+  .view__party{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;color:var(--soft);margin-top:2px}
+  .view__back{display:none;width:34px;height:34px;flex:none;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer;align-items:center;justify-content:center;font-size:18px}
+  .view__msgs{display:flex;flex-direction:column;gap:12px}
+  .msg{border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .msg--me{background:var(--indigo-soft);border-color:color-mix(in srgb,var(--indigo) 20%,transparent)}
+  .msg__head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .msg__av{width:30px;height:30px;border-radius:8px;flex:none;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:10px;font-weight:700}
+  .msg__who{font-weight:700;font-size:13px;color:var(--ink)}
+  .msg__time{margin-left:auto;font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);white-space:nowrap}
+  .msg__body{font-size:14px;line-height:1.65;color:var(--ink);white-space:pre-line}
+  @media(max-width:760px){.mail{grid-template-columns:1fr}.mail__view{display:none}.mail--reading .mail__list{display:none}.mail--reading .mail__view{display:block}.mail--reading .view__back{display:flex}}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -61,10 +94,25 @@
         <a class="nav__i" href="/tutorial/wiki/"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>      </nav>
     </aside>
     <main class="main">
-      <div class="ph">
-        <div class="eyebrow">Tutorial</div>
+      <div class="page">
+        <div class="eyebrow">The Republic of Sessau</div>
         <h1>Inbox</h1>
-        <p>This tutorial screen is a blank scaffold, ready to be built. Add its content in this file.</p>
+        <div class="actions">
+          <button class="btn btn--primary" type="button">Statement</button>
+          <button class="btn" type="button">Message Player</button>
+          <button class="btn" type="button">Announce Platform</button>
+          <button class="btn" type="button">Message NGO</button>
+        </div>
+        <div class="mail" id="mail">
+          <div class="mail__list" id="threadList"></div>
+          <div class="mail__view" id="threadView">
+            <div class="view__head">
+              <button class="view__back" id="mailBack" type="button" aria-label="Back to inbox">&larr;</button>
+              <div><div class="view__subj" id="viewSubj"></div><div class="view__party" id="viewParty"></div></div>
+            </div>
+            <div class="view__msgs" id="viewMsgs"></div>
+          </div>
+        </div>
       </div>
     </main>
   </div>
@@ -92,6 +140,97 @@
   import { requireUser, mountTutorialChrome } from '/tutorial/shell.js';
   if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
+
+  // Inbox (tutorial data): a list of correspondents on the left, their email
+  // thread on the right. "me" messages are from Front Sessau (the player).
+  const ME = { name: 'Allen Droulez', abbr: 'FS', color: '#243b6b' };
+  const THREADS = [
+    {
+      id: 'uc', name: 'Union Conservatrice', abbr: 'UC', color: '#1f86d6', time: '09:14', unread: false,
+      subject: 'Federal Police funding — final push',
+      messages: [
+        { me: false, time: 'Today · 09:14', body: 'Prime Minister Droulez,\n\nOur members backed the coalition on the understanding that the Federal Police budget reaches Level 4 before the winter session. Three months remain on the timetable. Can you confirm the funding survives the Finance Ministry’s review?\n\n— Marius Chevalier, Union Conservatrice' },
+        { me: true, time: 'Today · 10:02', body: 'Marius,\n\nThe increase is on track and written into the agreement. Finance has signed off on the ₣16.2bn line. You have my word it lands before recess.\n\n— A. Droulez' },
+        { me: false, time: 'Today · 10:20', body: 'Good. Then we hold the line together.\n\n— M. Chevalier' },
+      ],
+    },
+    {
+      id: 'pss', name: 'Parti Socialiste Sessauan', abbr: 'PSS', color: '#C42B2B', time: 'Yesterday', unread: true,
+      subject: 'The budget — a warning',
+      messages: [
+        { me: false, time: 'Yesterday · 16:41', body: 'Prime Minister,\n\nYour coalition pours money into policing while wages stagnate and poverty sits at 14%. We will oppose the budget on the floor and take our case to the country. This is not a threat — it is a promise.\n\n— Camille Fournier, Parti Socialiste Sessauan' },
+        { me: true, time: 'Yesterday · 18:07', body: 'Camille,\n\nThe door to Labour is not closed. Bring me a costed proposal on wages and we will find the floor time. Governing is not the same as campaigning.\n\n— A. Droulez' },
+        { me: false, time: 'Yesterday · 18:33', body: 'We shall see whether you mean it.' },
+      ],
+    },
+    {
+      id: 'lv', name: 'Les Verts Sessauans', abbr: 'LV', color: '#16915a', time: '2d', unread: false,
+      subject: 'Support on emissions — an offer',
+      messages: [
+        { me: false, time: 'Mon · 11:05', body: 'Prime Minister,\n\nWe hold no seats, but we hold the streets on climate. CO₂ sits at 210 Mt. Back a modest carbon levy and we deliver you the youth vote in Seyonne at the next election. A small price for a lasting friend.\n\n— Sylvie Marchetti, Les Verts Sessauans' },
+        { me: true, time: 'Mon · 14:22', body: 'Sylvie,\n\nA levy is a hard sell inside this coalition, but energy availability and emissions can move together. Let us talk before the session opens.\n\n— A. Droulez' },
+      ],
+    },
+    {
+      id: 'pfc', name: 'Press Freedom Council', abbr: 'NGO', color: '#6b7280', time: '3d', unread: true,
+      subject: 'Press Freedoms index — request for comment',
+      messages: [
+        { me: false, time: 'Sun · 08:50', body: 'Prime Minister,\n\nOur annual index rates Sessau’s press freedoms as “Strong”, yet three regional outlets report pressure from the Interior Ministry. We invite an on-record response for our report.\n\n— Hélène Roux, Director, Press Freedom Council' },
+      ],
+    },
+  ];
+
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const mailEl = document.getElementById('mail');
+  const listEl = document.getElementById('threadList');
+  const subjEl = document.getElementById('viewSubj');
+  const partyEl = document.getElementById('viewParty');
+  const msgsEl = document.getElementById('viewMsgs');
+  const preview = (t) => t.messages[0].body.replace(/\s+/g, ' ').trim();
+
+  function renderList() {
+    listEl.innerHTML = THREADS.map((t) =>
+      '<div class="thr" data-id="' + t.id + '" role="button" tabindex="0">' +
+        '<div class="thr__av" style="background:' + t.color + '">' + esc(t.abbr) + '</div>' +
+        '<div class="thr__main">' +
+          '<div class="thr__top"><span class="thr__name">' + esc(t.name) + '</span><span class="thr__time">' + esc(t.time) + '</span></div>' +
+          '<div class="thr__subj">' + esc(t.subject) + '</div>' +
+          '<div class="thr__prev">' + esc(preview(t)) + '</div>' +
+        '</div>' +
+        (t.unread ? '<div class="thr__dot"></div>' : '') +
+      '</div>').join('');
+    listEl.querySelectorAll('.thr').forEach((el) => {
+      el.addEventListener('click', () => select(el.dataset.id, true));
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(el.dataset.id, true); } });
+    });
+  }
+
+  function select(id, reading) {
+    const t = THREADS.find((x) => x.id === id);
+    if (!t) return;
+    listEl.querySelectorAll('.thr').forEach((el) => el.classList.toggle('is-active', el.dataset.id === id));
+    subjEl.textContent = t.subject;
+    partyEl.textContent = t.name + ' · ' + t.abbr;
+    msgsEl.innerHTML = t.messages.map((m) => {
+      const col = m.me ? ME.color : t.color;
+      const av = m.me ? ME.abbr : t.abbr;
+      const who = m.me ? ME.name + ' (You)' : t.name;
+      return '<div class="msg' + (m.me ? ' msg--me' : '') + '">' +
+        '<div class="msg__head"><span class="msg__av" style="background:' + col + '">' + esc(av) + '</span>' +
+        '<span class="msg__who">' + esc(who) + '</span><span class="msg__time">' + esc(m.time) + '</span></div>' +
+        '<div class="msg__body">' + esc(m.body) + '</div></div>';
+    }).join('');
+    if (reading) {                      // opened by the user: mark read, drop the dot, enter mobile reading view
+      t.unread = false;
+      const dot = listEl.querySelector('.thr.is-active .thr__dot');
+      if (dot) dot.remove();
+      mailEl.classList.add('mail--reading');
+    }
+  }
+
+  document.getElementById('mailBack').addEventListener('click', () => mailEl.classList.remove('mail--reading'));
+  renderList();
+  select(THREADS[0].id, false);         // populate the desktop reading pane; mobile stays on the list until a tap
 </script>
 </body>
 </html>
