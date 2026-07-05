@@ -192,15 +192,32 @@ export function alcoholResolved() {
 export const TUT_INFLUENCE_BASE = 20;    // Influence at turn 0 (a campaign war-chest)
 export const TUT_INFLUENCE_GAIN = 3;     // Influence accrued each turn
 
-// Campaign spending + the popularity it wins or loses accumulate here (turn 3+).
+// Campaign spending (Influence) accumulates here (turn 3+).
 export function campSpent() { try { return Number(sessionStorage.getItem('nh-camp-spent') || 0); } catch (e) { return 0; } }
-export function campPop() { try { return Number(sessionStorage.getItem('nh-camp-pop') || 0); } catch (e) { return 0; } }
-// Record a used campaign action: Influence spent + the popularity delta it rolled.
-export function applyCampaign(spend, popDelta) {
-  try {
-    sessionStorage.setItem('nh-camp-spent', String(campSpent() + spend));
-    sessionStorage.setItem('nh-camp-pop', String(campPop() + popDelta));
-  } catch (e) {}
+export function applySpend(amt) { try { sessionStorage.setItem('nh-camp-spent', String(campSpent() + amt)); } catch (e) {} }
+
+// Each party's electoral popularity (vote intention %) = base + campaign deltas.
+// The base shares reproduce today's 240-seat Assembly exactly (FS 114 / PSS 103 /
+// UC 23 / LV 0); LV sits just under the 5% seat threshold. Campaign actions move
+// these, and projectedSeats() re-allocates the chamber from them — so an Attack or
+// Debate against a rival really does shift the seats they'd win in September.
+const POP_BASE = { fs: 47.5, pss: 42.9, uc: 9.6, lv: 4.0 };
+const POP_THRESHOLD = 5, PROJ_TOTAL_SEATS = 240;
+export function partyPop(p) { try { return Math.max(0, POP_BASE[p] + Number(sessionStorage.getItem('nh-pop-' + p) || 0)); } catch (e) { return POP_BASE[p]; } }
+export function applyPop(p, delta) { try { sessionStorage.setItem('nh-pop-' + p, String(Number(sessionStorage.getItem('nh-pop-' + p) || 0) + delta)); } catch (e) {} }
+// Parties over the threshold split the 240 seats in proportion to popularity;
+// largest-remainder rounding lands the total exactly on 240.
+export function projectedSeats() {
+  const parties = ['fs', 'pss', 'uc', 'lv'];
+  const pop = {}; parties.forEach((p) => { pop[p] = partyPop(p); });
+  const qual = parties.filter((p) => pop[p] >= POP_THRESHOLD);
+  const sum = qual.reduce((s, p) => s + pop[p], 0) || 1;
+  const seats = {}; parties.forEach((p) => { seats[p] = 0; });
+  const rema = []; let used = 0;
+  qual.forEach((p) => { const raw = pop[p] / sum * PROJ_TOTAL_SEATS; seats[p] = Math.floor(raw); used += seats[p]; rema.push({ p: p, r: raw - Math.floor(raw) }); });
+  rema.sort((a, b) => b.r - a.r);
+  for (let i = 0; i < PROJ_TOTAL_SEATS - used && rema.length; i++) seats[rema[i % rema.length].p]++;
+  return seats;
 }
 
 // One source for every derived headline number, read by the topbar, Home and Election.
@@ -210,13 +227,12 @@ export function tutBalance() {
   return TUT_BALANCE_BASE + (pensionAbolished() ? TUT_PENSION_SAVING : 0) - (alcoholResolved() ? TUT_ALCOHOL_COST : 0);
 }
 export function tutApproval() {
-  const a = TUT_APPROVAL_BASE - (getTutTurn() >= 1 ? TUT_APPROVAL_DROP : 0) + (alcoholResolved() ? TUT_ALCOHOL_GAIN : 0) + campPop();
+  const a = TUT_APPROVAL_BASE - (getTutTurn() >= 1 ? TUT_APPROVAL_DROP : 0) + (alcoholResolved() ? TUT_ALCOHOL_GAIN : 0);
   return Math.max(0, Math.min(100, a));
 }
 // The "Last Factors Affecting Popularity" list, most recent first.
 export function tutApprovalFactors() {
   const f = [];
-  if (campPop() !== 0) f.push({ amt: campPop(), label: 'Campaign trail' });
   if (alcoholResolved()) f.push({ amt: TUT_ALCOHOL_GAIN, label: 'Repealed the Alcohol Tax' });
   if (getTutTurn() >= 1) f.push({ amt: -TUT_APPROVAL_DROP, label: 'Voted to Abolish Civil Service Pension' });
   return f;

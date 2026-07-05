@@ -109,7 +109,7 @@
           <div class="camp__intro">Typically this simply shows the results of the last election. However, whenever there are only six months or less before the next election, you can campaign. Use the actions below — each is paid in Influence the moment you use it.</div>
           <section class="card gd-campaign">
             <div class="card__k">Campaign Trail</div>
-            <div class="camp__wallet"><span>Influence<b id="campInf">—</b></span><span>Party Approval<b id="campAppr">—</b></span></div>
+            <div class="camp__wallet"><span>Influence<b id="campInf">—</b></span><span>Projected FS Seats<b id="campSeats">—</b></span></div>
             <div class="camp__acts">
               <div class="camp__act" data-act="door" data-cost="15"><div class="camp__act-hd"><span class="camp__act-name">Door Knocking Campaign</span><span class="camp__act-cost">15 Influence</span></div><div class="camp__act-eff">&plus;1D4 Party Popularity.</div><button class="camp__use" type="button">Use</button></div>
               <div class="camp__act" data-act="debate" data-cost="20" data-target="1"><div class="camp__act-hd"><span class="camp__act-name">Challenge Opponent to TV Debate</span><span class="camp__act-cost">20 Influence</span></div><div class="camp__act-eff">Pick any party, even a coalition partner. 50% you gain &plus;6% and they lose 6%; 50% they gain &plus;6% and you lose 6%.</div><select class="camp__target" aria-label="Debate opponent"></select><button class="camp__use" type="button">Use</button></div>
@@ -117,6 +117,11 @@
               <div class="camp__act" data-act="attack" data-cost="6" data-target="1"><div class="camp__act-hd"><span class="camp__act-name">Attack Campaign</span><span class="camp__act-cost">6 Influence</span></div><div class="camp__act-eff">Pick a party. 50% they lose 3% Popularity; 50% you lose 5% Popularity.</div><select class="camp__target" aria-label="Attack target"></select><button class="camp__use" type="button">Use</button></div>
             </div>
             <div class="camp__result" id="campResult"></div>
+          </section>
+          <section class="card gd-projection">
+            <div class="card__k">Projected Result &middot; September 1980</div>
+            <div class="ecard__sub">If the vote were held today, on current standing. A party needs <b>121</b> of 240 seats to govern alone.</div>
+            <div class="eres" id="proj"></div>
           </section>
         </div>
         <section class="card gd-lastelec">
@@ -149,7 +154,7 @@
   </div></div></div>
 <script type="module">
   import { isConfigured } from '/supabase.js';
-  import { requireUser, mountTutorialChrome, getTutTurn, tutInfluence, tutApproval, applyCampaign } from '/tutorial/shell.js';
+  import { requireUser, mountTutorialChrome, getTutTurn, tutInfluence, applySpend, applyPop, partyPop, projectedSeats } from '/tutorial/shell.js';
   if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
 
@@ -190,26 +195,44 @@
       const coin = () => Math.random() < 0.5;
       const tgtName = (v) => (TARGETS.find((t) => t.v === v) || { n: 'them' }).n;
 
+      const PARTIES = [
+        { k: 'fs', name: 'Front Sessau', abbr: 'FS', color: 'var(--navy)' },
+        { k: 'pss', name: 'Parti Socialiste Sessauan', abbr: 'PSS', color: 'var(--red)' },
+        { k: 'uc', name: 'Union Conservatrice', abbr: 'UC', color: 'var(--blue)' },
+        { k: 'lv', name: 'Les Verts Sessauans', abbr: 'LV', color: 'var(--green)' },
+      ];
+      function renderProjection() {
+        const seats = projectedSeats();
+        const el = document.getElementById('proj');
+        if (el) el.innerHTML = PARTIES.map((p) =>
+          '<div class="eres__row">' +
+            '<span class="eres__name"><span class="eres__dot" style="background:' + p.color + '"></span>' + p.name + ' <span class="eres__abbr">(' + p.abbr + ')</span></span>' +
+            '<span class="eres__nums"><b>' + seats[p.k] + '</b> seats &middot; ' + partyPop(p.k).toFixed(1) + '%</span>' +
+            '<div class="eres__bar"><span style="width:' + (seats[p.k] / 240 * 100).toFixed(1) + '%;background:' + p.color + '"></span></div>' +
+          '</div>').join('');
+      }
+
       function refresh() {
         const inf = tutInfluence();
         document.getElementById('campInf').textContent = inf;
-        document.getElementById('campAppr').textContent = tutApproval() + '%';
+        document.getElementById('campSeats').textContent = projectedSeats().fs;
         document.querySelectorAll('.camp__act').forEach((a) => { a.querySelector('.camp__use').disabled = inf < (+a.dataset.cost); });
         const chip = document.querySelector('.nhbar__inf');   // keep the topbar Influence in sync
         if (chip && chip.lastChild) chip.lastChild.textContent = inf;
+        renderProjection();
       }
 
       function use(a) {
         const cost = +a.dataset.cost;
         if (tutInfluence() < cost) return;
         const sel = a.querySelector('.camp__target');
-        const tgt = sel ? tgtName(sel.value) : '';
-        let selfPop = 0, msg = '';
-        if (a.dataset.act === 'door') { const r = d(4); selfPop = r; msg = 'Door knocking paid off — +' + r + '% Party Popularity.'; }
-        else if (a.dataset.act === 'public') { selfPop = 1; msg = 'A well-received public appearance — +1% Party Popularity.'; }
-        else if (a.dataset.act === 'debate') { if (coin()) { selfPop = 6; msg = 'You won the debate — +6% for you, −6% for ' + tgt + '.'; } else { selfPop = -6; msg = tgt + ' won the debate — +6% for them, −6% for you.'; } }
-        else if (a.dataset.act === 'attack') { if (coin()) { msg = 'The attack landed — ' + tgt + ' lose 3% Popularity.'; } else { selfPop = -5; msg = 'The attack backfired — you lose 5% Popularity.'; } }
-        applyCampaign(cost, selfPop);
+        const tv = sel ? sel.value : null, tgt = sel ? tgtName(tv) : '';
+        let msg = '';
+        if (a.dataset.act === 'door') { const r = d(4); applyPop('fs', r); msg = 'Door knocking paid off — Front Sessau +' + r + '% popularity.'; }
+        else if (a.dataset.act === 'public') { applyPop('fs', 1); msg = 'A well-received public appearance — Front Sessau +1% popularity.'; }
+        else if (a.dataset.act === 'debate') { if (coin()) { applyPop('fs', 6); applyPop(tv, -6); msg = 'You won the debate — Front Sessau +6%, ' + tgt + ' −6%.'; } else { applyPop('fs', -6); applyPop(tv, 6); msg = tgt + ' won the debate — them +6%, Front Sessau −6%.'; } }
+        else if (a.dataset.act === 'attack') { if (coin()) { applyPop(tv, -3); msg = 'The attack landed — ' + tgt + ' −3% popularity.'; } else { applyPop('fs', -5); msg = 'The attack backfired — Front Sessau −5% popularity.'; } }
+        applySpend(cost);
         document.getElementById('campResult').textContent = msg;
         refresh();
       }
