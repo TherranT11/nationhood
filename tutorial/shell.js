@@ -228,9 +228,9 @@ function mountTutorialTopbar() {
   const bar = document.createElement('div');
   bar.className = 'nhbar';
   bar.innerHTML =
-    '<span class="nhbar__inf" title="Influence">' +
+    '<span class="nhbar__chip nhbar__inf" title="Influence">' +
       '<svg class="nhbar__star" viewBox="0 0 24 24"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>4</span>' +
-    '<span class="nhbar__date">March, 1980</span>' +
+    '<span class="nhbar__chip nhbar__date">December, 1979</span>' +
     '<button class="nhbar__week" type="button" disabled>Next Week</button>' +
     '<button class="nhbar__theme" type="button" aria-label="Toggle dark mode">' +
       '<svg class="ic-moon" viewBox="0 0 24 24"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8z"/></svg>' +
@@ -238,6 +238,10 @@ function mountTutorialTopbar() {
     '</button>';
   host.insertBefore(bar, host.firstChild);
   bar.querySelector('.nhbar__theme').addEventListener('click', () => { if (window.NHTheme) window.NHTheme.toggle(); });
+  // Move the settings gear out of its fixed corner and into the bar, so it lines up
+  // with the theme toggle (its dropdown still opens beneath it — .gear is relative).
+  const gear = document.querySelector('.gear');
+  if (gear) bar.appendChild(gear);
 }
 
 let topbarStyled2 = false;
@@ -245,17 +249,20 @@ function ensureTopbarStyles2() {
   if (topbarStyled2) return;
   topbarStyled2 = true;
   const css =
-    '.nhbar{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:20px;padding-right:44px}' +
-    '.nhbar__inf{display:inline-flex;align-items:center;gap:5px;font-family:"Space Mono",monospace;font-size:13px;font-weight:700;color:var(--ink)}' +
-    '.nhbar__star{width:16px;height:16px;fill:#E0820E}' +
-    '.nhbar__date{font-family:"Space Mono",monospace;font-size:12px;font-weight:700;letter-spacing:.02em;color:var(--muted)}' +
+    '.nhbar{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:20px}' +
+    '.nhbar__chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-family:"Space Mono",monospace;font-size:12.5px;font-weight:700}' +
+    '.nhbar__inf{color:var(--ink)}' +
+    '.nhbar__star{width:16px;height:16px;fill:var(--amber)}' +
+    '.nhbar__date{color:var(--muted)}' +
     '.nhbar__week{font-family:"Space Mono",monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--chip);color:var(--soft);cursor:not-allowed}' +
-    '.nhbar__theme{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:color .15s,border-color .15s}' +
+    '.nhbar__theme{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:color .15s,border-color .15s}' +
     '.nhbar__theme:hover{color:var(--ink);border-color:var(--soft)}' +
     '.nhbar__theme svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}' +
     '.nhbar__theme .ic-sun{display:none}' +
     'html[data-theme="dark"] .nhbar__theme .ic-moon{display:none}' +
-    'html[data-theme="dark"] .nhbar__theme .ic-sun{display:inline}';
+    'html[data-theme="dark"] .nhbar__theme .ic-sun{display:inline}' +
+    // Gear relocated into the bar: static flow (relative so its dropdown anchors), aligned with the toggle.
+    '.nhbar .gear{position:relative;top:auto;right:auto;z-index:50;display:flex}';
   const style = document.createElement('style');
   style.id = 'nhbar-css';
   style.textContent = css;

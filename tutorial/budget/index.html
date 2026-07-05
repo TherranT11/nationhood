@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-  :root{--bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;--line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD}
+  :root{--bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;--line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD;--red:#C42B2B;--red-soft:#FBEAE9;--green:#16915a;--green-soft:#E5F4EC;--amber:#E0820E;--amber-soft:#FBF0DD;--blue:#1f86d6;--blue-soft:#e3f0fb;--navy:#2b3a7a;--navy-soft:#E7EAF4}
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
@@ -32,7 +32,7 @@
   .gear__btn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .gear__menu{position:absolute;top:46px;right:0;min-width:172px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 44px -20px rgba(0,0,0,.35);padding:6px}
   .gear__menu[hidden]{display:none}
-  .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red,#C42B2B);cursor:pointer}
+  .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red);cursor:pointer}
   .gear__item:hover{background:var(--chip)}
   .main{flex:1;padding:26px clamp(16px,3vw,40px) 56px;min-width:0}
   .page{max-width:900px;margin:0 auto}
@@ -42,14 +42,14 @@
   .back:hover{color:var(--ink)}
   .bhero{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:14px}
   .bhero__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:8px}
-  .bhero__v{font-size:34px;font-weight:900;letter-spacing:-.03em;color:#C42B2B}
+  .bhero__v{font-size:34px;font-weight:900;letter-spacing:-.03em;color:var(--red)}
   .bhero__u{font-size:15px;font-weight:700;color:var(--soft);margin-left:4px}
   .bhero__chart{width:100%;height:56px;display:block;margin-top:10px}
   .bsum{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
   .bsum__card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
   .bsum__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;margin-bottom:8px}
-  .bsum__k--rev{color:#16915a}
-  .bsum__k--spend{color:#C42B2B}
+  .bsum__k--rev{color:var(--green)}
+  .bsum__k--spend{color:var(--red)}
   .bsum__v{font-size:24px;font-weight:900;letter-spacing:-.02em;color:var(--ink)}
   .bsum__u{font-size:13px;font-weight:700;color:var(--soft);margin-left:3px}
   .bsum__bar{height:6px;border-radius:4px;background:var(--chip);overflow:hidden;margin-top:12px}
@@ -73,18 +73,18 @@
   .bud--link:hover .bud__chev{color:var(--indigo)}
   .bud__row{display:flex;align-items:center;gap:11px}
   .bud__ico{width:24px;height:24px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:800;line-height:1}
-  .bud__ico--up{background:#16915a}
-  .bud__ico--down{background:#C42B2B}
+  .bud__ico--up{background:var(--green)}
+  .bud__ico--down{background:var(--red)}
   .bud__name{flex:1;min-width:0;font-size:15px;font-weight:700;color:var(--ink)}
   .bud__val{font-family:'Space Mono',monospace;font-size:15px;font-weight:700;display:flex;align-items:center;gap:6px;white-space:nowrap}
-  .bud__val--up{color:#16915a}
-  .bud__val--down{color:#C42B2B}
+  .bud__val--up{color:var(--green)}
+  .bud__val--down{color:var(--red)}
   .bud__chev{color:var(--soft);font-size:15px}
-  .bud__sub{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:#E0820E;margin:7px 0 0 35px}
+  .bud__sub{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--amber);margin:7px 0 0 35px}
   .bud__bar{height:6px;border-radius:4px;background:var(--chip);overflow:hidden;margin:10px 0 0 35px}
   .bud__bar span{display:block;height:100%;border-radius:4px}
-  .bud__fill--up{background:#16915a;opacity:.55}
-  .bud__fill--down{background:#C42B2B;opacity:.5}
+  .bud__fill--up{background:var(--green);opacity:.55}
+  .bud__fill--down{background:var(--red);opacity:.5}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -126,12 +126,12 @@
           <div class="bsum__card">
             <div class="bsum__k bsum__k--rev">Revenue</div>
             <div class="bsum__v"><span id="revTot">&mdash;</span><span class="bsum__u">bn/y</span></div>
-            <div class="bsum__bar"><span id="revBar" style="width:0;background:#16915a"></span></div>
+            <div class="bsum__bar"><span id="revBar" style="width:0;background:var(--green)"></span></div>
           </div>
           <div class="bsum__card">
             <div class="bsum__k bsum__k--spend">Spending</div>
             <div class="bsum__v"><span id="spendTot">&mdash;</span><span class="bsum__u">bn/y</span></div>
-            <div class="bsum__bar"><span id="spendBar" style="width:0;background:#C42B2B"></span></div>
+            <div class="bsum__bar"><span id="spendBar" style="width:0;background:var(--red)"></span></div>
           </div>
         </div>
 
@@ -150,7 +150,7 @@
     </main>
   </div>
   <div class="gear">
-    <button class="gear__btn" id="gearBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></svg></button>
+    <button class="gear__btn" id="gearBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     <div class="gear__menu" id="gearMenu" hidden><button class="gear__item" id="exitTutorial" type="button">Exit Tutorial</button></div>
   </div>
   <nav class="botnav">
@@ -212,7 +212,7 @@
   const totRev = sum(REVENUE), totSpend = sum(SPENDING), bal = totRev - totSpend, peak = Math.max(totRev, totSpend);
   const balEl = document.getElementById('balVal');
   balEl.innerHTML = (bal < 0 ? '\u2212$' : '$') + Math.abs(bal).toFixed(1) + ' bn<span class="bhero__u">/year</span>';
-  balEl.style.color = bal < 0 ? '#C42B2B' : '#16915a';
+  balEl.style.color = bal < 0 ? 'var(--red)' : 'var(--green)';
   document.getElementById('revTot').textContent = totRev.toFixed(1);
   document.getElementById('spendTot').textContent = totSpend.toFixed(1);
   document.getElementById('revBar').style.width = Math.round(totRev / peak * 100) + '%';

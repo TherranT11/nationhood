@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-  :root{--bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;--line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD}
+  :root{--bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;--line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD;--red:#C42B2B;--red-soft:#FBEAE9;--green:#16915a;--green-soft:#E5F4EC;--amber:#E0820E;--amber-soft:#FBF0DD;--blue:#1f86d6;--blue-soft:#e3f0fb;--navy:#2b3a7a;--navy-soft:#E7EAF4}
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
@@ -32,14 +32,15 @@
   .gear__btn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .gear__menu{position:absolute;top:46px;right:0;min-width:172px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 44px -20px rgba(0,0,0,.35);padding:6px}
   .gear__menu[hidden]{display:none}
-  .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red,#C42B2B);cursor:pointer}
+  .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red);cursor:pointer}
   .gear__item:hover{background:var(--chip)}
   .main{flex:1;padding:26px clamp(16px,3vw,40px) 56px;min-width:0}
   .page{max-width:1000px;margin:0 auto}
   .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
   .page h1{font-size:clamp(26px,4vw,36px);font-weight:900;letter-spacing:-.025em;color:var(--ink);margin:6px 0 16px}
   /* Ticker */
-  .ticker{display:flex;align-items:center;gap:12px;background:var(--ink);border-radius:12px;padding:0 14px;height:44px;overflow:hidden;margin-bottom:22px}
+  /* Always-dark chyron: fixed dark bg (not var(--ink), which flips light in dark mode). */
+  .ticker{display:flex;align-items:center;gap:12px;background:#15151B;border-radius:12px;padding:0 14px;height:44px;overflow:hidden;margin-bottom:22px}
   .ticker__live{flex:none;display:flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#fff}
   .ticker__dot{width:8px;height:8px;border-radius:50%;background:#e5484d;animation:blink 1.4s ease-in-out infinite}
   @keyframes blink{50%{opacity:.35}}
@@ -56,7 +57,7 @@
   .paper__brand{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:14px}
   .paper__name{font-size:22px;font-weight:900;letter-spacing:-.02em;color:var(--ink)}
   .paper__tag{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
-  .lead__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#C42B2B;font-weight:700}
+  .lead__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--red);font-weight:700}
   .lead__h{font-size:22px;font-weight:900;letter-spacing:-.02em;color:var(--ink);margin:6px 0 6px;line-height:1.2}
   .lead__sub{font-size:14px;color:var(--muted)}
   .hl{display:flex;gap:14px;padding:13px 0;border-top:1px solid var(--line);margin-top:14px}
@@ -67,14 +68,14 @@
   .outlets{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
   @media(max-width:760px){.outlets{grid-template-columns:1fr}}
   .outlet{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;border-top:3px solid var(--line)}
-  .outlet--left{border-top-color:#C42B2B}
+  .outlet--left{border-top-color:var(--red)}
   .outlet--centre{border-top-color:#5546E8}
-  .outlet--right{border-top-color:#243b6b}
+  .outlet--right{border-top-color:var(--navy)}
   .outlet__name{font-size:16px;font-weight:800;letter-spacing:-.01em;color:var(--ink)}
   .outlet__lean{display:inline-block;font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:6px;margin-top:6px}
-  .lean--left{color:#C42B2B;background:#FAEAEA}
+  .lean--left{color:var(--red);background:var(--red-soft)}
   .lean--centre{color:#5546E8;background:var(--indigo-soft)}
-  .lean--right{color:#243b6b;background:#EAEEF6}
+  .lean--right{color:var(--navy);background:var(--navy-soft)}
   .outlet__take{margin-top:14px}
   .outlet__take + .outlet__take{border-top:1px solid var(--line);padding-top:14px}
   .take__issue{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
@@ -165,8 +166,8 @@
         <div class="poll">
           <div class="poll__by">Le Quotidien de Seyonne &middot; Weekly Poll &middot; n=1,200</div>
           <div class="poll__q">Should the Assembly abolish the Alcohol Tax?</div>
-          <div class="poll__row"><div class="poll__top"><span>Support</span><span>61%</span></div><div class="poll__bar"><span style="width:61%;background:#16915a"></span></div></div>
-          <div class="poll__row"><div class="poll__top"><span>Oppose</span><span>27%</span></div><div class="poll__bar"><span style="width:27%;background:#C42B2B"></span></div></div>
+          <div class="poll__row"><div class="poll__top"><span>Support</span><span>61%</span></div><div class="poll__bar"><span style="width:61%;background:var(--green)"></span></div></div>
+          <div class="poll__row"><div class="poll__top"><span>Oppose</span><span>27%</span></div><div class="poll__bar"><span style="width:27%;background:var(--red)"></span></div></div>
           <div class="poll__row"><div class="poll__top"><span>Unsure</span><span>12%</span></div><div class="poll__bar"><span style="width:12%;background:#8d8d95"></span></div></div>
           <div class="poll__foot">Margin of error &plusmn;3%. Fieldwork May 1980, Seyonne &amp; the provinces.</div>
         </div>
@@ -174,7 +175,7 @@
     </main>
   </div>
   <div class="gear">
-    <button class="gear__btn" id="gearBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></svg></button>
+    <button class="gear__btn" id="gearBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     <div class="gear__menu" id="gearMenu" hidden><button class="gear__item" id="exitTutorial" type="button">Exit Tutorial</button></div>
   </div>
   <nav class="botnav">
