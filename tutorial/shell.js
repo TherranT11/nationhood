@@ -412,7 +412,7 @@ const GUIDE_STEPS = [
   { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'The Bill', title: 'Abolish the Alcohol Tax',
     body: 'Les Verts want the alcohol tax gone, and most of Sessau agrees. You didn’t get to choose on the pension — the coalition forced your hand. This one you own.' },
   { page: '/tutorial/legislature/', target: '#acEndorse', ey: 'Your Choice', title: 'Endorse — or Don’t',
-    body: 'Endorse it and Les Verts can carry it to next week’s floor — where, if it passes, the public rewards you but ₣22.2bn leaves your budget, and your surplus with it. Leave it and keep your books, with approval where it is. No wrong answer — decide, then continue.', pulse: true },
+    body: 'Endorse it and Les Verts may choose to advance it to the floor — where, if it passes, the public rewards you but ₣22.2bn leaves your budget, and your surplus with it. Your backing doesn’t carry it alone; it’s theirs to move. Leave it and keep your books, with approval where it is. No wrong answer — decide, then continue.', pulse: true },
   { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'On the Record', title: 'Live With It',
     body: 'Whatever you chose stands. Approval or the budget — you can rarely serve both at once, and that tension is the whole job. It only sharpens from here.' },
 ];
