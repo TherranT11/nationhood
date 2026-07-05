@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="/theme.js"></script>
-<title>Sessau · Nation</title>
+<title>Sessau · Government</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -53,6 +53,29 @@
   .law__bar{height:8px;border-radius:5px;background:var(--chip);border:1px solid var(--line);overflow:hidden;margin-bottom:7px}
   .law__bar span{display:block;height:100%;background:var(--indigo)}
   .law__meta{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
+  .card + .card{margin-top:14px}
+  /* Coalition health — hearts + status label. */
+  .coh__body{display:flex;align-items:center;gap:14px}
+  .coh__hearts{display:flex;gap:8px}
+  .coh__hearts svg{width:26px;height:26px}
+  .heart{fill:none;stroke:var(--soft);stroke-width:1.6}
+  .heart.on{fill:#16915a;stroke:#16915a}
+  .coh__status{font-size:22px;font-weight:900;letter-spacing:-.01em;color:#16915a}
+  /* Coalition agreement — obligations with status + an influence chip. */
+  .agr__head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+  .agr__head .card__k{margin:0}
+  .agr__count{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;color:var(--soft)}
+  .agr__list{display:flex;flex-direction:column;gap:10px}
+  .agr__item{display:flex;align-items:center;gap:12px;background:var(--chip);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .agr__ico{width:22px;height:22px;border-radius:50%;border:1.5px dashed;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none}
+  .agr__ico--ok{color:#16915a;border-color:#16915a}
+  .agr__ico--no{color:#C42B2B;border-color:#C42B2B}
+  .agr__body{flex:1;min-width:0}
+  .agr__name{font-size:14px;font-weight:700;color:var(--ink)}
+  .agr__status{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.02em;margin-top:3px}
+  .agr__status--ok{color:#16915a}
+  .agr__status--no{color:#C42B2B}
+  .agr__chip{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:#E0820E;background:#FBF1DC;border-radius:8px;padding:5px 10px;flex:none;white-space:nowrap}
   /* Stat categories — a header (ministry/portfolio) over a row of three stat boxes. */
   .cat{margin-top:22px}
   .cat__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;user-select:none}
@@ -75,8 +98,8 @@
     <aside class="side">
       <div class="brand"><img class="brand__flag" src="/assets/Sessau.png" alt="Flag of Front Sessau" onerror="this.remove()"><div class="brand__txt"><b>Front Sessau</b><span>FS &middot; Sessau</span></div></div>
       <nav class="nav">
-        <a class="nav__i" href="/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
-        <a class="nav__i active" href="/tutorial/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
+        <a class="nav__i" href="/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Nation</span></a>
+        <a class="nav__i active" href="/tutorial/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Government</span></a>
         <a class="nav__i" href="/tutorial/inbox/"><svg viewBox="0 0 24 24"><path d="M4 13l2-8h12l2 8"/><path d="M4 13v6h16v-6"/><path d="M4 13h5l1 2h4l1-2h5"/></svg><span class="label">Inbox</span></a>
         <a class="nav__i" href="/tutorial/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
         <a class="nav__i" href="/tutorial/election/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span class="label">Election</span></a>
@@ -89,7 +112,50 @@
     <main class="main">
       <div class="page">
         <div class="eyebrow">The Republic of Sessau</div>
-        <h1>Nation</h1>
+        <h1>Government</h1>
+
+        <section class="card">
+          <div class="card__k">Coalition Health</div>
+          <div class="coh__body">
+            <div class="coh__hearts">
+              <svg class="heart on" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+              <svg class="heart on" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+            </div>
+            <div class="coh__status">Stable</div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="agr__head">
+            <div class="card__k">Coalition Agreement</div>
+            <div class="agr__count">3/3 open</div>
+          </div>
+          <div class="agr__list">
+            <div class="agr__item">
+              <span class="agr__ico agr__ico--ok">&#10003;</span>
+              <div class="agr__body">
+                <div class="agr__name">No new debt above $180 bn</div>
+                <div class="agr__status agr__status--ok">On track</div>
+              </div>
+            </div>
+            <div class="agr__item">
+              <span class="agr__ico agr__ico--ok">&#10003;</span>
+              <div class="agr__body">
+                <div class="agr__name">Raise Federal Police funding to Level 4</div>
+                <div class="agr__status agr__status--ok">On track</div>
+              </div>
+            </div>
+            <div class="agr__item">
+              <span class="agr__ico agr__ico--no">&#10007;</span>
+              <div class="agr__body">
+                <div class="agr__name">Pay 10 Influence to Union Conservatrice</div>
+                <div class="agr__status agr__status--no">Not fulfilled &middot; 24 months left</div>
+              </div>
+              <span class="agr__chip">&minus;10</span>
+            </div>
+          </div>
+        </section>
+
         <section class="card">
           <div class="card__k">Laws Being Implemented</div>
           <div class="law">
@@ -176,8 +242,8 @@
     <div class="gear__menu" id="gearMenu" hidden><button class="gear__item" id="exitTutorial" type="button">Exit Tutorial</button></div>
   </div>
   <nav class="botnav">
-    <a class="botnav__i" href="/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span>Home</span></a>
-    <a class="botnav__i" href="/tutorial/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span>Nation</span></a>
+    <a class="botnav__i" href="/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span>Nation</span></a>
+    <a class="botnav__i" href="/tutorial/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span>Government</span></a>
     <a class="botnav__i" href="/tutorial/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span>Legislature</span></a>
     <a class="botnav__i" href="/tutorial/election/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span>Election</span></a>
     <a class="botnav__i" href="/tutorial/world/"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span>World</span></a>
