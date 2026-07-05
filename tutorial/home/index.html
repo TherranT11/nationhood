@@ -185,10 +185,10 @@
         <div class="elec terr__card">
           <div class="terr__k">Elections</div>
           <div class="elec__when">Election in <b>September, 1980</b></div>
-          <div class="elec__bar"><span style="width:80%"></span></div>
+          <div class="elec__bar"><span id="elecBar" style="width:80%"></span></div>
           <dl class="snap__list">
-            <div class="snap__row"><dt>Months Elapsed</dt><dd>35</dd></div>
-            <div class="snap__row"><dt>Months Remaining</dt><dd>9</dd></div>
+            <div class="snap__row"><dt>Months Elapsed</dt><dd id="elecElapsed">35</dd></div>
+            <div class="snap__row"><dt>Months Remaining</dt><dd id="elecRemaining">9</dd></div>
           </dl>
         </div>
         <div class="assembly terr__card">
@@ -373,6 +373,17 @@
     }));
     window.addEventListener('resize', () => render(current));
     render('12m');
+  })();
+
+  // Election clock: the September 1980 vote is 44 months into a 44-month term.
+  // Each turn is one month, so the countdown ticks — elapsed up, remaining down.
+  (() => {
+    const TERM = 44, elapsed = 35 + getTutTurn(), remaining = TERM - elapsed;
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('elecElapsed', elapsed);
+    set('elecRemaining', Math.max(0, remaining));
+    const bar = document.getElementById('elecBar');
+    if (bar) bar.style.width = Math.min(100, elapsed / TERM * 100).toFixed(1) + '%';
   })();
 
   // Welcome modal: shown by default (blocks interaction until "Let's Begin"),

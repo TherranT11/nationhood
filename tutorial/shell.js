@@ -170,7 +170,7 @@ export async function updateProfile(patch) {
 // turn 2 = the alcohol-tax choice resolving (Feb 1980).
 export const TUT_BALANCE_BASE = -10.0;   // $bn/yr — the deficit at turn 0
 export const TUT_PENSION_SAVING = 23.1;  // $bn/yr the abolition returns (bill figure)
-export const TUT_ALCOHOL_COST = 22.2;    // $bn/yr revenue lost if the alcohol tax is repealed
+export const TUT_ALCOHOL_COST = 2.2;     // $bn/yr revenue lost if the alcohol tax is repealed
 export const TUT_APPROVAL_BASE = 32;     // % approval at turn 0
 export const TUT_APPROVAL_DROP = 9;      // points lost to abolishing the pension
 export const TUT_ALCOHOL_GAIN = 6;       // points won back by repealing the (popular) alcohol tax
@@ -393,7 +393,7 @@ const GUIDE_STEPS = [
   { page: '/tutorial/legislature/', target: '.gd-floor .tally', ey: 'Carried', title: 'It Passes',
     body: '137 to 103 — the bill clears the floor. The pension is abolished: the treasury saves ₣23.1bn and bureaucracy falls, but poverty climbs and the public is furious. You kept UC — at a price.' },
   { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'Up Next', title: 'In Committee',
-    body: 'Les Verts want to abolish the alcohol tax — popular, but it blows a ₣22.2bn hole in revenue. Bills like this need your endorsement to reach the floor. A decision for another day.' },
+    body: 'Les Verts want to abolish the alcohol tax — popular, but it blows a ₣2.2bn hole in revenue. Bills like this need your endorsement to reach the floor. A decision for another day.' },
   { page: '/tutorial/legislature/', target: '.nav__i[href="/tutorial/inbox/"], .botnav__i[href="/tutorial/inbox/"]',
     ey: 'Next', title: 'The Chamber Talks Back', body: 'Passing that bill makes friends and enemies. Let’s see who’s writing to you.',
     nav: '/tutorial/inbox/', cta: 'Inbox →', pulse: true },
@@ -439,9 +439,9 @@ const GUIDE_STEPS = [
   { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'The Bill', title: 'Abolish the Alcohol Tax',
     body: 'Les Verts want the alcohol tax gone, and most of Sessau agrees. You didn’t get to choose on the pension — the coalition forced your hand. This one you own.' },
   { page: '/tutorial/legislature/', target: '#acEndorse', ey: 'Your Choice', title: 'Endorse — or Don’t',
-    body: 'Endorse it and Les Verts may choose to advance it to the floor — where, if it passes, the public rewards you but ₣22.2bn leaves your budget, and your surplus with it. Your backing doesn’t carry it alone; it’s theirs to move. Leave it and keep your books, with approval where it is. No wrong answer — decide, then continue.', pulse: true },
+    body: 'Endorse it and Les Verts may choose to advance it to the floor — where, if it passes, the public rewards you but ₣2.2bn leaves your budget. Your backing doesn’t carry it alone; it’s theirs to move. Leave it and keep your books, with approval where it is. No wrong answer — decide, then continue.', pulse: true },
   { page: '/tutorial/legislature/', target: '.nhbar', ey: 'The Week Ahead', title: 'See It Through',
-    body: 'Your call on the alcohol tax is made — approval or the budget, you can rarely serve both, and that’s the whole job. Advance the week to see it land: if you endorsed it and Les Verts carry it through, the public rewards you (+approval) and the treasury pays the bill (−₣22.2bn). Push Next Week.',
+    body: 'Your call on the alcohol tax is made — approval or the budget, you can rarely serve both, and that’s the whole job. If you endorsed it and Les Verts carry it through, the public rewards you (+approval) and the treasury pays the bill (−₣2.2bn). Hit Next Week and advance.',
     enableWeek: true, pulse: true },
 ];
 
