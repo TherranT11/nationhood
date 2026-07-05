@@ -116,11 +116,14 @@
 
         <section class="card gd-floor">
           <div class="card__k">On the Floor</div>
-          <div class="bill__name">The Federal Police Budget Bill</div>
-          <div class="bill__desc">Raises the Federal Police budget from Level 3 to Level 4.</div>
+          <div class="bill__name">Abolish the Civil Service Pension</div>
+          <div class="bill__by">Proposed by Union Conservatrice</div>
+          <div class="bill__desc">Ends the state pension paid to Sessau&rsquo;s civil servants.</div>
           <div class="bill__chips">
-            <span class="chip chip--cost">&minus;$16.2 bn/year</span>
-            <span class="chip chip--good">+2 Order</span>
+            <span class="chip chip--good">&minus;$23.1 bn/year</span>
+            <span class="chip chip--good">&minus;5 Bureaucracy</span>
+            <span class="chip chip--cost">+3 Poverty</span>
+            <span class="chip chip--cost">Very Unpopular</span>
           </div>
           <div class="tally">
             <div class="tally__bar">
@@ -188,9 +191,9 @@
   if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
 
-  /* The Federal Police Budget Bill — a live vote.
-     UC (23) is a locked Yes, PSS (103) a locked No. Front Sessau's 114 seats
-     are the player's to cast. 121 of 240 seats carries the floor. */
+  /* Abolish the Civil Service Pension — a live vote.
+     UC proposed it, so UC (23) is a locked Yes; PSS (103) a locked No. Front
+     Sessau's 114 seats are the player's to cast. 121 of 240 carries the floor. */
   (function () {
     const TOTAL = 240, MAJORITY = 121, FS = 114, UC_YES = 23, PSS_NO = 103;
     const el = {
