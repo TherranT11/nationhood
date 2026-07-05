@@ -189,21 +189,34 @@ export function alcoholResolved() {
   try { return getTutTurn() >= 2 && sessionStorage.getItem('nh-alcohol') === 'endorse'; } catch (e) { return false; }
 }
 
-export const TUT_INFLUENCE_BASE = 4;     // Influence at turn 0
+export const TUT_INFLUENCE_BASE = 20;    // Influence at turn 0 (a campaign war-chest)
 export const TUT_INFLUENCE_GAIN = 3;     // Influence accrued each turn
 
-// One source for every derived headline number, read by the topbar and Home.
+// Campaign spending + the popularity it wins or loses accumulate here (turn 3+).
+export function campSpent() { try { return Number(sessionStorage.getItem('nh-camp-spent') || 0); } catch (e) { return 0; } }
+export function campPop() { try { return Number(sessionStorage.getItem('nh-camp-pop') || 0); } catch (e) { return 0; } }
+// Record a used campaign action: Influence spent + the popularity delta it rolled.
+export function applyCampaign(spend, popDelta) {
+  try {
+    sessionStorage.setItem('nh-camp-spent', String(campSpent() + spend));
+    sessionStorage.setItem('nh-camp-pop', String(campPop() + popDelta));
+  } catch (e) {}
+}
+
+// One source for every derived headline number, read by the topbar, Home and Election.
 export function tutDate() { return TUT_DATES[Math.min(getTutTurn(), TUT_DATES.length - 1)]; }
-export function tutInfluence() { return TUT_INFLUENCE_BASE + TUT_INFLUENCE_GAIN * getTutTurn(); }
+export function tutInfluence() { return TUT_INFLUENCE_BASE + TUT_INFLUENCE_GAIN * getTutTurn() - campSpent(); }
 export function tutBalance() {
   return TUT_BALANCE_BASE + (pensionAbolished() ? TUT_PENSION_SAVING : 0) - (alcoholResolved() ? TUT_ALCOHOL_COST : 0);
 }
 export function tutApproval() {
-  return TUT_APPROVAL_BASE - (getTutTurn() >= 1 ? TUT_APPROVAL_DROP : 0) + (alcoholResolved() ? TUT_ALCOHOL_GAIN : 0);
+  const a = TUT_APPROVAL_BASE - (getTutTurn() >= 1 ? TUT_APPROVAL_DROP : 0) + (alcoholResolved() ? TUT_ALCOHOL_GAIN : 0) + campPop();
+  return Math.max(0, Math.min(100, a));
 }
 // The "Last Factors Affecting Popularity" list, most recent first.
 export function tutApprovalFactors() {
   const f = [];
+  if (campPop() !== 0) f.push({ amt: campPop(), label: 'Campaign trail' });
   if (alcoholResolved()) f.push({ amt: TUT_ALCOHOL_GAIN, label: 'Repealed the Alcohol Tax' });
   if (getTutTurn() >= 1) f.push({ amt: -TUT_APPROVAL_DROP, label: 'Voted to Abolish Civil Service Pension' });
   return f;

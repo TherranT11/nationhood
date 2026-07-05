@@ -66,13 +66,15 @@
   .camp__act-name{font-size:14px;font-weight:800;color:var(--ink);letter-spacing:-.01em}
   .camp__act-cost{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--amber);background:var(--amber-soft);border-radius:7px;padding:3px 8px;white-space:nowrap}
   .camp__act-eff{font-size:12.5px;line-height:1.5;color:var(--muted)}
-  .camp__hint{font-size:12.5px;color:var(--soft);margin:-4px 0 14px}
-  .camp__timeline{display:flex;flex-direction:column;gap:8px}
-  .camp__slot{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--surface);border:1px dashed var(--line);border-radius:11px;padding:12px 14px;cursor:pointer;font-family:inherit;transition:border-color .15s,background .15s}
-  .camp__slot:hover{border-color:var(--indigo);background:var(--chip)}
-  .camp__slot-date{font-size:14px;font-weight:700;color:var(--ink);min-width:112px;flex:none}
-  .camp__slot-count{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft);flex:1;min-width:0}
-  .camp__slot-action{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft);flex:none}
+  .camp__act{display:flex;flex-direction:column}
+  .camp__target{margin-top:9px;width:100%;font-family:inherit;font-size:12.5px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+  .camp__use{margin-top:10px;align-self:flex-start;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:var(--indigo);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer}
+  .camp__use:hover{filter:brightness(1.08)}
+  .camp__use:disabled{opacity:.45;cursor:not-allowed;filter:none}
+  .camp__wallet{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;font-size:13px;color:var(--muted)}
+  .camp__wallet b{font-family:'Space Mono',monospace;color:var(--ink);font-size:15px;margin-left:5px}
+  .camp__result{margin-top:15px;padding-top:13px;border-top:1px solid var(--line);font-size:13.5px;line-height:1.5;color:var(--ink)}
+  .camp__result:empty{display:none}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -104,20 +106,17 @@
           <div class="nextel"><span class="nextel__when">September, 1980</span><span class="nextel__count" id="nextCount">9 months away</span></div>
         </section>
         <div id="campaign" hidden>
-          <div class="camp__intro">Typically this simply shows the results of the last election. However, whenever there are only six months or less before the next election, you can campaign. Queue up a few actions below in anticipation of the next election.</div>
+          <div class="camp__intro">Typically this simply shows the results of the last election. However, whenever there are only six months or less before the next election, you can campaign. Use the actions below — each is paid in Influence the moment you use it.</div>
           <section class="card gd-campaign">
-            <div class="card__k">Campaign Actions</div>
+            <div class="card__k">Campaign Trail</div>
+            <div class="camp__wallet"><span>Influence<b id="campInf">—</b></span><span>Party Approval<b id="campAppr">—</b></span></div>
             <div class="camp__acts">
-              <div class="camp__act"><div class="camp__act-hd"><span class="camp__act-name">Door Knocking Campaign</span><span class="camp__act-cost">15 Influence</span></div><div class="camp__act-eff">&plus;1D4 Party Popularity.</div></div>
-              <div class="camp__act"><div class="camp__act-hd"><span class="camp__act-name">Challenge Opponent to TV Debate</span><span class="camp__act-cost">20 Influence</span></div><div class="camp__act-eff">Pick any party, even a coalition partner. 50% you gain &plus;6% and they lose 6%; 50% they gain &plus;6% and you lose 6%.</div></div>
-              <div class="camp__act"><div class="camp__act-hd"><span class="camp__act-name">Public Appearance</span><span class="camp__act-cost">10 Influence</span></div><div class="camp__act-eff">&plus;1 Party Popularity.</div></div>
-              <div class="camp__act"><div class="camp__act-hd"><span class="camp__act-name">Attack Campaign</span><span class="camp__act-cost">6 Influence</span></div><div class="camp__act-eff">Pick a party. 50% they lose 3% Popularity; 50% you lose 5% Popularity.</div></div>
+              <div class="camp__act" data-act="door" data-cost="15"><div class="camp__act-hd"><span class="camp__act-name">Door Knocking Campaign</span><span class="camp__act-cost">15 Influence</span></div><div class="camp__act-eff">&plus;1D4 Party Popularity.</div><button class="camp__use" type="button">Use</button></div>
+              <div class="camp__act" data-act="debate" data-cost="20" data-target="1"><div class="camp__act-hd"><span class="camp__act-name">Challenge Opponent to TV Debate</span><span class="camp__act-cost">20 Influence</span></div><div class="camp__act-eff">Pick any party, even a coalition partner. 50% you gain &plus;6% and they lose 6%; 50% they gain &plus;6% and you lose 6%.</div><select class="camp__target" aria-label="Debate opponent"></select><button class="camp__use" type="button">Use</button></div>
+              <div class="camp__act" data-act="public" data-cost="10"><div class="camp__act-hd"><span class="camp__act-name">Public Appearance</span><span class="camp__act-cost">10 Influence</span></div><div class="camp__act-eff">&plus;1 Party Popularity.</div><button class="camp__use" type="button">Use</button></div>
+              <div class="camp__act" data-act="attack" data-cost="6" data-target="1"><div class="camp__act-hd"><span class="camp__act-name">Attack Campaign</span><span class="camp__act-cost">6 Influence</span></div><div class="camp__act-eff">Pick a party. 50% they lose 3% Popularity; 50% you lose 5% Popularity.</div><select class="camp__target" aria-label="Attack target"></select><button class="camp__use" type="button">Use</button></div>
             </div>
-          </section>
-          <section class="card">
-            <div class="card__k">Campaign Schedule</div>
-            <div class="camp__hint">Click a date, then select an action. You must pay its Influence immediately to queue it.</div>
-            <div class="camp__timeline" id="campTimeline"></div>
+            <div class="camp__result" id="campResult"></div>
           </section>
         </div>
         <section class="card gd-lastelec">
@@ -150,7 +149,7 @@
   </div></div></div>
 <script type="module">
   import { isConfigured } from '/supabase.js';
-  import { requireUser, mountTutorialChrome, getTutTurn } from '/tutorial/shell.js';
+  import { requireUser, mountTutorialChrome, getTutTurn, tutInfluence, tutApproval, applyCampaign } from '/tutorial/shell.js';
   if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
 
@@ -178,19 +177,44 @@
     const nc = document.getElementById('nextCount');
     if (nc) nc.textContent = rem + ' month' + (rem === 1 ? '' : 's') + ' away';
 
-    // Within six months of the vote (turn 3+), the campaign opens: the six months
-    // between now and September 1980, one queue slot each.
+    // Within six months of the vote (turn 3+), the campaign opens. Each action is
+    // paid in Influence at once and rolls its dice immediately against Party Popularity.
     if (getTutTurn() >= 3) {
       const camp = document.getElementById('campaign');
       if (camp) camp.hidden = false;
-      const MONTHS = [['March, 1980', 6], ['April, 1980', 5], ['May, 1980', 4], ['June, 1980', 3], ['July, 1980', 2], ['August, 1980', 1]];
-      const tl = document.getElementById('campTimeline');
-      if (tl) tl.innerHTML = MONTHS.map(([d, m], i) =>
-        '<button class="camp__slot" data-i="' + i + '" type="button">' +
-          '<span class="camp__slot-date">' + d + '</span>' +
-          '<span class="camp__slot-count">' + m + ' month' + (m === 1 ? '' : 's') + ' to election</span>' +
-          '<span class="camp__slot-action">— empty —</span>' +
-        '</button>').join('');
+      const TARGETS = [{ v: 'uc', n: 'Union Conservatrice' }, { v: 'pss', n: 'Parti Socialiste' }, { v: 'lv', n: 'Les Verts' }];
+      document.querySelectorAll('.camp__target').forEach((s) => {
+        s.innerHTML = TARGETS.map((t) => '<option value="' + t.v + '">' + t.n + '</option>').join('');
+      });
+      const d = (n) => Math.floor(Math.random() * n) + 1;   // 1..n
+      const coin = () => Math.random() < 0.5;
+      const tgtName = (v) => (TARGETS.find((t) => t.v === v) || { n: 'them' }).n;
+
+      function refresh() {
+        const inf = tutInfluence();
+        document.getElementById('campInf').textContent = inf;
+        document.getElementById('campAppr').textContent = tutApproval() + '%';
+        document.querySelectorAll('.camp__act').forEach((a) => { a.querySelector('.camp__use').disabled = inf < (+a.dataset.cost); });
+        const chip = document.querySelector('.nhbar__inf');   // keep the topbar Influence in sync
+        if (chip && chip.lastChild) chip.lastChild.textContent = inf;
+      }
+
+      function use(a) {
+        const cost = +a.dataset.cost;
+        if (tutInfluence() < cost) return;
+        const sel = a.querySelector('.camp__target');
+        const tgt = sel ? tgtName(sel.value) : '';
+        let selfPop = 0, msg = '';
+        if (a.dataset.act === 'door') { const r = d(4); selfPop = r; msg = 'Door knocking paid off — +' + r + '% Party Popularity.'; }
+        else if (a.dataset.act === 'public') { selfPop = 1; msg = 'A well-received public appearance — +1% Party Popularity.'; }
+        else if (a.dataset.act === 'debate') { if (coin()) { selfPop = 6; msg = 'You won the debate — +6% for you, −6% for ' + tgt + '.'; } else { selfPop = -6; msg = tgt + ' won the debate — +6% for them, −6% for you.'; } }
+        else if (a.dataset.act === 'attack') { if (coin()) { msg = 'The attack landed — ' + tgt + ' lose 3% Popularity.'; } else { selfPop = -5; msg = 'The attack backfired — you lose 5% Popularity.'; } }
+        applyCampaign(cost, selfPop);
+        document.getElementById('campResult').textContent = msg;
+        refresh();
+      }
+      document.querySelectorAll('.camp__act .camp__use').forEach((b) => b.addEventListener('click', () => use(b.closest('.camp__act'))));
+      refresh();
     }
   })();
 </script>
