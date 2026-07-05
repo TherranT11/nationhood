@@ -178,8 +178,8 @@
               <span class="chip chip--cost">&minus;$16.2 bn/year</span>
               <span class="chip chip--good">+2 Order</span>
             </div>
-            <div class="law__bar"><span style="width:80%"></span></div>
-            <div class="law__meta"><span>Implementing</span><span>3 months remaining</span></div>
+            <div class="law__bar"><span id="lawBar" style="width:80%"></span></div>
+            <div class="law__meta"><span id="lawStatus">Implementing</span><span id="lawRemaining">3 months remaining</span></div>
           </div>
         </section>
 
@@ -270,9 +270,19 @@
   </div></div></div>
 <script type="module">
   import { isConfigured } from '/supabase.js';
-  import { requireUser, mountTutorialChrome } from '/tutorial/shell.js';
+  import { requireUser, mountTutorialChrome, getTutTurn } from '/tutorial/shell.js';
   if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
+
+  // Federal Police Budget: 3 months to implement at turn 0, one month closer each
+  // turn. The bar fills from 80% (3 left) to 100% (done); at 0 the law is in force.
+  (() => {
+    const rem = Math.max(0, 3 - getTutTurn());
+    const status = document.getElementById('lawStatus'), remEl = document.getElementById('lawRemaining'), bar = document.getElementById('lawBar');
+    if (status) status.textContent = rem > 0 ? 'Implementing' : 'Implemented';
+    if (remEl) remEl.textContent = rem > 0 ? (rem + ' month' + (rem === 1 ? '' : 's') + ' remaining') : 'Complete';
+    if (bar) bar.style.width = rem > 0 ? Math.round(80 + (3 - rem) * (20 / 3)) + '%' : '100%';
+  })();
 </script>
 </body>
 </html>

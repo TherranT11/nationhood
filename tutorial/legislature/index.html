@@ -87,6 +87,7 @@
   .bill__empty{font-size:14px;color:var(--muted);padding:6px 0 2px}
   .bill__note{margin-top:12px;font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);text-align:center}
   .bill__note:empty{display:none}
+  .bill__btns .btn--primary[disabled]{opacity:.6;cursor:not-allowed;filter:none}
   .btn--ghost{background:var(--chip);border-color:var(--line);color:var(--soft)}
   .btn--ghost[disabled]{cursor:not-allowed;opacity:.65}
   .botnav{display:none}
@@ -161,7 +162,7 @@
           <div class="bill__name">Abolish the Alcohol Tax</div>
           <div class="bill__by" id="acBy">Proposed by Les Verts Sessauans &middot; No endorsements yet</div>
           <div class="bill__chips">
-            <span class="chip chip--cost">&minus;$22.2 bn/year</span>
+            <span class="chip chip--cost">&minus;$2.2 bn/year</span>
             <span class="chip chip--good">Very popular</span>
           </div>
           <div class="bill__btns">
@@ -274,15 +275,16 @@
   })();
 
   /* Abolish the Alcohol Tax — the player's first real choice, live from turn 2.
-     Binary: Endorse it (populist — floor next week, approval up, ₣22.2bn off the
+     Binary: Endorse it (populist — floor next week, approval up, ₣2.2bn off the
      budget) or leave it (keep the books). Conditional Endorsement stays locked
      as a preview of a later option. Declining is valid, so this isn't gated. */
   (function () {
-    if (getTutTurn() < 1) return;               // greyed preview during turn 1
+    const turn = getTutTurn();
+    if (turn < 1) return;                        // greyed preview during turn 1
     const endorse = document.getElementById('acEndorse');
     if (!endorse) return;
     const by = document.getElementById('acBy'), note = document.getElementById('acNote');
-    endorse.disabled = false;
+    const locked = turn >= 2;                    // the week advanced — the choice is resolved
     endorse.classList.remove('btn--ghost');
     endorse.classList.add('btn--primary');
 
@@ -294,15 +296,20 @@
       endorse.textContent = endorsed ? 'Endorsed' : 'Endorse';
       if (by) by.innerHTML = 'Proposed by Les Verts Sessauans &middot; ' +
         (endorsed ? 'Endorsed by Front Sessau' : 'No endorsements yet');
-      if (note) note.textContent = endorsed
-        ? 'Les Verts now hold your endorsement and may choose to advance it to the floor next tick.'
-        : '';
+      if (note) note.textContent = !endorsed ? ''
+        : locked ? 'Endorsed — Les Verts carried the repeal to the floor and it passed.'
+        : 'Les Verts now hold your endorsement and may choose to advance it to the floor next tick.';
     }
-    endorse.addEventListener('click', () => {
-      endorsed = !endorsed;                     // click again to withdraw
-      try { endorsed ? sessionStorage.setItem('nh-alcohol', 'endorse') : sessionStorage.removeItem('nh-alcohol'); } catch (e) {}
-      render();
-    });
+    if (locked) {
+      endorse.disabled = true;                   // resolved: no re-toggling to rewrite the fallout
+    } else {
+      endorse.disabled = false;
+      endorse.addEventListener('click', () => {
+        endorsed = !endorsed;                    // click again to withdraw
+        try { endorsed ? sessionStorage.setItem('nh-alcohol', 'endorse') : sessionStorage.removeItem('nh-alcohol'); } catch (e) {}
+        render();
+      });
+    }
     render();
   })();
 </script>

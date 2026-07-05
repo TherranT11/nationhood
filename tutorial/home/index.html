@@ -185,10 +185,10 @@
         <div class="elec terr__card">
           <div class="terr__k">Elections</div>
           <div class="elec__when">Election in <b>September, 1980</b></div>
-          <div class="elec__bar"><span style="width:80%"></span></div>
+          <div class="elec__bar"><span id="elecBar" style="width:80%"></span></div>
           <dl class="snap__list">
-            <div class="snap__row"><dt>Months Elapsed</dt><dd>35</dd></div>
-            <div class="snap__row"><dt>Months Remaining</dt><dd>9</dd></div>
+            <div class="snap__row"><dt>Months Elapsed</dt><dd id="elecElapsed">35</dd></div>
+            <div class="snap__row"><dt>Months Remaining</dt><dd id="elecRemaining">9</dd></div>
           </dl>
         </div>
         <div class="assembly terr__card">
@@ -253,7 +253,7 @@
   </div>
 <script type="module">
   import { supabase, isConfigured } from '/supabase.js';
-  import { requireUser, mountTutorialChrome, getTutorialProgress, updateProfile, pensionAbolished, TUT_APPROVAL_BASE, TUT_APPROVAL_DROP } from '/tutorial/shell.js';
+  import { requireUser, mountTutorialChrome, getTutorialProgress, updateProfile, getTutTurn, tutApproval, tutApprovalFactors, TUT_APPROVAL_BASE, TUT_APPROVAL_DROP } from '/tutorial/shell.js';
   import { nationColors, drawNationMiniMap } from '/hexmap.js';
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
 
@@ -294,25 +294,36 @@
     if (!svg) return;
     const valEl = document.getElementById('apprVal'), deltaEl = document.getElementById('apprDelta');
     const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    // The pension vote's fallout lands once the week advances: −9 pts, 32% → 23%.
-    const abolished = pensionAbolished();
-    const nowVal = TUT_APPROVAL_BASE - (abolished ? TUT_APPROVAL_DROP : 0);
+    // Approval is derived centrally (tutApproval): 32% → 23% on the pension vote,
+    // then +6 back if the alcohol repeal is endorsed and resolves at turn 2.
+    const turn = getTutTurn(), nowVal = tutApproval();
     const base12 = [23, 24, 24, 26, 25, 27, 28, 29, 28, 30, 31, 32];
     const base12Labels = ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'];
-    const VIEWS = abolished ? {
-      '12m': { data: base12.concat([nowVal]), labels: base12Labels.concat(['Jan']), delta: '▼ ' + TUT_APPROVAL_DROP + ' pts this month' },
-      'elec': { data: [TUT_APPROVAL_BASE, nowVal], labels: ['Election', 'Now'], delta: '▼ ' + TUT_APPROVAL_DROP + ' pts since the election' },
-    } : {
-      '12m': { data: base12, labels: base12Labels, delta: '▲ 9 pts over 12 months' },
-      'elec': { data: [TUT_APPROVAL_BASE, TUT_APPROVAL_BASE], labels: ['Election', 'Now'], delta: 'No change since the election' },
+    // Extend the run-up with a point per resolved turn (Jan = pension, Feb = alcohol).
+    const tail = [], tailLbl = [];
+    if (turn >= 1) { tail.push(TUT_APPROVAL_BASE - TUT_APPROVAL_DROP); tailLbl.push('Jan'); }
+    if (turn >= 2) { tail.push(nowVal); tailLbl.push('Feb'); }
+    const data12 = base12.concat(tail), lbl12 = base12Labels.concat(tailLbl);
+    const monthDelta = (arr) => {
+      if (arr.length < 2) return '';
+      const c = arr[arr.length - 1] - arr[arr.length - 2];
+      return c > 0 ? '▲ ' + c + ' pts this month' : c < 0 ? '▼ ' + (-c) + ' pts this month' : 'Flat this month';
+    };
+    const elecCh = nowVal - TUT_APPROVAL_BASE;
+    const VIEWS = {
+      '12m': { data: data12, labels: lbl12, delta: turn === 0 ? '▲ 9 pts over 12 months' : monthDelta(data12) },
+      'elec': { data: [TUT_APPROVAL_BASE, nowVal], labels: ['Election', 'Now'],
+        delta: elecCh > 0 ? '▲ ' + elecCh + ' pts since the election' : elecCh < 0 ? '▼ ' + (-elecCh) + ' pts since the election' : 'No change since the election' },
     };
     // Party Approval stat (top of page) and the "Last Factors" list track the same number.
     const statEl = document.getElementById('apprStat');
     if (statEl) statEl.textContent = nowVal + '%';
     const factorsEl = document.getElementById('apprFactors');
     if (factorsEl) {
-      factorsEl.innerHTML = abolished
-        ? '<div class="factor"><span class="factor__amt factor__amt--neg">−' + TUT_APPROVAL_DROP + '%</span><span class="factor__what">Voted to Abolish Civil Service Pension</span></div>'
+      const factors = tutApprovalFactors();
+      factorsEl.innerHTML = factors.length
+        ? factors.map((f) => '<div class="factor"><span class="factor__amt factor__amt--' + (f.amt < 0 ? 'neg' : 'pos') + '">' +
+            (f.amt < 0 ? '−' : '+') + Math.abs(f.amt) + '%</span><span class="factor__what">' + f.label + '</span></div>').join('')
         : '<div class="factor--none">None</div>';
     }
     let current = '12m';
@@ -362,6 +373,17 @@
     }));
     window.addEventListener('resize', () => render(current));
     render('12m');
+  })();
+
+  // Election clock: the September 1980 vote is 44 months into a 44-month term.
+  // Each turn is one month, so the countdown ticks — elapsed up, remaining down.
+  (() => {
+    const TERM = 44, elapsed = 35 + getTutTurn(), remaining = TERM - elapsed;
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('elecElapsed', elapsed);
+    set('elecRemaining', Math.max(0, remaining));
+    const bar = document.getElementById('elecBar');
+    if (bar) bar.style.width = Math.min(100, elapsed / TERM * 100).toFixed(1) + '%';
   })();
 
   // Welcome modal: shown by default (blocks interaction until "Let's Begin"),

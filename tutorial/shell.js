@@ -165,11 +165,16 @@ export async function updateProfile(patch) {
 // a fresh session mid-scenario resumes the tour at the right step but with the
 // chrome reset to turn 0. Acceptable for a single-sitting tutorial; wire turn/
 // vote into getTutorialProgress if cross-session resume is ever needed.
-// All numbers the scenario keys off live here as the one source.
+// All numbers the scenario keys off live here as the one source. Turn 0 = the
+// opening week (Dec 1979); turn 1 = the pension vote's fallout (Jan 1980);
+// turn 2 = the alcohol-tax choice resolving (Feb 1980).
 export const TUT_BALANCE_BASE = -10.0;   // $bn/yr — the deficit at turn 0
 export const TUT_PENSION_SAVING = 23.1;  // $bn/yr the abolition returns (bill figure)
+export const TUT_ALCOHOL_COST = 2.2;     // $bn/yr revenue lost if the alcohol tax is repealed
 export const TUT_APPROVAL_BASE = 32;     // % approval at turn 0
 export const TUT_APPROVAL_DROP = 9;      // points lost to abolishing the pension
+export const TUT_ALCOHOL_GAIN = 6;       // points won back by repealing the (popular) alcohol tax
+const TUT_DATES = ['December, 1979', 'January, 1980', 'February, 1980', 'March, 1980', 'April, 1980', 'May, 1980', 'June, 1980', 'July, 1980', 'August, 1980', 'September, 1980'];
 
 export function getTutTurn() {
   try { return Number(sessionStorage.getItem('nh-turn') || 0); } catch (e) { return 0; }
@@ -177,11 +182,70 @@ export function getTutTurn() {
 export function getFloorVote() {
   try { return sessionStorage.getItem('nh-floor-vote'); } catch (e) { return null; }
 }
-// True once the week has advanced AND the player carried the abolition.
+// True once the week has advanced AND the player carried the abolition (forced yes).
 export function pensionAbolished() { return getTutTurn() >= 1 && getFloorVote() === 'yes'; }
+// True once the alcohol repeal resolves — the player endorsed it and a further week passed.
+export function alcoholResolved() {
+  try { return getTutTurn() >= 2 && sessionStorage.getItem('nh-alcohol') === 'endorse'; } catch (e) { return false; }
+}
 
+export const TUT_INFLUENCE_BASE = 20;    // Influence at turn 0 (a campaign war-chest)
+export const TUT_INFLUENCE_GAIN = 3;     // Influence accrued each turn
+
+// Campaign spending (Influence) accumulates here (turn 3+). Internal to the state layer.
+function campSpent() { try { return Number(sessionStorage.getItem('nh-camp-spent') || 0); } catch (e) { return 0; } }
+export function applySpend(amt) { try { sessionStorage.setItem('nh-camp-spent', String(campSpent() + amt)); } catch (e) {} }
+
+// Popularity IS approval — one stat. FS's popularity is the player's approval
+// number (policy sentiment + the campaign trail); the other parties carry their
+// own base plus any campaign deltas. With FS's 32, these bases reproduce today's
+// chamber exactly (FS 114 / PSS 103 / UC 23 / LV 0; LV under the 5% threshold).
+// projectedSeats() re-allocates from these, so a policy hit to approval OR an
+// Attack/Debate against a rival really does move the seats each would win.
+const POP_OTHER_BASE = { pss: 29, uc: 6.5, lv: 3 };
+const POP_THRESHOLD = 5, PROJ_TOTAL_SEATS = 240;
+function popDelta(p) { try { return Number(sessionStorage.getItem('nh-pop-' + p) || 0); } catch (e) { return 0; } }
+export function applyPop(p, delta) { try { sessionStorage.setItem('nh-pop-' + p, String(popDelta(p) + delta)); } catch (e) {} }
+export function partyPop(p) { return p === 'fs' ? tutApproval() : Math.max(0, (POP_OTHER_BASE[p] || 0) + popDelta(p)); }
+// Parties over the threshold split the 240 seats in proportion to popularity;
+// largest-remainder rounding lands the total exactly on 240.
+export function projectedSeats() {
+  const parties = ['fs', 'pss', 'uc', 'lv'];
+  const pop = {}; parties.forEach((p) => { pop[p] = partyPop(p); });
+  const qual = parties.filter((p) => pop[p] >= POP_THRESHOLD);
+  const sum = qual.reduce((s, p) => s + pop[p], 0) || 1;
+  const seats = {}; parties.forEach((p) => { seats[p] = 0; });
+  const rema = []; let used = 0;
+  qual.forEach((p) => { const raw = pop[p] / sum * PROJ_TOTAL_SEATS; seats[p] = Math.floor(raw); used += seats[p]; rema.push({ p: p, r: raw - Math.floor(raw) }); });
+  rema.sort((a, b) => b.r - a.r);
+  for (let i = 0; i < PROJ_TOTAL_SEATS - used && rema.length; i++) seats[rema[i % rema.length].p]++;
+  return seats;
+}
+
+// One source for every derived headline number, read by the topbar, Home and Election.
+export function tutDate() { return TUT_DATES[Math.min(getTutTurn(), TUT_DATES.length - 1)]; }
+export function tutInfluence() { return TUT_INFLUENCE_BASE + TUT_INFLUENCE_GAIN * getTutTurn() - campSpent(); }
+export function tutBalance() {
+  return TUT_BALANCE_BASE + (pensionAbolished() ? TUT_PENSION_SAVING : 0) - (alcoholResolved() ? TUT_ALCOHOL_COST : 0);
+}
+// Party Approval = FS's popularity, the one stat: policy sentiment (pension /
+// alcohol) plus the campaign trail. Also what projectedSeats reads for FS.
+export function tutApproval() {
+  const a = TUT_APPROVAL_BASE - (getTutTurn() >= 1 ? TUT_APPROVAL_DROP : 0) + (alcoholResolved() ? TUT_ALCOHOL_GAIN : 0) + popDelta('fs');
+  return Math.max(0, Math.min(100, a));
+}
+// The "Last Factors Affecting Popularity" list, most recent first.
+export function tutApprovalFactors() {
+  const f = [];
+  if (popDelta('fs') !== 0) f.push({ amt: popDelta('fs'), label: 'Campaign trail' });
+  if (alcoholResolved()) f.push({ amt: TUT_ALCOHOL_GAIN, label: 'Repealed the Alcohol Tax' });
+  if (getTutTurn() >= 1) f.push({ amt: -TUT_APPROVAL_DROP, label: 'Voted to Abolish Civil Service Pension' });
+  return f;
+}
+
+// Advance the scenario one turn (the tutorial runs 0 → 1 → 2).
 export function advanceTutorialWeek() {
-  try { sessionStorage.setItem('nh-turn', '1'); } catch (e) {}
+  try { sessionStorage.setItem('nh-turn', String(getTutTurn() + 1)); } catch (e) {}
 }
 
 // Wipe the player's whole tutorial run so the next visit starts fresh from the
@@ -251,8 +315,31 @@ export function mountTutorialChrome() {
     window.location.href = '/home/';
   });
 
+  // From turn 3 until the result is in, the election is live — flag the Election
+  // nav with a glowing amber dot (so a player who reaches election day on another
+  // page still knows to go watch the count). Clears once the result is locked in.
+  let elDone = false;
+  try { elDone = sessionStorage.getItem('nh-election-done') === '1'; } catch (e) {}
+  if (getTutTurn() >= 3 && !elDone) markElectionDot();
+
   mountTutorialTopbar();
   mountGuide();
+}
+
+function markElectionDot() {
+  if (!document.getElementById('nh-eldot-css')) {
+    const st = document.createElement('style');
+    st.id = 'nh-eldot-css';
+    st.textContent =
+      '.nh-eldot{width:8px;height:8px;border-radius:50%;background:var(--amber);flex:none;animation:nh-eldot 1.4s ease-in-out infinite}' +
+      '.nav__i .nh-eldot{margin-left:auto}' +
+      '.botnav__i{position:relative}.botnav__i .nh-eldot{position:absolute;top:5px;left:calc(50% + 8px)}' +
+      '@keyframes nh-eldot{0%,100%{box-shadow:0 0 0 0 rgba(224,130,14,.55)}50%{box-shadow:0 0 0 5px rgba(224,130,14,0)}}';
+    document.head.appendChild(st);
+  }
+  document.querySelectorAll('.nav__i[href="/tutorial/election/"], .botnav__i[href="/tutorial/election/"]').forEach((a) => {
+    if (!a.querySelector('.nh-eldot')) { const d = document.createElement('span'); d.className = 'nh-eldot'; a.appendChild(d); }
+  });
 }
 
 // The persistent top bar on every screen (right → left): a light/dark toggle, a
@@ -267,17 +354,18 @@ function mountTutorialTopbar() {
   const host = document.querySelector('.main .page') || document.querySelector('.main');
   if (!host || host.querySelector('.nhbar')) return;
   ensureTopbarStyles2();
-  // Date and balance follow the turn: the pension savings land once the week
-  // advances and only if the player voted to abolish it.
-  const bal = TUT_BALANCE_BASE + (pensionAbolished() ? TUT_PENSION_SAVING : 0);
+  // Date and balance are derived centrally (tutDate/tutBalance) so the topbar,
+  // Home and News never drift: the pension saving and the alcohol cost land as
+  // their turns resolve.
+  const bal = tutBalance();
   const balTxt = (bal < 0 ? '−$' : '+$') + Math.abs(bal).toFixed(1) + ' bn/yr';
   const balCls = bal < 0 ? 'nhbar__bal--neg' : 'nhbar__bal--pos';
-  const dateTxt = getTutTurn() >= 1 ? 'January, 1980' : 'December, 1979';
+  const dateTxt = tutDate();
   const bar = document.createElement('div');
   bar.className = 'nhbar';
   bar.innerHTML =
     '<span class="nhbar__chip nhbar__inf" title="Influence">' +
-      '<svg class="nhbar__star" viewBox="0 0 24 24"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>4</span>' +
+      '<svg class="nhbar__star" viewBox="0 0 24 24"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>' + tutInfluence() + '</span>' +
     '<span class="nhbar__chip nhbar__bal ' + balCls + '" title="Budget balance (per year)">' + balTxt + '</span>' +
     '<span class="nhbar__chip nhbar__date">' + dateTxt + '</span>' +
     '<button class="nhbar__week" type="button" disabled>Next Week</button>' +
@@ -291,6 +379,17 @@ function mountTutorialTopbar() {
   // with the theme toggle (its dropdown still opens beneath it — .gear is relative).
   const gear = document.querySelector('.gear');
   if (gear) bar.appendChild(gear);
+
+  // Campaign free-play: once the guided tour has handed off (turns 3–8), Next Week
+  // is a live button so the player can advance to the September election. Each push
+  // ticks the turn and reloads the current page. Turn 9 is election day — no further.
+  const turn = getTutTurn();
+  if (turn >= 3 && turn < 9) {
+    const wk = bar.querySelector('.nhbar__week');
+    wk.removeAttribute('disabled');
+    wk.classList.add('nhbar__week--live');
+    wk.onclick = () => { wk.onclick = null; advanceTutorialWeek(); window.location.reload(); };
+  }
 }
 
 let topbarStyled2 = false;
@@ -366,7 +465,7 @@ const GUIDE_STEPS = [
   { page: '/tutorial/legislature/', target: '.gd-floor .tally', ey: 'Carried', title: 'It Passes',
     body: '137 to 103 — the bill clears the floor. The pension is abolished: the treasury saves ₣23.1bn and bureaucracy falls, but poverty climbs and the public is furious. You kept UC — at a price.' },
   { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'Up Next', title: 'In Committee',
-    body: 'Les Verts want to abolish the alcohol tax — popular, but it blows a ₣22.2bn hole in revenue. Bills like this need your endorsement to reach the floor. A decision for another day.' },
+    body: 'Les Verts want to abolish the alcohol tax — popular, but it blows a ₣2.2bn hole in revenue. Bills like this need your endorsement to reach the floor. A decision for another day.' },
   { page: '/tutorial/legislature/', target: '.nav__i[href="/tutorial/inbox/"], .botnav__i[href="/tutorial/inbox/"]',
     ey: 'Next', title: 'The Chamber Talks Back', body: 'Passing that bill makes friends and enemies. Let’s see who’s writing to you.',
     nav: '/tutorial/inbox/', cta: 'Inbox →', pulse: true },
@@ -412,9 +511,20 @@ const GUIDE_STEPS = [
   { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'The Bill', title: 'Abolish the Alcohol Tax',
     body: 'Les Verts want the alcohol tax gone, and most of Sessau agrees. You didn’t get to choose on the pension — the coalition forced your hand. This one you own.' },
   { page: '/tutorial/legislature/', target: '#acEndorse', ey: 'Your Choice', title: 'Endorse — or Don’t',
-    body: 'Endorse it and Les Verts may choose to advance it to the floor — where, if it passes, the public rewards you but ₣22.2bn leaves your budget, and your surplus with it. Your backing doesn’t carry it alone; it’s theirs to move. Leave it and keep your books, with approval where it is. No wrong answer — decide, then continue.', pulse: true },
-  { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'On the Record', title: 'Live With It',
-    body: 'Whatever you chose stands. Approval or the budget — you can rarely serve both at once, and that tension is the whole job. It only sharpens from here.' },
+    body: 'Endorse it and Les Verts may choose to advance it to the floor — where, if it passes, the public rewards you but ₣2.2bn leaves your budget. Your backing doesn’t carry it alone; it’s theirs to move. Leave it and keep your books, with approval where it is. No wrong answer — decide, then continue.', pulse: true },
+  { page: '/tutorial/legislature/', target: '.nhbar', ey: 'The Week Ahead', title: 'See It Through',
+    body: 'Your call on the alcohol tax is made — approval or the budget, you can rarely serve both, and that’s the whole job. If you endorsed it and Les Verts carry it through, the public rewards you (+approval) and the treasury pays the bill (−₣2.2bn). Hit Next Week and advance.',
+    enableWeek: true, pulse: true },
+
+  // Turn 3 — the alcohol result is in; the election tightens
+  { page: '/tutorial/home/', target: '.appr__factors', ey: 'On the Record', title: 'It Landed',
+    body: 'There’s your alcohol call, logged above. Endorse it and approval clawed back while the treasury took the hit; leave it and your books held. Either way the wheel turns — advance once more.',
+    enableWeek: true, pulse: true },
+  { page: '/tutorial/home/', target: '.nav__i[href="/tutorial/election/"], .botnav__i[href="/tutorial/election/"]',
+    ey: 'Six Months Out', title: 'The Clock Tightens', body: 'The election is now six months away — and the Election tab is lit. Before you fight the next one, see how you won the last. Head there.',
+    nav: '/tutorial/election/', cta: 'Election →', pulse: true },
+  { page: '/tutorial/election/', target: '.gd-lastelec', ey: 'How You Got Here', title: 'The 1977 Election',
+    body: 'This is the vote that built today’s Assembly. Front Sessau took 114 of 240 seats — a plurality, not the 121 needed to govern alone, which is exactly why you needed Union Conservatrice. In six months, you defend it.' },
 ];
 
 let guideStep = 0, guideEls = null, guideReposition = null, guideGate = null, guideGateEvent = null;
