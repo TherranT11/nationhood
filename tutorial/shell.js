@@ -174,7 +174,7 @@ export const TUT_ALCOHOL_COST = 2.2;     // $bn/yr revenue lost if the alcohol t
 export const TUT_APPROVAL_BASE = 32;     // % approval at turn 0
 export const TUT_APPROVAL_DROP = 9;      // points lost to abolishing the pension
 export const TUT_ALCOHOL_GAIN = 6;       // points won back by repealing the (popular) alcohol tax
-const TUT_DATES = ['December, 1979', 'January, 1980', 'February, 1980'];
+const TUT_DATES = ['December, 1979', 'January, 1980', 'February, 1980', 'March, 1980', 'April, 1980', 'May, 1980', 'June, 1980', 'July, 1980', 'August, 1980', 'September, 1980'];
 
 export function getTutTurn() {
   try { return Number(sessionStorage.getItem('nh-turn') || 0); } catch (e) { return 0; }
@@ -315,9 +315,9 @@ export function mountTutorialChrome() {
     window.location.href = '/home/';
   });
 
-  // From turn 3 the election is six months out — flag the Election nav so the
-  // player knows to look. A glowing amber dot on both the sidebar and bottom nav.
-  if (getTutTurn() >= 3) markElectionDot();
+  // From turn 3 until the vote itself, the election is close — flag the Election
+  // nav with a glowing amber dot on both the sidebar and bottom nav.
+  if (getTutTurn() >= 3 && getTutTurn() < 9) markElectionDot();
 
   mountTutorialTopbar();
   mountGuide();
@@ -376,6 +376,17 @@ function mountTutorialTopbar() {
   // with the theme toggle (its dropdown still opens beneath it — .gear is relative).
   const gear = document.querySelector('.gear');
   if (gear) bar.appendChild(gear);
+
+  // Campaign free-play: once the guided tour has handed off (turns 3–8), Next Week
+  // is a live button so the player can advance to the September election. Each push
+  // ticks the turn and reloads the current page. Turn 9 is election day — no further.
+  const turn = getTutTurn();
+  if (turn >= 3 && turn < 9) {
+    const wk = bar.querySelector('.nhbar__week');
+    wk.removeAttribute('disabled');
+    wk.classList.add('nhbar__week--live');
+    wk.onclick = () => { wk.onclick = null; advanceTutorialWeek(); window.location.reload(); };
+  }
 }
 
 let topbarStyled2 = false;
