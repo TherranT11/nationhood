@@ -192,8 +192,8 @@ export function alcoholResolved() {
 export const TUT_INFLUENCE_BASE = 20;    // Influence at turn 0 (a campaign war-chest)
 export const TUT_INFLUENCE_GAIN = 3;     // Influence accrued each turn
 
-// Campaign spending (Influence) accumulates here (turn 3+).
-export function campSpent() { try { return Number(sessionStorage.getItem('nh-camp-spent') || 0); } catch (e) { return 0; } }
+// Campaign spending (Influence) accumulates here (turn 3+). Internal to the state layer.
+function campSpent() { try { return Number(sessionStorage.getItem('nh-camp-spent') || 0); } catch (e) { return 0; } }
 export function applySpend(amt) { try { sessionStorage.setItem('nh-camp-spent', String(campSpent() + amt)); } catch (e) {} }
 
 // Popularity IS approval — one stat. FS's popularity is the player's approval
@@ -204,7 +204,7 @@ export function applySpend(amt) { try { sessionStorage.setItem('nh-camp-spent', 
 // Attack/Debate against a rival really does move the seats each would win.
 const POP_OTHER_BASE = { pss: 29, uc: 6.5, lv: 3 };
 const POP_THRESHOLD = 5, PROJ_TOTAL_SEATS = 240;
-export function popDelta(p) { try { return Number(sessionStorage.getItem('nh-pop-' + p) || 0); } catch (e) { return 0; } }
+function popDelta(p) { try { return Number(sessionStorage.getItem('nh-pop-' + p) || 0); } catch (e) { return 0; } }
 export function applyPop(p, delta) { try { sessionStorage.setItem('nh-pop-' + p, String(popDelta(p) + delta)); } catch (e) {} }
 export function partyPop(p) { return p === 'fs' ? tutApproval() : Math.max(0, (POP_OTHER_BASE[p] || 0) + popDelta(p)); }
 // Parties over the threshold split the 240 seats in proportion to popularity;
@@ -315,9 +315,12 @@ export function mountTutorialChrome() {
     window.location.href = '/home/';
   });
 
-  // From turn 3 until the vote itself, the election is close — flag the Election
-  // nav with a glowing amber dot on both the sidebar and bottom nav.
-  if (getTutTurn() >= 3 && getTutTurn() < 9) markElectionDot();
+  // From turn 3 until the result is in, the election is live — flag the Election
+  // nav with a glowing amber dot (so a player who reaches election day on another
+  // page still knows to go watch the count). Clears once the result is locked in.
+  let elDone = false;
+  try { elDone = sessionStorage.getItem('nh-election-done') === '1'; } catch (e) {}
+  if (getTutTurn() >= 3 && !elDone) markElectionDot();
 
   mountTutorialTopbar();
   mountGuide();
