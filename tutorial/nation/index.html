@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-  :root{--bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;--line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD}
+  :root{--bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;--line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD;--red:#C42B2B;--red-soft:#FBEAE9;--green:#16915a;--green-soft:#E5F4EC;--amber:#E0820E;--amber-soft:#FBF0DD;--blue:#1f86d6;--blue-soft:#e3f0fb;--navy:#2b3a7a;--navy-soft:#E7EAF4}
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
@@ -32,7 +32,7 @@
   .gear__btn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .gear__menu{position:absolute;top:46px;right:0;min-width:172px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 44px -20px rgba(0,0,0,.35);padding:6px}
   .gear__menu[hidden]{display:none}
-  .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red,#C42B2B);cursor:pointer}
+  .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red);cursor:pointer}
   .gear__item:hover{background:var(--chip)}
   .main{flex:1;padding:26px clamp(16px,3vw,40px) 56px;min-width:0}
   .page{max-width:900px;margin:0 auto}
@@ -48,8 +48,8 @@
   .law__arrow{color:var(--indigo)}
   .law__chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
   .chip{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.02em;padding:5px 10px;border-radius:8px}
-  .chip--cost{color:#C42B2B;background:#FAEAEA}
-  .chip--good{color:#16915a;background:#E6F4EC}
+  .chip--cost{color:var(--red);background:var(--red-soft)}
+  .chip--good{color:var(--green);background:var(--green-soft)}
   .law__bar{height:8px;border-radius:5px;background:var(--chip);border:1px solid var(--line);overflow:hidden;margin-bottom:7px}
   .law__bar span{display:block;height:100%;background:var(--indigo)}
   .law__meta{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
@@ -59,8 +59,8 @@
   .coh__hearts{display:flex;gap:8px}
   .coh__hearts svg{width:26px;height:26px}
   .heart{fill:none;stroke:var(--soft);stroke-width:1.6}
-  .heart.on{fill:#16915a;stroke:#16915a}
-  .coh__status{font-size:22px;font-weight:900;letter-spacing:-.01em;color:#16915a}
+  .heart.on{fill:var(--green);stroke:var(--green)}
+  .coh__status{font-size:22px;font-weight:900;letter-spacing:-.01em;color:var(--green)}
   /* Coalition agreement — obligations with status + an influence chip. */
   .agr__head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
   .agr__head .card__k{margin:0}
@@ -68,14 +68,14 @@
   .agr__list{display:flex;flex-direction:column;gap:10px}
   .agr__item{display:flex;align-items:center;gap:12px;background:var(--chip);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
   .agr__ico{width:22px;height:22px;border-radius:50%;border:1.5px dashed;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none}
-  .agr__ico--ok{color:#16915a;border-color:#16915a}
-  .agr__ico--no{color:#C42B2B;border-color:#C42B2B}
+  .agr__ico--ok{color:var(--green);border-color:var(--green)}
+  .agr__ico--no{color:var(--red);border-color:var(--red)}
   .agr__body{flex:1;min-width:0}
   .agr__name{font-size:14px;font-weight:700;color:var(--ink)}
   .agr__status{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.02em;margin-top:3px}
-  .agr__status--ok{color:#16915a}
-  .agr__status--no{color:#C42B2B}
-  .agr__chip{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:#E0820E;background:#FBF1DC;border-radius:8px;padding:5px 10px;flex:none;white-space:nowrap}
+  .agr__status--ok{color:var(--green)}
+  .agr__status--no{color:var(--red)}
+  .agr__chip{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--amber);background:var(--amber-soft);border-radius:8px;padding:5px 10px;flex:none;white-space:nowrap}
   /* Stat categories — a header (ministry/portfolio) over a row of three stat boxes. */
   .cat{margin-top:22px}
   .cat__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;user-select:none}
@@ -92,8 +92,8 @@
   .mbox__go{color:var(--soft);font-size:15px;font-weight:700}
   .mbox--link:hover .mbox__go{color:var(--indigo)}
   /* Colour-code a signed value: red left accent (inset so it survives hover) + red figure. */
-  .mbox--neg{box-shadow:inset 3px 0 0 #C42B2B}
-  .mbox--neg .mbox__v{color:#C42B2B}
+  .mbox--neg{box-shadow:inset 3px 0 0 var(--red)}
+  .mbox--neg .mbox__v{color:var(--red)}
   .mbox__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
   .mbox__v{font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin-top:8px}
   .botnav{display:none}
@@ -247,7 +247,7 @@
     </main>
   </div>
   <div class="gear">
-    <button class="gear__btn" id="gearBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></svg></button>
+    <button class="gear__btn" id="gearBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     <div class="gear__menu" id="gearMenu" hidden><button class="gear__item" id="exitTutorial" type="button">Exit Tutorial</button></div>
   </div>
   <nav class="botnav">

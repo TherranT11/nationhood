@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-  :root{--bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;--line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD}
+  :root{--bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;--line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD;--red:#C42B2B;--red-soft:#FBEAE9;--green:#16915a;--green-soft:#E5F4EC;--amber:#E0820E;--amber-soft:#FBF0DD;--blue:#1f86d6;--blue-soft:#e3f0fb;--navy:#2b3a7a;--navy-soft:#E7EAF4}
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
@@ -32,7 +32,7 @@
   .gear__btn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .gear__menu{position:absolute;top:46px;right:0;min-width:172px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 44px -20px rgba(0,0,0,.35);padding:6px}
   .gear__menu[hidden]{display:none}
-  .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red,#C42B2B);cursor:pointer}
+  .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red);cursor:pointer}
   .gear__item:hover{background:var(--chip)}
   .main{flex:1;padding:26px clamp(16px,3vw,40px) 56px;min-width:0}
   .page{max-width:900px;margin:0 auto}
@@ -46,10 +46,10 @@
   .tbmeter__v{font-size:32px;font-weight:900;letter-spacing:-.03em;color:var(--ink)}
   .tbmeter__tag{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);background:var(--chip);border:1px solid var(--line);border-radius:20px;padding:4px 10px}
   .tbmeter__track{height:12px;border-radius:7px;background:var(--chip);overflow:hidden}
-  .tbmeter__fill{height:100%;border-radius:7px;background:linear-gradient(90deg,#16915a,#E0820E,#C42B2B)}
+  .tbmeter__fill{height:100%;border-radius:7px;background:linear-gradient(90deg,var(--green),var(--amber),var(--red))}
   .tbmeter__scale{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-top:8px}
-  .tbmeter__lo{color:#16915a}
-  .tbmeter__hi{color:#C42B2B}
+  .tbmeter__lo{color:var(--green)}
+  .tbmeter__hi{color:var(--red)}
   .mix__k{font-size:20px;font-weight:900;letter-spacing:-.02em;color:var(--ink)}
   .mix__sub{font-size:13px;color:var(--muted);margin:2px 0 14px}
   .mix__bar{display:flex;height:16px;border-radius:8px;overflow:hidden;margin-bottom:16px}
@@ -62,22 +62,22 @@
   .section-k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:22px 0 12px}
   .spec{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:12px}
   .spec__head{display:flex;gap:12px;margin-bottom:12px}
-  .spec__ico{width:40px;height:40px;border-radius:11px;flex:none;background:#E0820E;color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800}
+  .spec__ico{width:40px;height:40px;border-radius:11px;flex:none;background:var(--amber);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800}
   .spec__name{font-size:17px;font-weight:800;letter-spacing:-.01em;color:var(--ink)}
   .spec__tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
   .stag{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:6px}
-  .stag--active{color:#16915a;background:#E6F4EC}
-  .stag--bad{color:#C42B2B;background:#FAEAEA}
-  .stag--warn{color:#E0820E;background:#FBF1DC}
+  .stag--active{color:var(--green);background:var(--green-soft)}
+  .stag--bad{color:var(--red);background:var(--red-soft)}
+  .stag--warn{color:var(--amber);background:var(--amber-soft)}
   .spec__desc{font-size:13.5px;line-height:1.55;color:var(--muted);margin-bottom:14px}
   .spec__row{display:flex;align-items:center;gap:10px;margin-bottom:16px}
   .spec__val{font-size:22px;font-weight:900;letter-spacing:-.01em;color:var(--ink);flex:1}
   .spec__chip{display:inline-flex;align-items:center;gap:5px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;padding:5px 10px;border-radius:8px;background:var(--chip);color:var(--muted);white-space:nowrap}
-  .spec__chip--inf{color:#E0820E;background:#FBF1DC}
+  .spec__chip--inf{color:var(--amber);background:var(--amber-soft)}
   .slider{position:relative;height:18px}
   .slider__track{position:absolute;top:6px;left:0;right:0;height:6px;border-radius:4px;background:var(--chip)}
-  .slider__fill{position:absolute;top:6px;left:0;height:6px;border-radius:4px;background:#E0820E}
-  .slider__knob{position:absolute;top:0;width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid #E0820E;box-shadow:0 2px 6px -1px rgba(0,0,0,.3);transform:translateX(-50%)}
+  .slider__fill{position:absolute;top:6px;left:0;height:6px;border-radius:4px;background:var(--amber)}
+  .slider__knob{position:absolute;top:0;width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid var(--amber);box-shadow:0 2px 6px -1px rgba(0,0,0,.3);transform:translateX(-50%)}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -173,7 +173,7 @@
     </main>
   </div>
   <div class="gear">
-    <button class="gear__btn" id="gearBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></svg></button>
+    <button class="gear__btn" id="gearBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     <div class="gear__menu" id="gearMenu" hidden><button class="gear__item" id="exitTutorial" type="button">Exit Tutorial</button></div>
   </div>
   <nav class="botnav">

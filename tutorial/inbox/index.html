@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-  :root{--bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;--line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD}
+  :root{--bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;--line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD;--red:#C42B2B;--red-soft:#FBEAE9;--green:#16915a;--green-soft:#E5F4EC;--amber:#E0820E;--amber-soft:#FBF0DD;--blue:#1f86d6;--blue-soft:#e3f0fb;--navy:#2b3a7a;--navy-soft:#E7EAF4}
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
@@ -32,7 +32,7 @@
   .gear__btn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .gear__menu{position:absolute;top:46px;right:0;min-width:172px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 44px -20px rgba(0,0,0,.35);padding:6px}
   .gear__menu[hidden]{display:none}
-  .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red,#C42B2B);cursor:pointer}
+  .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red);cursor:pointer}
   .gear__item:hover{background:var(--chip)}
   .main{flex:1;padding:26px clamp(16px,3vw,40px) 56px;min-width:0}
   .page{max-width:1000px;margin:0 auto}
@@ -118,7 +118,7 @@
     </main>
   </div>
   <div class="gear">
-    <button class="gear__btn" id="gearBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></svg></button>
+    <button class="gear__btn" id="gearBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     <div class="gear__menu" id="gearMenu" hidden><button class="gear__item" id="exitTutorial" type="button">Exit Tutorial</button></div>
   </div>
   <nav class="botnav">
@@ -145,10 +145,10 @@
 
   // Inbox (tutorial data): a list of correspondents on the left, their email
   // thread on the right. "me" messages are from Front Sessau (the player).
-  const ME = { name: 'Allen Droulez', abbr: 'FS', color: '#243b6b' };
+  const ME = { name: 'Allen Droulez', abbr: 'FS', color: 'var(--navy)' };
   const THREADS = [
     {
-      id: 'uc', name: 'Union Conservatrice', abbr: 'UC', color: '#1f86d6', time: '09:14', unread: false,
+      id: 'uc', name: 'Union Conservatrice', abbr: 'UC', color: 'var(--blue)', time: '09:14', unread: false,
       subject: 'Federal Police funding — final push',
       messages: [
         { me: false, time: 'Today · 09:14', body: 'Prime Minister Droulez,\n\nOur members backed the coalition on the understanding that the Federal Police budget reaches Level 4 before the winter session. Three months remain on the timetable. Can you confirm the funding survives the Finance Ministry’s review?\n\n— Marius Chevalier, Union Conservatrice' },
@@ -157,7 +157,7 @@
       ],
     },
     {
-      id: 'pss', name: 'Parti Socialiste Sessauan', abbr: 'PSS', color: '#C42B2B', time: 'Yesterday', unread: true,
+      id: 'pss', name: 'Parti Socialiste Sessauan', abbr: 'PSS', color: 'var(--red)', time: 'Yesterday', unread: true,
       subject: 'The budget — a warning',
       messages: [
         { me: false, time: 'Yesterday · 16:41', body: 'Prime Minister,\n\nYour coalition pours money into policing while wages stagnate and poverty sits at 14%. We will oppose the budget on the floor and take our case to the country. This is not a threat — it is a promise.\n\n— Camille Fournier, Parti Socialiste Sessauan' },
@@ -166,7 +166,7 @@
       ],
     },
     {
-      id: 'lv', name: 'Les Verts Sessauans', abbr: 'LV', color: '#16915a', time: '2d', unread: false,
+      id: 'lv', name: 'Les Verts Sessauans', abbr: 'LV', color: 'var(--green)', time: '2d', unread: false,
       subject: 'Support on emissions — an offer',
       messages: [
         { me: false, time: 'Mon · 11:05', body: 'Prime Minister,\n\nWe hold no seats, but we hold the streets on climate. CO₂ sits at 210 Mt. Back a modest carbon levy and we deliver you the youth vote in Seyonne at the next election. A small price for a lasting friend.\n\n— Sylvie Marchetti, Les Verts Sessauans' },
