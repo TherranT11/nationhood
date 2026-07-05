@@ -66,7 +66,9 @@
   .tally__maj{position:absolute;top:-4px;height:22px;width:2px;background:var(--ink);transform:translateX(-1px)}
   .tally__legend{display:flex;flex-wrap:wrap;gap:14px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.02em;color:var(--muted);margin-top:10px}
   .tally__legend b{color:var(--ink);font-weight:700}
-  .tally__pass{color:var(--green);font-weight:700}
+  .tally__result{font-weight:700}
+  .tally__result.is-pass{color:var(--green)}
+  .tally__result.is-fail{color:var(--red)}
   .votes{display:flex;flex-direction:column;gap:9px;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
   .vrow{display:flex;align-items:center;gap:10px}
   .vrow__dot{width:10px;height:10px;border-radius:3px;flex:none}
@@ -75,8 +77,12 @@
   .vpill{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:3px 9px;border-radius:6px;min-width:44px;text-align:center}
   .vpill--yes{color:var(--green);background:var(--green-soft)}
   .vpill--no{color:var(--red);background:var(--red-soft)}
+  .vpill--abstain{color:var(--soft);background:var(--chip)}
   .bill__btns{display:flex;gap:10px;margin-top:18px}
   .bill__btns .btn{flex:1;padding:12px}
+  .btn.is-active{outline:2px solid var(--ink);outline-offset:1px}
+  .btn--ghost{background:var(--chip);border-color:var(--line);color:var(--soft)}
+  .btn--ghost[disabled]{cursor:not-allowed;opacity:.65}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -89,9 +95,9 @@
       <nav class="nav">
         <a class="nav__i" href="/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Nation</span></a>
         <a class="nav__i" href="/tutorial/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Government</span></a>
+        <a class="nav__i active" href="/tutorial/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
         <a class="nav__i" href="/tutorial/inbox/"><svg viewBox="0 0 24 24"><path d="M4 13l2-8h12l2 8"/><path d="M4 13v6h16v-6"/><path d="M4 13h5l1 2h4l1-2h5"/></svg><span class="label">Inbox</span></a>
         <a class="nav__i" href="/tutorial/news/"><svg viewBox="0 0 24 24"><path d="M5 4h11v15a1 1 0 01-1 1H5z"/><path d="M16 8h3v10a2 2 0 01-2 2"/><path d="M8 8h5M8 11h5M8 14h5"/></svg><span class="label">News</span></a>
-        <a class="nav__i active" href="/tutorial/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
         <a class="nav__i" href="/tutorial/election/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span class="label">Election</span></a>
         <a class="nav__i" href="/tutorial/trade/"><svg viewBox="0 0 24 24"><path d="M4 9h13l-3-3"/><path d="M20 15H7l3 3"/></svg><span class="label">Trade</span></a>
         <a class="nav__i" href="/tutorial/world/"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
@@ -108,7 +114,7 @@
           <button class="btn" type="button">Initiative</button>
         </div>
 
-        <section class="card">
+        <section class="card gd-floor">
           <div class="card__k">On the Floor</div>
           <div class="bill__name">The Federal Police Budget Bill</div>
           <div class="bill__desc">Raises the Federal Police budget from Level 3 to Level 4.</div>
@@ -118,35 +124,39 @@
           </div>
           <div class="tally">
             <div class="tally__bar">
-              <span class="tally__yes" style="width:57.1%"></span>
-              <span class="tally__no" style="width:42.9%"></span>
+              <span class="tally__yes" id="tallyYes" style="width:9.6%"></span>
+              <span class="tally__no" id="tallyNo" style="width:42.9%"></span>
             </div>
             <i class="tally__maj" style="left:50.4%"></i>
             <div class="tally__legend">
-              <span><b>Yes 137</b></span>
-              <span><b>No 103</b></span>
+              <span><b id="legendYes">Yes 23</b></span>
+              <span><b id="legendNo">No 103</b></span>
               <span>121 to pass</span>
-              <span class="tally__pass">Passing</span>
+              <span class="tally__result" id="tallyResult">Failing</span>
             </div>
           </div>
           <div class="votes">
-            <div class="vrow"><span class="vrow__dot" style="background:var(--navy)"></span><span class="vrow__name">Front Sessau <span style="color:var(--soft);font-weight:600">(FS)</span></span><span class="vrow__seats">114</span><span class="vpill vpill--yes">Yes</span></div>
+            <div class="vrow"><span class="vrow__dot" style="background:var(--navy)"></span><span class="vrow__name">Front Sessau <span style="color:var(--soft);font-weight:600">(FS)</span></span><span class="vrow__seats">114</span><span class="vpill" id="fsVote">Abstain</span></div>
             <div class="vrow"><span class="vrow__dot" style="background:var(--blue)"></span><span class="vrow__name">Union Conservatrice <span style="color:var(--soft);font-weight:600">(UC)</span></span><span class="vrow__seats">23</span><span class="vpill vpill--yes">Yes</span></div>
             <div class="vrow"><span class="vrow__dot" style="background:var(--red)"></span><span class="vrow__name">Parti Socialiste Sessauan <span style="color:var(--soft);font-weight:600">(PSS)</span></span><span class="vrow__seats">103</span><span class="vpill vpill--no">No</span></div>
           </div>
           <div class="bill__btns">
-            <button class="btn btn--yes" type="button">Vote Yes</button>
-            <button class="btn btn--no" type="button">Vote No</button>
+            <button class="btn btn--yes" id="voteYes" type="button">Vote Yes</button>
+            <button class="btn btn--no" id="voteNo" type="button">Vote No</button>
           </div>
         </section>
 
-        <section class="card">
+        <section class="card gd-committee">
           <div class="card__k">Committee</div>
           <div class="bill__name">Abolish the Alcohol Tax</div>
           <div class="bill__by">Proposed by Les Verts Sessauans &middot; No endorsements yet</div>
           <div class="bill__chips">
             <span class="chip chip--cost">&minus;$22.2 bn/year</span>
             <span class="chip chip--good">Very popular</span>
+          </div>
+          <div class="bill__btns">
+            <button class="btn btn--ghost" type="button" disabled>Endorse</button>
+            <button class="btn btn--ghost" type="button" disabled>Conditional Endorsement</button>
           </div>
         </section>
       </div>
@@ -159,9 +169,9 @@
   <nav class="botnav">
     <a class="botnav__i" href="/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span>Nation</span></a>
     <a class="botnav__i" href="/tutorial/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span>Government</span></a>
+    <a class="botnav__i" href="/tutorial/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span>Legislature</span></a>
     <a class="botnav__i" href="/tutorial/inbox/"><svg viewBox="0 0 24 24"><path d="M4 13l2-8h12l2 8"/><path d="M4 13v6h16v-6"/><path d="M4 13h5l1 2h4l1-2h5"/></svg><span>Inbox</span></a>
     <a class="botnav__i" href="/tutorial/news/"><svg viewBox="0 0 24 24"><path d="M5 4h11v15a1 1 0 01-1 1H5z"/><path d="M16 8h3v10a2 2 0 01-2 2"/><path d="M8 8h5M8 11h5M8 14h5"/></svg><span>News</span></a>
-    <a class="botnav__i" href="/tutorial/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span>Legislature</span></a>
     <button class="botnav__i" id="moreBtn" type="button"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>
   </nav>
   <div class="moresheet" id="moreSheet" hidden><div class="moresheet__panel"><div class="moresheet__grid">
@@ -174,9 +184,64 @@
   </div></div></div>
 <script type="module">
   import { isConfigured } from '/supabase.js';
-  import { requireUser, mountTutorialChrome } from '/tutorial/shell.js';
+  import { requireUser, mountTutorialChrome, updateProfile } from '/tutorial/shell.js';
   if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
+
+  /* The Federal Police Budget Bill — a live vote.
+     UC (23) is a locked Yes, PSS (103) a locked No. Front Sessau's 114 seats
+     are the player's to cast. 121 of 240 seats carries the floor. */
+  (function () {
+    const TOTAL = 240, MAJORITY = 121, FS = 114, UC_YES = 23, PSS_NO = 103;
+    const el = {
+      tallyYes: document.getElementById('tallyYes'),
+      tallyNo: document.getElementById('tallyNo'),
+      legendYes: document.getElementById('legendYes'),
+      legendNo: document.getElementById('legendNo'),
+      result: document.getElementById('tallyResult'),
+      fsVote: document.getElementById('fsVote'),
+      voteYes: document.getElementById('voteYes'),
+      voteNo: document.getElementById('voteNo'),
+    };
+    if (!el.voteYes || !el.voteNo) return;
+
+    let myVote = null; // null | 'yes' | 'no'
+
+    function render() {
+      const yes = UC_YES + (myVote === 'yes' ? FS : 0);
+      const no = PSS_NO + (myVote === 'no' ? FS : 0);
+      el.tallyYes.style.width = (yes / TOTAL * 100).toFixed(1) + '%';
+      el.tallyNo.style.width = (no / TOTAL * 100).toFixed(1) + '%';
+      el.legendYes.textContent = 'Yes ' + yes;
+      el.legendNo.textContent = 'No ' + no;
+      const passing = yes >= MAJORITY;
+      el.result.textContent = passing ? 'Passing' : 'Failing';
+      el.result.classList.toggle('is-pass', passing);
+      el.result.classList.toggle('is-fail', !passing);
+      el.fsVote.textContent = myVote === 'yes' ? 'Yes' : myVote === 'no' ? 'No' : 'Abstain';
+      el.fsVote.className = 'vpill ' + (myVote === 'yes' ? 'vpill--yes' : myVote === 'no' ? 'vpill--no' : 'vpill--abstain');
+      el.voteYes.classList.toggle('is-active', myVote === 'yes');
+      el.voteNo.classList.toggle('is-active', myVote === 'no');
+    }
+
+    function cast(vote) {
+      myVote = myVote === vote ? null : vote; // click again to retract
+      render();
+      try { myVote ? sessionStorage.setItem('nh-floor-vote', myVote) : sessionStorage.removeItem('nh-floor-vote'); } catch (e) {}
+      updateProfile({ tutorial_floorVote: myVote }).catch(() => {});
+      // Tell the guided tour once the player carries the vote (Chapter 3, Beat 3).
+      if (myVote === 'yes') window.dispatchEvent(new CustomEvent('nhtutorial:vote'));
+    }
+
+    el.voteYes.addEventListener('click', () => cast('yes'));
+    el.voteNo.addEventListener('click', () => cast('no'));
+
+    // Restore any prior vote so the floor reflects the player's last choice.
+    let saved = null;
+    try { saved = sessionStorage.getItem('nh-floor-vote'); } catch (e) {}
+    if (saved === 'yes' || saved === 'no') myVote = saved;
+    render();
+  })();
 </script>
 </body>
 </html>

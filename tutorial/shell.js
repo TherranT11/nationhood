@@ -36,6 +36,7 @@ export async function getTutorialProgress(userId) {
     return {
       party: s.party,
       welcomed: !!s.welcomed, // dismissed the home welcome modal at least once
+      step: s.step ?? 0,      // guided-tour progress (index into GUIDE_STEPS)
       governmentFormed: !!s.government_formed,
       theoTask: s.theo_task || null,
       actions: s.party_actions ?? 3, // 0 stays 0; missing/null defaults to 3
@@ -211,6 +212,7 @@ export function mountTutorialChrome() {
   });
 
   mountTutorialTopbar();
+  mountGuide();
 }
 
 // The persistent top bar on every screen (right → left): a light/dark toggle, a
@@ -265,6 +267,198 @@ function ensureTopbarStyles2() {
     '.nhbar .gear{position:relative;top:auto;right:auto;z-index:50;display:flex}';
   const style = document.createElement('style');
   style.id = 'nhbar-css';
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
+// ---------------------------------------------------------------------------
+// Guided tutorial — a locked, linear, hybrid walkthrough. The whole script is
+// data (GUIDE_STEPS); the engine spotlights the current step's target (a
+// 4-rectangle mask dims + blocks everything else), shows a coach-mark, and
+// advances on Next or the required action. Progress persists in
+// tutorial_state.step so a refresh/return resumes. One source, all pages.
+// ---------------------------------------------------------------------------
+const GUIDE_STEPS = [
+  { page: '/tutorial/home/', target: '.stats', ey: 'Your Party', title: 'Front Sessau',
+    body: 'This is your party. You hold 114 seats and 32% approval — that number is your lifeblood.' },
+  { page: '/tutorial/home/', target: '.appr', ey: 'Popularity', title: 'Party Approval',
+    body: 'It’s climbed to 32%, but a weak coalition and an angry opposition can sink it fast.' },
+  { page: '/tutorial/home/', target: '.elec', ey: 'The Clock', title: 'Elections',
+    body: 'The election is nine months out. Survive and govern until then.' },
+  { page: '/tutorial/home/', target: '.assembly', ey: 'The Numbers', title: 'National Assembly',
+    body: 'You + Union Conservatrice = 137 seats, a razor-thin majority. Lose UC and you lose power.' },
+  { page: '/tutorial/home/', target: '.nav__i[href="/tutorial/nation/"], .botnav__i[href="/tutorial/nation/"]',
+    ey: 'Next', title: 'Your Government', body: 'Now let’s see how your government is actually doing.',
+    nav: '/tutorial/nation/', cta: 'Government →', pulse: true },
+
+  // Chapter 2 — The Government
+  { page: '/tutorial/nation/', target: '.gd-coalition', ey: 'Coalition', title: 'Coalition Health',
+    body: 'You don’t govern alone. Your coalition reads Stable — but that’s two of three hearts, not three. A weak majority is a fragile one.' },
+  { page: '/tutorial/nation/', target: '.gd-agreement', ey: 'The Bargain', title: 'Coalition Agreement',
+    body: 'Every coalition has a price. UC already paid you 10 Influence to seal the deal — now they want their half: cut the tax burden 10%. It’s overdue, and if they walk, the opposition gets its vote of no confidence.' },
+  { page: '/tutorial/nation/', target: '.gd-laws', ey: 'In Progress', title: 'Laws Being Implemented',
+    body: 'Laws take time to bite. Your Federal Police Budget is still phasing in — three months out. It costs ₣16.2bn a year, but it buys you Order.' },
+  { page: '/tutorial/nation/', target: '.gd-hog', ey: 'The Nation', title: 'The State of the Nation',
+    body: 'This is your nation, ministry by ministry. Head of Government already tells the story — a deficit and shrinking growth. Expand the rest to see where you’re bleeding.' },
+  { page: '/tutorial/nation/', target: '.nav__i[href="/tutorial/legislature/"], .botnav__i[href="/tutorial/legislature/"]',
+    ey: 'Next', title: 'The Floor', body: 'That Federal Police Budget still has to survive the floor. Time to cast your first vote.',
+    nav: '/tutorial/legislature/', cta: 'Legislature →', pulse: true },
+
+  // Chapter 3 — The Floor Vote
+  { page: '/tutorial/legislature/', target: '.gd-floor', ey: 'On the Floor', title: 'The Federal Police Budget Bill',
+    body: 'Here’s the bill you saw being implemented — it doesn’t take effect until the Assembly passes it. 240 seats sit in the National Assembly, and <b>121</b> carry a bill.' },
+  { page: '/tutorial/legislature/', target: '.gd-floor .votes', ey: 'Count the Seats', title: 'Reading the Room',
+    body: 'Union Conservatrice votes with you: 23 Yes. Parti Socialiste opposes: 103 No. That leaves your <b>114 seats</b> to decide it — and right now you’ve Abstained, which loses.' },
+  { page: '/tutorial/legislature/', target: '#voteYes', ey: 'Your Call', title: 'Cast Your Vote',
+    body: 'Vote Yes to fund the Federal Police. Watch the tally move.', requires: 'vote', pulse: true },
+  { page: '/tutorial/legislature/', target: '.gd-floor .tally', ey: 'Carried', title: 'It Passes',
+    body: '137 to 103 — the bill clears the floor. The Federal Police budget rises to Level 4, Order climbs, and ₣16.2bn leaves the treasury each year. Every choice has a price.' },
+  { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'Up Next', title: 'In Committee',
+    body: 'Les Verts want to abolish the alcohol tax — popular, but it blows a ₣22.2bn hole in revenue. Bills like this need your endorsement to reach the floor. A decision for another day.' },
+  { page: '/tutorial/legislature/', target: '.nav__i[href="/tutorial/inbox/"], .botnav__i[href="/tutorial/inbox/"]',
+    ey: 'Next', title: 'The Chamber Talks Back', body: 'Passing a budget makes friends and enemies. Let’s see who’s writing to you.',
+    nav: '/tutorial/inbox/', cta: 'Inbox →', pulse: true },
+];
+
+let guideStep = 0, guideEls = null, guideReposition = null, guideGate = null;
+
+async function mountGuide() {
+  const path = location.pathname;
+  if (!GUIDE_STEPS.some((s) => s.page === path)) return; // no steps on this page
+  try {
+    if (isConfigured) {
+      const user = await requireUser();
+      if (!user) return;
+      const p = await getTutorialProgress(user.id);
+      guideStep = (p && p.step) || 0;
+    } else {
+      guideStep = Number(sessionStorage.getItem('nh-guide-step') || 0); // local dev fallback
+    }
+  } catch (e) { return; } // couldn't read progress — don't lock the screen behind a mask
+  const begin = () => { const s = GUIDE_STEPS[guideStep]; if (s && s.page === path) renderGuideStep(); };
+  // On Home the welcome modal blocks first; it sets nhWelcomeDone + fires
+  // nhtutorial:begin in both branches (dismiss or already-seen). Cover the race either way.
+  const w = document.getElementById('welcome');
+  if (path === '/tutorial/home/' && w) {
+    if (window.nhWelcomeDone) begin();
+    else window.addEventListener('nhtutorial:begin', begin, { once: true });
+  } else {
+    begin();
+  }
+}
+
+function persistStep(n) {
+  if (isConfigured) return updateProfile({ tutorial_step: n });    // → tutorial_state.step (Promise)
+  try { sessionStorage.setItem('nh-guide-step', String(n)); } catch (e) {}
+  return Promise.resolve(true);
+}
+
+function clearGuide() {
+  if (guideReposition) { window.removeEventListener('resize', guideReposition); guideReposition = null; }
+  if (guideGate) { window.removeEventListener('nhtutorial:vote', guideGate); guideGate = null; }
+  if (guideEls) { guideEls.forEach((el) => el.remove()); guideEls = null; }
+  document.body.style.overflow = '';
+}
+
+function advanceGuide() {
+  clearGuide();
+  guideStep += 1;
+  persistStep(guideStep);
+  const s = GUIDE_STEPS[guideStep];
+  if (s && s.page === location.pathname) renderGuideStep(); // next mark on this page; else the tour continues elsewhere
+}
+
+function firstVisible(sel) {
+  const els = document.querySelectorAll(sel);
+  for (let i = 0; i < els.length; i++) if (els[i].offsetParent !== null || els[i].getClientRects().length) return els[i];
+  return els[0] || null;
+}
+
+function renderGuideStep() {
+  ensureGuideStyles();
+  const s = GUIDE_STEPS[guideStep];
+  const target = firstVisible(s.target);
+  if (!target) return; // target missing (page still building?) — don't lock the screen
+  target.scrollIntoView({ block: 'center', inline: 'nearest' });
+  document.body.style.overflow = 'hidden';
+
+  const parts = [0, 1, 2, 3].map(() => { const d = document.createElement('div'); d.className = 'gd-mask'; document.body.appendChild(d); return d; });
+  const ring = document.createElement('div'); ring.className = 'gd-ring' + (s.pulse ? ' gd-pulse' : ''); document.body.appendChild(ring);
+  const call = document.createElement('div'); call.className = 'gd-call';
+  // A `requires` step is action-gated: no Next button — the player must perform
+  // the real action (e.g. cast the vote), which fires nhtutorial:<requires>.
+  const cta = s.requires
+    ? '<span class="gd-call__wait">Waiting for you…</span>'
+    : '<button class="gd-call__btn" type="button">' + (s.cta || 'Next') + '</button>';
+  call.innerHTML =
+    '<div class="gd-call__ey">' + (s.ey || 'Tutorial') + '</div>' +
+    '<div class="gd-call__t">' + s.title + '</div>' +
+    '<div class="gd-call__b">' + s.body + '</div>' +
+    '<div class="gd-call__row"><span class="gd-call__prog">' + (guideStep + 1) + ' / ' + GUIDE_STEPS.length + '</span>' + cta + '</div>';
+  document.body.appendChild(call);
+  guideEls = parts.concat([ring, call]);
+
+  guideReposition = () => positionGuide(target, parts, ring, call);
+  guideReposition();
+  window.addEventListener('resize', guideReposition);
+
+  let advancing = false; // lock: the nav item and the CTA both call go()
+  const go = async () => {
+    if (advancing) return;
+    advancing = true;
+    if (guideGate) { window.removeEventListener('nhtutorial:' + s.requires, guideGate); guideGate = null; }
+    if (s.nav) { await persistStep(guideStep + 1); window.location.href = s.nav; } // hand-off: persist BEFORE leaving, or the next page reads a stale step and the chapter never starts
+    else advanceGuide();
+  };
+  if (s.requires) {
+    // Advance only when the page reports the real action was carried out.
+    guideGate = () => go();
+    window.addEventListener('nhtutorial:' + s.requires, guideGate, { once: true });
+  } else {
+    call.querySelector('.gd-call__btn').addEventListener('click', go);
+  }
+  if (s.nav) target.addEventListener('click', (e) => { e.preventDefault(); go(); }, { once: true });
+}
+
+function positionGuide(target, parts, ring, call) {
+  const r = target.getBoundingClientRect();
+  const pad = 6, vw = window.innerWidth, vh = window.innerHeight;
+  const x = Math.max(0, r.left - pad), y = Math.max(0, r.top - pad);
+  const w = Math.min(vw, r.right + pad) - x, h = Math.min(vh, r.bottom + pad) - y;
+  const set = (el, l, t, ww, hh) => { el.style.left = l + 'px'; el.style.top = t + 'px'; el.style.width = Math.max(0, ww) + 'px'; el.style.height = Math.max(0, hh) + 'px'; };
+  set(parts[0], 0, 0, vw, y);                       // top
+  set(parts[1], 0, y + h, vw, vh - y - h);          // bottom
+  set(parts[2], 0, y, x, h);                        // left
+  set(parts[3], x + w, y, vw - x - w, h);           // right
+  set(ring, x, y, w, h);
+  const cw = Math.min(320, vw - 24);
+  call.style.width = cw + 'px';
+  call.style.left = Math.min(Math.max(12, r.left), vw - cw - 12) + 'px';
+  call.style.top = '0px';                            // measure height first
+  const ch = call.offsetHeight;
+  call.style.top = ((y + h + 12 + ch < vh) ? (y + h + 12) : Math.max(12, y - 12 - ch)) + 'px';
+}
+
+let guideStyled = false;
+function ensureGuideStyles() {
+  if (guideStyled) return;
+  guideStyled = true;
+  const css =
+    '.gd-mask{position:fixed;background:rgba(21,21,27,.55);z-index:300}' +
+    '.gd-ring{position:fixed;z-index:301;border-radius:12px;pointer-events:none;outline:2px solid var(--indigo);box-shadow:0 0 0 3px color-mix(in srgb,var(--indigo) 35%,transparent)}' +
+    '.gd-pulse{animation:gd-pulse 1.5s ease-in-out infinite}' +
+    '@keyframes gd-pulse{0%,100%{box-shadow:0 0 0 3px color-mix(in srgb,var(--indigo) 35%,transparent)}50%{box-shadow:0 0 0 9px color-mix(in srgb,var(--indigo) 12%,transparent)}}' +
+    '.gd-call{position:fixed;z-index:303;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:0 24px 60px -20px rgba(0,0,0,.5)}' +
+    '.gd-call__ey{font-family:"Space Mono",monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--indigo);margin-bottom:6px}' +
+    '.gd-call__t{font-size:16px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin-bottom:6px}' +
+    '.gd-call__b{font-size:13.5px;line-height:1.55;color:var(--muted);margin-bottom:14px}' +
+    '.gd-call__row{display:flex;align-items:center;justify-content:space-between;gap:10px}' +
+    '.gd-call__prog{font-family:"Space Mono",monospace;font-size:10px;letter-spacing:.06em;color:var(--soft)}' +
+    '.gd-call__btn{font-family:"Space Mono",monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:var(--indigo);color:#fff;border:none;border-radius:9px;padding:9px 14px;cursor:pointer}' +
+    '.gd-call__btn:hover{filter:brightness(1.08)}' +
+    '.gd-call__wait{font-family:"Space Mono",monospace;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo)}';
+  const style = document.createElement('style');
+  style.id = 'gd-css';
   style.textContent = css;
   document.head.appendChild(style);
 }
