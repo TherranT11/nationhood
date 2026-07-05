@@ -114,7 +114,7 @@
           <button class="btn" type="button">Initiative</button>
         </div>
 
-        <section class="card">
+        <section class="card gd-floor">
           <div class="card__k">On the Floor</div>
           <div class="bill__name">The Federal Police Budget Bill</div>
           <div class="bill__desc">Raises the Federal Police budget from Level 3 to Level 4.</div>
@@ -146,7 +146,7 @@
           </div>
         </section>
 
-        <section class="card">
+        <section class="card gd-committee">
           <div class="card__k">Committee</div>
           <div class="bill__name">Abolish the Alcohol Tax</div>
           <div class="bill__by">Proposed by Les Verts Sessauans &middot; No endorsements yet</div>
@@ -229,6 +229,8 @@
       render();
       try { myVote ? sessionStorage.setItem('nh-floor-vote', myVote) : sessionStorage.removeItem('nh-floor-vote'); } catch (e) {}
       updateProfile({ tutorial_floorVote: myVote }).catch(() => {});
+      // Tell the guided tour once the player carries the vote (Chapter 3, Beat 3).
+      if (myVote === 'yes') window.dispatchEvent(new CustomEvent('nhtutorial:vote'));
     }
 
     el.voteYes.addEventListener('click', () => cast('yes'));
