@@ -80,6 +80,9 @@
   .vpill--abstain{color:var(--soft);background:var(--chip)}
   .bill__btns{display:flex;gap:10px;margin-top:18px}
   .bill__btns .btn{flex:1;padding:12px}
+  .bill__tick{margin-top:12px;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.01em;text-align:center}
+  .bill__tick--pass{color:var(--green)}
+  .bill__tick--fail{color:var(--red)}
   .btn.is-active{outline:2px solid var(--ink);outline-offset:1px}
   .btn--ghost{background:var(--chip);border-color:var(--line);color:var(--soft)}
   .btn--ghost[disabled]{cursor:not-allowed;opacity:.65}
@@ -147,6 +150,7 @@
             <button class="btn btn--yes" id="voteYes" type="button">Vote Yes</button>
             <button class="btn btn--no" id="voteNo" type="button">Vote No</button>
           </div>
+          <div class="bill__tick" id="billTick"></div>
         </section>
 
         <section class="card gd-committee">
@@ -205,6 +209,7 @@
       fsVote: document.getElementById('fsVote'),
       voteYes: document.getElementById('voteYes'),
       voteNo: document.getElementById('voteNo'),
+      tick: document.getElementById('billTick'),
     };
     if (!el.voteYes || !el.voteNo) return;
 
@@ -225,6 +230,12 @@
       el.fsVote.className = 'vpill ' + (myVote === 'yes' ? 'vpill--yes' : myVote === 'no' ? 'vpill--no' : 'vpill--abstain');
       el.voteYes.classList.toggle('is-active', myVote === 'yes');
       el.voteNo.classList.toggle('is-active', myVote === 'no');
+      if (el.tick) {
+        el.tick.textContent = passing
+          ? 'This bill will now pass on the next tick.'
+          : 'This bill will now fail on the next tick and not take effect.';
+        el.tick.className = 'bill__tick ' + (passing ? 'bill__tick--pass' : 'bill__tick--fail');
+      }
     }
 
     function cast(vote) {

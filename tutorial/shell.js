@@ -154,6 +154,32 @@ export async function updateProfile(patch) {
   }
 }
 
+// --- Turn state ------------------------------------------------------------
+// The tutorial runs as a session-scoped scenario. Two facts drive every
+// derived display: the turn (0 = the opening week, Dec 1979; 1 = after the
+// first Next Week, Jan 1980) and the player's floor vote on the pension bill.
+// sessionStorage is the in-session source of truth (works signed-in or not);
+// updateProfile mirrors it to the DB best-effort. All numbers the scenario
+// keys off live here so the topbar, Home and News stay in lockstep.
+export const TUT_BALANCE_BASE = -10.0;   // $bn/yr — the deficit at turn 0
+export const TUT_PENSION_SAVING = 23.1;  // $bn/yr the abolition returns (bill figure)
+export const TUT_APPROVAL_BASE = 32;     // % approval at turn 0
+export const TUT_APPROVAL_DROP = 9;      // points lost to abolishing the pension
+
+export function getTutTurn() {
+  try { return Number(sessionStorage.getItem('nh-turn') || 0); } catch (e) { return 0; }
+}
+export function getFloorVote() {
+  try { return sessionStorage.getItem('nh-floor-vote'); } catch (e) { return null; }
+}
+// True once the week has advanced AND the player carried the abolition.
+export function pensionAbolished() { return getTutTurn() >= 1 && getFloorVote() === 'yes'; }
+
+export async function advanceTutorialWeek() {
+  try { sessionStorage.setItem('nh-turn', '1'); } catch (e) {}
+  await updateProfile({ tutorial_turn: 1 });
+}
+
 // Wipe the player's whole tutorial run so the next visit starts fresh from the
 // party-choice screen (no party, no government, nothing in progress). A full
 // overwrite of tutorial_state — not a merge — via the own-row update policy.
@@ -227,13 +253,19 @@ function mountTutorialTopbar() {
   const host = document.querySelector('.main .page') || document.querySelector('.main');
   if (!host || host.querySelector('.nhbar')) return;
   ensureTopbarStyles2();
+  // Date and balance follow the turn: the pension savings land once the week
+  // advances and only if the player voted to abolish it.
+  const bal = TUT_BALANCE_BASE + (pensionAbolished() ? TUT_PENSION_SAVING : 0);
+  const balTxt = (bal < 0 ? '−$' : '+$') + Math.abs(bal).toFixed(1) + ' bn/yr';
+  const balCls = bal < 0 ? 'nhbar__bal--neg' : 'nhbar__bal--pos';
+  const dateTxt = getTutTurn() >= 1 ? 'January, 1980' : 'December, 1979';
   const bar = document.createElement('div');
   bar.className = 'nhbar';
   bar.innerHTML =
     '<span class="nhbar__chip nhbar__inf" title="Influence">' +
       '<svg class="nhbar__star" viewBox="0 0 24 24"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>4</span>' +
-    '<span class="nhbar__chip nhbar__bal nhbar__bal--neg" title="Budget balance (per year)">−$10.0 bn/yr</span>' +
-    '<span class="nhbar__chip nhbar__date">December, 1979</span>' +
+    '<span class="nhbar__chip nhbar__bal ' + balCls + '" title="Budget balance (per year)">' + balTxt + '</span>' +
+    '<span class="nhbar__chip nhbar__date">' + dateTxt + '</span>' +
     '<button class="nhbar__week" type="button" disabled>Next Week</button>' +
     '<button class="nhbar__theme" type="button" aria-label="Toggle dark mode">' +
       '<svg class="ic-moon" viewBox="0 0 24 24"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8z"/></svg>' +
@@ -350,6 +382,14 @@ const GUIDE_STEPS = [
   { page: '/tutorial/news/', target: '.nhbar', ey: 'The Week Ahead', title: 'Advance the Week',
     body: 'This bar rides with you everywhere: your Influence to spend, the nation’s budget balance, the date, and the button that moves time. You’ve read your nation, governed, legislated, answered the chamber, and faced the press — that’s a week in Sessau. Let’s advance the week.',
     requires: 'week', enableWeek: true, pulse: true },
+
+  // Turn 2 — the week has advanced; the guided tour continues
+  { page: '/tutorial/home/', target: '.nhbar__date', ey: 'Week Two', title: 'A New Week',
+    body: 'January, 1980. You advanced the week and Sessau moved with you. The date has rolled forward, and every choice you made last week has now taken effect.' },
+  { page: '/tutorial/home/', target: '.appr__factors', ey: 'The Mark', title: 'The Fallout Lands',
+    body: 'Every big decision leaves a mark — and it’s logged right here under Party Approval. Read what your vote on the pension cost you, or spared you. Nothing you do in Sessau is free.' },
+  { page: '/tutorial/home/', target: '.nhbar__bal', ey: 'The Ledger', title: 'Decide, Advance, Live With It',
+    body: 'Your budget balance has moved to match the vote, too. This is the whole game: make the call, advance the week, and govern through what follows. Turn two is yours.' },
 ];
 
 let guideStep = 0, guideEls = null, guideReposition = null, guideGate = null, guideGateEvent = null;
@@ -423,7 +463,12 @@ function renderGuideStep() {
     if (wk) {
       wk.removeAttribute('disabled');
       wk.classList.add('nhbar__week--live', 'nhbar__week--pulse');
-      wk.onclick = () => { window.dispatchEvent(new CustomEvent('nhtutorial:week')); };
+      wk.onclick = async () => {
+        wk.onclick = null;                    // guard against a double push
+        await persistStep(guideStep + 1);     // advance the tour into Turn 2's first beat
+        await advanceTutorialWeek();          // Dec 1979 → Jan 1980, apply the vote's fallout
+        window.location.href = '/tutorial/home/'; // land on Home so the tour continues on the fallout
+      };
     }
   }
   target.scrollIntoView({ block: 'center', inline: 'nearest' });

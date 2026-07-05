@@ -196,9 +196,105 @@
   </div></div></div>
 <script type="module">
   import { isConfigured } from '/supabase.js';
-  import { requireUser, mountTutorialChrome } from '/tutorial/shell.js';
+  import { requireUser, mountTutorialChrome, getTutTurn, getFloorVote } from '/tutorial/shell.js';
   if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
+
+  // The page ships with the "upcoming vote" front page (turn 0). Once the week
+  // advances, the coverage rewrites itself to the outcome — the pension either
+  // passed (voted yes) or was rejected (voted no).
+  (() => {
+    const phase = getTutTurn() < 1 ? 'upcoming' : (getFloorVote() === 'yes' ? 'passed' : 'rejected');
+    if (phase === 'upcoming') return;
+
+    const PHASES = {
+      passed: {
+        ticker: [
+          ['BREAKING', 'Assembly abolishes the Civil Service Pension in a razor-thin vote'],
+          ['ECONOMY', 'Budget swings to a ₣13bn surplus as ₣23bn in pension savings land'],
+          ['SESSAU', 'Pensioners’ unions vow resistance after the scheme is scrapped'],
+          ['SEYONNE', 'PM Droulez: “A hard choice — but Sessau’s books will balance”'],
+        ],
+        leadH: 'Assembly Abolishes the Civil Service Pension',
+        leadSub: 'Union Conservatrice’s austerity bill scraped through with 137 seats. The Treasury books ₣23bn in savings and the budget swings to surplus — but poverty is set to climb and the government’s approval has cratered to 23%.',
+        hls: [
+          ['Economy', 'Budget swings to a ₣13bn surplus as the pension is scrapped'],
+          ['Politics', 'Approval slides to 23% amid a backlash over the cuts'],
+        ],
+        takes: [
+          [['Pension', '“They balanced the books on the backs of retirees — a disgrace.”'], ['Debt', '“Savings for the ledger, misery for the streets.”']],
+          [['Pension', '“₣23bn saved and the deficit erased — but poverty will rise.”'], ['Debt', '“Debt still tops ₣192bn; one surplus won’t clear it.”']],
+          [['Pension', '“A lean state at last — the bloated pensions are gone.”'], ['Debt', '“First the pensions, next the deficit. Sessau grows strong.”']],
+        ],
+        poll: { q: 'Was the government right to abolish the Civil Service Pension?', rows: [['Approve', 26, 'var(--green)'], ['Disapprove', 61, 'var(--red)'], ['Unsure', 13, 'var(--soft)']] },
+      },
+      rejected: {
+        ticker: [
+          ['BREAKING', 'Civil Service Pension survives as the government declines to back UC'],
+          ['ECONOMY', 'Debt holds above ₣192bn with no savings to show'],
+          ['SESSAU', 'Pensioners celebrate as the abolition bill fails on the floor'],
+          ['SEYONNE', 'PM Droulez: “We heard the country — the pension stays”'],
+        ],
+        leadH: 'Assembly Rejects the Move to Abolish the Civil Service Pension',
+        leadSub: 'The government declined to back Union Conservatrice’s austerity bill and the pension survives. Pensioners celebrate — but the coalition is strained, and debt still sits above ₣192bn with no savings to show for the fight.',
+        hls: [
+          ['Economy', 'Debt holds above ₣192bn as the savings plan collapses'],
+          ['Politics', 'Coalition tensions rise after UC’s bill is voted down'],
+        ],
+        takes: [
+          [['Pension', '“A rare victory for working Sessau — the pension stands.”'], ['Debt', '“Let them cry ‘debt’ — dignity is not for sale.”']],
+          [['Pension', '“Relief for retirees, but the deficit problem is unsolved.”'], ['Debt', '“Debt past ₣192bn and no plan: the reckoning is only delayed.”']],
+          [['Pension', '“Spineless. The government blinked and the bloat survives.”'], ['Debt', '“₣192bn and climbing, and still no one will cut. Shameful.”']],
+        ],
+        poll: { q: 'Was the government right to spare the Civil Service Pension?', rows: [['Approve', 59, 'var(--green)'], ['Disapprove', 28, 'var(--red)'], ['Unsure', 13, 'var(--soft)']] },
+      },
+    };
+    const OUTLETS = [
+      { cls: 'outlet--left', name: 'La Voix du Peuple', leanCls: 'lean--left', lean: 'Left Wing' },
+      { cls: 'outlet--centre', name: 'Le Quotidien de Seyonne', leanCls: 'lean--centre', lean: 'Centrist' },
+      { cls: 'outlet--right', name: 'Le Rempart', leanCls: 'lean--right', lean: 'Far Right' },
+    ];
+    const p = PHASES[phase];
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // Ticker — one track holds the lines doubled for a seamless loop.
+    const track = document.querySelector('.ticker__track');
+    if (track) {
+      const one = p.ticker.map(([tag, txt]) => '<span><b>' + esc(tag) + '</b> ' + esc(txt) + '</span>').join('');
+      track.innerHTML = one + one;
+    }
+    // Front page — brand stays, headline/sub/highlights change.
+    const paper = document.querySelector('.paper');
+    if (paper) {
+      paper.innerHTML =
+        '<div class="paper__brand"><span class="paper__name">Sessau Today</span><span class="paper__tag">The Paper of Record &middot; Seyonne</span></div>' +
+        '<div class="lead__k">Front Page</div>' +
+        '<div class="lead__h">' + esc(p.leadH) + '</div>' +
+        '<div class="lead__sub">' + esc(p.leadSub) + '</div>' +
+        p.hls.map(([k, h]) => '<div class="hl"><div class="hl__k">' + esc(k) + '</div><div><div class="hl__h">' + esc(h) + '</div><div class="hl__date">Sessau Today &middot; December 1979</div></div></div>').join('');
+    }
+    // Partisan outlets — same three papers, new takes.
+    const outlets = document.querySelector('.outlets');
+    if (outlets) {
+      outlets.innerHTML = OUTLETS.map((o, i) =>
+        '<div class="outlet ' + o.cls + '">' +
+          '<div class="outlet__name">' + esc(o.name) + '</div>' +
+          '<span class="outlet__lean ' + o.leanCls + '">' + esc(o.lean) + '</span>' +
+          p.takes[i].map(([issue, h]) => '<div class="outlet__take"><div class="take__issue">' + esc(issue) + '</div><div class="take__h">' + esc(h) + '</div></div>').join('') +
+        '</div>').join('');
+    }
+    // Poll — the question now asks whether the decision was right.
+    const poll = document.querySelector('.poll');
+    if (poll) {
+      poll.innerHTML =
+        '<div class="poll__by">Le Quotidien de Seyonne &middot; Weekly Poll &middot; n=1,200</div>' +
+        '<div class="poll__q">' + esc(p.poll.q) + '</div>' +
+        p.poll.rows.map(([label, pct, color]) =>
+          '<div class="poll__row"><div class="poll__top"><span>' + esc(label) + '</span><span>' + pct + '%</span></div>' +
+          '<div class="poll__bar"><span style="width:' + pct + '%;background:' + color + '"></span></div></div>').join('') +
+        '<div class="poll__foot">Margin of error &plusmn;3%. Fieldwork December 1979, Seyonne &amp; the provinces.</div>';
+    }
+  })();
 </script>
 </body>
 </html>
