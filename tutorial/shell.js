@@ -318,9 +318,24 @@ const GUIDE_STEPS = [
   { page: '/tutorial/legislature/', target: '.nav__i[href="/tutorial/inbox/"], .botnav__i[href="/tutorial/inbox/"]',
     ey: 'Next', title: 'The Chamber Talks Back', body: 'Passing a budget makes friends and enemies. Let’s see who’s writing to you.',
     nav: '/tutorial/inbox/', cta: 'Inbox →', pulse: true },
+
+  // Chapter 4 — The Inbox
+  { page: '/tutorial/inbox/', target: '#threadList', ey: 'Your Inbox', title: 'The Chamber Talks Back',
+    body: 'Every party, minister, and lobby reaches you here. A bold subject line is unread — and passing that police budget already earned you three replies.' },
+  { page: '/tutorial/inbox/', target: '.mail__view', ey: 'An Ally', title: 'Union Conservatrice',
+    body: 'Your coalition partner. They congratulate you on the vote — then remind you the tax cut is overdue and the debt has broken $180 bn. Allies keep score too.' },
+  { page: '/tutorial/inbox/', target: '.reply__opts', ey: 'Your Call', title: 'You Don’t Type — You Decide',
+    body: 'Pick a reply. Reassure them the cut is coming, push back that the deficit can’t bear it, or stall. Each answer costs you something different.', requires: 'reply', pulse: true },
+  { page: '/tutorial/inbox/', target: '.reply__done', ey: 'On the Record', title: 'Words Have Weight',
+    body: 'Your reply is sent, and the effect is logged right there. This is how every relationship in Sessau is managed — one message at a time.' },
+  { page: '/tutorial/inbox/', target: '.thr[data-id="pss"]', ey: 'The Opposition', title: 'Not Everyone’s Happy',
+    body: 'Parti Socialiste is furious about the budget and rattling that motion of no confidence. You can’t please everyone — and you shouldn’t try. Some fights are worth having.' },
+  { page: '/tutorial/inbox/', target: '.nav__i[href="/tutorial/news/"], .botnav__i[href="/tutorial/news/"]',
+    ey: 'Next', title: 'The Country Is Watching', body: 'Your inbox is private. The papers aren’t. Let’s see how Sessau woke up to your budget.',
+    nav: '/tutorial/news/', cta: 'News →', pulse: true },
 ];
 
-let guideStep = 0, guideEls = null, guideReposition = null, guideGate = null;
+let guideStep = 0, guideEls = null, guideReposition = null, guideGate = null, guideGateEvent = null;
 
 async function mountGuide() {
   const path = location.pathname;
@@ -355,7 +370,7 @@ function persistStep(n) {
 
 function clearGuide() {
   if (guideReposition) { window.removeEventListener('resize', guideReposition); guideReposition = null; }
-  if (guideGate) { window.removeEventListener('nhtutorial:vote', guideGate); guideGate = null; }
+  if (guideGate) { window.removeEventListener(guideGateEvent, guideGate); guideGate = null; guideGateEvent = null; }
   if (guideEls) { guideEls.forEach((el) => el.remove()); guideEls = null; }
   document.body.style.overflow = '';
 }
@@ -406,14 +421,15 @@ function renderGuideStep() {
   const go = async () => {
     if (advancing) return;
     advancing = true;
-    if (guideGate) { window.removeEventListener('nhtutorial:' + s.requires, guideGate); guideGate = null; }
+    if (guideGate) { window.removeEventListener(guideGateEvent, guideGate); guideGate = null; guideGateEvent = null; }
     if (s.nav) { await persistStep(guideStep + 1); window.location.href = s.nav; } // hand-off: persist BEFORE leaving, or the next page reads a stale step and the chapter never starts
     else advanceGuide();
   };
   if (s.requires) {
     // Advance only when the page reports the real action was carried out.
     guideGate = () => go();
-    window.addEventListener('nhtutorial:' + s.requires, guideGate, { once: true });
+    guideGateEvent = 'nhtutorial:' + s.requires;
+    window.addEventListener(guideGateEvent, guideGate, { once: true });
   } else {
     call.querySelector('.gd-call__btn').addEventListener('click', go);
   }
