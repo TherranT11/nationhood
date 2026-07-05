@@ -1,0 +1,19 @@
+/* play.css — the shared shell base for every signed-in /play screen. ONE source
+   for the design tokens (previously copy-pasted, and drifted, into every page's
+   inline :root), the reset, and the app frame. Linked from each page's <head>
+   right after the font <link>, so the per-page <style> can still override.
+
+   Dark mode is owned by /theme.js, whose html[data-theme="dark"]{…} rule beats
+   this :root by specificity — same as when these tokens lived inline. Genuinely
+   page-specific tokens (economy resource colours, etc.) and the per-page .main
+   padding stay inline; everything shared lives here. */
+:root{
+  --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
+  --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
+  --indigo:#5546E8;--indigo-soft:#ECE9FD;
+  --red:#C42B2B;--red-soft:#FBEAE9;--green:#16915a;--green-soft:#E5F4EC;
+  --amber:#E0820E;--amber-soft:#FBF0DD;
+  --navy:#2b3a7a;--navy-soft:#E7EAF4;--blue:#1f86d6;--blue-soft:#e3f0fb;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+.app{display:flex;min-height:100vh}

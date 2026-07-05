@@ -8,17 +8,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
 <style>
-  :root{
-    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
-    --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
-    --indigo:#5546E8;--indigo-soft:#ECE9FD;
-    --red:#C42B2B;--red-soft:#FBEAE9;--amber:#E0820E;--amber-soft:#FBF0DD;--green:#16915a;--green-soft:#E5F4EC;
-    --acc:#5546E8;--acc-soft:#ECE9FD;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
+  :root{--acc:var(--indigo);--acc-soft:var(--indigo-soft)}   /* page-local alias onto the shared accent */
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
-  .app{display:flex;min-height:100vh}
 
   /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
 
