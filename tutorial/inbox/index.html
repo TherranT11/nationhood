@@ -46,7 +46,7 @@
   .btn--primary:hover{filter:brightness(1.07);color:#fff}
   /* Mail client — thread list + reading pane */
   .mail{display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start}
-  .mail__list{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:2px}
+  .mail__list{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:2px;min-width:0}
   .thr{display:flex;gap:11px;padding:11px 12px;border-radius:11px;cursor:pointer;border:1px solid transparent}
   .thr:hover{background:var(--chip)}
   .thr.is-active{background:var(--indigo-soft);border-color:color-mix(in srgb,var(--indigo) 25%,transparent)}
@@ -60,7 +60,7 @@
   .thr__dot{width:7px;height:7px;border-radius:50%;background:var(--indigo);flex:none;align-self:center}
   .mail__view{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;min-width:0}
   .view__head{display:flex;align-items:center;gap:12px;padding-bottom:14px;border-bottom:1px solid var(--line);margin-bottom:16px}
-  .view__subj{font-size:17px;font-weight:800;letter-spacing:-.01em;color:var(--ink)}
+  .view__subj{font-size:17px;font-weight:800;letter-spacing:-.01em;color:var(--ink);overflow-wrap:anywhere}
   .view__party{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;color:var(--soft);margin-top:2px}
   .view__back{display:none;flex:none;gap:6px;height:34px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
   .view__msgs{display:flex;flex-direction:column;gap:12px}
@@ -68,10 +68,11 @@
   .msg--me{background:var(--indigo-soft);border-color:color-mix(in srgb,var(--indigo) 20%,transparent)}
   .msg__head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
   .msg__av{width:30px;height:30px;border-radius:8px;flex:none;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:10px;font-weight:700}
-  .msg__who{font-weight:700;font-size:13px;color:var(--ink)}
-  .msg__time{margin-left:auto;font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);white-space:nowrap}
-  .msg__body{font-size:14px;line-height:1.65;color:var(--ink);white-space:pre-line}
-  @media(max-width:760px){.mail{grid-template-columns:1fr}.mail__view{display:none}.mail--reading .mail__list{display:none}.mail--reading .mail__view{display:block}.mail--reading .view__back{display:flex}}
+  .msg__who{font-weight:700;font-size:13px;color:var(--ink);min-width:0;overflow-wrap:anywhere}
+  .msg__time{margin-left:auto;flex:none;font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);white-space:nowrap}
+  /* pre-line keeps paragraph breaks; anywhere breaks any long token so nothing scrolls sideways. */
+  .msg__body{font-size:14px;line-height:1.65;color:var(--ink);white-space:pre-line;overflow-wrap:anywhere}
+  @media(max-width:760px){.mail{grid-template-columns:1fr}.mail__view{display:none;padding:14px}.mail--reading .mail__list{display:none}.mail--reading .mail__view{display:block}.mail--reading .view__back{display:flex}.msg{padding:12px 13px}.actions .btn{flex:1 1 auto}}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
