@@ -156,31 +156,6 @@
   .appoint__btns .noco__btn{flex:0 0 130px}
   .appoint__ap{font-size:9px;opacity:.85;margin-left:4px}
   @media(max-width:560px){.appoint__row{flex-direction:column;align-items:stretch;gap:5px}.appoint__min{flex:none}}
-  .atarget{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:12px 14px;cursor:pointer;color:var(--ink);font-family:inherit;transition:border-color .15s}
-  .atarget:hover{border-color:var(--indigo)}
-  .atarget__id b{font-weight:800;font-size:14.5px;letter-spacing:-.01em}
-  .atarget__id span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;color:var(--soft);margin-left:6px}
-  .atarget__st{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap;text-align:right}
-  /* NEGOTIATE modal: reuses .atarget rows; adds the Start-New button + a back link. */
-  .negnew{width:100%;text-align:center;background:var(--surface);border:1px dashed var(--line2,#D9D6D0);border-radius:11px;padding:13px;cursor:pointer;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--indigo)}
-  .negnew:hover{border-color:var(--indigo)}
-  .negback{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft);cursor:pointer;background:none;border:none;padding:0 0 2px}
-  .negback:hover{color:var(--indigo)}
-  /* Pending coalition-invite banners (Home). */
-  #inviteBanners:empty{display:none}
-  #inviteBanners{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
-  .invite{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:13px;padding:14px 16px}
-  .invite__t{font-size:13.5px;color:var(--ink);line-height:1.45;min-width:240px}
-  .invite__lbl{display:block;margin-top:9px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
-  .invite__p{display:block;font-size:13px;color:var(--ink);margin-top:3px}
-  .invite__p span{color:var(--muted)}
-  .invite__a{display:flex;gap:8px;flex:none}
-  .invite__dec,.invite__go{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:9px 14px;border-radius:9px;cursor:pointer;border:1px solid var(--line)}
-  .invite__dec{background:var(--surface);color:var(--muted)}
-  .invite__dec:hover{color:var(--red);border-color:var(--red)}
-  .invite__go{background:var(--indigo);border-color:var(--indigo);color:#fff}
-  .invite__go:hover{filter:brightness(1.06)}
-  .invite__dec:disabled,.invite__go:disabled{opacity:.5;cursor:not-allowed;filter:none}
   a.invite{text-decoration:none;margin-bottom:14px}
 
   /* Events feed (currently just the party-founding entry). Sized ~15% up. */
@@ -273,8 +248,6 @@
     <h1 id="welcome">Welcome</h1>
     <p id="lede">Your party is now part of the nation.</p>
 
-    <div id="formBanner"></div>
-    <div id="inviteBanners"></div>
 
     <!-- World Events sit at the very top — a nation-level prompt above the party + ministry bars. -->
     <section class="panel" id="weventPanel" hidden>
@@ -359,13 +332,6 @@
   </div>
 </div>
 
-<div class="amodal" id="negotiateModal" hidden>
-  <div class="amodal__panel">
-    <div class="amodal__hd"><b id="negTitle">Coalition Talks</b><button class="amodal__x" id="negClose" type="button" aria-label="Close">&times;</button></div>
-    <div class="amodal__list" id="negList"></div>
-  </div>
-</div>
-
 <div class="amodal" id="appointModal" hidden>
   <div class="amodal__panel amodal__panel--wide">
     <div class="amodal__hd"><b>Name the Cabinet</b><button class="amodal__x" id="appointClose" type="button" aria-label="Close">&times;</button></div>
@@ -373,26 +339,6 @@
     <div class="appoint__foot">
       <span class="appoint__note">Economic Development, Interior, Foreign Affairs &amp; Trade grant the appointee <b>+1 Image</b>.</span>
       <div class="appoint__btns"><button class="noco__btn noco__cancel" id="appointCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="appointConfirm" type="button">Confirm <span class="appoint__ap">1 AP</span></button></div>
-    </div>
-  </div>
-</div>
-
-<div class="amodal" id="nocoModal" hidden>
-  <div class="amodal__panel">
-    <div class="amodal__hd"><b>Vote of No Confidence</b><button class="amodal__x" id="nocoClose" type="button" aria-label="Close">&times;</button></div>
-    <div class="amodal__list">
-      <p class="noco__warn">A vote of no confidence is dangerous. If you are <b>successful</b>, it drops the Head of Government party by <b>−5% Party Popularity</b> and <b>−3% Party Floor</b>, then holds new elections. If it <b>fails</b>, the proposer loses <b>−5% Party Popularity</b> and <b>−3% Party Floor</b>. The motion carries unless the government votes No. <b>12-tick cooldown.</b></p>
-      <div class="noco__btns"><button class="noco__btn noco__cancel" id="nocoCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="nocoConfirm" type="button">Confirm</button></div>
-    </div>
-  </div>
-</div>
-
-<div class="amodal" id="leaveModal" hidden>
-  <div class="amodal__panel">
-    <div class="amodal__hd"><b id="leaveTitle">Leave the Coalition</b><button class="amodal__x" id="leaveClose" type="button" aria-label="Close">&times;</button></div>
-    <div class="amodal__list">
-      <p class="noco__warn" id="leaveWarn"></p>
-      <div class="noco__btns"><button class="noco__btn noco__cancel" id="leaveCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="leaveConfirm" type="button">Leave</button></div>
     </div>
   </div>
 </div>
@@ -422,7 +368,6 @@
   import { openJointProposer, fetchJointNegotiations, renderJointNegotiations } from '/joint.js';
   import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
   import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, PRODUCE_COST, PRODUCE_COOLDOWN } from '/util.js';
-  import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
   import { ideologyLabel } from '/archetypes.js';
   import { MINISTRIES } from '/ministries.js';
 
@@ -589,24 +534,18 @@
   // action count — it updates the label AND gates every action button (0 →
   // disabled), so the buttons are correct on load and after every action.
   var partyActions = 0, feedCtx = null, acting = false, actionBtns = [], myPartyId = null, amPM = false, isEconDevMin = false, myCurrency = '$';
-  // No-confidence is nation-wide cooldown-gated: while nocoUntilTick is in the future the
-  // action stays disabled for everyone in the nation, on top of the usual AP gate.
-  // Produce (the PM action) is nation-wide cooldown-gated the same way no-confidence is.
-  var NOW_TICK = 0, nocoUntilTick = 0, produceUntilTick = 0, produceBtn = null, reshuffleUntilTick = 0, reshuffleBtn = null, electionUntilTick = 0, electionBtn = null;
-  // Leave Coalition is gated by government membership (set at load), not just AP — like the
-  // cooldown gates below, this override keeps setActions from re-enabling it on AP alone.
-  var leaveBtn = null, leaveEligible = false;
+  // Produce/Reshuffle/Election are nation-wide cooldown-gated: while the until-tick is in the
+  // future the action stays disabled for everyone in the nation, on top of the usual AP gate.
+  var NOW_TICK = 0, produceUntilTick = 0, produceBtn = null, reshuffleUntilTick = 0, reshuffleBtn = null, electionUntilTick = 0, electionBtn = null;
   function setActions(n) {
     partyActions = n;
     setTopbarActions(n);
     // Each button carries its action cost (data-cost; default 1), so a button greys
     // out the moment you can't afford it — not just at zero.
     actionBtns.forEach(function (b) { b.disabled = n < (parseInt(b.dataset.cost, 10) || 1); });
-    if (nocoBtn && nocoUntilTick > NOW_TICK) nocoBtn.disabled = true;   // cooldown overrides the AP gate
     if (produceBtn && produceUntilTick > NOW_TICK) produceBtn.disabled = true;
     if (reshuffleBtn && reshuffleUntilTick > NOW_TICK) reshuffleBtn.disabled = true;
     if (electionBtn && electionUntilTick > NOW_TICK) electionBtn.disabled = true;
-    if (leaveBtn && !leaveEligible) leaveBtn.disabled = true;           // must be in government (membership gate)
   }
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
@@ -822,40 +761,6 @@
     finally { acting = false; setActions(partyActions); }
   }
 
-  // LEAVE COALITION — walk out of the government (1 AP). A junior partner takes −3% Party
-  // Popularity and the government −5% Confidence; the Head of Government leaving IS a
-  // resignation (−5% Party Popularity + a snap election). The button is enabled only for a
-  // party in government (leaveEligible, set at load); the confirm copy is chosen from amPM.
-  leaveBtn = document.getElementById('act-leave');
-  var leaveModal = document.getElementById('leaveModal');
-  var closeLeave = wireModalClose(leaveModal, 'leaveClose');
-  var leaveCancel = document.getElementById('leaveCancel'); if (leaveCancel) leaveCancel.addEventListener('click', closeLeave);
-  if (leaveBtn) {
-    actionBtns.push(leaveBtn);
-    leaveBtn.addEventListener('click', function () {
-      if (leaveBtn.disabled) return;
-      document.getElementById('leaveTitle').textContent = amPM ? 'Resign as Head of Government' : 'Leave the Coalition';
-      document.getElementById('leaveWarn').innerHTML = amPM
-        ? 'As Head of Government, leaving means <b>resigning</b> — it dissolves your government and calls a <b>snap election</b> you may not win. Your party loses <b>−5% Party Popularity</b>. Costs <b>1 action</b>.'
-        : 'Walking out of the coalition costs your party <b>−3% Party Popularity</b> and the government <b>−5% Confidence</b>. Costs <b>1 action</b>.';
-      document.getElementById('leaveConfirm').textContent = amPM ? 'Resign' : 'Leave';
-      leaveModal.hidden = false;
-    });
-  }
-  var leaveConfirm = document.getElementById('leaveConfirm');
-  if (leaveConfirm) leaveConfirm.addEventListener('click', function () {
-    if (acting) return;
-    closeLeave();
-    acting = true;
-    actionBtns.forEach(function (b) { b.disabled = true; });
-    // Leaving reseats the government (a junior exit, or a snap election for the premier), so
-    // reload on success to pick up the new composition rather than patch the page in place.
-    supabase.rpc('leave_coalition').then(function (r) {
-      if (r.error) { ping(r.error.message || 'Action failed.'); acting = false; setActions(partyActions); return; }
-      ping(r.data && r.data.resigned ? 'You have resigned as Head of Government — fresh elections held.' : 'Your party has left the coalition.');
-      setTimeout(function () { location.reload(); }, 900);
-    }).catch(function () { ping('Action failed. Try again.'); acting = false; setActions(partyActions); });
-  });
 
   // BUILD MILITARY BASE — the Minister of Defence commissions a base (2 AP, $15B from the
   // Budget; a shortfall rolls into Debt). Home builds in your own territory; Abroad builds in
@@ -1102,36 +1007,6 @@
     };
   }
 
-  // NO CONFIDENCE opens a confirm modal (the action is destructive + has a cooldown), then
-  // tables the motion via propose_no_confidence. Shares the action lock/budget gate.
-  var nocoBtn = document.getElementById('act-noconfidence');
-  var nocoModal = document.getElementById('nocoModal');
-  if (nocoBtn) {
-    actionBtns.push(nocoBtn);
-    nocoBtn.addEventListener('click', function () { if (!acting && !nocoBtn.disabled) nocoModal.hidden = false; });
-  }
-  var closeNoco = wireModalClose(nocoModal, 'nocoClose');
-  var nocoCancel = document.getElementById('nocoCancel'); if (nocoCancel) nocoCancel.addEventListener('click', closeNoco);
-  var nocoConfirm = document.getElementById('nocoConfirm');
-  if (nocoConfirm) nocoConfirm.addEventListener('click', function () {
-    closeNoco();
-    performAction(function () { return supabase.rpc('propose_no_confidence'); }, function (d) {
-      if (d && d.until != null) applyNocoCooldown(NOW_TICK, d.until);   // grey the button out at once
-      return 'No-confidence motion tabled — it reaches the floor next month.';
-    });
-  });
-  // Reflect the nation-wide cooldown on the button: disabled + a "Cooldown" pill while it's
-  // active, so every player in the nation sees it greyed (the server is still authoritative).
-  function applyNocoCooldown(now, until) {
-    NOW_TICK = now; nocoUntilTick = until || 0;
-    if (!nocoBtn) return;
-    var left = nocoUntilTick - now, pill = nocoBtn.querySelector('.lead__cost');
-    if (left > 0) {
-      nocoBtn.disabled = true;
-      nocoBtn.title = 'No confidence is on cooldown for this nation — ' + left + ' more tick' + (left === 1 ? '' : 's') + '.';
-      if (pill) { pill.textContent = 'Cooldown'; pill.classList.add('lead__cost--soon'); }
-    }
-  }
 
   // STATEMENT — the head of government releases a written address (0 AP, $10K funds).
   // International reaches every nation's feed; domestic stays in the home nation. The
@@ -1251,163 +1126,13 @@
     b.appendChild(pill);
   }
 
-
-  // NEGOTIATE opens coalition talks (server-backed — see /negotiations.js): a
-  // modal listing the player's active talks plus a Start-New flow that picks a
-  // party and opens the negotiation page. Opening talks is free (the action is
-  // charged later — on coalition_invite or coalition_commit), so the button stays
-  // out of the AP lock; viewing existing talks is free too.
-  var negotiateBtn = document.getElementById('act-negotiate');
-  var negotiateModal = document.getElementById('negotiateModal');
-  var negPool = [];   // other parties in the nation, cached when the modal opens
-  var negStarting = false; // double-fire lock for the (action-costing) open call
-  if (negotiateBtn) negotiateBtn.addEventListener('click', openNegotiateModal);
-  wireModalClose(negotiateModal, 'negClose');
-
-  async function openNegotiateModal() {
-    if (!feedCtx || !myPartyId) return;
-    var list = document.getElementById('negList');
-    list.innerHTML = '<p class="empty">Loading…</p>';
-    negotiateModal.hidden = false;
-    try {
-      const others = await supabase.from('parties')
-        .select('id, name, abbreviation, seats, popularity, archetype')
-        .eq('nation_id', feedCtx.nationId).neq('id', myPartyId).order('seats', { ascending: false });
-      negPool = others.data || [];
-      var all = await fetchNegotiations();
-      renderNegList(activeTalks(all, myPartyId));
-    } catch (e) { list.innerHTML = '<p class="empty">Couldn’t open coalition talks.</p>'; }
-  }
-  function negPartyName(id) { var p = negPool.filter(function (x) { return x.id === id; })[0]; return p ? p.name : 'A party'; }
-  // The other parties involved in a talk, from the player's vantage: if hosting,
-  // the invited parties; if invited, the host.
-  function talkOthers(n) {
-    return n.host_party_id === myPartyId
-      ? (n.negotiation_parties || []).map(function (p) { return p.party_id; })
-      : [n.host_party_id];
-  }
-
-  function renderNegList(negs) {
-    document.getElementById('negTitle').textContent = 'Coalition Talks';
-    var list = document.getElementById('negList');
-    var html = negs.length ? negs.map(function (n) {
-      var c = termCounts(n);
-      var label = talkOthers(n).map(negPartyName).join(' + ') || 'Talks';
-      var role = (n.host_party_id === myPartyId ? 'Hosting' : 'Invited') + (n.status === 'committed' ? ' · Committed' : '');
-      return '<button class="atarget" type="button" data-id="' + esc(n.id) + '">' +
-        '<span class="atarget__id"><b>' + esc(label) + '</b><span>' + role + '</span></span>' +
-        '<span class="atarget__st">' + (n.status === 'committed' ? '✓ committed' : c.agreed + '/' + c.total + ' agreed') + '</span></button>';
-    }).join('') : '<p class="empty">No coalition talks yet. Start one to bring a party to the table.</p>';
-    html += '<button class="negnew" id="negNewBtn" type="button">+ Start New Negotiation</button>';   // opening is free — no AP gate
-    list.innerHTML = html;
-    list.querySelectorAll('.atarget').forEach(function (b) { b.addEventListener('click', function () { window.location.href = '/play/negotiate/?id=' + encodeURIComponent(b.dataset.id); }); });
-    document.getElementById('negNewBtn').addEventListener('click', renderNegPicker);
-  }
-
-  function renderNegPicker() {
-    document.getElementById('negTitle').textContent = 'Bring a Party to the Table';
-    var list = document.getElementById('negList');
-    var html = '<button class="negback" id="negBack" type="button">&lsaquo; Back</button>';
-    html += negPool.length ? negPool.map(function (p) {
-      return '<button class="atarget" type="button" data-id="' + esc(p.id) + '">' +
-        '<span class="atarget__id"><b>' + esc(p.name) + '</b><span>' + esc(p.abbreviation || '') + '</span></span>' +
-        '<span class="atarget__st">' + (p.seats || 0) + ' seats &middot; ' + (Number(p.popularity) || 0) + '% &middot; ' + esc(ideologyLabel(p)) + '</span></button>';
-    }).join('') : '<p class="empty">No other parties in the nation to negotiate with yet.</p>';
-    list.innerHTML = html;
-    document.getElementById('negBack').addEventListener('click', function () { openNegotiateModal(); });
-    list.querySelectorAll('.atarget').forEach(function (b) { b.addEventListener('click', function () { startNegotiation(b.dataset.id); }); });
-  }
-  async function startNegotiation(targetId) {
-    if (negStarting) return; // opening is free, but the lock still stops a double-click spawning two talks
-    negStarting = true;
-    try {
-      var res = await openNegotiation(targetId);
-      window.location.href = '/play/negotiate/?id=' + encodeURIComponent(res.id);
-    } catch (e) { negStarting = false; ping(e.message || 'Couldn’t open talks.'); }
-  }
-
-  // If the player is a formateur with an open formation window, nudge them to the
-  // Government page where the decision lives (the election fires on the clock, so
-  // they could be anywhere when it lands). Shares formationState with that page.
-  async function renderFormation() {
-    if (!myPartyId || !feedCtx) return;
-    var box = document.getElementById('formBanner');
-    try {
-      const fm = await import('/formation.js');           // lazy: an optional nudge, never a hard dependency
-      var fs = await fm.formationState({ id: myPartyId, nation_id: feedCtx.nationId });
-      var msg = fs.canRenege
-        ? '🏛 <b>Your government has formed.</b> Keep your agreed coalition or form a new one — this turn only.'
-        : fs.postRenege
-        ? '🏛 <b>You’re governing alone.</b> Finish forming a new coalition before the turn ends.'
-        : '';
-      box.innerHTML = msg
-        ? '<a class="invite" href="/play/government/"><span class="invite__t">' + msg +
-          '</span><span class="invite__a"><span class="invite__go">Go to Government ▸</span></span></a>'
-        : '';
-    } catch (e) { box.innerHTML = ''; }
-  }
-
-  // Flag the Negotiate action when the player has open coalition talks (hosting or invited) —
-  // the same activeTalks() the modal lists, so the tag and the list can't disagree.
-  async function refreshNegotiateTag() {
-    var btn = document.getElementById('act-negotiate');
-    if (!btn || !myPartyId) return;
-    try {
-      var open = activeTalks(await fetchNegotiations(), myPartyId).length;
-      var tag = btn.querySelector('.lead__tag');
-      if (!open) { if (tag) tag.remove(); return; }
-      if (!tag) { tag = document.createElement('span'); tag.className = 'lead__tag'; btn.appendChild(tag); }
-      tag.textContent = 'Open Negotiations' + (open > 1 ? ' · ' + open : '');
-    } catch (e) { /* leave the button untagged on failure */ }
-  }
-
-  // Pending coalition invites surface as banners on Home: Decline, or Enter Talks
-  // (which accepts and opens the negotiation page).
-  async function renderInvites() {
-    if (!myPartyId) return;
-    var box = document.getElementById('inviteBanners');
-    try {
-      var invites = await coalitionInvitesForMe();   // host + full invited roster (server-side; RLS hides co-invitees)
-      if (!invites.length) { box.innerHTML = ''; return; }
-      box.innerHTML = invites.map(function (n) {
-        var host = (n.host && n.host.name) || 'Another party';
-        var roster = (n.parties || []).map(function (p) {
-          return '<span class="invite__p"><b>' + esc(p.name) + '</b> <span>· ' + esc(ideologyLabel(p)) + '</span></span>';
-        }).join('');
-        return '<div class="invite" data-id="' + esc(n.id) + '"><div class="invite__t"><b>' + esc(host) + '</b> has invited you to Coalition Talks.' +
-          (roster ? '<span class="invite__lbl">Invited Parties</span>' + roster : '') + '</div>' +
-          '<span class="invite__a"><button class="invite__dec" type="button">Reject Talks</button><button class="invite__go" type="button">Accept Talks</button></span></div>';
-      }).join('');
-      box.querySelectorAll('.invite').forEach(function (el) {
-        var id = el.dataset.id, go = el.querySelector('.invite__go'), dec = el.querySelector('.invite__dec');
-        // Both buttons write (coalition_respond) — lock the pair on first click.
-        function lock() { go.disabled = true; dec.disabled = true; }
-        go.addEventListener('click', function () { if (go.disabled) return; lock(); enterInvite(id, true, go, dec); });
-        dec.addEventListener('click', function () { if (dec.disabled) return; lock(); enterInvite(id, false, go, dec); });
-      });
-    } catch (e) { box.innerHTML = ''; }
-  }
-  async function enterInvite(negId, accept, go, dec) {
-    try {
-      await respondInvite(negId, accept);
-      if (accept) { window.location.href = '/play/negotiate/?id=' + encodeURIComponent(negId); return; }
-      renderInvites();
-    } catch (e) {
-      if (go) go.disabled = false; if (dec) dec.disabled = false; // failed — let them retry
-      ping(e.message || 'Couldn’t respond to the invite.');
-    }
-  }
-
   function chip(k, body) { return '<div class="chip"><span class="chip__k">' + k + '</span>' + body + '</div>'; }
   function val(t) { return '<span class="chip__v">' + esc(t) + '</span>'; }
 
-  // Prime Minister actions — shown ONLY to the party holding the premiership (the
-  // active government's formateur). Coalition opens the coalition-talks flow (the
-  // same one the leader's Negotiate action uses — opening new talks is free, the
-  // action is charged later on invite/commit); the rest aren't wired yet, so they
-  // render as dimmed scaffolds. When the player isn't PM the bar isn't rendered.
+  // Prime Minister actions — shown ONLY to the party holding the premiership (the active
+  // government's formateur). The wired ones are live; the rest render as dimmed scaffolds.
+  // When the player isn't PM the bar isn't rendered.
   var PM_ACTIONS = [
-    ['Coalition', 'Build your governing coalition.'],
     ['Produce',   'Ensure the nation’s resources are generated.'],
     ['Direct',    'Direct a ministry’s work.'],
     ['Statement', 'Release a public statement.'],
@@ -1423,19 +1148,17 @@
       '<p class="leadbar__sub">Your leader holds the premiership. One action only. Choose where to spend it.</p>' +
       '<div class="leadbar__grid">' +
       PM_ACTIONS.map(function (a) {
-        // Coalition, Produce, Appoint, Statement, Reshuffle and Elections are live; the rest stay dimmed scaffolds.
-        var id = a[0] === 'Coalition' ? ' id="pm-coalition"' : a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : a[0] === 'Statement' ? ' id="pm-statement"' : a[0] === 'Reshuffle' ? ' id="pm-reshuffle"' : a[0] === 'Elections' ? ' id="pm-elections"' : '';
-        // Most premiership actions spend the single weekly action (1 AP). Coalition and Statement
-        // cost no action (Statement is paid in $10K funds); Produce costs PRODUCE_COST on a cooldown;
+        // Produce, Appoint, Statement, Reshuffle and Elections are live; the rest stay dimmed scaffolds.
+        var id = a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : a[0] === 'Statement' ? ' id="pm-statement"' : a[0] === 'Reshuffle' ? ' id="pm-reshuffle"' : a[0] === 'Elections' ? ' id="pm-elections"' : '';
+        // Most premiership actions spend the single weekly action (1 AP). Statement costs no
+        // action (it's paid in $10K funds); Produce costs PRODUCE_COST on a cooldown;
         // Reshuffle costs 2 AP on a 6-tick cooldown.
-        var cost = a[0] === 'Coalition' || a[0] === 'Statement' ? ' data-cost-free' : a[0] === 'Produce' ? ' data-cost="' + PRODUCE_COST + '"' : a[0] === 'Reshuffle' ? ' data-cost="2"' : '';
+        var cost = a[0] === 'Statement' ? ' data-cost-free' : a[0] === 'Produce' ? ' data-cost="' + PRODUCE_COST + '"' : a[0] === 'Reshuffle' ? ' data-cost="2"' : '';
         return '<button class="lead" type="button"' + (id || ' disabled') + cost +
           '><b>' + a[0] + '</b><span class="lead__desc">' + a[1] + '</span></button>';
       }).join('') +
       '</div></section>';
     el.querySelectorAll('.lead').forEach(stampCost);
-    var coalBtn = el.querySelector('#pm-coalition');
-    if (coalBtn) coalBtn.addEventListener('click', openNegotiateModal);
     // Statement: free of action, $10K funds. Override the "Free" pill to show the cash cost.
     var stmtBtn = el.querySelector('#pm-statement');
     if (stmtBtn) {
@@ -1651,7 +1374,6 @@
       // "Loading…" if the nation row failed to load (e.g. a column drift).
       if (nation) renderGlance(nation);
       else document.getElementById('snap').innerHTML = '<p class="empty">Couldn’t load the nation’s figures right now. Refresh to try again.</p>';
-      applyNocoCooldown(curTick, nation && nation.no_confidence_until_tick);   // nation-wide no-confidence cooldown gate
       setActions(party.actions_remaining != null ? party.actions_remaining : 12);
       feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };
       myPartyId = party.id;  // used to exclude self from the attack target list
@@ -1661,26 +1383,7 @@
         const { data: govt } = await supabase.from('governments')
           .select('formateur_party_id, reshuffle_until_tick').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
         amPM = !!(govt && govt.formateur_party_id === party.id);   // head of government — manages crises too
-        // A live no-confidence motion (agenda or voting) blocks the premier from leaving
-        // (resigning) until it resolves — junior partners can still walk.
-        var nocoLive = false;
-        if (amPM) {
-          const { data: liveNoco } = await supabase.from('proposals').select('id')
-            .eq('nation_id', party.nation_id).eq('kind', 'no_confidence').in('status', ['agenda', 'voting']).limit(1);
-          nocoLive = !!(liveNoco && liveNoco.length);
-        }
         renderPMBar(amPM);
-        // Gate Leave Coalition: only a party in the government can walk out; the premier is
-        // additionally blocked while a no-confidence motion is live. AP is applied by setActions
-        // via the leaveEligible override, so re-run it once membership is known.
-        leaveEligible = !!party.in_government && !(amPM && nocoLive);
-        if (leaveBtn) {
-          leaveBtn.title = !party.in_government
-            ? 'Your party is not in the government.'
-            : (amPM && nocoLive) ? 'A no-confidence motion is on the floor — it must be resolved first.'
-            : amPM ? 'Resign as Head of Government (1 AP): −5% Party Popularity and a snap election.'
-            : 'Leave the governing coalition (1 AP): −5% Government Confidence, −3% your Party Popularity.';
-        }
         setActions(partyActions);
         applyProduceCooldown(curTick, nation && nation.produce_until_tick);   // nation-wide Produce cooldown gate
         applyReshuffleCooldown(curTick, govt && govt.reshuffle_until_tick);   // 6-tick reshuffle cooldown gate
@@ -1706,9 +1409,6 @@
       }
       await selectFeed('global');
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
-      renderInvites();   // surface any pending coalition invites (non-blocking)
-      refreshNegotiateTag();   // tag the Negotiate action if the player has open coalition talks (non-blocking)
-      renderFormation(); // nudge a formateur to the Government page if the window is open
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));
       // National Initiatives panel: what's available + the one under way. The Minister of Economic
       // Development enacts through initiative_enact (2 AP) via performAction (AP + feed refresh),
