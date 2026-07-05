@@ -58,6 +58,21 @@
   .eres__nums b{color:var(--ink)}
   .eres__bar{grid-column:1 / -1;height:8px;border-radius:5px;background:var(--chip);overflow:hidden}
   .eres__bar span{display:block;height:100%}
+  /* Campaign — the last-six-months mini-game */
+  .camp__intro{font-size:14px;line-height:1.6;color:var(--ink);background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 32%,transparent);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+  .camp__acts{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+  .camp__act{border:1px solid var(--line);border-radius:12px;padding:13px 14px;background:var(--bg)}
+  .camp__act-hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:5px}
+  .camp__act-name{font-size:14px;font-weight:800;color:var(--ink);letter-spacing:-.01em}
+  .camp__act-cost{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--amber);background:var(--amber-soft);border-radius:7px;padding:3px 8px;white-space:nowrap}
+  .camp__act-eff{font-size:12.5px;line-height:1.5;color:var(--muted)}
+  .camp__hint{font-size:12.5px;color:var(--soft);margin:-4px 0 14px}
+  .camp__timeline{display:flex;flex-direction:column;gap:8px}
+  .camp__slot{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--surface);border:1px dashed var(--line);border-radius:11px;padding:12px 14px;cursor:pointer;font-family:inherit;transition:border-color .15s,background .15s}
+  .camp__slot:hover{border-color:var(--indigo);background:var(--chip)}
+  .camp__slot-date{font-size:14px;font-weight:700;color:var(--ink);min-width:112px;flex:none}
+  .camp__slot-count{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft);flex:1;min-width:0}
+  .camp__slot-action{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft);flex:none}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -88,6 +103,23 @@
           <div class="card__k">Next Election</div>
           <div class="nextel"><span class="nextel__when">September, 1980</span><span class="nextel__count" id="nextCount">9 months away</span></div>
         </section>
+        <div id="campaign" hidden>
+          <div class="camp__intro">Typically this simply shows the results of the last election. However, whenever there are only six months or less before the next election, you can campaign. Queue up a few actions below in anticipation of the next election.</div>
+          <section class="card gd-campaign">
+            <div class="card__k">Campaign Actions</div>
+            <div class="camp__acts">
+              <div class="camp__act"><div class="camp__act-hd"><span class="camp__act-name">Door Knocking Campaign</span><span class="camp__act-cost">15 Influence</span></div><div class="camp__act-eff">&plus;1D4 Party Popularity.</div></div>
+              <div class="camp__act"><div class="camp__act-hd"><span class="camp__act-name">Challenge Opponent to TV Debate</span><span class="camp__act-cost">20 Influence</span></div><div class="camp__act-eff">Pick any party, even a coalition partner. 50% you gain &plus;6% and they lose 6%; 50% they gain &plus;6% and you lose 6%.</div></div>
+              <div class="camp__act"><div class="camp__act-hd"><span class="camp__act-name">Public Appearance</span><span class="camp__act-cost">10 Influence</span></div><div class="camp__act-eff">&plus;1 Party Popularity.</div></div>
+              <div class="camp__act"><div class="camp__act-hd"><span class="camp__act-name">Attack Campaign</span><span class="camp__act-cost">6 Influence</span></div><div class="camp__act-eff">Pick a party. 50% they lose 3% Popularity; 50% you lose 5% Popularity.</div></div>
+            </div>
+          </section>
+          <section class="card">
+            <div class="card__k">Campaign Schedule</div>
+            <div class="camp__hint">Click a date, then select an action. You must pay its Influence immediately to queue it.</div>
+            <div class="camp__timeline" id="campTimeline"></div>
+          </section>
+        </div>
         <section class="card gd-lastelec">
           <div class="card__k">Last Election &middot; January 1977</div>
           <div class="ecard__sub">The vote that seated today&rsquo;s National Assembly. Front Sessau took power with 114 of 240 seats &mdash; a plurality, not a majority, which is the makeup you&rsquo;ve governed with ever since.</div>
@@ -145,6 +177,21 @@
     const rem = Math.max(0, 9 - getTutTurn());
     const nc = document.getElementById('nextCount');
     if (nc) nc.textContent = rem + ' month' + (rem === 1 ? '' : 's') + ' away';
+
+    // Within six months of the vote (turn 3+), the campaign opens: the six months
+    // between now and September 1980, one queue slot each.
+    if (getTutTurn() >= 3) {
+      const camp = document.getElementById('campaign');
+      if (camp) camp.hidden = false;
+      const MONTHS = [['March, 1980', 6], ['April, 1980', 5], ['May, 1980', 4], ['June, 1980', 3], ['July, 1980', 2], ['August, 1980', 1]];
+      const tl = document.getElementById('campTimeline');
+      if (tl) tl.innerHTML = MONTHS.map(([d, m], i) =>
+        '<button class="camp__slot" data-i="' + i + '" type="button">' +
+          '<span class="camp__slot-date">' + d + '</span>' +
+          '<span class="camp__slot-count">' + m + ' month' + (m === 1 ? '' : 's') + ' to election</span>' +
+          '<span class="camp__slot-action">— empty —</span>' +
+        '</button>').join('');
+    }
   })();
 </script>
 </body>
