@@ -86,6 +86,11 @@
   .cat__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
   @media(max-width:560px){.cat__grid{grid-template-columns:1fr}}
   .mbox{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .mbox--link{display:block;text-decoration:none;color:inherit;transition:border-color .15s,background .15s}
+  .mbox--link:hover{border-color:var(--indigo);background:var(--indigo-soft)}
+  .mbox--link .mbox__k{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .mbox__go{color:var(--soft);font-size:15px;font-weight:700}
+  .mbox--link:hover .mbox__go{color:var(--indigo)}
   .mbox__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
   .mbox__v{font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin-top:8px}
   .botnav{display:none}
@@ -176,9 +181,9 @@
         <details class="cat" open>
           <summary class="cat__k">Head of Government <svg class="cat__chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
           <div class="cat__grid">
-            <div class="mbox"><div class="mbox__k">Bureaucracy</div><div class="mbox__v">Level 3</div></div>
-            <div class="mbox"><div class="mbox__k">Growth</div><div class="mbox__v">+2.4%</div></div>
-            <div class="mbox"><div class="mbox__k">Budget Balance</div><div class="mbox__v">&minus;$10.0 bn</div></div>
+            <a class="mbox mbox--link" href="/tutorial/budget/"><div class="mbox__k">Budget Balance <span class="mbox__go">&rsaquo;</span></div><div class="mbox__v">&minus;$10.0 bn</div></a>
+            <div class="mbox"><div class="mbox__k">Growth</div><div class="mbox__v">&minus;2.3%/yr</div></div>
+            <div class="mbox"><div class="mbox__k">Bureaucracy</div><div class="mbox__v">87%</div></div>
           </div>
         </details>
 
@@ -194,9 +199,9 @@
         <details class="cat" open>
           <summary class="cat__k">Interior <span class="cat__sub">Minor Stats</span> <svg class="cat__chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
           <div class="cat__grid">
-            <div class="mbox"><div class="mbox__k">Crime</div><div class="mbox__v">Moderate</div></div>
-            <div class="mbox"><div class="mbox__k">Immigration</div><div class="mbox__v">+120k/yr</div></div>
-            <div class="mbox"><div class="mbox__k">Extremism</div><div class="mbox__v">Low</div></div>
+            <div class="mbox"><div class="mbox__k">Crime</div><div class="mbox__v">6.1/wk</div></div>
+            <div class="mbox"><div class="mbox__k">Immigration</div><div class="mbox__v">+10k/wk</div></div>
+            <div class="mbox"><div class="mbox__k">Extremism</div><div class="mbox__v">7%</div></div>
           </div>
         </details>
 
@@ -205,16 +210,16 @@
           <div class="cat__grid">
             <div class="mbox"><div class="mbox__k">Unemployment</div><div class="mbox__v">9%</div></div>
             <div class="mbox"><div class="mbox__k">Poverty</div><div class="mbox__v">14%</div></div>
-            <div class="mbox"><div class="mbox__k">Wages</div><div class="mbox__v">Rising</div></div>
+            <div class="mbox"><div class="mbox__k">Wages</div><div class="mbox__v">$2.50/hr</div></div>
           </div>
         </details>
 
         <details class="cat" open>
           <summary class="cat__k">Labor, Health and Social Affairs <svg class="cat__chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
           <div class="cat__grid">
-            <div class="mbox"><div class="mbox__k">Prosperity</div><div class="mbox__v">High</div></div>
-            <div class="mbox"><div class="mbox__k">Press Freedoms</div><div class="mbox__v">Strong</div></div>
-            <div class="mbox"><div class="mbox__k">Social Integration</div><div class="mbox__v">Moderate</div></div>
+            <div class="mbox"><div class="mbox__k">Prosperity</div><div class="mbox__v">81%</div></div>
+            <div class="mbox"><div class="mbox__k">Press Freedoms</div><div class="mbox__v">84%</div></div>
+            <div class="mbox"><div class="mbox__k">Social Integration</div><div class="mbox__v">96%</div></div>
           </div>
         </details>
 
@@ -222,8 +227,8 @@
           <summary class="cat__k">Defense <svg class="cat__chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
           <div class="cat__grid">
             <div class="mbox"><div class="mbox__k">Armed Forces Funding</div><div class="mbox__v">$34 bn</div></div>
-            <div class="mbox"><div class="mbox__k">Military Research</div><div class="mbox__v">Level 2</div></div>
-            <div class="mbox"><div class="mbox__k">Cybersecurity</div><div class="mbox__v">Developing</div></div>
+            <div class="mbox"><div class="mbox__k">Military Research</div><div class="mbox__v">$1.2 bn/yr</div></div>
+            <div class="mbox"><div class="mbox__k">Cybersecurity</div><div class="mbox__v">19%</div></div>
           </div>
         </details>
 
@@ -232,7 +237,7 @@
           <div class="cat__grid">
             <div class="mbox"><div class="mbox__k">CO&#8322; Emissions</div><div class="mbox__v">210 Mt/yr</div></div>
             <div class="mbox"><div class="mbox__k">Global Warming</div><div class="mbox__v">+1.3&deg;C</div></div>
-            <div class="mbox"><div class="mbox__k">Energy Availability</div><div class="mbox__v">Stable</div></div>
+            <div class="mbox"><div class="mbox__k">Energy Availability</div><div class="mbox__v">3</div></div>
           </div>
         </details>
       </div>
