@@ -187,7 +187,7 @@
           <div class="elec__when">Election in <b>September, 1980</b></div>
           <div class="elec__bar"><span id="elecBar" style="width:80%"></span></div>
           <dl class="snap__list">
-            <div class="snap__row"><dt>Months Elapsed</dt><dd id="elecElapsed">35</dd></div>
+            <div class="snap__row"><dt>Months Elapsed</dt><dd id="elecElapsed">39</dd></div>
             <div class="snap__row"><dt>Months Remaining</dt><dd id="elecRemaining">9</dd></div>
           </dl>
         </div>
@@ -299,10 +299,13 @@
     const turn = getTutTurn(), nowVal = tutApproval();
     const base12 = [23, 24, 24, 26, 25, 27, 28, 29, 28, 30, 31, 32];
     const base12Labels = ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'];
-    // Extend the run-up with a point per resolved turn (Jan = pension, Feb = alcohol).
+    // Extend the run-up with a point per resolved turn. Jan = pension vote; Feb
+    // holds flat (alcohol is still in committee); Mar = alcohol resolved, and
+    // from there the live point tracks current approval as the campaign moves it.
     const tail = [], tailLbl = [];
     if (turn >= 1) { tail.push(TUT_APPROVAL_BASE - TUT_APPROVAL_DROP); tailLbl.push('Jan'); }
-    if (turn >= 2) { tail.push(nowVal); tailLbl.push('Feb'); }
+    if (turn >= 2) { tail.push(TUT_APPROVAL_BASE - TUT_APPROVAL_DROP); tailLbl.push('Feb'); }
+    if (turn >= 3) { tail.push(nowVal); tailLbl.push('Mar'); }
     const data12 = base12.concat(tail), lbl12 = base12Labels.concat(tailLbl);
     const monthDelta = (arr) => {
       if (arr.length < 2) return '';
@@ -375,10 +378,11 @@
     render('12m');
   })();
 
-  // Election clock: the September 1980 vote is 44 months into a 44-month term.
-  // Each turn is one month, so the countdown ticks — elapsed up, remaining down.
+  // Election clock: the September 1980 vote closes a 48-month term (last election
+  // September 1976). Each turn is one month, so the countdown ticks — elapsed up,
+  // remaining down (39/9 at Dec 1979).
   (() => {
-    const TERM = 44, elapsed = 35 + getTutTurn(), remaining = TERM - elapsed;
+    const TERM = 48, elapsed = 39 + getTutTurn(), remaining = TERM - elapsed;
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     set('elecElapsed', elapsed);
     set('elecRemaining', Math.max(0, remaining));
