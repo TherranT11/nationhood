@@ -136,7 +136,7 @@
           <div class="eres" id="resultRows"></div>
         </section>
         <section class="card gd-lastelec">
-          <div class="card__k">Last Election &middot; January 1977</div>
+          <div class="card__k">Last Election &middot; September 1976</div>
           <div class="ecard__sub">The vote that seated today&rsquo;s National Assembly. Front Sessau took power with 114 of 240 seats &mdash; a plurality, not a majority, which is the makeup you&rsquo;ve governed with ever since.</div>
           <div class="eres" id="eres"></div>
         </section>
@@ -178,7 +178,7 @@
   if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
 
-  // The January 1977 result that seated today's 240-seat Assembly. Front Sessau's
+  // The September 1976 result that seated today's 240-seat Assembly. Front Sessau's
   // 114 is a plurality (a party needs 121 to govern alone), so it leads a coalition.
   // Les Verts cleared votes but no seats — below the threshold.
   (() => {
@@ -196,7 +196,7 @@
         '<div class="eres__bar"><span style="width:' + (seats / TOTAL * 100).toFixed(1) + '%;background:' + p.color + '"></span></div>' +
       '</div>';
 
-    // Last Election (January 1977) — static history.
+    // Last Election (September 1976) — static history.
     const LAST = { fs: [114, 45.1], pss: [103, 40.8], uc: [23, 9.7], lv: [0, 4.4] };
     const eres = document.getElementById('eres');
     if (eres) eres.innerHTML = PARTIES.map((p) => seatRow(p, LAST[p.k][0], LAST[p.k][1])).join('');

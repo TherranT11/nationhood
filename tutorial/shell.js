@@ -523,7 +523,7 @@ const GUIDE_STEPS = [
   { page: '/tutorial/home/', target: '.nav__i[href="/tutorial/election/"], .botnav__i[href="/tutorial/election/"]',
     ey: 'Six Months Out', title: 'The Clock Tightens', body: 'The election is now six months away — and the Election tab is lit. Before you fight the next one, see how you won the last. Head there.',
     nav: '/tutorial/election/', cta: 'Election →', pulse: true },
-  { page: '/tutorial/election/', target: '.gd-lastelec', ey: 'How You Got Here', title: 'The 1977 Election',
+  { page: '/tutorial/election/', target: '.gd-lastelec', ey: 'How You Got Here', title: 'The 1976 Election',
     body: 'This is the vote that built today’s Assembly. Front Sessau took 114 of 240 seats — a plurality, not the 121 needed to govern alone, which is exactly why you needed Union Conservatrice. In six months, you defend it.' },
 ];
 
