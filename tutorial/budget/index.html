@@ -67,6 +67,10 @@
   .budlist{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px 14px}
   .bud{padding:14px 0;border-top:1px solid var(--line)}
   .bud:first-child{border-top:none}
+  .bud--link{display:block;text-decoration:none;color:inherit;cursor:pointer;margin:0 -14px;padding:14px;border-radius:10px}
+  .bud--link:hover{background:var(--chip)}
+  .bud--link + .bud{border-top:none}
+  .bud--link:hover .bud__chev{color:var(--indigo)}
   .bud__row{display:flex;align-items:center;gap:11px}
   .bud__ico{width:24px;height:24px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:800;line-height:1}
   .bud__ico--up{background:#16915a}
@@ -177,7 +181,7 @@
   // the rest of the tutorial (Alcohol Tax 22.2 = the abolish bill, Federal Police
   // 16.2 = the law, Armed Forces 34 and Debt 168 = the Government stats).
   const REVENUE = [
-    { name: 'Sales Tax', value: 57.0 },
+    { name: 'Sales Tax', value: 57.0, href: '/tutorial/taxburden/' },
     { name: 'Wage Tax', value: 48.0, sub: '\u22123% workforce' },
     { name: 'Corporate Income Tax', value: 24.0 },
     { name: 'Alcohol Tax', value: 22.2 },
@@ -220,7 +224,9 @@
     document.getElementById('budTitle').textContent = cfg.title;
     document.getElementById('budList').innerHTML = cfg.items.map((it) => {
       const w = Math.max(4, Math.round(it.value / max * 100));
-      return '<div class="bud">' +
+      const open = it.href ? '<a class="bud bud--link" href="' + it.href + '">' : '<div class="bud">';
+      const close = it.href ? '</a>' : '</div>';
+      return open +
         '<div class="bud__row">' +
           '<span class="bud__ico bud__ico--' + cfg.dir + '">' + cfg.arrow + '</span>' +
           '<span class="bud__name">' + esc(it.name) + '</span>' +
@@ -228,7 +234,7 @@
         '</div>' +
         (it.sub ? '<div class="bud__sub">' + esc(it.sub) + '</div>' : '') +
         '<div class="bud__bar"><span class="bud__fill--' + cfg.dir + '" style="width:' + w + '%"></span></div>' +
-      '</div>';
+      close;
     }).join('');
   }
   const tabs = document.querySelectorAll('.budtab');
