@@ -345,16 +345,20 @@
   const welcome = document.getElementById('welcome');
   const welcomeBegin = document.getElementById('welcomeBegin');
   let welcomeUser = null;
+  // The guided tour starts once the welcome is gone; signal it (with a flag for the
+  // race where the guide's own load finishes before this fires).
+  const startTour = () => { window.nhWelcomeDone = true; window.dispatchEvent(new CustomEvent('nhtutorial:begin')); };
   (async () => {
     if (!isConfigured) return; // local dev: keep it shown, no persistence
     welcomeUser = await requireUser();
     if (!welcomeUser) return;  // requireUser has redirected to login
     const progress = await getTutorialProgress(welcomeUser.id);
-    if (progress && progress.welcomed) welcome.hidden = true; // already seen
+    if (progress && progress.welcomed) { welcome.hidden = true; startTour(); } // already seen: straight into the tour
   })();
   welcomeBegin.addEventListener('click', () => {
     welcome.hidden = true;
     if (isConfigured && welcomeUser) updateProfile({ tutorial_welcomed: true }); // best-effort persist
+    startTour();
   });
 </script>
 </body>
