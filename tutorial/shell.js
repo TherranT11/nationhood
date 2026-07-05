@@ -290,6 +290,19 @@ const GUIDE_STEPS = [
   { page: '/tutorial/home/', target: '.nav__i[href="/tutorial/nation/"], .botnav__i[href="/tutorial/nation/"]',
     ey: 'Next', title: 'Your Government', body: 'Now let’s see how your government is actually doing.',
     nav: '/tutorial/nation/', cta: 'Government →', pulse: true },
+
+  // Chapter 2 — The Government
+  { page: '/tutorial/nation/', target: '.gd-coalition', ey: 'Coalition', title: 'Coalition Health',
+    body: 'You don’t govern alone. Your coalition reads Stable — but that’s two of three hearts, not three. A weak majority is a fragile one.' },
+  { page: '/tutorial/nation/', target: '.gd-agreement', ey: 'The Bargain', title: 'Coalition Agreement',
+    body: 'Every coalition has a price. UC already paid you 10 Influence to seal the deal — now they want their half: cut the tax burden 10%. It’s overdue, and if they walk, the opposition gets its vote of no confidence.' },
+  { page: '/tutorial/nation/', target: '.gd-laws', ey: 'In Progress', title: 'Laws Being Implemented',
+    body: 'Laws take time to bite. Your Federal Police Budget is still phasing in — three months out. It costs ₣16.2bn a year, but it buys you Order.' },
+  { page: '/tutorial/nation/', target: '.gd-hog', ey: 'The Nation', title: 'The State of the Nation',
+    body: 'This is your nation, ministry by ministry. Head of Government already tells the story — a deficit and shrinking growth. Expand the rest to see where you’re bleeding.' },
+  { page: '/tutorial/nation/', target: '.nav__i[href="/tutorial/legislature/"], .botnav__i[href="/tutorial/legislature/"]',
+    ey: 'Next', title: 'The Floor', body: 'That Federal Police Budget still has to survive the floor. Time to cast your first vote.',
+    nav: '/tutorial/legislature/', cta: 'Legislature →', pulse: true },
 ];
 
 let guideStep = 0, guideEls = null, guideReposition = null;
