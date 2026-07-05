@@ -665,6 +665,11 @@ begin
   -- cascade, the nation slot frees up). Wall-clock, so it fires on whichever tick crosses 21 days.
   begin perform public._purge_inactive_parties();
   exception when others then raise warning 'tick %: inactive purge failed — %', v_tick, sqlerrm; end;
+  -- Party popularity snapshot (schema/147): the FINAL step — record each surviving party's
+  -- settled popularity for this tick, so the Nation dashboard can draw a real approval trend.
+  -- After the purge, so parties deleted this tick aren't snapshotted. Isolated like every step.
+  begin perform public._snapshot_party_popularity(v_tick);
+  exception when others then raise warning 'tick %: popularity snapshot failed — %', v_tick, sqlerrm; end;
   return jsonb_build_object('tick', v_tick, 'elections_resolved', v_count);
 end $$;
 revoke all on function public._advance_tick() from public, anon, authenticated;
