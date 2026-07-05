@@ -84,7 +84,7 @@
   .bill__tick--pass{color:var(--green)}
   .bill__tick--fail{color:var(--red)}
   .btn.is-active{outline:2px solid var(--ink);outline-offset:1px}
-  .bill__btns .btn[disabled]{opacity:.5;cursor:not-allowed;filter:none}
+  .bill__empty{font-size:14px;color:var(--muted);padding:6px 0 2px}
   .btn--ghost{background:var(--chip);border-color:var(--line);color:var(--soft)}
   .btn--ghost[disabled]{cursor:not-allowed;opacity:.65}
   .botnav{display:none}
@@ -196,6 +196,19 @@
   if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
 
+  // Once the week advances the pension vote is resolved — enacted or voted
+  // down — so the bill leaves the floor. Replace it with a cleared-floor note.
+  if (getTutTurn() >= 1) {
+    const floor = document.querySelector('.gd-floor');
+    if (floor) {
+      const done = document.createElement('section');
+      done.className = 'card';
+      done.innerHTML = '<div class="card__k">On the Floor</div>' +
+        '<div class="bill__empty">The floor is clear — no bills are up for a vote this week.</div>';
+      floor.replaceWith(done);
+    }
+  }
+
   /* Abolish the Civil Service Pension — a live vote.
      UC proposed it, so UC (23) is a locked Yes; PSS (103) a locked No. Front
      Sessau's 114 seats are the player's to cast. 121 of 240 carries the floor. */
@@ -212,11 +225,8 @@
       voteNo: document.getElementById('voteNo'),
       tick: document.getElementById('billTick'),
     };
-    if (!el.voteYes || !el.voteNo) return;
+    if (!el.voteYes || !el.voteNo) return; // bill gone (turn ≥ 1) — nothing to wire
 
-    // Once the week has advanced the vote is final — the outcome is already
-    // baked into approval, the budget and the news, so re-casting is disallowed.
-    const locked = getTutTurn() >= 1;
     let myVote = null; // null | 'yes' | 'no'
 
     function render() {
@@ -235,9 +245,9 @@
       el.voteYes.classList.toggle('is-active', myVote === 'yes');
       el.voteNo.classList.toggle('is-active', myVote === 'no');
       if (el.tick) {
-        el.tick.textContent = locked
-          ? (passing ? 'This bill passed on the tick.' : 'This bill failed on the tick and did not take effect.')
-          : (passing ? 'This bill will now pass on the next tick.' : 'This bill will now fail on the next tick and not take effect.');
+        el.tick.textContent = passing
+          ? 'This bill will now pass on the next tick.'
+          : 'This bill will now fail on the next tick and not take effect.';
         el.tick.className = 'bill__tick ' + (passing ? 'bill__tick--pass' : 'bill__tick--fail');
       }
     }
@@ -255,13 +265,8 @@
     try { saved = sessionStorage.getItem('nh-floor-vote'); } catch (e) {}
     if (saved === 'yes' || saved === 'no') myVote = saved;
 
-    if (locked) {
-      el.voteYes.disabled = true;
-      el.voteNo.disabled = true;
-    } else {
-      el.voteYes.addEventListener('click', () => cast('yes'));
-      el.voteNo.addEventListener('click', () => cast('no'));
-    }
+    el.voteYes.addEventListener('click', () => cast('yes'));
+    el.voteNo.addEventListener('click', () => cast('no'));
     render();
   })();
 </script>
