@@ -17,7 +17,7 @@
 
   .main{flex:1;padding:24px clamp(16px,4vw,56px) 48px;min-width:0}
 
-  /* top bar (Discord/funds/actions/date/settings gear) now lives in /topbar.js */
+  /* top bar (Discord/Influence/budget/date/settings gear) now lives in /topbar.js */
   .kicker{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--indigo);margin-bottom:14px}
 
   /* party header card */
@@ -427,7 +427,7 @@
   import { ARCHETYPES, archetypeColor, partyColor, ideologyLabel, opposes } from '/archetypes.js';
   import { convRoman, adoptLines, activeLines, lawLines, convsByLevel, convScaledCost } from '/convictions.js';
 
-  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
+  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
   // ---- Party branding: accent colour + crest (logo or initials) -------------

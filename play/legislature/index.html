@@ -150,7 +150,7 @@
   import { ideologyLabel } from '/archetypes.js';
   import { policyOptions, policyOptionIdx } from '/policies.js';
 
-  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
+  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
   // Propose New Law → Law / Declaration choice, then route to the propose page.
@@ -331,7 +331,7 @@
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, funds, actions_remaining').eq('user_id', user.id).single();
+      const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, actions_remaining').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy, policies, population, stats').eq('id', party.nation_id).single();
       const { data: parties } = await supabase.from('parties').select('id, name, seats, in_government').eq('nation_id', party.nation_id);

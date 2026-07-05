@@ -179,7 +179,7 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
-  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
+  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
   function typeLabel(t){ return t === 'coalition' ? 'Coalition Government' : t === 'minority' ? 'Minority Government' : 'Majority Government'; }
@@ -717,7 +717,7 @@
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, funds, actions_remaining').eq('user_id', user.id).single();
+      const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, actions_remaining').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations').eq('id', party.nation_id).single();
       MY_PARTY_ID = party.id; NATION_ID = party.nation_id; NATION = nation || {};

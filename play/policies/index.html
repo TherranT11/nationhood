@@ -72,7 +72,7 @@
   import { fetchPolicies } from '/proposals.js';
   import { policyOptions, policyOptionIdx, effectText, optMoney, moneyNet, isMoneyTarget, isTradePolicy, tradeEffectText } from '/policies.js';
 
-  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
+  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="empty">' + msg + '</div>'; }
@@ -123,7 +123,7 @@
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      const { data: party } = await supabase.from('parties').select('name, archetype, nation_id, funds, actions_remaining').eq('user_id', user.id).single();
+      const { data: party } = await supabase.from('parties').select('name, archetype, nation_id, actions_remaining').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations')
         .select('name, flag, economy, population, stats, policies').eq('id', party.nation_id).single();

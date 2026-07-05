@@ -151,8 +151,9 @@ export function setTopbarActions(n){
   if (el) el.textContent = (n != null ? n : 12);          // 12 = the default budget, matching the static markup
 }
 // The nation's budget, shown ±-coloured. (economy.budget is the treasury figure
-// the Economy page also reads — a stock in $bn, not a per-year balance.)
-export function setTopbarBudget(currency, budget){
+// the Economy page also reads — a stock in $bn, not a per-year balance.) Internal:
+// loadChrome sets it once per page; budget only moves on a tick, not per action.
+function setTopbarBudget(currency, budget){
   const el = document.getElementById('tbBal');
   if (!el) return;
   if (budget == null) { el.hidden = true; return; }
@@ -201,8 +202,9 @@ export function setAccent(color){
   r.style.setProperty('--indigo-soft', 'color-mix(in srgb, ' + color + ' 14%, var(--surface))');
 }
 // Load the player's party once and fill the shared chrome on EVERY screen — accent
-// colour, party funds, and the action budget — so they're correct even on pages that
-// don't feed the topbar themselves. Pages may still call the setters to update live.
+// colour, the nation budget, and the action budget — so they're correct even on
+// pages that don't feed the topbar themselves. Pages may still call setTopbarActions
+// to update the Influence chip live after spending an action.
 async function loadChrome(){
   try {
     const { data: { session } } = await supabase.auth.getSession();

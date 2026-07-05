@@ -16,7 +16,7 @@
   /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
 
   .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
-  /* top bar (Discord/funds/actions/date/settings gear) now lives in /topbar.js */
+  /* top bar (Discord/Influence/budget/date/settings gear) now lives in /topbar.js */
 
   .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
   .phead h1{font-weight:900;font-size:clamp(26px,4vw,38px);letter-spacing:-.03em;margin-top:4px}
@@ -149,7 +149,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
 
-  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
+  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
   // ---- Secondary elections: each city's next mayoral election (cities.mayor_election_tick)

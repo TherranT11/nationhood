@@ -17,7 +17,7 @@
 
   /* main */
   .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
-  /* top bar (Discord/funds/actions/date/settings gear) now lives in /topbar.js */
+  /* top bar (Discord/Influence/budget/date/settings gear) now lives in /topbar.js */
 
   .back{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;margin-bottom:16px;text-decoration:none}
   .back:hover{color:var(--indigo)}
@@ -114,7 +114,7 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
-  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
+  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
 
   var id = new URLSearchParams(location.search).get('id') || '';
@@ -318,7 +318,7 @@
     const me = await currentParty();
     var amPM = false, myName = '', currency = (nation && nation.economy && nation.economy.currency) || '$';
     if (me && me.id) {
-      const { data: myParty } = await supabase.from('parties').select('name, funds, actions_remaining').eq('id', me.id).maybeSingle();
+      const { data: myParty } = await supabase.from('parties').select('name, actions_remaining').eq('id', me.id).maybeSingle();
       if (myParty) { myName = myParty.name || ''; setTopbarActions(myParty.actions_remaining); }
       const { data: govt } = await supabase.from('governments')
         .select('formateur_party_id').eq('nation_id', nc.nation_id).eq('status', 'active').maybeSingle();

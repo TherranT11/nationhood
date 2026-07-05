@@ -175,7 +175,7 @@
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      const { data: party } = await supabase.from('parties').select('name, archetype, nation_id, funds, actions_remaining').eq('user_id', user.id).single();
+      const { data: party } = await supabase.from('parties').select('name, archetype, nation_id, actions_remaining').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
 
       // Home nation drives the sidebar brand + the topbar's currency.
