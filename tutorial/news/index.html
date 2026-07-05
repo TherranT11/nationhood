@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="/theme.js"></script>
-<title>Sessau · Trade</title>
+<title>Sessau · News</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -34,11 +34,61 @@
   .gear__menu[hidden]{display:none}
   .gear__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:13.5px;font-weight:600;color:var(--red,#C42B2B);cursor:pointer}
   .gear__item:hover{background:var(--chip)}
-  .main{flex:1;padding:22px clamp(16px,3vw,40px);min-width:0;display:flex;align-items:center;justify-content:center}
-  .ph{max-width:460px;text-align:center;color:var(--muted)}
-  .ph .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
-  .ph h1{font-size:clamp(24px,4vw,32px);font-weight:900;letter-spacing:-.02em;color:var(--ink);margin:8px 0 10px}
-  .ph p{font-size:14px}
+  .main{flex:1;padding:26px clamp(16px,3vw,40px) 56px;min-width:0}
+  .page{max-width:1000px;margin:0 auto}
+  .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
+  .page h1{font-size:clamp(26px,4vw,36px);font-weight:900;letter-spacing:-.025em;color:var(--ink);margin:6px 0 16px}
+  /* Ticker */
+  .ticker{display:flex;align-items:center;gap:12px;background:var(--ink);border-radius:12px;padding:0 14px;height:44px;overflow:hidden;margin-bottom:22px}
+  .ticker__live{flex:none;display:flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#fff}
+  .ticker__dot{width:8px;height:8px;border-radius:50%;background:#e5484d;animation:blink 1.4s ease-in-out infinite}
+  @keyframes blink{50%{opacity:.35}}
+  .ticker__win{flex:1;overflow:hidden;height:100%;display:flex;align-items:center}
+  .ticker__track{display:flex;gap:38px;align-items:center;white-space:nowrap;width:max-content;animation:tick 34s linear infinite}
+  .ticker__track span{font-family:'Space Mono',monospace;font-size:12.5px;color:#f2f0ea}
+  .ticker__track b{color:#e5a24d;font-weight:700}
+  @keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  .ticker:hover .ticker__track{animation-play-state:paused}
+  @media(prefers-reduced-motion:reduce){.ticker__track{animation:none}.ticker__dot{animation:none}}
+  .section-k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:22px 0 12px}
+  /* Sessau Today */
+  .paper{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .paper__brand{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:14px}
+  .paper__name{font-size:22px;font-weight:900;letter-spacing:-.02em;color:var(--ink)}
+  .paper__tag{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .lead__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#C42B2B;font-weight:700}
+  .lead__h{font-size:22px;font-weight:900;letter-spacing:-.02em;color:var(--ink);margin:6px 0 6px;line-height:1.2}
+  .lead__sub{font-size:14px;color:var(--muted)}
+  .hl{display:flex;gap:14px;padding:13px 0;border-top:1px solid var(--line);margin-top:14px}
+  .hl__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);flex:none;width:70px;padding-top:2px}
+  .hl__h{font-size:15px;font-weight:700;color:var(--ink)}
+  .hl__date{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-top:4px}
+  /* Partisan outlets */
+  .outlets{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:760px){.outlets{grid-template-columns:1fr}}
+  .outlet{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;border-top:3px solid var(--line)}
+  .outlet--left{border-top-color:#C42B2B}
+  .outlet--centre{border-top-color:#5546E8}
+  .outlet--right{border-top-color:#243b6b}
+  .outlet__name{font-size:16px;font-weight:800;letter-spacing:-.01em;color:var(--ink)}
+  .outlet__lean{display:inline-block;font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:6px;margin-top:6px}
+  .lean--left{color:#C42B2B;background:#FAEAEA}
+  .lean--centre{color:#5546E8;background:var(--indigo-soft)}
+  .lean--right{color:#243b6b;background:#EAEEF6}
+  .outlet__take{margin-top:14px}
+  .outlet__take + .outlet__take{border-top:1px solid var(--line);padding-top:14px}
+  .take__issue{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
+  .take__h{font-size:14.5px;font-weight:700;color:var(--ink);margin-top:4px;line-height:1.35}
+  /* Poll */
+  .poll{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .poll__by{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .poll__q{font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin:6px 0 16px}
+  .poll__row{margin-bottom:12px}
+  .poll__row:last-of-type{margin-bottom:0}
+  .poll__top{display:flex;justify-content:space-between;font-size:13px;font-weight:700;color:var(--ink);margin-bottom:6px}
+  .poll__bar{height:10px;border-radius:6px;background:var(--chip);overflow:hidden}
+  .poll__bar span{display:block;height:100%;border-radius:6px}
+  .poll__foot{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-top:16px}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -52,20 +102,74 @@
         <a class="nav__i" href="/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Nation</span></a>
         <a class="nav__i" href="/tutorial/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Government</span></a>
         <a class="nav__i" href="/tutorial/inbox/"><svg viewBox="0 0 24 24"><path d="M4 13l2-8h12l2 8"/><path d="M4 13v6h16v-6"/><path d="M4 13h5l1 2h4l1-2h5"/></svg><span class="label">Inbox</span></a>
-        <a class="nav__i" href="/tutorial/news/"><svg viewBox="0 0 24 24"><path d="M5 4h11v15a1 1 0 01-1 1H5z"/><path d="M16 8h3v10a2 2 0 01-2 2"/><path d="M8 8h5M8 11h5M8 14h5"/></svg><span class="label">News</span></a>
+        <a class="nav__i active" href="/tutorial/news/"><svg viewBox="0 0 24 24"><path d="M5 4h11v15a1 1 0 01-1 1H5z"/><path d="M16 8h3v10a2 2 0 01-2 2"/><path d="M8 8h5M8 11h5M8 14h5"/></svg><span class="label">News</span></a>
         <a class="nav__i" href="/tutorial/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
         <a class="nav__i" href="/tutorial/election/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span class="label">Election</span></a>
-        <a class="nav__i active" href="/tutorial/trade/"><svg viewBox="0 0 24 24"><path d="M4 9h13l-3-3"/><path d="M20 15H7l3 3"/></svg><span class="label">Trade</span></a>
+        <a class="nav__i" href="/tutorial/trade/"><svg viewBox="0 0 24 24"><path d="M4 9h13l-3-3"/><path d="M20 15H7l3 3"/></svg><span class="label">Trade</span></a>
         <a class="nav__i" href="/tutorial/world/"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
         <a class="nav__i" href="/tutorial/conflict/"><svg viewBox="0 0 24 24"><path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/></svg><span class="label">Conflict</span></a>
         <a class="nav__i" href="/tutorial/forum/"><svg viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/></svg><span class="label">Forum</span></a>
         <a class="nav__i" href="/tutorial/wiki/"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>      </nav>
     </aside>
     <main class="main">
-      <div class="ph">
-        <div class="eyebrow">Tutorial</div>
-        <h1>Trade</h1>
-        <p>This tutorial screen is a blank scaffold, ready to be built. Add its content in this file.</p>
+      <div class="page">
+        <div class="eyebrow">The Republic of Sessau</div>
+        <h1>News</h1>
+
+        <div class="ticker">
+          <span class="ticker__live"><span class="ticker__dot"></span> Live</span>
+          <span class="ticker__win"><span class="ticker__track">
+            <span><b>BREAKING</b> Federal Police Budget clears committee, heads to the floor</span>
+            <span><b>ECONOMY</b> Treasury holds GDP at &#8355;468bn as growth ticks to +2.4%</span>
+            <span><b>SESSAU</b> Les Verts&#8217; bid to abolish the alcohol tax gains steam</span>
+            <span><b>SEYONNE</b> Chancellor Droulez: &#8220;The coalition holds&#8221;</span>
+            <span><b>BREAKING</b> Federal Police Budget clears committee, heads to the floor</span>
+            <span><b>ECONOMY</b> Treasury holds GDP at &#8355;468bn as growth ticks to +2.4%</span>
+            <span><b>SESSAU</b> Les Verts&#8217; bid to abolish the alcohol tax gains steam</span>
+            <span><b>SEYONNE</b> Chancellor Droulez: &#8220;The coalition holds&#8221;</span>
+          </span></span>
+        </div>
+
+        <div class="paper">
+          <div class="paper__brand"><span class="paper__name">Sessau Today</span><span class="paper__tag">The Paper of Record &middot; Seyonne</span></div>
+          <div class="lead__k">Front Page</div>
+          <div class="lead__h">Assembly to Vote on Federal Police Budget as Coalition Holds Firm</div>
+          <div class="lead__sub">The government&#8217;s bill to raise police funding from Level 3 to Level 4 reaches the floor with 137 seats behind it &mdash; enough to pass. The opposition promises a fight.</div>
+          <div class="hl"><div class="hl__k">Economy</div><div><div class="hl__h">Growth edges up to +2.4% as unemployment holds at 9%</div><div class="hl__date">Sessau Today &middot; May 1980</div></div></div>
+          <div class="hl"><div class="hl__k">Committee</div><div><div class="hl__h">Les Verts&#8217; bid to abolish the alcohol tax draws unlikely support</div><div class="hl__date">Sessau Today &middot; May 1980</div></div></div>
+        </div>
+
+        <div class="section-k">The Same Story, Three Ways</div>
+        <div class="outlets">
+          <div class="outlet outlet--left">
+            <div class="outlet__name">La Voix du Peuple</div>
+            <span class="outlet__lean lean--left">Left Wing</span>
+            <div class="outlet__take"><div class="take__issue">Police Budget</div><div class="take__h">&#8220;&#8355;16bn for truncheons while wages rot &mdash; whose order is this?&#8221;</div></div>
+            <div class="outlet__take"><div class="take__issue">Alcohol Tax</div><div class="take__h">&#8220;Scrap the drinkers&#8217; tax &mdash; a rare win for ordinary Sessauans.&#8221;</div></div>
+          </div>
+          <div class="outlet outlet--centre">
+            <div class="outlet__name">Le Quotidien de Seyonne</div>
+            <span class="outlet__lean lean--centre">Centrist</span>
+            <div class="outlet__take"><div class="take__issue">Police Budget</div><div class="take__h">&#8220;Police funding clears committee; the coalition&#8217;s 137 seats hold.&#8221;</div></div>
+            <div class="outlet__take"><div class="take__issue">Alcohol Tax</div><div class="take__h">&#8220;Popular but costly: a &#8355;22bn hole worries the Finance Ministry.&#8221;</div></div>
+          </div>
+          <div class="outlet outlet--right">
+            <div class="outlet__name">Le Rempart</div>
+            <span class="outlet__lean lean--right">Far Right</span>
+            <div class="outlet__take"><div class="take__issue">Police Budget</div><div class="take__h">&#8220;At last &mdash; order restored. Back the badge, back Sessau.&#8221;</div></div>
+            <div class="outlet__take"><div class="take__issue">Alcohol Tax</div><div class="take__h">&#8220;A Vert giveaway to buy votes while the borders go unwatched.&#8221;</div></div>
+          </div>
+        </div>
+
+        <div class="section-k">Poll</div>
+        <div class="poll">
+          <div class="poll__by">Le Quotidien de Seyonne &middot; Weekly Poll &middot; n=1,200</div>
+          <div class="poll__q">Should the Assembly abolish the Alcohol Tax?</div>
+          <div class="poll__row"><div class="poll__top"><span>Support</span><span>61%</span></div><div class="poll__bar"><span style="width:61%;background:#16915a"></span></div></div>
+          <div class="poll__row"><div class="poll__top"><span>Oppose</span><span>27%</span></div><div class="poll__bar"><span style="width:27%;background:#C42B2B"></span></div></div>
+          <div class="poll__row"><div class="poll__top"><span>Unsure</span><span>12%</span></div><div class="poll__bar"><span style="width:12%;background:#8d8d95"></span></div></div>
+          <div class="poll__foot">Margin of error &plusmn;3%. Fieldwork May 1980, Seyonne &amp; the provinces.</div>
+        </div>
       </div>
     </main>
   </div>
