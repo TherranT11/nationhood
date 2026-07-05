@@ -293,7 +293,7 @@ const GUIDE_STEPS = [
 
   // Chapter 2 — The Government
   { page: '/tutorial/nation/', target: '.gd-coalition', ey: 'Coalition', title: 'Coalition Health',
-    body: 'You don’t govern alone. Your coalition reads Stable — but that’s two of three hearts, not three. A weak majority is a fragile one.' },
+    body: 'Your coalition is still strong, but one of UC’s demands — not eclipsing $180 bn in debt — was broken. That’s the empty third heart. Let’s try not to break any more promises.' },
   { page: '/tutorial/nation/', target: '.gd-agreement', ey: 'The Bargain', title: 'Coalition Agreement',
     body: 'Every coalition has a price. UC already paid you 10 Influence to seal the deal — now they want their half: cut the tax burden 10%. It’s overdue, and if they walk, the opposition gets its vote of no confidence.' },
   { page: '/tutorial/nation/', target: '.gd-laws', ey: 'In Progress', title: 'Laws Being Implemented',
