@@ -111,7 +111,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, currentParty, currentTick } from '/supabase.js';
   import { esc } from '/util.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
@@ -319,7 +319,7 @@
     var amPM = false, myName = '', currency = (nation && nation.economy && nation.economy.currency) || '$';
     if (me && me.id) {
       const { data: myParty } = await supabase.from('parties').select('name, funds, actions_remaining').eq('id', me.id).maybeSingle();
-      if (myParty) { myName = myParty.name || ''; setTopbarFunds(currency, myParty.funds); setTopbarActions(myParty.actions_remaining); }
+      if (myParty) { myName = myParty.name || ''; setTopbarActions(myParty.actions_remaining); }
       const { data: govt } = await supabase.from('governments')
         .select('formateur_party_id').eq('nation_id', nc.nation_id).eq('status', 'active').maybeSingle();
       amPM = !!(govt && govt.formateur_party_id === me.id);

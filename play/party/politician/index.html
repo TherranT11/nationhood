@@ -94,7 +94,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
   import { esc, COMPETENCIES, tickToDate } from '/util.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
 
@@ -177,7 +177,6 @@
 
       // Topbar funds + the live action budget (one source: the party row).
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
-      setTopbarFunds(currency, p.funds);
       setTopbarActions(p.actions_remaining);
 
       var gameDate = tickToDate(await currentTick()); // for the bio timeline; the topbar owns its own date

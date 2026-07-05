@@ -79,7 +79,7 @@
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { esc, fmtGdp, fmtPop, declaredValue, loadHogTitleSlot } from '/util.js';
   import { regimeText, statLabel, statName, statBand } from '/ladders.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
 
@@ -221,7 +221,6 @@
       if (home && home.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = home.flag; }
 
       var currency = (home && home.economy && home.economy.currency) || '$';
-      setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
 
       // Relations 1–10 between the player's nation and each other nation (symmetric; missing = 5).

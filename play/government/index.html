@@ -176,7 +176,7 @@
   import { partyColor, ideologyLabel } from '/archetypes.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
   import { MINISTRIES } from '/ministries.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
@@ -734,7 +734,6 @@
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
-      setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
 
       await load();

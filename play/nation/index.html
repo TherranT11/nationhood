@@ -97,7 +97,7 @@
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { esc, fmtPop, fmtGdp, declaredValue, tickToDate } from '/util.js';
   import { regimeText } from '/ladders.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
   import { nationColors, drawNationMiniMap } from '/hexmap.js';
@@ -277,7 +277,6 @@
       if (home.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = home.flag; }
 
       var currency = (home.economy && home.economy.currency) || '$';
-      setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
       // World map mini-view: load hexes + per-nation colours (non-fatal — the page still
       // works before the world_hexes table/data exists). Colours match the editor (palette

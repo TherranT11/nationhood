@@ -115,7 +115,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { esc, declaredValue } from '/util.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals } from '/proposals.js';
   import { policyOptions, policyOptionIdx, effectText, optMoney, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText } from '/policies.js';
@@ -549,7 +549,6 @@
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
-      setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
     } catch (e) { /* chrome is best-effort; the picker below still loads */ }
     // Each mode renders here so it can show the nation's CURRENT value/option.

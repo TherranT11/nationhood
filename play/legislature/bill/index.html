@@ -129,7 +129,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
   import { esc, majority, tickToDate } from '/util.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchProposals, fetchVotes, fetchPolicies, castVote, tallyVotes, proposalOutcome, proposalLocked } from '/proposals.js';
   import { ideologyLabel } from '/archetypes.js';
@@ -362,7 +362,6 @@
       document.getElementById('pname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + ST.nationName;
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
-      setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
 
       render();

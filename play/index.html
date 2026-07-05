@@ -502,7 +502,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { fetchNationInitiatives, renderNationInitiatives } from '/initiatives.js';
@@ -1465,7 +1465,6 @@
       supabase.rpc('release_statement', { p_scope: STMT.scope, p_message: msg }).then(function (r) {
         STMT.busy = false;
         if (r.error) { ping(r.error.message || 'Couldn’t release the statement.'); refreshStmt(); return; }
-        if (r.data && r.data.funds != null) setTopbarFunds(myCurrency, r.data.funds);   // spent $10K
         ping('Statement released' + (STMT.scope === 'international' ? ' worldwide.' : '.'));
         closeStmt();
         if (feedCtx) refreshFeed();   // surface it in the home feed
@@ -2001,7 +2000,6 @@
       // Party funds in the topbar, just right of the Discord logo.
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
       myCurrency = currency;   // module-scope, for the Statement funds refresh
-      setTopbarFunds(currency, party.funds);
 
       // Inactivity warning, escalating with idle days (party.last_active_at, stamped server-side).
       // Any action revives it. At INACTIVE_DAYS the party sits out elections; at INACTIVE_DELETE_DAYS

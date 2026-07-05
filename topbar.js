@@ -3,25 +3,23 @@
 // <div class="topbar" id="topbar"></div> at the top of <main>, calls
 // mountTopbar() once, then feeds live values via the setters as data loads.
 import { supabase, wireDeletePartyMenu, logout } from '/supabase.js';
-import { fmtFunds } from '/util.js';
 import { partyColor } from '/archetypes.js';
 import { liveGameDate, mountGameDate } from '/gamedate.js';
 
 const CSS = `
-.topbar{display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:26px}
+/* Compact chip row, matching the tutorial's .nhbar: Influence (star) · Budget ·
+   Next Tick · Date, then the round theme + gear buttons. */
+.topbar{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:26px}
 .tb-discord{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:#5865f2;color:#fff;flex:none;transition:background .15s}
 .tb-discord:hover{background:#4752c4}
 .tb-discord svg{width:18px;height:18px}
-.tb-funds{display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:1px solid var(--line);background:var(--chip);border-radius:11px;padding:8px 15px;white-space:nowrap}
-.tb-funds__l{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
-.tb-funds__v{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;letter-spacing:.03em;color:var(--ink)}
-.tb-actions{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:20px;padding:9px 15px;white-space:nowrap}
-.tb-date{display:flex;flex-direction:column;align-items:flex-end;line-height:1.12}
-.tb-date__l{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
-.tb-date__v{font-family:'Archivo',sans-serif;font-size:16px;font-weight:800;color:var(--ink);letter-spacing:.01em;white-space:nowrap}
-.tb-next{display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:1px solid var(--line);background:var(--chip);border-radius:11px;padding:8px 15px;white-space:nowrap}
-.tb-next__l{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
-.tb-next__v{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--soft)}
+.tb-chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-family:'Space Mono',monospace;font-size:12.5px;font-weight:700;white-space:nowrap}
+.tb-inf{color:var(--ink)}
+.tb-inf svg{width:16px;height:16px;fill:var(--amber)}
+.tb-bal--pos{color:var(--green)}
+.tb-bal--neg{color:var(--red)}
+.tb-next{color:var(--soft)}
+.tb-date{color:var(--muted)}
 .tb-gear{position:relative;flex:none}
 .gear{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:var(--chip);border:1px solid var(--line);color:var(--muted);cursor:pointer;transition:color .15s,border-color .15s}
 .gear:hover{color:var(--ink);border-color:var(--ink)}
@@ -44,10 +42,10 @@ const CSS = `
 
 const HTML = `
 <a class="tb-discord" href="https://discord.gg/HBvWxJUm8" target="_blank" rel="noopener" aria-label="Join our Discord"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 16.558 3a13.6 13.6 0 0 0-.6 1.23 18.27 18.27 0 0 0-5.487 0A13.6 13.6 0 0 0 9.87 3a19.79 19.79 0 0 0-3.76 1.369C2.72 9.046 1.79 13.605 2.255 18.1a19.9 19.9 0 0 0 6.073 3.058c.49-.668.926-1.377 1.302-2.122a12.93 12.93 0 0 1-2.05-.978c.172-.126.34-.257.502-.392a14.2 14.2 0 0 0 12.036 0c.164.135.332.266.502.392-.654.386-1.343.714-2.052.98.376.743.812 1.452 1.302 2.12a19.86 19.86 0 0 0 6.075-3.058c.546-5.21-.93-9.728-3.93-13.73ZM9.682 15.33c-1.182 0-2.157-1.086-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.334-.955 2.42-2.157 2.42Zm4.636 0c-1.182 0-2.157-1.086-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.334-.946 2.42-2.157 2.42Z"/></svg></a>
-<span class="tb-funds" id="tbFunds" hidden><span class="tb-funds__l">Funds</span><span class="tb-funds__v" id="tbFundsV">—</span></span>
-<span class="tb-actions" id="tbActions">Party Actions: 12 Available</span>
-<span class="tb-next"><span class="tb-next__l">Next Tick</span><span class="tb-next__v" id="tbNext">—:—:—</span></span>
-<span class="tb-date"><span class="tb-date__l">Date</span><span class="tb-date__v" id="tbDate"></span></span>
+<span class="tb-chip tb-inf" title="Influence — actions you can take this tick"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg><span id="tbInf">12</span></span>
+<span class="tb-chip tb-bal" id="tbBal" title="National budget" hidden>—</span>
+<span class="tb-chip tb-next" title="Time to the next tick">&#9201; <span id="tbNext">—:—:—</span></span>
+<span class="tb-chip tb-date" id="tbDate" title="In-game date"></span>
 <button class="gear" id="themeBtn" type="button" aria-label="Toggle dark mode"></button>
 <div class="tb-gear">
   <button class="gear" id="gearBtn" type="button" aria-label="Settings" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
@@ -149,14 +147,20 @@ function mountNextTick(el){   // internal: only mountTopbar uses it
 
 // Live-value setters — no-ops if the topbar isn't mounted on this page.
 export function setTopbarActions(n){
-  const el = document.getElementById('tbActions');
-  if (el) el.textContent = 'Party Actions: ' + (n != null ? n : 12) + ' Available'; // 12 = the default budget, matching the static markup
+  const el = document.getElementById('tbInf');            // the Influence chip (server field: actions_remaining)
+  if (el) el.textContent = (n != null ? n : 12);          // 12 = the default budget, matching the static markup
 }
-export function setTopbarFunds(currency, funds){
-  const v = document.getElementById('tbFundsV');
-  if (v) v.textContent = (currency || '$') + fmtFunds(funds);
-  const f = document.getElementById('tbFunds');
-  if (f) f.hidden = false;
+// The nation's budget, shown ±-coloured. (economy.budget is the treasury figure
+// the Economy page also reads — a stock in $bn, not a per-year balance.)
+export function setTopbarBudget(currency, budget){
+  const el = document.getElementById('tbBal');
+  if (!el) return;
+  if (budget == null) { el.hidden = true; return; }
+  const neg = budget < 0;
+  el.textContent = (neg ? '−' : '') + (currency || '$') + Math.abs(budget) + 'B';
+  el.classList.toggle('tb-bal--neg', neg);
+  el.classList.toggle('tb-bal--pos', !neg);
+  el.hidden = false;
 }
 export function setTopbarDate(dateStr){
   const el = document.getElementById('tbDate');
@@ -204,13 +208,12 @@ async function loadChrome(){
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     const { data: p } = await supabase.from('parties')
-      .select('color, archetype, funds, actions_remaining, nation_id').eq('user_id', session.user.id).maybeSingle();
+      .select('color, archetype, actions_remaining, nation_id').eq('user_id', session.user.id).maybeSingle();
     if (!p) return;
     setAccent(partyColor(p));               // chosen colour, else archetype default (one source: archetypes.js)
     setTopbarActions(p.actions_remaining);
-    var currency = '$';
     const { data: n } = await supabase.from('nations').select('economy').eq('id', p.nation_id).maybeSingle();
-    if (n && n.economy && n.economy.currency) currency = n.economy.currency;
-    setTopbarFunds(currency, p.funds);
+    const ec = (n && n.economy) || {};
+    setTopbarBudget(ec.currency || '$', ec.budget != null ? ec.budget : null);
   } catch (e) { /* leave the defaults if the party can't be read */ }
 }

@@ -144,7 +144,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
   import { esc, majority, tickToDate } from '/util.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchProposals, fetchVotes, proposalToFloor, castVote, tallyVotes, proposalOutcome, proposalLocked, fetchPolicies } from '/proposals.js';
   import { ideologyLabel } from '/archetypes.js';
@@ -363,7 +363,6 @@
       ST.tick = await currentTick();
       ST.session = tickToDate(ST.tick); // assembly summary; the topbar owns its own date
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
-      setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
       await loadProposals();
     } catch (e) {
