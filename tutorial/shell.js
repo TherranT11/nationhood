@@ -392,6 +392,10 @@ function firstVisible(sel) {
 function renderGuideStep() {
   ensureGuideStyles();
   const s = GUIDE_STEPS[guideStep];
+  // Let the page reveal a target that may be hidden on this viewport before we
+  // locate it (e.g. the inbox reading pane is display:none on mobile until a
+  // thread is opened). Dispatched synchronously so any DOM change lands first.
+  window.dispatchEvent(new CustomEvent('nhtutorial:beforestep', { detail: { step: guideStep, target: s.target } }));
   const target = firstVisible(s.target);
   if (!target) return; // target missing (page still building?) — don't lock the screen
   target.scrollIntoView({ block: 'center', inline: 'nearest' });

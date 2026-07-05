@@ -323,6 +323,21 @@
   document.getElementById('mailBack').addEventListener('click', () => mailEl.classList.remove('mail--reading'));
   renderList();
   select(THREADS[0].id, false);         // populate the desktop reading pane; mobile stays on the list until a tap
+
+  // Mobile: the guided tour's content beats live in the reading pane (hidden
+  // until a thread opens) and its list beats live in the list (hidden while
+  // reading). Before each step, flip to whichever pane holds the target so the
+  // spotlight has something to land on. Desktop shows both, so it's a no-op.
+  window.addEventListener('nhtutorial:beforestep', (e) => {
+    if (!window.matchMedia('(max-width:760px)').matches) return;
+    const sel = (e.detail && e.detail.target) || '';
+    if (/mail__view|reply__|view__/.test(sel)) {
+      const active = document.querySelector('.thr.is-active');
+      select(active ? active.dataset.id : THREADS[0].id, true); // open the reading pane
+    } else if (/threadList|\.thr/.test(sel)) {
+      mailEl.classList.remove('mail--reading');                 // back to the list
+    }
+  });
 </script>
 </body>
 </html>
