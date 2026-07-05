@@ -39,6 +39,25 @@
   .ph .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
   .ph h1{font-size:clamp(24px,4vw,32px);font-weight:900;letter-spacing:-.02em;color:var(--ink);margin:8px 0 10px}
   .ph p{font-size:14px}
+  .page{max-width:820px;margin:0 auto}
+  .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
+  .page h1{font-size:clamp(26px,4vw,36px);font-weight:900;letter-spacing:-.025em;color:var(--ink);margin:6px 0 18px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .card + .card{margin-top:14px}
+  .card__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:10px}
+  .nextel{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .nextel__when{font-size:20px;font-weight:800;letter-spacing:-.01em;color:var(--ink)}
+  .nextel__count{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--amber)}
+  .ecard__sub{font-size:14px;color:var(--muted);margin:-2px 0 16px}
+  .eres{display:flex;flex-direction:column;gap:13px}
+  .eres__row{display:grid;grid-template-columns:1fr auto;gap:5px 12px;align-items:center}
+  .eres__name{font-size:14px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:9px;min-width:0}
+  .eres__dot{width:11px;height:11px;border-radius:3px;flex:none}
+  .eres__abbr{color:var(--soft);font-weight:600;font-size:12px}
+  .eres__nums{font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);white-space:nowrap}
+  .eres__nums b{color:var(--ink)}
+  .eres__bar{grid-column:1 / -1;height:8px;border-radius:5px;background:var(--chip);overflow:hidden}
+  .eres__bar span{display:block;height:100%}
   .botnav{display:none}
   .moresheet{display:none}
   @media(max-width:760px){.side{display:none}.main{padding-bottom:80px}.botnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}.botnav__i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;background:none;border:none;cursor:pointer;color:var(--soft);text-decoration:none;font-family:inherit}.botnav__i svg{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.botnav__i span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.02em}.botnav__i.active{color:var(--indigo)}.moresheet{display:block;position:fixed;inset:0;z-index:60;background:rgba(21,21,27,.4)}.moresheet[hidden]{display:none}.moresheet__panel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);padding:16px 14px calc(20px + env(safe-area-inset-bottom))}.moresheet__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.moresheet__grid a{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-decoration:none}.moresheet__grid a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.moresheet__grid a span{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--ink)}}
@@ -62,10 +81,18 @@
         <a class="nav__i" href="/tutorial/wiki/"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>      </nav>
     </aside>
     <main class="main">
-      <div class="ph">
-        <div class="eyebrow">Tutorial</div>
+      <div class="page">
+        <div class="eyebrow">National Assembly of Sessau</div>
         <h1>Election</h1>
-        <p>This tutorial screen is a blank scaffold, ready to be built. Add its content in this file.</p>
+        <section class="card">
+          <div class="card__k">Next Election</div>
+          <div class="nextel"><span class="nextel__when">September, 1980</span><span class="nextel__count" id="nextCount">9 months away</span></div>
+        </section>
+        <section class="card gd-lastelec">
+          <div class="card__k">Last Election &middot; January 1977</div>
+          <div class="ecard__sub">The vote that seated today&rsquo;s National Assembly. Front Sessau took power with 114 of 240 seats &mdash; a plurality, not a majority, which is the makeup you&rsquo;ve governed with ever since.</div>
+          <div class="eres" id="eres"></div>
+        </section>
       </div>
     </main>
   </div>
@@ -91,9 +118,34 @@
   </div></div></div>
 <script type="module">
   import { isConfigured } from '/supabase.js';
-  import { requireUser, mountTutorialChrome } from '/tutorial/shell.js';
+  import { requireUser, mountTutorialChrome, getTutTurn } from '/tutorial/shell.js';
   if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
+
+  // The January 1977 result that seated today's 240-seat Assembly. Front Sessau's
+  // 114 is a plurality (a party needs 121 to govern alone), so it leads a coalition.
+  // Les Verts cleared votes but no seats — below the threshold.
+  (() => {
+    const TOTAL = 240;
+    const RESULTS = [
+      { name: 'Front Sessau', abbr: 'FS', color: 'var(--navy)', seats: 114, vote: 45.1 },
+      { name: 'Parti Socialiste Sessauan', abbr: 'PSS', color: 'var(--red)', seats: 103, vote: 40.8 },
+      { name: 'Union Conservatrice', abbr: 'UC', color: 'var(--blue)', seats: 23, vote: 9.7 },
+      { name: 'Les Verts Sessauans', abbr: 'LV', color: 'var(--green)', seats: 0, vote: 4.4 },
+    ];
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const el = document.getElementById('eres');
+    if (el) el.innerHTML = RESULTS.map((p) =>
+      '<div class="eres__row">' +
+        '<span class="eres__name"><span class="eres__dot" style="background:' + p.color + '"></span>' + esc(p.name) + ' <span class="eres__abbr">(' + esc(p.abbr) + ')</span></span>' +
+        '<span class="eres__nums"><b>' + p.seats + '</b> seats &middot; ' + p.vote.toFixed(1) + '%</span>' +
+        '<div class="eres__bar"><span style="width:' + (p.seats / TOTAL * 100).toFixed(1) + '%;background:' + p.color + '"></span></div>' +
+      '</div>').join('');
+    // Next-election countdown tracks the turn, like the Nation page clock.
+    const rem = Math.max(0, 9 - getTutTurn());
+    const nc = document.getElementById('nextCount');
+    if (nc) nc.textContent = rem + ' month' + (rem === 1 ? '' : 's') + ' away';
+  })();
 </script>
 </body>
 </html>

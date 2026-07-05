@@ -281,8 +281,28 @@ export function mountTutorialChrome() {
     window.location.href = '/home/';
   });
 
+  // From turn 3 the election is six months out — flag the Election nav so the
+  // player knows to look. A glowing amber dot on both the sidebar and bottom nav.
+  if (getTutTurn() >= 3) markElectionDot();
+
   mountTutorialTopbar();
   mountGuide();
+}
+
+function markElectionDot() {
+  if (!document.getElementById('nh-eldot-css')) {
+    const st = document.createElement('style');
+    st.id = 'nh-eldot-css';
+    st.textContent =
+      '.nh-eldot{width:8px;height:8px;border-radius:50%;background:var(--amber);flex:none;animation:nh-eldot 1.4s ease-in-out infinite}' +
+      '.nav__i .nh-eldot{margin-left:auto}' +
+      '.botnav__i{position:relative}.botnav__i .nh-eldot{position:absolute;top:5px;left:calc(50% + 8px)}' +
+      '@keyframes nh-eldot{0%,100%{box-shadow:0 0 0 0 rgba(224,130,14,.55)}50%{box-shadow:0 0 0 5px rgba(224,130,14,0)}}';
+    document.head.appendChild(st);
+  }
+  document.querySelectorAll('.nav__i[href="/tutorial/election/"], .botnav__i[href="/tutorial/election/"]').forEach((a) => {
+    if (!a.querySelector('.nh-eldot')) { const d = document.createElement('span'); d.className = 'nh-eldot'; a.appendChild(d); }
+  });
 }
 
 // The persistent top bar on every screen (right → left): a light/dark toggle, a
@@ -447,6 +467,16 @@ const GUIDE_STEPS = [
   { page: '/tutorial/legislature/', target: '.nhbar', ey: 'The Week Ahead', title: 'See It Through',
     body: 'Your call on the alcohol tax is made — approval or the budget, you can rarely serve both, and that’s the whole job. If you endorsed it and Les Verts carry it through, the public rewards you (+approval) and the treasury pays the bill (−₣2.2bn). Hit Next Week and advance.',
     enableWeek: true, pulse: true },
+
+  // Turn 3 — the alcohol result is in; the election tightens
+  { page: '/tutorial/home/', target: '.appr__factors', ey: 'On the Record', title: 'It Landed',
+    body: 'There’s your alcohol call, logged above. Endorse it and approval clawed back while the treasury took the hit; leave it and your books held. Either way the wheel turns — advance once more.',
+    enableWeek: true, pulse: true },
+  { page: '/tutorial/home/', target: '.nav__i[href="/tutorial/election/"], .botnav__i[href="/tutorial/election/"]',
+    ey: 'Six Months Out', title: 'The Clock Tightens', body: 'The election is now six months away — and the Election tab is lit. Before you fight the next one, see how you won the last. Head there.',
+    nav: '/tutorial/election/', cta: 'Election →', pulse: true },
+  { page: '/tutorial/election/', target: '.gd-lastelec', ey: 'How You Got Here', title: 'The 1977 Election',
+    body: 'This is the vote that built today’s Assembly. Front Sessau took 114 of 240 seats — a plurality, not the 121 needed to govern alone, which is exactly why you needed Union Conservatrice. In six months, you defend it.' },
 ];
 
 let guideStep = 0, guideEls = null, guideReposition = null, guideGate = null, guideGateEvent = null;
