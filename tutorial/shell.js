@@ -165,11 +165,16 @@ export async function updateProfile(patch) {
 // a fresh session mid-scenario resumes the tour at the right step but with the
 // chrome reset to turn 0. Acceptable for a single-sitting tutorial; wire turn/
 // vote into getTutorialProgress if cross-session resume is ever needed.
-// All numbers the scenario keys off live here as the one source.
+// All numbers the scenario keys off live here as the one source. Turn 0 = the
+// opening week (Dec 1979); turn 1 = the pension vote's fallout (Jan 1980);
+// turn 2 = the alcohol-tax choice resolving (Feb 1980).
 export const TUT_BALANCE_BASE = -10.0;   // $bn/yr — the deficit at turn 0
 export const TUT_PENSION_SAVING = 23.1;  // $bn/yr the abolition returns (bill figure)
+export const TUT_ALCOHOL_COST = 22.2;    // $bn/yr revenue lost if the alcohol tax is repealed
 export const TUT_APPROVAL_BASE = 32;     // % approval at turn 0
 export const TUT_APPROVAL_DROP = 9;      // points lost to abolishing the pension
+export const TUT_ALCOHOL_GAIN = 6;       // points won back by repealing the (popular) alcohol tax
+const TUT_DATES = ['December, 1979', 'January, 1980', 'February, 1980'];
 
 export function getTutTurn() {
   try { return Number(sessionStorage.getItem('nh-turn') || 0); } catch (e) { return 0; }
@@ -177,11 +182,32 @@ export function getTutTurn() {
 export function getFloorVote() {
   try { return sessionStorage.getItem('nh-floor-vote'); } catch (e) { return null; }
 }
-// True once the week has advanced AND the player carried the abolition.
+// True once the week has advanced AND the player carried the abolition (forced yes).
 export function pensionAbolished() { return getTutTurn() >= 1 && getFloorVote() === 'yes'; }
+// True once the alcohol repeal resolves — the player endorsed it and a further week passed.
+export function alcoholResolved() {
+  try { return getTutTurn() >= 2 && sessionStorage.getItem('nh-alcohol') === 'endorse'; } catch (e) { return false; }
+}
 
+// One source for every derived headline number, read by the topbar and Home.
+export function tutDate() { return TUT_DATES[Math.min(getTutTurn(), TUT_DATES.length - 1)]; }
+export function tutBalance() {
+  return TUT_BALANCE_BASE + (pensionAbolished() ? TUT_PENSION_SAVING : 0) - (alcoholResolved() ? TUT_ALCOHOL_COST : 0);
+}
+export function tutApproval() {
+  return TUT_APPROVAL_BASE - (getTutTurn() >= 1 ? TUT_APPROVAL_DROP : 0) + (alcoholResolved() ? TUT_ALCOHOL_GAIN : 0);
+}
+// The "Last Factors Affecting Popularity" list, most recent first.
+export function tutApprovalFactors() {
+  const f = [];
+  if (alcoholResolved()) f.push({ amt: TUT_ALCOHOL_GAIN, label: 'Repealed the Alcohol Tax' });
+  if (getTutTurn() >= 1) f.push({ amt: -TUT_APPROVAL_DROP, label: 'Voted to Abolish Civil Service Pension' });
+  return f;
+}
+
+// Advance the scenario one turn (the tutorial runs 0 → 1 → 2).
 export function advanceTutorialWeek() {
-  try { sessionStorage.setItem('nh-turn', '1'); } catch (e) {}
+  try { sessionStorage.setItem('nh-turn', String(getTutTurn() + 1)); } catch (e) {}
 }
 
 // Wipe the player's whole tutorial run so the next visit starts fresh from the
@@ -267,12 +293,13 @@ function mountTutorialTopbar() {
   const host = document.querySelector('.main .page') || document.querySelector('.main');
   if (!host || host.querySelector('.nhbar')) return;
   ensureTopbarStyles2();
-  // Date and balance follow the turn: the pension savings land once the week
-  // advances and only if the player voted to abolish it.
-  const bal = TUT_BALANCE_BASE + (pensionAbolished() ? TUT_PENSION_SAVING : 0);
+  // Date and balance are derived centrally (tutDate/tutBalance) so the topbar,
+  // Home and News never drift: the pension saving and the alcohol cost land as
+  // their turns resolve.
+  const bal = tutBalance();
   const balTxt = (bal < 0 ? '−$' : '+$') + Math.abs(bal).toFixed(1) + ' bn/yr';
   const balCls = bal < 0 ? 'nhbar__bal--neg' : 'nhbar__bal--pos';
-  const dateTxt = getTutTurn() >= 1 ? 'January, 1980' : 'December, 1979';
+  const dateTxt = tutDate();
   const bar = document.createElement('div');
   bar.className = 'nhbar';
   bar.innerHTML =
@@ -413,8 +440,9 @@ const GUIDE_STEPS = [
     body: 'Les Verts want the alcohol tax gone, and most of Sessau agrees. You didn’t get to choose on the pension — the coalition forced your hand. This one you own.' },
   { page: '/tutorial/legislature/', target: '#acEndorse', ey: 'Your Choice', title: 'Endorse — or Don’t',
     body: 'Endorse it and Les Verts may choose to advance it to the floor — where, if it passes, the public rewards you but ₣22.2bn leaves your budget, and your surplus with it. Your backing doesn’t carry it alone; it’s theirs to move. Leave it and keep your books, with approval where it is. No wrong answer — decide, then continue.', pulse: true },
-  { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'On the Record', title: 'Live With It',
-    body: 'Whatever you chose stands. Approval or the budget — you can rarely serve both at once, and that tension is the whole job. It only sharpens from here.' },
+  { page: '/tutorial/legislature/', target: '.nhbar', ey: 'The Week Ahead', title: 'See It Through',
+    body: 'Your call on the alcohol tax is made — approval or the budget, you can rarely serve both, and that’s the whole job. Advance the week to see it land: if you endorsed it and Les Verts carry it through, the public rewards you (+approval) and the treasury pays the bill (−₣22.2bn). Push Next Week.',
+    enableWeek: true, pulse: true },
 ];
 
 let guideStep = 0, guideEls = null, guideReposition = null, guideGate = null, guideGateEvent = null;
