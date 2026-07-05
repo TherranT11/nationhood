@@ -685,7 +685,7 @@
   // No-confidence is nation-wide cooldown-gated: while nocoUntilTick is in the future the
   // action stays disabled for everyone in the nation, on top of the usual AP gate.
   // Produce (the PM action) is nation-wide cooldown-gated the same way no-confidence is.
-  var NOW_TICK = 0, nocoUntilTick = 0, produceUntilTick = 0, produceBtn = null, reshuffleUntilTick = 0, reshuffleBtn = null;
+  var NOW_TICK = 0, nocoUntilTick = 0, produceUntilTick = 0, produceBtn = null, reshuffleUntilTick = 0, reshuffleBtn = null, electionUntilTick = 0, electionBtn = null;
   // Leave Coalition is gated by government membership (set at load), not just AP — like the
   // cooldown gates below, this override keeps setActions from re-enabling it on AP alone.
   var leaveBtn = null, leaveEligible = false;
@@ -699,6 +699,7 @@
     if (nocoBtn && nocoUntilTick > NOW_TICK) nocoBtn.disabled = true;   // cooldown overrides the AP gate
     if (produceBtn && produceUntilTick > NOW_TICK) produceBtn.disabled = true;
     if (reshuffleBtn && reshuffleUntilTick > NOW_TICK) reshuffleBtn.disabled = true;
+    if (electionBtn && electionUntilTick > NOW_TICK) electionBtn.disabled = true;
     if (leaveBtn && !leaveEligible) leaveBtn.disabled = true;           // must be in government (membership gate)
   }
   var toastEl = document.getElementById('toast'), toastT;
@@ -1822,8 +1823,8 @@
       '<p class="leadbar__sub">Your leader holds the premiership. One action only. Choose where to spend it.</p>' +
       '<div class="leadbar__grid">' +
       PM_ACTIONS.map(function (a) {
-        // Coalition, Produce, Appoint, Statement and Reshuffle are live; the rest stay dimmed scaffolds.
-        var id = a[0] === 'Coalition' ? ' id="pm-coalition"' : a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : a[0] === 'Statement' ? ' id="pm-statement"' : a[0] === 'Reshuffle' ? ' id="pm-reshuffle"' : '';
+        // Coalition, Produce, Appoint, Statement, Reshuffle and Elections are live; the rest stay dimmed scaffolds.
+        var id = a[0] === 'Coalition' ? ' id="pm-coalition"' : a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : a[0] === 'Statement' ? ' id="pm-statement"' : a[0] === 'Reshuffle' ? ' id="pm-reshuffle"' : a[0] === 'Elections' ? ' id="pm-elections"' : '';
         // Most premiership actions spend the single weekly action (1 AP). Coalition and Statement
         // cost no action (Statement is paid in $10K funds); Produce costs PRODUCE_COST on a cooldown;
         // Reshuffle costs 2 AP on a 6-tick cooldown.
@@ -1861,6 +1862,32 @@
     if (reshuffleBtn) {
       actionBtns.push(reshuffleBtn);
       reshuffleBtn.addEventListener('click', function () { if (!reshuffleBtn.disabled && !acting) openAppointModal('reshuffle'); });
+    }
+    // Elections: dissolve the legislature early (1 AP, 12-tick cooldown). Fires via
+    // performAction (AP budget + feed refresh); the returned `until` greys it out at once.
+    // In a one-party state this calls a Party Congress; multiparty, a general election.
+    electionBtn = el.querySelector('#pm-elections');
+    if (electionBtn) {
+      actionBtns.push(electionBtn);
+      electionBtn.addEventListener('click', function () {
+        if (electionBtn.disabled || acting) return;
+        if (!confirm('Call an election now? This dissolves the legislature and sends the nation to the polls next tick — you may not win. Costs 1 action, then a 12-tick cooldown.')) return;
+        performAction(function () { return supabase.rpc('call_election'); }, function (d) {
+          if (d && d.until != null) applyElectionCooldown(NOW_TICK, d.until);
+          return 'Election called — the nation goes to the polls next tick.';
+        });
+      });
+    }
+  }
+  // Mirror the Elections cooldown on the PM button (disabled + a "Cooldown" pill), like Produce.
+  function applyElectionCooldown(now, until) {
+    NOW_TICK = now; electionUntilTick = until || 0;
+    if (!electionBtn) return;
+    var left = electionUntilTick - now, pill = electionBtn.querySelector('.lead__cost');
+    if (left > 0) {
+      electionBtn.disabled = true;
+      electionBtn.title = 'An election was called recently — ' + left + ' more tick' + (left === 1 ? '' : 's') + '.';
+      if (pill) { pill.textContent = 'Cooldown'; pill.classList.add('lead__cost--soon'); }
     }
   }
   // Mirror the reshuffle cooldown on the PM button (disabled + a "Cooldown" pill), like Produce.
@@ -1970,7 +1997,7 @@
       // former_ruling_party feed the one-party-restored banner. If the full select
       // errors (e.g. an older DB missing those two columns), fall back to the core
       // columns so a drifted optional column can't blank the whole nation snapshot.
-      var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, former_ruling_party, no_confidence_until_tick, produce_until_tick').eq('id', party.nation_id).single();
+      var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, former_ruling_party, no_confidence_until_tick, produce_until_tick, call_election_until_tick').eq('id', party.nation_id).single();
       var nation = nsel.data;
       if (nsel.error) nation = (await supabase.from('nations').select('name, flag, stats, economy, policies').eq('id', party.nation_id).single()).data;
       const nationName = (nation && nation.name) || party.nation_id;
@@ -2058,6 +2085,7 @@
         setActions(partyActions);
         applyProduceCooldown(curTick, nation && nation.produce_until_tick);   // nation-wide Produce cooldown gate
         applyReshuffleCooldown(curTick, govt && govt.reshuffle_until_tick);   // 6-tick reshuffle cooldown gate
+        applyElectionCooldown(curTick, nation && nation.call_election_until_tick); // 12-tick Call-Election cooldown gate
         const { data: tmin } = await supabase.rpc('is_trade_minister');   // my party holds Trade → show the Trade bar
         renderTradeBar(tmin === true);
         const { data: dmin } = await supabase.rpc('is_defence_minister'); // my party holds Defence → show the Defence bar
