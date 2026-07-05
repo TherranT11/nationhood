@@ -158,9 +158,14 @@ export async function updateProfile(patch) {
 // The tutorial runs as a session-scoped scenario. Two facts drive every
 // derived display: the turn (0 = the opening week, Dec 1979; 1 = after the
 // first Next Week, Jan 1980) and the player's floor vote on the pension bill.
-// sessionStorage is the in-session source of truth (works signed-in or not);
-// updateProfile mirrors it to the DB best-effort. All numbers the scenario
-// keys off live here so the topbar, Home and News stay in lockstep.
+// sessionStorage is the SOLE source of truth for these, read synchronously so
+// the topbar, Home and News render in lockstep without async plumbing.
+// KNOWN LIMITATION: turn/vote are session-scoped and not re-hydrated from the
+// DB, whereas the guide step is (getTutorialProgress). A player who returns in
+// a fresh session mid-scenario resumes the tour at the right step but with the
+// chrome reset to turn 0. Acceptable for a single-sitting tutorial; wire turn/
+// vote into getTutorialProgress if cross-session resume is ever needed.
+// All numbers the scenario keys off live here as the one source.
 export const TUT_BALANCE_BASE = -10.0;   // $bn/yr — the deficit at turn 0
 export const TUT_PENSION_SAVING = 23.1;  // $bn/yr the abolition returns (bill figure)
 export const TUT_APPROVAL_BASE = 32;     // % approval at turn 0
@@ -175,15 +180,24 @@ export function getFloorVote() {
 // True once the week has advanced AND the player carried the abolition.
 export function pensionAbolished() { return getTutTurn() >= 1 && getFloorVote() === 'yes'; }
 
-export async function advanceTutorialWeek() {
+export function advanceTutorialWeek() {
   try { sessionStorage.setItem('nh-turn', '1'); } catch (e) {}
-  await updateProfile({ tutorial_turn: 1 });
 }
 
 // Wipe the player's whole tutorial run so the next visit starts fresh from the
 // party-choice screen (no party, no government, nothing in progress). A full
 // overwrite of tutorial_state — not a merge — via the own-row update policy.
 export async function resetTutorial() {
+  // sessionStorage is the in-session source of truth (turn, floor vote, guide
+  // step, inbox replies), so a reset must clear it too or a restart in the same
+  // tab resumes mid-scenario. All tutorial keys are 'nh-' prefixed in session
+  // storage (theme lives in localStorage, so it's untouched).
+  try {
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const k = sessionStorage.key(i);
+      if (k && k.indexOf('nh-') === 0) sessionStorage.removeItem(k);
+    }
+  } catch (e) { /* storage unavailable — nothing to clear */ }
   if (!isConfigured) return true;
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -381,7 +395,7 @@ const GUIDE_STEPS = [
   // Turn 1 close — hand the loop to the player
   { page: '/tutorial/news/', target: '.nhbar', ey: 'The Week Ahead', title: 'Advance the Week',
     body: 'This bar rides with you everywhere: your Influence to spend, the nation’s budget balance, the date, and the button that moves time. You’ve read your nation, governed, legislated, answered the chamber, and faced the press — that’s a week in Sessau. Let’s advance the week.',
-    requires: 'week', enableWeek: true, pulse: true },
+    enableWeek: true, pulse: true },
 
   // Turn 2 — the week has advanced; the guided tour continues
   { page: '/tutorial/home/', target: '.nhbar__date', ey: 'Week Two', title: 'A New Week',
@@ -457,7 +471,7 @@ function renderGuideStep() {
   window.dispatchEvent(new CustomEvent('nhtutorial:beforestep', { detail: { step: guideStep, target: s.target } }));
   const target = firstVisible(s.target);
   if (!target) return; // target missing (page still building?) — don't lock the screen
-  // Turn-close beat: un-grey Next Week and let a real push satisfy the gate.
+  // Turn-close beat: un-grey Next Week; a real push advances the turn and tour.
   if (s.enableWeek) {
     const wk = document.querySelector('.nhbar__week');
     if (wk) {
@@ -465,8 +479,8 @@ function renderGuideStep() {
       wk.classList.add('nhbar__week--live', 'nhbar__week--pulse');
       wk.onclick = async () => {
         wk.onclick = null;                    // guard against a double push
-        await persistStep(guideStep + 1);     // advance the tour into Turn 2's first beat
-        await advanceTutorialWeek();          // Dec 1979 → Jan 1980, apply the vote's fallout
+        await persistStep(guideStep + 1);     // advance the tour into Turn 2's first beat (guide step IS re-hydrated cross-session)
+        advanceTutorialWeek();                // Dec 1979 → Jan 1980, apply the vote's fallout (sessionStorage)
         window.location.href = '/tutorial/home/'; // land on Home so the tour continues on the fallout
       };
     }
@@ -477,9 +491,10 @@ function renderGuideStep() {
   const parts = [0, 1, 2, 3].map(() => { const d = document.createElement('div'); d.className = 'gd-mask'; document.body.appendChild(d); return d; });
   const ring = document.createElement('div'); ring.className = 'gd-ring' + (s.pulse ? ' gd-pulse' : ''); document.body.appendChild(ring);
   const call = document.createElement('div'); call.className = 'gd-call';
-  // A `requires` step is action-gated: no Next button — the player must perform
-  // the real action (e.g. cast the vote), which fires nhtutorial:<requires>.
-  const cta = s.requires
+  // A `requires` step is action-gated (advance on nhtutorial:<requires>); an
+  // `enableWeek` step is button-driven (the topbar Next Week does the advance).
+  // Both replace the coach-mark's Next button with a passive "waiting" prompt.
+  const cta = (s.requires || s.enableWeek)
     ? '<span class="gd-call__wait">Waiting for you…</span>'
     : '<button class="gd-call__btn" type="button">' + (s.cta || 'Next') + '</button>';
   call.innerHTML =
@@ -507,7 +522,8 @@ function renderGuideStep() {
     guideGate = () => go();
     guideGateEvent = 'nhtutorial:' + s.requires;
     window.addEventListener(guideGateEvent, guideGate, { once: true });
-  } else {
+  } else if (!s.enableWeek) {
+    // enableWeek has no Next button — the topbar Next Week (wired above) advances.
     call.querySelector('.gd-call__btn').addEventListener('click', go);
   }
   if (s.nav) target.addEventListener('click', (e) => { e.preventDefault(); go(); }, { once: true });

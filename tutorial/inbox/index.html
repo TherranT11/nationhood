@@ -150,7 +150,7 @@
   </div></div></div>
 <script type="module">
   import { isConfigured } from '/supabase.js';
-  import { requireUser, mountTutorialChrome, updateProfile } from '/tutorial/shell.js';
+  import { requireUser, mountTutorialChrome } from '/tutorial/shell.js';
   if (isConfigured) requireUser();   // auth guard when connected; shell.js stays the engine to build on
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
 
@@ -247,7 +247,6 @@
     try { saved = sessionStorage.getItem('nh-inbox-' + t.id); } catch (e) {}
     if (saved != null && t.replies && t.replies[Number(saved)]) applyReply(t, t.replies[Number(saved)]);
   });
-  const buildAnswers = () => { const m = {}; THREADS.forEach((t) => { if (t.answered) m[t.id] = t.answered.tone; }); return m; };
 
   const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const mailEl = document.getElementById('mail');
@@ -307,7 +306,6 @@
       const idx = Number(b.dataset.i);
       applyReply(t, t.replies[idx]);
       try { sessionStorage.setItem('nh-inbox-' + t.id, String(idx)); } catch (e) {}
-      updateProfile({ tutorial_inbox: buildAnswers() }).catch(() => {});
       select(t.id, false);              // re-render: the sent reply + effect chip replace the buttons
       window.dispatchEvent(new CustomEvent('nhtutorial:reply')); // Chapter 4, Beat 3 gate
     }));
