@@ -260,6 +260,9 @@ function ensureTopbarStyles2() {
     '.nhbar__bal--pos{color:var(--green)}' +
     '.nhbar__date{color:var(--muted)}' +
     '.nhbar__week{font-family:"Space Mono",monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--chip);color:var(--soft);cursor:not-allowed}' +
+    '.nhbar__week--live{background:var(--indigo);border-color:var(--indigo);color:#fff;cursor:pointer}' +
+    '.nhbar__week--live:hover{filter:brightness(1.08)}' +
+    '.nhbar__week--pulse{animation:gd-pulse 1.5s ease-in-out infinite}' +
     '.nhbar__theme{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:color .15s,border-color .15s}' +
     '.nhbar__theme:hover{color:var(--ink);border-color:var(--soft)}' +
     '.nhbar__theme svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}' +
@@ -341,7 +344,12 @@ const GUIDE_STEPS = [
   { page: '/tutorial/news/', target: '.ticker', ey: 'The Press', title: 'The Heartbeat of the Nation',
     body: 'The news is the pulse of Sessau — the ticker, the papers, the polls. It’s where the country reacts to what you do. And right now the signs are flashing: debt past ₣192bn, growth at −2.3%, approval stuck at 32%. The press won’t let you forget a single one.' },
   { page: '/tutorial/news/', target: '.outlets', ey: 'Spin', title: 'No Neutral Truth',
-    body: 'The same story, three ways — the left calls the pension cut cruelty, the centre counts the cost, and your nationalist base calls it strength. There’s no view from nowhere in Sessau. Learn to read the spin, because the voters do.', cta: 'Finish' },
+    body: 'The same story, three ways — the left calls the pension cut cruelty, the centre counts the cost, and your nationalist base calls it strength. There’s no view from nowhere in Sessau. Learn to read the spin, because the voters do.' },
+
+  // Turn 1 close — hand the loop to the player
+  { page: '/tutorial/news/', target: '.nhbar', ey: 'The Week Ahead', title: 'Advance the Week',
+    body: 'This bar rides with you everywhere: your Influence to spend, the nation’s budget balance, the date, and the button that moves time. You’ve read your nation, governed, legislated, answered the chamber, and faced the press — that’s a week in Sessau. Let’s advance the week.',
+    requires: 'week', enableWeek: true, pulse: true },
 ];
 
 let guideStep = 0, guideEls = null, guideReposition = null, guideGate = null, guideGateEvent = null;
@@ -381,6 +389,8 @@ function clearGuide() {
   if (guideReposition) { window.removeEventListener('resize', guideReposition); guideReposition = null; }
   if (guideGate) { window.removeEventListener(guideGateEvent, guideGate); guideGate = null; guideGateEvent = null; }
   if (guideEls) { guideEls.forEach((el) => el.remove()); guideEls = null; }
+  const wk = document.querySelector('.nhbar__week--pulse');
+  if (wk) wk.classList.remove('nhbar__week--pulse'); // stop the nudge; the button stays live
   document.body.style.overflow = '';
 }
 
@@ -407,6 +417,15 @@ function renderGuideStep() {
   window.dispatchEvent(new CustomEvent('nhtutorial:beforestep', { detail: { step: guideStep, target: s.target } }));
   const target = firstVisible(s.target);
   if (!target) return; // target missing (page still building?) — don't lock the screen
+  // Turn-close beat: un-grey Next Week and let a real push satisfy the gate.
+  if (s.enableWeek) {
+    const wk = document.querySelector('.nhbar__week');
+    if (wk) {
+      wk.removeAttribute('disabled');
+      wk.classList.add('nhbar__week--live', 'nhbar__week--pulse');
+      wk.onclick = () => { window.dispatchEvent(new CustomEvent('nhtutorial:week')); };
+    }
+  }
   target.scrollIntoView({ block: 'center', inline: 'nearest' });
   document.body.style.overflow = 'hidden';
 
