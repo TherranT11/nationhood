@@ -602,9 +602,9 @@ function renderGuideStep() {
       wk.classList.add('nhbar__week--live', 'nhbar__week--pulse');
       wk.onclick = async () => {
         wk.onclick = null;                    // guard against a double push
-        await persistStep(guideStep + 1);     // advance the tour into Turn 2's first beat (guide step IS re-hydrated cross-session)
-        advanceTutorialWeek();                // Dec 1979 → Jan 1980, apply the vote's fallout (sessionStorage)
-        window.location.href = s.land || '/tutorial/home/'; // land on Home (default) so the tour continues on the fallout
+        await persistStep(guideStep + 1);     // advance the tour into the next turn's first beat (step is re-hydrated cross-session)
+        advanceTutorialWeek();                // roll the turn forward so this turn's choices take effect (sessionStorage)
+        window.location.href = s.land || '/tutorial/home/'; // land on Home by default; a beat may override via `land`
       };
     }
   }

@@ -295,16 +295,20 @@
     const valEl = document.getElementById('apprVal'), deltaEl = document.getElementById('apprDelta');
     const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
     // Approval is derived centrally (tutApproval): 32% → 23% on the pension vote,
-    // then +6 back if the alcohol repeal is endorsed and resolves at turn 2.
+    // then +6 back if the alcohol repeal is endorsed and resolves at turn 3.
     const turn = getTutTurn(), nowVal = tutApproval();
     const base12 = [23, 24, 24, 26, 25, 27, 28, 29, 28, 30, 31, 32];
     const base12Labels = ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'];
     // Extend the run-up with a point per resolved turn. Jan = pension vote; Feb
     // holds flat (alcohol is still in committee); Mar = alcohol resolved, and
     // from there the live point tracks current approval as the campaign moves it.
+    // KNOWN ISSUE (cosmetic): these tail labels reuse month names already in the
+    // base window, so at turn 3 the sparse x-axis can print "Mar" twice. Harmless
+    // on a tutorial sparkline; a later pass should trim base12 to end at "now".
+    const postPension = TUT_APPROVAL_BASE - TUT_APPROVAL_DROP; // approval after the pension vote, before alcohol
     const tail = [], tailLbl = [];
-    if (turn >= 1) { tail.push(TUT_APPROVAL_BASE - TUT_APPROVAL_DROP); tailLbl.push('Jan'); }
-    if (turn >= 2) { tail.push(TUT_APPROVAL_BASE - TUT_APPROVAL_DROP); tailLbl.push('Feb'); }
+    if (turn >= 1) { tail.push(postPension); tailLbl.push('Jan'); }
+    if (turn >= 2) { tail.push(postPension); tailLbl.push('Feb'); }
     if (turn >= 3) { tail.push(nowVal); tailLbl.push('Mar'); }
     const data12 = base12.concat(tail), lbl12 = base12Labels.concat(tailLbl);
     const monthDelta = (arr) => {
