@@ -523,6 +523,10 @@ const GUIDE_STEPS = [
     nav: '/tutorial/election/', cta: 'Election →', pulse: true },
   { page: '/tutorial/election/', target: '.gd-lastelec', ey: 'How You Got Here', title: 'The 1976 Election',
     body: 'This is the vote that built today’s Assembly. Front Sessau took 114 of 240 seats — a plurality, not the 121 needed to govern alone, which is exactly why you needed Union Conservatrice. In six months, you defend it.' },
+  // Turn 3 close — hand the loop back to the player with the campaign open
+  { page: '/tutorial/election/', target: '.nhbar', ey: 'Your Move', title: 'The Campaign Opens',
+    body: 'Six months out, your campaign is now live — scroll down and every week you can spend Influence to swing the vote your way. That’s the tour. From here the clock is yours: hit Next Week whenever you’re ready to keep governing toward September.',
+    enableWeek: true, pulse: true, land: '/tutorial/election/' },
 ];
 
 let guideStep = 0, guideEls = null, guideReposition = null, guideGate = null, guideGateEvent = null;
@@ -600,7 +604,7 @@ function renderGuideStep() {
         wk.onclick = null;                    // guard against a double push
         await persistStep(guideStep + 1);     // advance the tour into Turn 2's first beat (guide step IS re-hydrated cross-session)
         advanceTutorialWeek();                // Dec 1979 → Jan 1980, apply the vote's fallout (sessionStorage)
-        window.location.href = '/tutorial/home/'; // land on Home so the tour continues on the fallout
+        window.location.href = s.land || '/tutorial/home/'; // land on Home (default) so the tour continues on the fallout
       };
     }
   }
