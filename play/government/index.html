@@ -58,12 +58,11 @@
   .gov__id .pnick{font-size:.7em}
   .subhd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin:18px 0 2px}
 
-  /* confidence rail */
-  .conf__n{font-weight:900;font-size:clamp(40px,7vw,52px);line-height:.9;letter-spacing:-.04em}
-  .conf__n span{font-size:20px;font-weight:800}
+  /* confidence — health hearts (tutorial shape) */
+  .conf__hearts{display:flex;gap:9px;margin-bottom:4px}
+  .conf__hearts .heart{width:34px;height:34px;fill:none;stroke:var(--line2,#D9D6D0);stroke-width:1.5}
+  .conf__hearts .heart.on{stroke:none}
   .conf__band{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;margin:8px 0 14px}
-  .conf__bar{height:12px;border-radius:7px;background:var(--chip);overflow:hidden;margin-bottom:6px}
-  .conf__fill{height:100%;width:0;border-radius:7px;transition:width .3s}
   .conf__note{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);line-height:1.5;margin-top:12px}
   .conf__break{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 2px}
   .bk{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.03em;font-weight:700;padding:4px 8px;border-radius:7px;background:var(--chip);color:var(--soft);white-space:nowrap}
@@ -332,6 +331,7 @@
     var maj = majority(total);
     var c = Math.max(0, Math.min(100, Number(govt.confidence) || 0));
     var bd = band(c);
+    var hearts = c > 50 ? 3 : c >= 40 ? 2 : 1;   // 3 confidence bands → filled hearts (tutorial's health shape)
 
     var members = gov.map(function(p, i){
       var role = govt.type === 'coalition' ? (i === 0 ? 'Leading party' : 'Coalition partner')
@@ -406,9 +406,14 @@
     box.innerHTML =
       // 1 — Government Confidence
       '<div class="panel"><h2>Government Confidence</h2>' +
-        '<div class="conf__n" style="color:' + bd.color + '">' + c.toFixed(1) + '<span>%</span></div>' +
-        '<div class="conf__band" style="color:' + bd.color + '">' + bd.word + '</div>' +
-        '<div class="conf__bar"><div class="conf__fill" style="width:' + c + '%;background:' + bd.color + '"></div></div>' +
+        '<div class="conf__hearts">' +
+          [1, 2, 3].map(function (i) {
+            return '<svg class="heart' + (i <= hearts ? ' on' : '') + '" viewBox="0 0 24 24"' +
+              (i <= hearts ? ' style="fill:' + bd.color + '"' : '') +
+              '><path d="M12 21s-8-5.3-8-11a4.6 4.6 0 0 1 8-2.9 4.6 4.6 0 0 1 8 2.9c0 5.7-8 11-8 11z"/></svg>';
+          }).join('') +
+        '</div>' +
+        '<div class="conf__band" style="color:' + bd.color + '">' + bd.word + ' &middot; ' + c.toFixed(0) + '%</div>' +
         confChips(govt) +
         '<div class="conf__note">Public approval of the sitting government. Below 40% it costs incumbents seats at the next election; above 50% it wins them. Carrying out the agenda moves it.' +
           (govt.type === 'minority' ? ' A minority government also loses 0.3% each tick — if it falls below 20%, the head of government’s party is penalised and a snap election is called.' : '') + '</div>' +
