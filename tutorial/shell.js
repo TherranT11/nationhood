@@ -196,15 +196,17 @@ export const TUT_INFLUENCE_GAIN = 3;     // Influence accrued each turn
 export function campSpent() { try { return Number(sessionStorage.getItem('nh-camp-spent') || 0); } catch (e) { return 0; } }
 export function applySpend(amt) { try { sessionStorage.setItem('nh-camp-spent', String(campSpent() + amt)); } catch (e) {} }
 
-// Each party's electoral popularity (vote intention %) = base + campaign deltas.
-// The base shares reproduce today's 240-seat Assembly exactly (FS 114 / PSS 103 /
-// UC 23 / LV 0); LV sits just under the 5% seat threshold. Campaign actions move
-// these, and projectedSeats() re-allocates the chamber from them — so an Attack or
-// Debate against a rival really does shift the seats they'd win in September.
-const POP_BASE = { fs: 47.5, pss: 42.9, uc: 9.6, lv: 4.0 };
+// Popularity IS approval — one stat. FS's popularity is the player's approval
+// number (policy sentiment + the campaign trail); the other parties carry their
+// own base plus any campaign deltas. With FS's 32, these bases reproduce today's
+// chamber exactly (FS 114 / PSS 103 / UC 23 / LV 0; LV under the 5% threshold).
+// projectedSeats() re-allocates from these, so a policy hit to approval OR an
+// Attack/Debate against a rival really does move the seats each would win.
+const POP_OTHER_BASE = { pss: 29, uc: 6.5, lv: 3 };
 const POP_THRESHOLD = 5, PROJ_TOTAL_SEATS = 240;
-export function partyPop(p) { try { return Math.max(0, POP_BASE[p] + Number(sessionStorage.getItem('nh-pop-' + p) || 0)); } catch (e) { return POP_BASE[p]; } }
-export function applyPop(p, delta) { try { sessionStorage.setItem('nh-pop-' + p, String(Number(sessionStorage.getItem('nh-pop-' + p) || 0) + delta)); } catch (e) {} }
+export function popDelta(p) { try { return Number(sessionStorage.getItem('nh-pop-' + p) || 0); } catch (e) { return 0; } }
+export function applyPop(p, delta) { try { sessionStorage.setItem('nh-pop-' + p, String(popDelta(p) + delta)); } catch (e) {} }
+export function partyPop(p) { return p === 'fs' ? tutApproval() : Math.max(0, (POP_OTHER_BASE[p] || 0) + popDelta(p)); }
 // Parties over the threshold split the 240 seats in proportion to popularity;
 // largest-remainder rounding lands the total exactly on 240.
 export function projectedSeats() {
@@ -226,13 +228,16 @@ export function tutInfluence() { return TUT_INFLUENCE_BASE + TUT_INFLUENCE_GAIN 
 export function tutBalance() {
   return TUT_BALANCE_BASE + (pensionAbolished() ? TUT_PENSION_SAVING : 0) - (alcoholResolved() ? TUT_ALCOHOL_COST : 0);
 }
+// Party Approval = FS's popularity, the one stat: policy sentiment (pension /
+// alcohol) plus the campaign trail. Also what projectedSeats reads for FS.
 export function tutApproval() {
-  const a = TUT_APPROVAL_BASE - (getTutTurn() >= 1 ? TUT_APPROVAL_DROP : 0) + (alcoholResolved() ? TUT_ALCOHOL_GAIN : 0);
+  const a = TUT_APPROVAL_BASE - (getTutTurn() >= 1 ? TUT_APPROVAL_DROP : 0) + (alcoholResolved() ? TUT_ALCOHOL_GAIN : 0) + popDelta('fs');
   return Math.max(0, Math.min(100, a));
 }
 // The "Last Factors Affecting Popularity" list, most recent first.
 export function tutApprovalFactors() {
   const f = [];
+  if (popDelta('fs') !== 0) f.push({ amt: popDelta('fs'), label: 'Campaign trail' });
   if (alcoholResolved()) f.push({ amt: TUT_ALCOHOL_GAIN, label: 'Repealed the Alcohol Tax' });
   if (getTutTurn() >= 1) f.push({ amt: -TUT_APPROVAL_DROP, label: 'Voted to Abolish Civil Service Pension' });
   return f;
