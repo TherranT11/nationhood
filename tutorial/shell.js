@@ -182,7 +182,7 @@ export function mountTutorialChrome() {
   });
   const moreBtn = document.getElementById('moreBtn');
   const moreSheet = document.getElementById('moreSheet');
-  const moreLinks = ['/tutorial/inbox/', '/tutorial/trade/', '/tutorial/conflict/', '/tutorial/forum/', '/tutorial/wiki/'];
+  const moreLinks = ['/tutorial/trade/', '/tutorial/world/', '/tutorial/conflict/', '/tutorial/forum/', '/tutorial/wiki/'];
   if (moreLinks.indexOf(path) >= 0 && moreBtn) moreBtn.classList.add('active');
   if (moreBtn && moreSheet) {
     moreBtn.addEventListener('click', () => { moreSheet.hidden = !moreSheet.hidden; });
