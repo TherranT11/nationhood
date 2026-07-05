@@ -182,7 +182,9 @@ export function mountTutorialChrome() {
   });
   const moreBtn = document.getElementById('moreBtn');
   const moreSheet = document.getElementById('moreSheet');
-  const moreLinks = ['/tutorial/election/', '/tutorial/trade/', '/tutorial/world/', '/tutorial/conflict/', '/tutorial/forum/', '/tutorial/wiki/'];
+  // Derive the "More" links from the sheet itself — one source, so reordering the
+  // sheet never needs a matching edit here.
+  const moreLinks = Array.from(document.querySelectorAll('.moresheet__grid a')).map((a) => a.getAttribute('href'));
   if (moreLinks.indexOf(path) >= 0 && moreBtn) moreBtn.classList.add('active');
   if (moreBtn && moreSheet) {
     moreBtn.addEventListener('click', () => { moreSheet.hidden = !moreSheet.hidden; });
