@@ -14,10 +14,9 @@
     --line:#E4E2DD;--line2:#cfcfcf;--card:#FFFFFF;--accent:#111114;
   }
   /* Dark mode: theme.js flips the shared tokens; these cover this page's own
-     tokens (--card/--accent), the inverted brand mark, and the choice splash. */
+     tokens (--card/--accent) and the inverted brand mark. */
   html[data-theme="dark"]{--card:var(--surface);--accent:var(--indigo)}
   html[data-theme="dark"] .brand .mark{background:var(--indigo)}
-  html[data-theme="dark"] .choice.sel{background:color-mix(in srgb,var(--c) 20%,var(--surface))}
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100%;display:flex;flex-direction:column}
@@ -39,25 +38,6 @@
   .story{font-family:'Spectral',Georgia,serif;font-size:clamp(17px,2.4vw,20px);line-height:1.66;color:var(--ink);margin-top:24px}
   .story em{font-style:italic}
 
-  /* choices */
-  .choices{margin-top:26px;display:flex;flex-direction:column;gap:12px}
-  .choice{--c:#243b6b;--tint:#EEF1F7;position:relative;display:flex;gap:16px;align-items:flex-start;text-align:left;background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:18px 20px;cursor:pointer;color:var(--ink);transition:border-color .18s,background .18s,box-shadow .2s,transform .12s;width:100%}
-  .choice:hover{border-color:var(--c);transform:translateY(-1px)}
-  .choice .radio{flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--line2);margin-top:3px;display:flex;align-items:center;justify-content:center;transition:border-color .18s,background .18s}
-  .choice .radio svg{width:12px;height:12px;stroke:#fff;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;opacity:0;transition:opacity .15s}
-  .choice .txt{flex:1}
-  .choice .vision{font-family:'Spectral',Georgia,serif;font-size:17.5px;line-height:1.5;color:var(--ink)}
-  .choice .result{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-top:10px;display:flex;align-items:center;gap:7px}
-  .choice .result b{color:var(--soft);font-weight:400}
-  .choice .result .arrow{color:var(--soft)}
-  .choice .result .out{font-weight:700;color:var(--soft)}
-  /* selected */
-  .choice.sel{border-color:var(--c);background:var(--tint);box-shadow:0 14px 34px -20px color-mix(in srgb,var(--c) 70%,transparent)}
-  .choice.sel .radio{border-color:var(--c);background:var(--c)}
-  .choice.sel .radio svg{opacity:1}
-  .choice.sel .result .out{color:var(--c)}
-  .choice.sel .result b{color:var(--ink)}
-
   /* sticky action bar */
   .actions{position:fixed;left:0;right:0;bottom:0;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line)}
   .actions__in{max-width:760px;margin:0 auto;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;gap:14px}
@@ -66,8 +46,6 @@
   .abtns{display:flex;gap:10px}
   .btn{font-weight:700;font-size:15px;border-radius:11px;padding:12px 22px;cursor:pointer;border:1.5px solid transparent;transition:transform .12s,filter .15s,opacity .15s;font-family:'Archivo',sans-serif}
   .btn:hover{transform:translateY(-1px)}
-  .btn.ghost{background:var(--card);border-color:var(--line);color:var(--ink)}
-  .btn.ghost:hover{border-color:var(--ink)}
   .btn.begin{background:var(--line2);color:#fff;pointer-events:none}
   .btn.begin.ready{background:var(--accent);color:#fff;pointer-events:auto}
   .btn.begin.ready:hover{filter:brightness(1.08)}
@@ -97,43 +75,18 @@
     </div>
 
     <p class="story">
-      Clément de Sylvie has resigned after an egregious scandal. As Deputy Minister, you have been thrown
-      into the spotlight. The coalition is weak, but holding, and elections are in 9 months.
-      As a quick reminder, <em>Front Sessau (FS)</em> is a&hellip;
+      <em>Front Sessau</em> is a right-wing, nationalist party. They are currently in a coalition with
+      <em>Union Conservatrice</em> for a weak majority. With Clément de Sylvie&rsquo;s resignation, the
+      opposition is threatening a vote of no confidence, but your coalition partner UC is willing to
+      wait until elections.
     </p>
-
-    <div class="choices">
-      <button class="choice" data-out="Nationalist" data-c="#243b6b" data-tint="#EEF1F7" style="--c:#243b6b;--tint:#EEF1F7">
-        <span class="radio"><svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 6"/></svg></span>
-        <span class="txt">
-          <span class="vision">&hellip;nationalist movement, protecting the traditions of Sessau.</span>
-          <span class="result"><b>Front Sessau</b> <span class="arrow">→</span> <span class="out">Nationalist</span></span>
-        </span>
-      </button>
-
-      <button class="choice" data-out="Labour" data-c="#C42B2B" data-tint="#FAEAEA" style="--c:#C42B2B;--tint:#FAEAEA">
-        <span class="radio"><svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 6"/></svg></span>
-        <span class="txt">
-          <span class="vision">&hellip;far-left party, championing the workers and laborers of Sessau.</span>
-          <span class="result"><b>Front Sessau</b> <span class="arrow">→</span> <span class="out">Labour</span></span>
-        </span>
-      </button>
-
-      <button class="choice" data-out="Liberal" data-c="#C2890B" data-tint="#FBF1DC" style="--c:#C2890B;--tint:#FBF1DC">
-        <span class="radio"><svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 6"/></svg></span>
-        <span class="txt">
-          <span class="vision">&hellip;centrist party, defending civic liberties while staying pro-business.</span>
-          <span class="result"><b>Front Sessau</b> <span class="arrow">→</span> <span class="out">Liberal</span></span>
-        </span>
-      </button>
-    </div>
+    <p class="story">Can you govern effectively for the next nine months?</p>
   </div>
 
   <div class="actions" id="actions" style="visibility:hidden"><div class="actions__in">
-    <div class="chosen" id="chosen">Choose your party's identity to begin</div>
+    <div class="chosen">The Republic of Sessau &middot; December 1979</div>
     <div class="abtns">
-      <button class="btn ghost" id="back">Go Back</button>
-      <button class="btn begin" id="begin">Begin</button>
+      <button class="btn begin ready" id="begin">Begin</button>
     </div>
   </div></div>
 
@@ -142,16 +95,12 @@
   import { requireUser, getTutorialProgress, updateProfile } from '/tutorial/shell.js';
 
   const begin = document.getElementById('begin');
-  const chosen = document.getElementById('chosen');
-  const dateline = document.getElementById('dateline');
   const flag = document.getElementById('flag');
   const shell = document.getElementById('shell');
   const actions = document.getElementById('actions');
-  let sel = null;
 
-  // The prologue starts hidden so a returning player never glimpses (or can
-  // click) the party choice before we know whether they've already made it.
-  // Reveal it only when a choice is actually needed.
+  // The prologue starts hidden so a returning player never glimpses it before we
+  // know whether they've already begun; reveal it once we do.
   const reveal = () => { shell.style.visibility = ''; actions.style.visibility = ''; };
 
   // Hide the flag gracefully if the image isn't present yet. The error may
@@ -162,62 +111,30 @@
     if (flag.complete && flag.naturalWidth === 0) hideFlag();
   }
 
-  // Guard: saving a per-player choice needs a signed-in player. And if the
-  // player has already chosen their party, the prologue is done — resume the
-  // tutorial instead of letting them re-pick and overwrite their archetype.
+  // Front Sessau is a fixed right-wing nationalist party (no archetype choice).
+  // If the player has already begun, skip straight into the tutorial.
   let user = null;
   (async () => {
-    if (!isConfigured) { reveal(); return; } // local dev: show the choice
+    if (!isConfigured) { reveal(); return; } // local dev: show the intro
     user = await requireUser();
     if (!user) return; // not signed in: requireUser has redirected to login
     const progress = await getTutorialProgress(user.id);
-    if (progress && progress.party) {
-      window.location.replace('/tutorial/home/'); // already chosen: skip ahead
-      return;
-    }
-    reveal(); // no party yet (or lookup failed): let them choose
+    if (progress && progress.party) { window.location.replace('/tutorial/home/'); return; } // already begun
+    reveal();
   })();
-
-  document.querySelectorAll('.choice').forEach((c) => {
-    c.addEventListener('click', () => {
-      document.querySelectorAll('.choice').forEach((x) => x.classList.remove('sel'));
-      c.classList.add('sel');
-      sel = c.dataset.out;
-      const col = c.dataset.c;
-      document.documentElement.style.setProperty('--accent', col);
-      dateline.style.color = col;
-      dateline.style.setProperty('--accent', col);
-      begin.classList.add('ready');
-      chosen.innerHTML = 'Your party: <b>Front Sessau</b> · ' + sel;
-    });
-  });
 
   let saving = false; // loading lock: blocks double-fire
   begin.addEventListener('click', async () => {
-    if (!sel || saving) return;
-    if (!isConfigured) { chosen.textContent = 'Not connected yet (Supabase keys missing).'; return; }
+    if (saving) return;
+    if (!isConfigured) { window.location.href = '/tutorial/home/'; return; } // local dev: just proceed
     if (!user) { window.location.href = '/login/'; return; }
-
     saving = true;
     begin.style.pointerEvents = 'none';
-    chosen.innerHTML = 'Saving your choice&hellip;';
-    try {
-      const ok = await updateProfile({ tutorial_party: sel }); // → tutorial_state.party via the merge RPC
-      if (!ok) {
-        chosen.textContent = 'Could not save. Please try again.';
-        saving = false;
-        begin.style.pointerEvents = 'auto';
-        return;
-      }
-      window.location.href = '/tutorial/home/';
-    } catch (err) {
-      chosen.textContent = 'Something went wrong. Please try again.';
-      saving = false;
-      begin.style.pointerEvents = 'auto';
-    }
+    begin.textContent = 'Beginning…';
+    const ok = await updateProfile({ tutorial_party: 'Nationalist' }); // fixed identity, marks the run as begun
+    if (!ok) { begin.style.pointerEvents = 'auto'; begin.textContent = 'Begin'; saving = false; return; }
+    window.location.href = '/tutorial/home/';
   });
-
-  document.getElementById('back').addEventListener('click', () => { window.location.href = '/home/'; });
 </script>
 </body>
 </html>
