@@ -168,7 +168,7 @@
             '<div class="ac" style="margin-top:14px">One-time cost to change <span class="hint">on enactment</span></div><div id="l-trans"><p class="none">—</p></div>' +
             '<div class="ac" style="margin-top:14px">Implementation time <span class="hint">time to take effect</span></div><div id="l-impl"><p class="none">—</p></div></div></div>' +
         '<div class="proj"><div class="actions">' +
-          '<button class="btn" id="l-floor" type="button" disabled>Bring to the Floor Now <span class="ac">1 Action</span></button>' +
+          '<button class="btn" id="l-floor" type="button" disabled>Bring to the Floor Now <span class="ac">2 Influence</span></button>' +
           '<button class="btn" id="l-agenda" type="button" disabled>Add to Upcoming Agenda <span class="ac">Free</span></button>' +
           '<div class="proposed-note" id="l-note">Pick a rung to propose it.</div>' +
         '</div></div></div>';
@@ -372,7 +372,7 @@
       '<div class="preview"><div class="pvlabel">Live Preview</div>' +
         '<div class="pvcard"><h3 id="d-pv" class="empty">Choose what to declare</h3></div>' +
         '<div class="proj"><div class="actions">' +
-          '<button class="btn" id="d-floor" type="button" disabled>Send to the Floor Now <span class="ac">1 Action</span></button>' +
+          '<button class="btn" id="d-floor" type="button" disabled>Send to the Floor Now <span class="ac">1 Influence</span></button>' +
           '<button class="btn" id="d-agenda" type="button" disabled>Add to Upcoming Agenda <span class="ac">Free</span></button>' +
           '<div class="proposed-note" id="d-note">Pick a name to propose it.</div>' +
         '</div></div></div>';
@@ -456,7 +456,7 @@
       '<div class="preview"><div class="pvlabel">Live Preview</div>' +
         '<div class="pvcard"><h3 id="r-pv"' + (move ? '' : ' class="empty"') + '>' + (move ? esc(move.title) : 'Nothing to propose') + '</h3></div>' +
         '<div class="proj"><div class="actions">' +
-          '<button class="btn" id="r-floor" type="button"' + (move ? '' : ' disabled') + '>Send to the Floor Now <span class="ac">1 Action</span></button>' +
+          '<button class="btn" id="r-floor" type="button"' + (move ? '' : ' disabled') + '>Send to the Floor Now <span class="ac">1 Influence</span></button>' +
           '<button class="btn" id="r-agenda" type="button"' + (move ? '' : ' disabled') + '>Add to Upcoming Agenda <span class="ac">Free</span></button>' +
           '<div class="proposed-note" id="r-note">' +
             (move ? 'A simple majority of the chamber carries it.'
@@ -501,7 +501,7 @@
         '<div class="pvcard"><h3 id="t-pv" class="empty">Choose a threshold</h3>' +
           '<div class="pvarts"><div class="ac">Effect if enacted</div><div id="t-effs"><p class="none">—</p></div></div></div>' +
         '<div class="proj"><div class="actions">' +
-          '<button class="btn" id="t-floor" type="button" disabled>Send to the Floor Now <span class="ac">1 Action</span></button>' +
+          '<button class="btn" id="t-floor" type="button" disabled>Send to the Floor Now <span class="ac">1 Influence</span></button>' +
           '<button class="btn" id="t-agenda" type="button" disabled>Add to Upcoming Agenda <span class="ac">Free</span></button>' +
           '<div class="proposed-note" id="t-note">Pick a threshold to propose it.</div>' +
         '</div></div></div>';
