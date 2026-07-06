@@ -278,17 +278,15 @@
   .asm__sub{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin:-6px 0 14px}
   .asm__bar{display:flex;height:12px;border-radius:6px;overflow:hidden;margin-bottom:18px;background:var(--chip)}
   .asm__bar span{display:block;height:100%}
-  .asm__group{margin-bottom:14px}
-  .asm__group:last-child{margin-bottom:0}
-  .asm__gk{display:flex;align-items:baseline;gap:8px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding-bottom:8px;border-bottom:1px solid var(--line)}
-  .asm__gt{color:var(--ink);font-weight:700}
-  .asm__note{text-transform:none;letter-spacing:0;color:var(--soft);font-size:10px}
-  .asm__row{display:flex;align-items:center;gap:10px;padding:8px 0}
+  .asm__row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .asm__row:last-child{border-bottom:none}
+  .asm__tag{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:20px;flex:none}
+  .asm__tag--gov{background:var(--green-soft);color:var(--green)}
+  .asm__tag--opp{background:var(--chip);color:var(--soft)}
   .asm__dot{width:10px;height:10px;border-radius:3px;flex:none}
   .asm__pname{flex:1;font-size:14px;font-weight:600;color:var(--ink)}
   .asm__abbr{color:var(--soft);font-weight:600}
   .asm__pct{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--ink)}
-  .asm__row--muted .asm__pname,.asm__row--muted .asm__pct{color:var(--muted)}
 
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -1560,20 +1558,21 @@
     var seated = parties.filter(function (p) { return (p.seats || 0) > 0; }).sort(function (a, b) { return (b.seats || 0) - (a.seats || 0); });
     var gov = seated.filter(function (p) { return p.in_government; });
     var opp = seated.filter(function (p) { return !p.in_government; });
-    var govSeats = gov.reduce(function (s, p) { return s + (p.seats || 0); }, 0);
-    var oppSeats = opp.reduce(function (s, p) { return s + (p.seats || 0); }, 0);
     var pct = function (n) { return (n / total * 100).toFixed(1); };
     function bar(list) { return list.map(function (p) { return '<span style="width:' + pct(p.seats) + '%;background:' + partyColor(p) + '"></span>'; }).join(''); }
+    // One flat list, governing parties first — each row carries its own [Governing] /
+    // [Opposition] tag instead of the old grouped sub-headers.
     function rows(list) { return list.map(function (p) {
+      var gv = !!p.in_government;
       return '<div class="asm__row"><span class="asm__dot" style="background:' + partyColor(p) + '"></span>' +
         '<span class="asm__pname">' + esc(p.name) + (p.abbreviation ? ' <span class="asm__abbr">(' + esc(p.abbreviation) + ')</span>' : '') + '</span>' +
+        '<span class="asm__tag asm__tag--' + (gv ? 'gov' : 'opp') + '">' + (gv ? 'Governing' : 'Opposition') + '</span>' +
         '<span class="asm__pct"><b>' + (p.seats || 0) + '</b> seats · ' + pct(p.seats) + '%</span></div>';
     }).join(''); }
     box.innerHTML =
       '<div class="asm__sub">' + total + ' Seats · ' + maj + ' for a majority</div>' +
       '<div class="asm__bar">' + bar(gov) + bar(opp) + '</div>' +
-      (gov.length ? '<div class="asm__group"><div class="asm__gk">' + (govt && govt.type === 'coalition' ? 'Coalition' : 'Government') + ' <span class="asm__gt">' + govSeats + ' seats · ' + pct(govSeats) + '%</span></div>' + rows(gov) + '</div>' : '') +
-      (opp.length ? '<div class="asm__group"><div class="asm__gk">Opposition <span class="asm__gt">' + oppSeats + ' seats · ' + pct(oppSeats) + '%</span></div>' + rows(opp) + '</div>' : '');
+      rows(gov.concat(opp));
     panel.hidden = false;
   }
 

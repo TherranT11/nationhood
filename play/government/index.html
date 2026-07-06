@@ -34,15 +34,11 @@
   .lg b{color:var(--ink);font-weight:700}
   .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
 
-  /* confidence — health hearts (tutorial shape) */
-  .conf__hearts{display:flex;gap:9px;margin-bottom:4px}
+  /* coalition strength — hearts (tutorial shape) */
+  .conf__hearts{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:4px}
   .conf__hearts .heart{width:34px;height:34px;fill:none;stroke:var(--line2,#D9D6D0);stroke-width:1.5}
   .conf__hearts .heart.on{stroke:none}
-  .conf__band{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;margin:8px 0 14px}
   .conf__note{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);line-height:1.5;margin-top:12px}
-  .conf__break{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 2px}
-  .bk{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.03em;font-weight:700;padding:4px 8px;border-radius:7px;background:var(--chip);color:var(--soft);white-space:nowrap}
-  .bk.pos{background:var(--green-soft);color:var(--green)} .bk.neg{background:var(--red-soft);color:var(--red)}
 
   .empty{text-align:center;padding:46px 20px;color:var(--soft)}
   .empty b{display:block;color:var(--muted);font-size:16px;margin-bottom:5px}
@@ -127,35 +123,10 @@
   mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
-  // Confidence band, tied to the resolver's seat-modifier thresholds (>50 rewarded,
-  // <40 punished at the next election).
-  function band(c){
-    if (c > 50) return { word: 'Confident', color: 'var(--green)' };   // >50 = the resolver's seat bonus
-    if (c >= 40) return { word: 'Holding',   color: 'var(--amber)' };  // 40–50 = neutral
-    return { word: 'In trouble', color: 'var(--red)' };                // <40 = the seat penalty
-  }
-
-  // Confidence breakdown chips, read straight from the stored conf_breakdown
-  // (computed once in _seat_government) plus the movement since formation. Show
-  // Base always and any non-zero part; governments seated before the breakdown
-  // existed simply show none.
-  function confChips(govt){
-    var b = govt.conf_breakdown;
-    if (!b) return '';
-    var parts = [['Base', b.base], ['Crises', b.crises], ['Contradictions', b.contradictions],
-                 ['Coalition size', b.majority], ['Reneged', b.renege], ['National modifier', b.modifier]];
-    if (b.formed != null) parts.push(['Agenda', (Number(govt.confidence) || 0) - b.formed]);
-    // Round each part to one decimal (confidence is numeric, so movement can be fractional);
-    // filter zeros AFTER rounding so a sub-0.1 movement doesn't show as e.g. "Agenda 0". Whole
-    // numbers render clean (no trailing .0); fractions show one decimal. Base always shows.
-    var chips = parts.map(function(p){ return [p[0], Math.round((p[1] || 0) * 10) / 10]; })
-      .filter(function(p){ return p[0] === 'Base' || p[1]; }).map(function(p){
-      var n = p[1], cls = n > 0 ? 'pos' : n < 0 ? 'neg' : '';
-      var disp = (n % 1 === 0) ? String(n) : n.toFixed(1);
-      return '<span class="bk ' + cls + '">' + p[0] + ' ' + (n > 0 ? '+' : '') + disp + '</span>';
-    });
-    return '<div class="conf__break">' + chips.join('') + '</div>';
-  }
+  // Coalition Strength (hearts) is fixed at formation: 2 hearts, plus 1 for every 2 parties
+  // in the governing coalition (rounded down). Deterministic from the coalition size — no
+  // confidence %, no per-factor breakdown.
+  function coalitionHearts(govPartyCount){ return 2 + Math.floor((govPartyCount || 0) / 2); }
 
   // The hemicycle: government parties fill the arc first (full colour), opposition
   // after (faded); a dashed line marks the majority threshold. Coloured from
@@ -343,24 +314,19 @@
     var govSeats = gov.reduce(function(s,p){ return s + (p.seats||0); }, 0);
     var total = nation.legislature_seats || 0;
     var maj = majority(total);
-    var c = Math.max(0, Math.min(100, Number(govt.confidence) || 0));
-    var bd = band(c);
-    var hearts = c > 50 ? 3 : c >= 40 ? 2 : 1;   // 3 confidence bands → filled hearts (tutorial's health shape)
+    var hearts = coalitionHearts(gov.length);   // 2 + 1 per 2 coalition parties (rounded down)
+    var heartsHtml = '';
+    for (var hi = 0; hi < hearts; hi++) {
+      heartsHtml += '<svg class="heart on" viewBox="0 0 24 24" style="fill:var(--green)">' +
+        '<path d="M12 21s-8-5.3-8-11a4.6 4.6 0 0 1 8-2.9 4.6 4.6 0 0 1 8 2.9c0 5.7-8 11-8 11z"/></svg>';
+    }
 
     box.innerHTML =
-      // 1 — Government Confidence
-      '<div class="panel"><h2>Government Confidence</h2>' +
-        '<div class="conf__hearts">' +
-          [1, 2, 3].map(function (i) {
-            return '<svg class="heart' + (i <= hearts ? ' on' : '') + '" viewBox="0 0 24 24"' +
-              (i <= hearts ? ' style="fill:' + bd.color + '"' : '') +
-              '><path d="M12 21s-8-5.3-8-11a4.6 4.6 0 0 1 8-2.9 4.6 4.6 0 0 1 8 2.9c0 5.7-8 11-8 11z"/></svg>';
-          }).join('') +
-        '</div>' +
-        '<div class="conf__band" style="color:' + bd.color + '">' + bd.word + ' &middot; ' + c.toFixed(0) + '%</div>' +
-        confChips(govt) +
-        '<div class="conf__note">Public approval of the sitting government. Below 40% it costs incumbents seats at the next election; above 50% it wins them. Carrying out the agenda moves it.' +
-          (govt.type === 'minority' ? ' A minority government also loses 0.3% each tick — if it falls below 20%, the head of government’s party is penalised and a snap election is called.' : '') + '</div>' +
+      // 1 — Coalition Strength (hearts, fixed at formation from the coalition size)
+      '<div class="panel"><h2>Coalition Strength</h2>' +
+        '<div class="conf__hearts">' + heartsHtml + '</div>' +
+        '<div class="conf__note">Set when the government forms: 2 hearts, plus 1 for every 2 parties in the governing coalition (' +
+          gov.length + ' part' + (gov.length === 1 ? 'y' : 'ies') + ' → ' + hearts + ' heart' + (hearts === 1 ? '' : 's') + ').</div>' +
       '</div>' +
       // 2 — The National Assembly (hemicycle)
       '<div class="panel"><h2>The National Assembly</h2>' +
