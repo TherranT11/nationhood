@@ -80,6 +80,21 @@
   .eh-d{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;min-width:48px;text-align:right}
   .eh-d.up{color:var(--green)} .eh-d.dn{color:var(--red)} .eh-d.flat{color:var(--soft)} .eh-d.new{color:var(--indigo)}
 
+  /* Projected Result — a full-field forecast: every party's projected seats "if the
+     vote were held today", on the same relative-share model the resolver uses. */
+  .proj-note{font-size:13px;color:var(--muted);line-height:1.55;margin-bottom:14px}
+  .proj-note b{color:var(--ink)}
+  .proj-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .proj-row:last-child{border-bottom:none}
+  .proj-sw{width:11px;height:11px;border-radius:3px;flex:none}
+  .proj-nm{font-weight:700;font-size:13.5px;min-width:118px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:7px}
+  .proj-you{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.05em;text-transform:uppercase;background:var(--indigo-soft);color:var(--indigo);padding:1px 6px;border-radius:20px;font-weight:700;flex:none}
+  .proj-barwrap{position:relative;flex:1;min-width:60px;height:10px;background:var(--chip);border-radius:6px;overflow:hidden}
+  .proj-bar{position:absolute;left:0;top:0;bottom:0;border-radius:6px}
+  .proj-maj{position:absolute;top:-3px;height:16px;width:2px;background:var(--ink);opacity:.5;transform:translateX(-1px);border-radius:1px}
+  .proj-seats{font-family:'Space Mono',monospace;font-weight:700;font-size:14px;min-width:74px;text-align:right;white-space:nowrap}
+  .proj-seats small{color:var(--soft);font-weight:400}
+
   /* Phone refresh (matches the Party page): tighter padding, smaller hero, drop
      the placeholder "Next Month" pill, and spread the projection stats evenly. */
   @media(max-width:560px){
@@ -120,6 +135,12 @@
       <p class="candnote" id="candnote"></p>
     </section>
 
+    <section class="mod" id="projMod">
+      <div class="mod__hd"><span>Projected Result</span><span class="r">If the vote were held today</span></div>
+      <p class="proj-note" id="projNoteFull"></p>
+      <div id="projRows"></div>
+    </section>
+
     <section class="mod">
       <div class="mod__hd"><span>Electoral Threshold</span><span class="r">National rule</span></div>
       <div class="thresh"><span class="thpill" id="thrPill">None</span><p id="thrText"></p></div>
@@ -144,7 +165,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
-  import { tickToDate, esc, COMPETENCIES } from '/util.js';
+  import { tickToDate, esc, COMPETENCIES, majority } from '/util.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
@@ -330,6 +351,32 @@
       '<div class="eh-bd"><div class="eh-bd-hd">Most recent · ' + latest.year + (prev ? ' (change since ' + prev.year + ')' : '') + '</div>' + bd + '</div>';
   }
 
+  // ---- Projected Result: the full-field forecast. Each party's bar width is its projected
+  // share of the chamber (seats ÷ total), with a shared majority marker so the rows read as
+  // one guide. Fed the pre-computed projection array — no separate math here (one source). ----
+  function renderProjection(projection, total, maj, fieldWeight) {
+    var note = document.getElementById('projNoteFull'), rows = document.getElementById('projRows');
+    if (!rows || !note) return;
+    if (!total || fieldWeight <= 0 || !projection.length) {
+      note.innerHTML = 'No party has measurable support yet, so seats can’t be projected. The forecast firms up as popularity moves.';
+      rows.innerHTML = '';
+      return;
+    }
+    note.innerHTML = 'If the vote were held today, on current standing. A party needs <b>' + maj + '</b> of <b>' + total + '</b> seats to govern alone.';
+    var majPct = (maj / total * 100).toFixed(1);
+    rows.innerHTML = projection.map(function (p) {
+      var w = Math.min(100, p.seats / total * 100).toFixed(1);
+      var you = p.mine ? '<span class="proj-you">You</span>' : '';
+      var win = (maj > 0 && p.seats >= maj) ? ' <small>· majority ✓</small>' : '';
+      var seatCell = p.contesting ? (p.seats + ' <small>seat' + (p.seats === 1 ? '' : 's') + '</small>' + win) : '0 <small>· below threshold</small>';
+      return '<div class="proj-row"><span class="proj-sw" style="background:' + p.color + '"></span>' +
+        '<span class="proj-nm">' + esc(p.name) + you + '</span>' +
+        '<span class="proj-barwrap"><span class="proj-bar" style="width:' + w + '%;background:' + p.color + '"></span>' +
+          '<i class="proj-maj" style="left:' + majPct + '%" title="' + maj + ' for a majority"></i></span>' +
+        '<span class="proj-seats">' + seatCell + '</span></div>';
+    }).join('');
+  }
+
   (async () => {
     if (!isConfigured) return;
     const user = await requireUser();
@@ -347,6 +394,7 @@
         document.getElementById('freqHd').textContent = 'Congress Frequency';
         document.getElementById('lede').innerHTML = 'Power within <b>' + esc(ruling) + '</b> is settled at its Party Congress — factions vie for standing inside the party, not seats at a public ballot.';
         var cp = document.querySelector('.candpro'); if (cp) cp.style.display = 'none'; // national-vote projection doesn't apply
+        var pm = document.getElementById('projMod'); if (pm) pm.style.display = 'none'; // nor a full-field seat forecast
       }
 
       // Sidebar + topbar.
@@ -357,20 +405,33 @@
       document.title = 'Elections · ' + nationName;
       if (nation && nation.flag) { var flag = document.getElementById('flag'); flag.onload = function () { flag.hidden = false; }; flag.src = nation.flag; }
 
-      // Your projection. Seats fill by RELATIVE share at the election (resolver,
+      // The projection. Seats fill by RELATIVE share at the election (resolver,
       // schema/60): each party's weight over the contesting field × the chamber —
-      // not an absolute % of seats. The projection mirrors that exactly so the page
-      // can't promise seats the resolver won't deliver.
-      const { data: roster } = await supabase.from('parties').select('popularity').eq('nation_id', party.nation_id);
-      var field = roster || [];
+      // not an absolute % of seats. Computed ONCE for the whole field here, then read
+      // by both the player's stat row and the full-field Projected Result card, so the
+      // two can never disagree and the page can't promise seats the resolver won't give.
+      // Defensive on `color` (a cosmetic column that may not be migrated here): retry without it
+      // and let partyColor fall back to the archetype hue, so the projection never fails the page.
+      var rosterRes = await supabase.from('parties')
+        .select('id, name, popularity, archetype, color, in_government').eq('nation_id', party.nation_id);
+      if (rosterRes.error) rosterRes = await supabase.from('parties')
+        .select('id, name, popularity, archetype, in_government').eq('nation_id', party.nation_id);
+      var roster = rosterRes.data;
       var thr = Number(nation && nation.electoral_threshold) || 0; // resolver gate: parties contest at/above the threshold
-      var polling = Math.max(0, Number(party.popularity) || 0);
-      var fieldWeight = field.reduce(function (s, p) { var pop = Math.max(0, Number(p.popularity) || 0); return s + (pop >= thr ? pop : 0); }, 0);
-      var share = (polling >= thr && fieldWeight > 0) ? polling / fieldWeight : 0;
-      var projected = Math.round(share * seatsTotal);
+      var maj = seatsTotal ? majority(seatsTotal) : 0;
+      var fieldWeight = (roster || []).reduce(function (s, p) { var pop = Math.max(0, Number(p.popularity) || 0); return s + (pop >= thr ? pop : 0); }, 0);
+      var projection = (roster || []).map(function (p) {
+        var pop = Math.max(0, Number(p.popularity) || 0);
+        var contesting = pop >= thr && fieldWeight > 0;
+        var sh = contesting ? pop / fieldWeight : 0;
+        return { name: p.name, pop: pop, color: partyColor(p), share: sh, contesting: contesting, seats: Math.round(sh * seatsTotal), mine: p.id === party.id };
+      }).sort(function (a, b) { return b.seats - a.seats || b.pop - a.pop; });
+      var me = projection.filter(function (p) { return p.mine; })[0] || { pop: Math.max(0, Number(party.popularity) || 0), share: 0, seats: 0 };
+      var polling = me.pop, share = me.share, projected = me.seats;   // read by the candnote copy below
       document.getElementById('polling').textContent = polling + '%';
       document.getElementById('projSeats').textContent = projected;
       document.getElementById('standing').textContent = party.in_government ? 'In government' : 'Opposition';
+      if (!ruling) renderProjection(projection, seatsTotal, maj, fieldWeight);
       // Scheduled election — derived from the nation's next_election_tick and the
       // game clock (one tick = one month; tick 1 = January 1980).
       var nextTick = nation && nation.next_election_tick;
