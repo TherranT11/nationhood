@@ -2616,6 +2616,9 @@
     async function savePolicy(){
       if (polSaving) return;                       // guard against a double-click inserting twice
       polSaving = true;
+      // Normalise: the base spectrum level holds no transition effects (they live on the levels
+      // above), so clear any that a pre-restriction edit left on it — no orphaned data persists.
+      if (P.type === 'spectrum' && P.spectrum && P.spectrum[0]) P.spectrum[0].effects = [];
       try{
         if (polEditingId){
           const { error } = await supabase.from('policies').update({ definition: P }).eq('id', polEditingId);
@@ -2805,11 +2808,18 @@
         head+='<input type="text" class="onm" value="'+esc(o.name).replace(/"/g,'&quot;')+'">'+(isStart?'<span class="startpill">Default</span>':'');
       }
       head+='</div>';
-      var effHtml=o.effects.map(polEffRow).join('');
+      // The BASE spectrum level (index 0) carries no effects: nothing steps up into it, so every
+      // transition delta lives on the level above. Its down-direction is the reverse of those.
+      var isBase = P.type==='spectrum' && i===0;
+      var effectsBlock = isBase
+        ? '<div class="sublab" style="margin-top:6px">Effects</div>' +
+          '<div class="hint" style="padding:2px 0 6px">Baseline level — nothing steps up into it, so transition effects are authored on the levels above; moving down into this level applies the reverse of those.</div>'
+        : '<div class="sublab"'+(P.type==='spectrum'?'':' style="margin-top:8px"')+'>Effects'+
+          (P.type==='spectrum'?' <span class="hint">· the change applied when moving up into this level (reversed moving down); multi-level moves sum</span>':'')+'</div>'+
+          o.effects.map(polEffRow).join('')+'<button class="add sm addeff" type="button">+ effect</button>';
       card.innerHTML=head+
         (P.type==='spectrum'?'<div class="f" style="margin-bottom:10px"><textarea class="odesc" placeholder="What this level means">'+esc(o.desc||'')+'</textarea></div>':'')+
-        '<div class="sublab"'+(P.type==='spectrum'?'':' style="margin-top:8px"')+'>Effects'+(P.type==='spectrum'?' <span class="hint">· the change applied when moving up into this level (reversed moving down); multi-level moves sum</span>':'')+'</div>'+effHtml+
-        '<button class="add sm addeff" type="button">+ effect</button>';
+        effectsBlock;
 
       card.querySelector('.onm').oninput=function(e){ o.name=e.target.value; renderPolPrev(); };
       var od=card.querySelector('.odesc'); if(od)od.oninput=function(e){ o.desc=e.target.value; };
@@ -2827,7 +2837,7 @@
         var eu=row.querySelector('.eunit'); if(eu)eu.onchange=function(ev){ e.unit=ev.target.value; renderPolPrev(); };
         row.querySelector('.efx').onclick=function(){ o.effects.splice(j,1); renderPolEditor(); renderPolPrev(); };
       });
-      card.querySelector('.addeff').onclick=function(){ o.effects.push(polEff('Budget Balance',0)); renderPolEditor(); renderPolPrev(); };
+      var ae=card.querySelector('.addeff'); if(ae)ae.onclick=function(){ o.effects.push(polEff('Budget Balance',0)); renderPolEditor(); renderPolPrev(); };
       return card;
     }
     function polEffLine(e){
@@ -2843,7 +2853,9 @@
       var html='<div class="pvname">'+esc(P.name||'Untitled policy')+'</div><span class="pvtype">'+typeLabel+'</span>';
       polOpts().forEach(function(o,i){
         var isStart=P.type==='spectrum'? i===P.defaultIdx : i===P.binDefault;
-        var effs=(o.effects&&o.effects.length)?'<div class="pveff">'+o.effects.map(polEffLine).join('')+'</div>':'<div class="pvnone">No effects</div>';
+        var isBase=P.type==='spectrum'&&i===0;   // base level carries no transition effects
+        var effs=isBase ? '<div class="pvnone">Baseline</div>'
+          : (o.effects&&o.effects.length)?'<div class="pveff">'+o.effects.map(polEffLine).join('')+'</div>':'<div class="pvnone">No effects</div>';
         html+='<div class="pvopt"><div class="on">'+(P.type==='spectrum'?String.fromCharCode(65+i)+'. ':'')+esc(o.name||'—')+(isStart?'<span class="startt">start</span>':'')+'</div>'+effs+'</div>';
       });
       box.innerHTML=html;
