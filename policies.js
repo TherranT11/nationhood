@@ -42,6 +42,36 @@ export function policyOptionIdx(def, overrides, id) {
   var stored = overrides && overrides[id];
   return stored == null ? policyDefaultIdx(def) : +stored;
 }
+// One policy's in-force contribution to Budget Balance ($bn/yr): the sum of the Budget Balance
+// effects of the option/level currently in force for the nation. Spectrum levels are transition
+// deltas, so being at level N accumulates the deltas of levels 1..N (the base level 0 has none);
+// a binary policy uses its in-force state's effects. A 'gdp'-unit effect is amount% of GDP; a
+// flat effect is the amount in $bn. Trade policy has no Budget Balance effects, so it's skipped.
+export function policyBudgetContribution(def, overrides, id, gdp) {
+  if (!def || isTradePolicy(def)) return 0;
+  var opts = policyOptions(def);
+  if (!opts.length) return 0;
+  var idx = policyOptionIdx(def, overrides, id);
+  var inForce = (def.type === 'spectrum') ? opts.slice(1, idx + 1) : [opts[idx]];
+  var sum = 0;
+  inForce.forEach(function (o) {
+    ((o && o.effects) || []).forEach(function (e) {
+      if (e.t !== 'Budget Balance') return;
+      var v = Number(e.v) || 0;
+      sum += (e.unit === 'gdp') ? (v / 100) * (Number(gdp) || 0) : v;
+    });
+  });
+  return sum;
+}
+// The nation's Budget Balance ($bn/yr): the net of every policy's in-force contribution —
+// all that ADD minus all that SUBTRACT. policyRows = [{ id, definition }]; overrides =
+// nation.policies; gdp = nation.gdp. ONE source for the top-bar chip and the Budget page.
+export function nationBudgetBalance(policyRows, overrides, gdp) {
+  return (policyRows || []).reduce(function (t, r) {
+    return t + policyBudgetContribution(r.definition, overrides, r.id, gdp);
+  }, 0);
+}
+
 // Budget/Debt/Income are money targets — their value scales by the nation's size/wealth.
 export function isMoneyTarget(t) { return t === 'Budget' || t === 'Debt' || t === 'Income'; }
 // Tax Burden % is now DERIVED server-side (schema/47 _nation_tax_burden, exposed via the

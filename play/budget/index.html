@@ -56,6 +56,7 @@
   .bud__ico--down{background:var(--red)}
   .bud__name{flex:1;min-width:0;font-size:15px;font-weight:700;color:var(--ink)}
   .bud__val{font-family:'Space Mono',monospace;font-size:15px;font-weight:700;white-space:nowrap;color:var(--soft)}
+  .bud__val--up{color:var(--green)} .bud__val--down{color:var(--red)}
   .bud__bar{height:6px;border-radius:4px;background:var(--chip);overflow:hidden;margin:10px 0 0 35px}
   .bud__bar span{display:block;height:100%;border-radius:4px;width:0}
 
@@ -90,12 +91,12 @@
         <div class="bsum__card">
           <div class="bsum__k bsum__k--rev">Revenue</div>
           <div class="bsum__v" id="revVal">$--</div>
-          <div class="bsum__bar"><span style="background:var(--green)"></span></div>
+          <div class="bsum__bar"><span id="revBar" style="background:var(--green)"></span></div>
         </div>
         <div class="bsum__card">
           <div class="bsum__k bsum__k--spend">Spending</div>
-          <div class="bsum__v">$--</div>
-          <div class="bsum__bar"><span style="background:var(--red)"></span></div>
+          <div class="bsum__v" id="spendVal">$--</div>
+          <div class="bsum__bar"><span id="spendBar" style="background:var(--red)"></span></div>
         </div>
       </div>
 
@@ -120,33 +121,29 @@
   import { ideologyLabel } from '/archetypes.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
+  import { policyBudgetContribution, isTradePolicy } from '/policies.js';
 
-  mountTopbar();   // shared top bar (Discord/Influence/budget/date/gear) into #topbar
+  mountTopbar();   // shared top bar (Discord/Influence/Budget Balance/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
 
-  // The standard budget line items — universal revenue and spending categories. Amounts
-  // are placeholders ("$--") for every nation until the budget backend is built; the
-  // names and their up/down direction are the layout the numbers will later fill.
-  var REVENUE = ['Sales Tax', 'Wage Tax', 'Corporate Income Tax', 'Alcohol Tax', 'Business Tax', 'Tobacco Tax', 'Capital Gains Tax', 'Inheritance Tax'];
-  var SPENDING = ['Pension Insurance', 'Healthcare', 'Armed Forces Funding', 'Education Spending', 'Federal Police', 'Child Benefit', 'University Funding', 'Civil Service Pension', 'Interest on Public Debt', 'Basic Income Support'];
-  var TABS = {
-    revenue:  { items: REVENUE,  dir: 'up',   arrow: '↑', title: 'Active Revenue Items' },
-    spending: { items: SPENDING, dir: 'down', arrow: '↓', title: 'Active Spending Items' }
-  };
+  // Budget Balance = the net of every policy's in-force Budget Balance contribution — the ones
+  // that ADD (revenue) minus the ones that SUBTRACT (spending). REV / SPEND are the contributing
+  // policies split by sign; computed once at load, then the tabs just re-render them.
+  var REV = [], SPEND = [], CUR = '$';
+  function fmt(v){ return CUR + (Math.round(Math.abs(v) * 10) / 10) + 'bn'; }
 
   function render(tab){
-    var cfg = TABS[tab];
-    document.getElementById('budTitle').textContent = cfg.title;
-    document.getElementById('budList').innerHTML = cfg.items.map(function (name) {
-      return '<div class="bud">' +
-        '<div class="bud__row">' +
-          '<span class="bud__ico bud__ico--' + cfg.dir + '">' + cfg.arrow + '</span>' +
-          '<span class="bud__name">' + esc(name) + '</span>' +
-          '<span class="bud__val">$--</span>' +
-        '</div>' +
-        '<div class="bud__bar"><span style="background:var(--' + (cfg.dir === 'up' ? 'green' : 'red') + ');opacity:.5"></span></div>' +
-      '</div>';
-    }).join('');
+    var isRev = tab === 'revenue', items = isRev ? REV : SPEND, dir = isRev ? 'up' : 'down', arrow = isRev ? '↑' : '↓';
+    document.getElementById('budTitle').textContent = isRev ? 'Active Revenue Items' : 'Active Spending Items';
+    var max = items.reduce(function (m, i) { return Math.max(m, Math.abs(i.amount)); }, 0) || 1;
+    document.getElementById('budList').innerHTML = items.length ? items.map(function (it) {
+      var w = Math.max(4, Math.round(Math.abs(it.amount) / max * 100));
+      return '<div class="bud"><div class="bud__row">' +
+        '<span class="bud__ico bud__ico--' + dir + '">' + arrow + '</span>' +
+        '<span class="bud__name">' + esc(it.name) + '</span>' +
+        '<span class="bud__val bud__val--' + dir + '">' + fmt(it.amount) + '</span></div>' +
+        '<div class="bud__bar"><span class="bud__fill--' + dir + '" style="width:' + w + '%;background:var(--' + (isRev ? 'green' : 'red') + ');opacity:.5"></span></div></div>';
+    }).join('') : '<div class="bud"><div class="bud__row"><span class="bud__name" style="color:var(--soft);font-weight:600">No active ' + (isRev ? 'revenue' : 'spending') + ' policies.</span></div></div>';
   }
   var tabs = document.querySelectorAll('.budtab');
   tabs.forEach(function (t) { t.addEventListener('click', function () {
@@ -163,7 +160,7 @@
     try {
       const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, declarations, economy').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, declarations, economy, policies, gdp').eq('id', party.nation_id).single();
       // Eyebrow = the nation's formal state name if declared, else its plain name.
       var nationName = (nation && nation.name) || party.nation_id;
       try {
@@ -178,20 +175,35 @@
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
       setTopbarActions(party.influence);
 
-      // Revenue = the nation's income (economy.budget, the field the topbar renders as income).
-      // Budget Balance is NOT this: it's the computed net of active policy effects, so its headline
-      // stays "$--" until the policy engine sums them. Spending stays "$--" for the same reason.
       var ec = (nation && nation.economy) || {};
-      var cur = ec.currency || '$';
-      var n = Number(ec.budget);
-      if (ec.budget != null && ec.budget !== '' && isFinite(n)) {   // isFinite guards a corrupt/non-numeric value
-        document.getElementById('revVal').textContent = (n < 0 ? '−' : '') + cur + Math.abs(n) + 'bn';
-      }
-      // Public Debt = economy.debt (the "Starting Debt" field), the same source as the
-      // Government page's Public Debt cell. Shown as a stock; "$--" when unset.
+      CUR = ec.currency || '$';
+
+      // Compute each policy's in-force Budget Balance contribution (one source: policies.js),
+      // then Budget Balance = revenue (adds) − spending (subtracts). Trade policy is skipped.
+      var pols = [];
+      try { const { data } = await supabase.from('policies').select('id, definition'); pols = data || []; } catch (e) {}
+      var contribs = pols.filter(function (p) { return !isTradePolicy(p.definition); }).map(function (p) {
+        return { name: (p.definition && p.definition.name) || 'Policy', amount: policyBudgetContribution(p.definition, nation.policies, p.id, nation.gdp) };
+      }).filter(function (c) { return Math.abs(c.amount) >= 0.005; });
+      REV = contribs.filter(function (c) { return c.amount > 0; }).sort(function (a, b) { return b.amount - a.amount; });
+      SPEND = contribs.filter(function (c) { return c.amount < 0; }).sort(function (a, b) { return a.amount - b.amount; });
+      var totalRev = REV.reduce(function (t, c) { return t + c.amount; }, 0);
+      var totalSpend = SPEND.reduce(function (t, c) { return t + Math.abs(c.amount); }, 0);
+      var balance = totalRev - totalSpend, bneg = balance < 0;
+      document.getElementById('balVal').innerHTML = (bneg ? '−' : '') + esc(CUR) + (Math.round(Math.abs(balance) * 10) / 10) + 'bn<span class="bhero__u"> /yr</span>';
+      document.getElementById('balVal').style.color = bneg ? 'var(--red)' : 'var(--green)';
+      document.getElementById('revVal').textContent = fmt(totalRev);
+      document.getElementById('spendVal').textContent = fmt(totalSpend);
+      var peak = Math.max(totalRev, totalSpend) || 1;
+      document.getElementById('revBar').style.width = Math.round(totalRev / peak * 100) + '%';
+      document.getElementById('spendBar').style.width = Math.round(totalSpend / peak * 100) + '%';
+      render(document.querySelector('.budtab.is-on') ? document.querySelector('.budtab.is-on').dataset.tab : 'revenue');
+
+      // Public Debt is the one stored figure — economy.debt (the "Starting Debt" field), the
+      // same source the Government page reads. "$--" when unset.
       var d = Number(ec.debt);
       if (ec.debt != null && ec.debt !== '' && isFinite(d)) {
-        document.getElementById('debtVal').textContent = cur + Math.abs(d) + 'bn';
+        document.getElementById('debtVal').textContent = fmt(d);
       }
     } catch (e) { /* placeholders already shown; topbar still renders */ }
   })();

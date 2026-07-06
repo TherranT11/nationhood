@@ -639,7 +639,6 @@
           <div><label for="f-unemployment">Starting Unemployment</label><input id="f-unemployment" type="number" step="0.1"></div>
           <div><label for="f-inflation">Starting Inflation</label><input id="f-inflation" type="number" step="0.1"></div>
           <div><label for="f-tax">Base Tax Burden <span class="hint">tax policies add on top</span></label><input id="f-tax" type="number" step="0.1"></div>
-          <div><label for="f-budget">Starting Budget</label><input id="f-budget" type="number" step="0.1"></div>
           <div><label for="f-debt">Starting Debt</label><input id="f-debt" type="number" step="0.1"></div>
           <div><label for="f-regime">Regime</label><select id="f-regime"></select></div>
           <div><label for="f-ceiling">Max Party Ceiling <span class="hint">the regime's cap on any party's reach %</span></label><input id="f-ceiling" type="number" min="0" max="100" step="1" placeholder="50"></div>
@@ -1379,7 +1378,7 @@
       setVal('f-image', s.image); setVal('f-order', s.order);
       setVal('f-unemployment', e.unemployment); setVal('f-inflation', e.inflation);
       setVal('f-tax', e.tax);
-      setVal('f-budget', e.budget); setVal('f-debt', e.debt);
+      setVal('f-debt', e.debt);
       setVal('f-ceiling', e.party_ceiling);
       document.getElementById('f-regime').value = (typeof e.regime === 'number') ? String(e.regime) : '17';
       setVal('f-seats', n.legislature_seats); setVal('f-elecfreq', n.election_frequency_months);
@@ -1704,7 +1703,11 @@
           regime: parseInt(document.getElementById('f-regime').value, 10),
           unemployment: num('f-unemployment', true), inflation: num('f-inflation', true),
           tax: num('f-tax', true),
-          budget: num('f-budget', true), debt: num('f-debt', true),
+          // Budget Balance is computed from policies, not admin-set, so there's no "Starting
+          // Budget" input — but economy.budget is still a live backend field (fiscal engine /
+          // crises), so preserve whatever the nation already has rather than wiping it.
+          budget: (editing && editing.economy) ? editing.economy.budget : undefined,
+          debt: num('f-debt', true),
           party_ceiling: document.getElementById('f-ceiling').value.trim() === '' ? 50 : Math.max(0, Math.min(100, num('f-ceiling'))),
           currency: (editing && editing.economy && editing.economy.currency) || '$'
         },
