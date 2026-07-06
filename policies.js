@@ -46,9 +46,9 @@ export function policyVotePopularity(def, fromIdx, toIdx) {
   return { forVote: forVote, againstVote: -forVote };
 }
 
-// The Influence a bill costs to propose: the admin base (game_state.proposal_cost_base) scaled by how
-// many rungs the change moves — N × (base + N − 1), N=|to−from| (min 1). ONE source (mirrors
-// _proposal_cost in schema/154); read by the propose page's cost preview and the committee bill.
+// The Influence a bill costs to propose: the policy's own authored base (definition.influence) scaled
+// by how many rungs the change moves — N × (base + N − 1), N=|to−from| (min 1). ONE source (mirrors
+// _proposal_cost in schema/154); read by the propose page's cost preview.
 export function proposalInfluenceCost(base, fromIdx, toIdx) {
   var n = Math.max(1, Math.abs((Number(toIdx) || 0) - (Number(fromIdx) || 0)));
   return n * (Math.max(0, Number(base) || 0) + n - 1);

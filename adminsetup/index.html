@@ -573,16 +573,6 @@
     </div>
 
     <div class="panel">
-      <h2>Legislation</h2>
-      <p class="sub" style="margin:0 0 12px">Base Influence cost to propose a bill — the bill goes to committee, and the cost scales with the number of policy rungs it moves: N × (base + N − 1).</p>
-      <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
-        <div><div class="sub" style="margin:0 0 5px">Proposal base cost (Influence)</div><input id="billCost" type="number" min="0" step="1" style="width:130px"></div>
-        <button class="btn btn-solid" id="billCostSave" type="button">Save</button>
-      </div>
-      <div class="note" id="billCostNote" role="status" aria-live="polite"></div>
-    </div>
-
-    <div class="panel">
       <h2>Existing Nations</h2>
       <div id="nationList"><p class="empty">Loading…</p></div>
     </div>
@@ -1196,24 +1186,6 @@
         document.getElementById('clockDate').textContent = tickToDate(t);
       } catch (e) { document.getElementById('clockDate').textContent = '—'; }
     }
-    // Legislation: the base Influence cost of proposing a bill (game-wide; scales by rungs client-side).
-    async function renderBillCost() {
-      try {
-        const { data } = await supabase.from('game_state').select('proposal_cost_base').maybeSingle();
-        document.getElementById('billCost').value = (data && data.proposal_cost_base != null) ? data.proposal_cost_base : 2;
-      } catch (e) { /* leave blank */ }
-    }
-    document.getElementById('billCostSave').addEventListener('click', async function () {
-      var btn = this, note = document.getElementById('billCostNote');
-      if (btn.disabled) return;
-      btn.disabled = true; note.textContent = 'Saving…'; note.className = 'note';
-      try {
-        const { data, error } = await supabase.rpc('set_proposal_cost_base', { p_cost: parseInt(document.getElementById('billCost').value, 10) || 0 });
-        if (error) throw error;
-        note.textContent = 'Saved — bills now cost ' + data.proposal_cost_base + ' Influence at the base.'; note.className = 'note ok';
-      } catch (e) { note.textContent = /(admin|permission|row-level)/i.test(e.message || '') ? 'Only the admin can do that.' : (e.message || 'Could not save.'); note.className = 'note error'; }
-      finally { btn.disabled = false; }
-    });
     document.getElementById('advanceBtn').addEventListener('click', async function () {
       var btn = this, note = document.getElementById('advanceNote');
       if (btn.disabled) return;             // single-fire: this writes (advances the clock)
@@ -1248,7 +1220,6 @@
           document.getElementById('who').textContent = 'Signed in as ' + session.user.email;
           show('admin');
           renderClock();
-          renderBillCost();
           await loadNations();
           await loadIdentityTags();
           loadDeclFields();

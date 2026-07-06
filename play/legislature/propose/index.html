@@ -118,7 +118,7 @@
   import { esc, declaredValue } from '/util.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals, fetchProposalCostBase } from '/proposals.js';
+  import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals } from '/proposals.js';
   import { policyOptions, policyOptionIdx, effectText, optMoney, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity, proposalInfluenceCost } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
   import { isMonarchy, regimeText } from '/ladders.js';
@@ -147,7 +147,6 @@
     document.querySelector('.phead h1').textContent = 'Propose a Law';
     document.querySelector('.phead p').textContent = 'Pick a policy and climb the ladder to the rung you want to put to the chamber. If it passes, the nation switches to that rung and its effects land.';
     var grid = document.getElementById('proposeGrid');
-    var costBase = await fetchProposalCostBase();   // admin base cost; scaled by rungs below
     var policies;
     try { policies = await fetchPolicies(); }
     catch (e) { grid.innerHTML = '<section class="mod"><p class="muted">Couldn’t load the policy catalogue. Refresh to try again.</p></section>'; return; }
@@ -328,8 +327,9 @@
       // chamber won't take another until it resolves (the server enforces this too).
       var blocked = !!pendingPolicies[curPolicy().id];
       var ok = !noSeats && !blocked && sel.proposed != null && sel.proposed !== inForceIdx() && !lawBusy;
-      // Cost scales with the number of rungs moved (one source: policies.js, mirrors the server).
-      var cost = ok ? proposalInfluenceCost(costBase, inForceIdx(), sel.proposed) : null;
+      // Cost = the policy's own authored Influence, scaled by the rungs moved (one source: policies.js,
+      // mirrors the server).
+      var cost = ok ? proposalInfluenceCost(Number(curDef().influence) || 0, inForceIdx(), sel.proposed) : null;
       document.getElementById('l-cost').textContent = cost == null ? '—' : (cost + ' Influence');
       sendBtn.disabled = !ok;
       if (!lawBusy) note.textContent = noSeats ? 'Your party holds no legislature seats — win seats at an election before you can propose a bill.'
