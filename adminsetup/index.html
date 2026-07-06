@@ -1165,7 +1165,7 @@
     import { regimeLabel, statName } from '/ladders.js';
     import { SIZES, CATEGORIES, CATEGORY_BONUS, corpMoney } from '/corporations.js';
     import { ARCHETYPES } from '/archetypes.js';
-    import { policyOptions, policyDefaultIdx, isMoneyTarget, POLICY_STATS, MINISTRY_STATS } from '/policies.js';
+    import { policyOptions, policyDefaultIdx, isMoneyTarget, POLICY_STATS, MINISTRY_STATS, STAT_RANGES } from '/policies.js';
     import { MINISTRIES } from '/ministries.js';
     import { condText as objCondText, rewardText as objRewardText } from '/objectives.js';
 
@@ -1315,7 +1315,9 @@
     // values an admin has actually entered (an absent stat stays "--" on the Government page).
     function renderMinistryFields() {
       document.getElementById('ministryFields').innerHTML = MINISTRY_STATS.map(function (s) {
-        return '<div><label>' + esc(s) + '</label><input type="number" step="any" data-mstat="' + esc(s) + '"></div>';
+        var r = STAT_RANGES[s], rng = r ? (' min="' + r.min + '" max="' + r.max + '"') : '';
+        var hint = r ? ' <span class="hint">' + r.min + '–' + r.max + '</span>' : '';
+        return '<div><label>' + esc(s) + hint + '</label><input type="number" step="any"' + rng + ' data-mstat="' + esc(s) + '"></div>';
       }).join('');
     }
     function fillMinistryFields(n) {
