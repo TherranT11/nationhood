@@ -25,6 +25,7 @@
   .bhero{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:14px}
   .bhero__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:8px}
   .bhero__v{font-size:34px;font-weight:900;letter-spacing:-.03em;color:var(--ink)}
+  .bhero__u{font-size:15px;font-weight:700;color:var(--soft);margin-left:4px}
   .bhero__chart{width:100%;height:56px;display:block;margin-top:10px}
 
   .bsum{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
@@ -74,11 +75,12 @@
         <h1>Budget</h1>
       </div>
 
-      <!-- Budget Balance — headline + sparkline. All figures are placeholders until the
-           budget backend lands, so every amount shows "$--" for every nation. -->
+      <!-- Budget Balance = the nation's Income (economy.budget — the same figure the topbar
+           shows). Revenue mirrors it. Spending / Public Debt / line items stay "$--" until the
+           budget backend lands. -->
       <div class="bhero">
         <div class="bhero__k">Budget Balance</div>
-        <div class="bhero__v">$--</div>
+        <div class="bhero__v" id="balVal">$--</div>
         <svg class="bhero__chart" viewBox="0 0 300 56" preserveAspectRatio="none" aria-hidden="true">
           <line x1="0" y1="28" x2="300" y2="28" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="4 5" vector-effect="non-scaling-stroke"/>
         </svg>
@@ -87,7 +89,7 @@
       <div class="bsum">
         <div class="bsum__card">
           <div class="bsum__k bsum__k--rev">Revenue</div>
-          <div class="bsum__v">$--</div>
+          <div class="bsum__v" id="revVal">$--</div>
           <div class="bsum__bar"><span style="background:var(--green)"></span></div>
         </div>
         <div class="bsum__card">
@@ -161,7 +163,7 @@
     try {
       const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, declarations').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, declarations, economy').eq('id', party.nation_id).single();
       // Eyebrow = the nation's formal state name if declared, else its plain name.
       var nationName = (nation && nation.name) || party.nation_id;
       try {
@@ -175,6 +177,19 @@
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + ((nation && nation.name) || party.nation_id);
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
       setTopbarActions(party.influence);
+
+      // Budget Balance = Income (economy.budget, the same field the topbar renders as income),
+      // and Revenue mirrors it. Both show the real value — including $0 — falling back to "$--"
+      // only when the nation has no income figure at all.
+      var ec = (nation && nation.economy) || {};
+      var cur = ec.currency || '$';
+      var income = ec.budget;
+      if (income != null && income !== '') {
+        var n = Number(income), sign = n < 0 ? '−' : '';
+        document.getElementById('balVal').innerHTML = sign + esc(cur) + Math.abs(n) + 'bn<span class="bhero__u"> /yr</span>';
+        document.getElementById('balVal').style.color = n < 0 ? 'var(--red)' : 'var(--green)';
+        document.getElementById('revVal').textContent = sign + cur + Math.abs(n) + 'bn';
+      }
     } catch (e) { /* placeholders already shown; topbar still renders */ }
   })();
 </script>

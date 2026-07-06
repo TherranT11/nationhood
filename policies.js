@@ -13,7 +13,9 @@ export const POLICY_STATS = [
   'Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Interest Rates',
   'Crime', 'Immigration', 'Extremism', 'Unemployment', 'Poverty', 'Wages',
   'Prosperity', 'Press Freedom', 'Social Integration', 'Armed Forces Funding',
-  'Military Research', 'Cybersecurity', 'Energy Availability', 'CO₂ Emissions', 'Global Warming'
+  'Military Research', 'Cybersecurity', 'Energy Availability', 'CO₂ Emissions', 'Global Warming',
+  // Vote-conditional popularity swings — applied to a party by how it votes on the policy.
+  'Party Popularity (if voting for)', 'Party Popularity (if voting against)'
 ];
 
 // A policy's option array: the 'spectrum' or 'binary' list, keyed by its own type.

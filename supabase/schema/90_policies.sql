@@ -9,7 +9,9 @@
 --   Spectrum: an ordered ladder of levels A,B,C… —
 --     { name, desc, type:'spectrum', influence (BASE to change), impl (BASE months),
 --       defaultIdx, spectrum:[ {name,desc,effects[]} … ] }
--- where each effect is a plain { t (stat), v (signed amount) }.
+-- where each effect is a plain { t (stat), v (signed amount) }. A Budget Balance effect may
+-- also carry unit:'gdp' to author the amount as a PERCENT OF GDP (else it's a flat amount),
+-- so one policy's fiscal cost scales to nation size.
 --
 -- AUTHOR + STORE ONLY for now: the ministry-stat backend and the level-change engine
 -- don't exist yet, so definitions are stored but NOT applied. The effects engine

@@ -196,9 +196,13 @@
   .poltab .tagadd:hover{border-color:var(--indigo,#5546E8);color:var(--indigo,#5546E8)}
   .subhd .tagadd{padding:3px 9px;font-size:10px}
   .poltab .sublab .hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--soft)}
-  .poltab .effrow{display:grid;grid-template-columns:1.6fr .9fr .8fr 30px;gap:7px;margin-bottom:8px;align-items:center}
-  @media(max-width:560px){.poltab .effrow{grid-template-columns:1fr 1fr}}
-  .poltab .effrow select,.poltab .effrow input{padding:8px 9px;font-size:12.5px}
+  .poltab .effrow{display:flex;gap:7px;margin-bottom:8px;align-items:center;flex-wrap:wrap}
+  .poltab .effrow select,.poltab .effrow input{padding:8px 9px;font-size:12.5px;min-width:0}
+  .poltab .effrow .et{flex:1.6 1 130px}
+  .poltab .effrow .edir{flex:.9 1 90px}
+  .poltab .effrow .ev{flex:.8 1 70px}
+  .poltab .effrow .eunit{flex:1 1 96px}
+  .poltab .effrow .efx{flex:none;margin-left:auto}
   .poltab .add.sm{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:var(--surface);border:1px dashed var(--line2);border-radius:8px;padding:8px 12px;cursor:pointer;margin-top:2px}
   .poltab .add.sm:hover{border-color:var(--ink)}
   .poltab .addopt{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:var(--surface);border:1px dashed var(--line2);border-radius:9px;padding:9px 14px;cursor:pointer}
@@ -2730,9 +2734,17 @@
     // magnitude and a direction select, so the stored value is signed but the admin picks up/down.
     function polEffRow(e){
       var up=(Number(e.v)||0)>=0;
+      // Budget Balance can be authored as a flat amount OR as a % of the nation's GDP, so
+      // one policy scales its fiscal cost to nation size (5% of GDP hits a $22bn and a $170bn
+      // nation proportionally). The unit selector only appears for Budget Balance.
+      var unit = e.t === 'Budget Balance'
+        ? '<select class="eunit"><option value="flat"'+((e.unit||'flat')==='flat'?' selected':'')+'>$ flat</option>'+
+          '<option value="gdp"'+(e.unit==='gdp'?' selected':'')+'>% of GDP</option></select>'
+        : '';
       return '<div class="effrow">'+polTgtSelect(e.t)+
         '<select class="edir"><option value="up"'+(up?' selected':'')+'>Increase</option><option value="down"'+(!up?' selected':'')+'>Decrease</option></select>'+
-        '<input type="number" class="ev" min="0" step="any" value="'+Math.abs(Number(e.v)||0)+'" style="max-width:96px">'+
+        '<input type="number" class="ev" min="0" step="any" value="'+Math.abs(Number(e.v)||0)+'">'+
+        unit+
         '<button class="xb efx" type="button" title="Remove">×</button></div>';
     }
     function renderPolEditor(){
@@ -2807,9 +2819,12 @@
         var e=o.effects[j];
         // v stays signed: the stat picker sets the target; direction × magnitude sets the value.
         function apply(){ var dir=row.querySelector('.edir').value, mag=Math.abs(parseFloat(row.querySelector('.ev').value)||0); e.v=(dir==='down'?-1:1)*mag; renderPolPrev(); }
-        row.querySelector('.et').onchange=function(ev){ e.t=ev.target.value; renderPolPrev(); };
+        // Re-render on target change so the Budget Balance unit selector appears/disappears;
+        // drop a stale unit when leaving Budget Balance so it can't linger on another stat.
+        row.querySelector('.et').onchange=function(ev){ e.t=ev.target.value; if(e.t!=='Budget Balance')delete e.unit; renderPolEditor(); renderPolPrev(); };
         row.querySelector('.edir').onchange=apply;
         row.querySelector('.ev').oninput=apply;
+        var eu=row.querySelector('.eunit'); if(eu)eu.onchange=function(ev){ e.unit=ev.target.value; renderPolPrev(); };
         row.querySelector('.efx').onclick=function(){ o.effects.splice(j,1); renderPolEditor(); renderPolPrev(); };
       });
       card.querySelector('.addeff').onclick=function(){ o.effects.push(polEff('Budget Balance',0)); renderPolEditor(); renderPolPrev(); };
@@ -2817,7 +2832,8 @@
     }
     function polEffLine(e){
       var v=Number(e.v)||0, sign=v>=0?'+':'−', cls=v>0?'pos':v<0?'neg':'';
-      return '<div class="e '+cls+'"><b>'+esc(e.t)+' '+sign+Math.abs(v)+'</b></div>';
+      var suffix=(e.t==='Budget Balance'&&e.unit==='gdp')?'% GDP':'';   // Budget Balance can be a % of GDP
+      return '<div class="e '+cls+'"><b>'+esc(e.t)+' '+sign+Math.abs(v)+suffix+'</b></div>';
     }
     function renderPolPrev(){
       var box=document.getElementById('polPrev');
