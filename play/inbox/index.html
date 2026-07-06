@@ -240,11 +240,26 @@
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
       setTopbarActions(party.influence);
 
-      // Compose picker: every other party (name + its nation), world-readable.
-      var apRes = await supabase.from('parties').select('id, name, nation_id').neq('id', MY_ID).order('name');
+      // Compose picker: every other party (name + its nation), world-readable, tagged with
+      // its cabinet role — the ministry it holds (e.g. [Ministry of Trade]), or [Opposition]
+      // when the party isn't in its nation's government ([Government] if it governs but holds
+      // no portfolio). Roles come from party_cabinet_roles() (schema/151), the one source
+      // shared with _party_holds_ministry; the tags degrade to Government/Opposition if that
+      // function isn't present yet.
+      var apRes = await supabase.from('parties').select('id, name, nation_id, in_government').neq('id', MY_ID).order('name');
       var natRes = await supabase.from('nations').select('id, name');
       var natName = {}; (natRes.data || []).forEach(function (n) { natName[n.id] = n.name; });
-      ALL_PARTIES = (apRes.data || []).map(function (p) { return { id: p.id, label: p.name + (natName[p.nation_id] ? ' · ' + natName[p.nation_id] : '') }; });
+      var roleByParty = {};
+      try {
+        const { data: roles } = await supabase.rpc('party_cabinet_roles');
+        (roles || []).forEach(function (r) { (roleByParty[r.party_id] = roleByParty[r.party_id] || []).push(r.ministry); });
+      } catch (e) { /* tags are a nicety — the picker still works without them */ }
+      ALL_PARTIES = (apRes.data || []).map(function (p) {
+        var mins = roleByParty[p.id] || [];
+        var tag = mins.length ? mins.map(function (m) { return '[Ministry of ' + m + ']'; }).join(' ')
+                              : (p.in_government ? '[Government]' : '[Opposition]');
+        return { id: p.id, label: p.name + (natName[p.nation_id] ? ' · ' + natName[p.nation_id] : '') + ' · ' + tag };
+      });
 
       document.getElementById('newBtn').onclick = openCompose;
       await load();

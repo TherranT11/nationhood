@@ -1509,12 +1509,13 @@
     function row(k, v) { return v ? '<div class="snap__row"><dt>' + k + '</dt><dd>' + v + '</dd></div>' : ''; }
     function ptag(p) { return p ? ' <span class="ptag" style="background:' + partyColor(p) + '">' + esc((p.abbreviation || p.name.slice(0, 2)).toUpperCase()) + '</span>' : ''; }
     var partyName = formateur ? esc(formateur.name) : (nation.ruling_party ? esc(nation.ruling_party) : '');
-    // Head of Government — the person: "{declared title} {name} (year elected {year})".
+    // Head of Government — the person: "{declared title} {name} ({year} – present)".
     // The year is when the government was seated (governments.formed_tick → its calendar
     // year, via tickToDate — one source). Hidden when there's no HoG person to name.
     var hogTitle = decl('head_of_government_title');
-    var hogYear = (govt && govt.formed_tick != null) ? tickToDate(govt.formed_tick).split(', ')[1] : '--';
-    var hogRow = hogName ? row('Head of Government', (hogTitle ? esc(hogTitle) + ' ' : '') + esc(hogName) + ' (year elected ' + esc(hogYear) + ')') : '';
+    var hogYear = (govt && govt.formed_tick != null) ? tickToDate(govt.formed_tick).split(', ')[1] : '';
+    var hogTerm = hogYear ? esc(hogYear) + ' – present' : 'present';
+    var hogRow = hogName ? row('Head of Government', (hogTitle ? esc(hogTitle) + ' ' : '') + esc(hogName) + ' (' + hogTerm + ')') : '';
     var snapHtml =
       hogRow +
       row('Capital', esc(decl('capital_name'))) +
