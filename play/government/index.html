@@ -262,6 +262,9 @@
   var STAT_LINKS = { 'Budget Balance': '/play/budget/' };
   // Ministry stat values come from the nation's admin-authored ministry_stats map (schema/150,
   // keyed by the same stat names) — the ONE source. A stat with no entered value shows "--".
+  // KNOWN ISSUE (one-source): "Budget Balance" here reads ministry_stats, but the Budget page
+  // headline reads economy.budget (income) per "Budget Balance = Income". These can diverge —
+  // pending a decision to source this cell from income too (and drop it from the stat grid).
   function ministryStats(nation){
     var MS = (nation && nation.ministry_stats) || {};
     return STAT_GROUPS.map(function (g) {
