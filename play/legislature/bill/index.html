@@ -133,7 +133,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { fetchProposals, fetchVotes, fetchPolicies, castVote, tallyVotes, proposalOutcome, proposalLocked } from '/proposals.js';
   import { ideologyLabel } from '/archetypes.js';
-  import { policyOptions, policyOptionIdx, effectText, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText } from '/policies.js';
+  import { policyOptions, policyOptionIdx, effectText, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity } from '/policies.js';
 
   mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
@@ -206,7 +206,7 @@
     if (Math.abs(netY) >= 0.05) frows.push(fiscalRow('Net fiscal impact', 'per year', netY, true, true));
     if (Math.abs(oneT) >= 0.05) frows.push(fiscalRow('One-time cost', 'on enactment', oneT, true));
     var fiscalHtml = frows.length ? frows.join('') : '<div class="inone">No change to the budget.</div>';
-    var effs = (po.effects || []).filter(function(e){ return !isMoneyTarget(e.t); });
+    var effs = (po.effects || []).filter(function(e){ return !isMoneyTarget(e.t) && (e.t || '').indexOf('Party Popularity') !== 0; });
     var effHtml = '';
     // Trade rungs carry their standing modifiers (import ×, tariff) outside the effects list — show current → proposed.
     if (isTradePolicy(def)) {
@@ -217,6 +217,12 @@
       var tx = effectText(e, ST.pop, ST.pros), c = tx.cls === 'pos' ? 'up' : tx.cls === 'neg' ? 'dn' : 'flat';
       return '<div class="effrow"><span class="ek ' + c + '">' + esc(tx.text) + '</span><span class="ecad">' + esc(tx.cad) + '</span></div>';
     }).join('');
+    // Vote-popularity: computed from the direction + size of the move ci→pi (one source: policies.js).
+    var vp = policyVotePopularity(def, ci, pi);
+    if (vp.forVote !== 0) {
+      effHtml += '<div class="effrow"><span class="ek ' + (vp.forVote > 0 ? 'up' : 'dn') + '">Party Popularity (if voting for) ' + (vp.forVote >= 0 ? '+' : '−') + Math.abs(vp.forVote) + '</span><span class="ecad">per vote</span></div>';
+      effHtml += '<div class="effrow"><span class="ek ' + (vp.againstVote > 0 ? 'up' : 'dn') + '">Party Popularity (if voting against) ' + (vp.againstVote >= 0 ? '+' : '−') + Math.abs(vp.againstVote) + '</span><span class="ecad">per vote</span></div>';
+    }
     if (!effHtml) effHtml = '<div class="inone">No standing effects beyond the budget.</div>';
     var tags = (po.tags || []).map(function(t){ return '<span class="btag">' + esc(t) + '</span>'; }).join('');
     return '<div class="card"><div class="card-h">Projected Impact <span class="by">if enacted</span></div>' +

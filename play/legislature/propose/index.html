@@ -118,7 +118,7 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, effectText, optMoney, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText } from '/policies.js';
+  import { policyOptions, policyOptionIdx, effectText, optMoney, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
   import { isMonarchy, regimeText } from '/ladders.js';
 
@@ -249,8 +249,17 @@
       }
       // Non-money standing effects only — ALL money (recurring, one-time and finite) is summarised
       // in the fiscal block above, so it reads as one figure instead of being split across sections.
-      var effs = (o.effects || []).filter(function (e) { return !isMoneyTarget(e.t); });
+      // Standing stat effects of the proposed rung (money is in the fiscal block; the two vote
+      // popularity targets are now computed directionally below, not authored per level).
+      var effs = (o.effects || []).filter(function (e) { return !isMoneyTarget(e.t) && (e.t || '').indexOf('Party Popularity') !== 0; });
       html += effs.map(function (e) { var t = effectText(e, pop, pros); return effRow(t, t.cad); }).join('');
+      // Vote-popularity: computed from the direction + size of the proposed move (one source:
+      // policies.js). Voting against is the mirror of voting for.
+      var vp = policyVotePopularity(def, inForceIdx(), sel.proposed);
+      if (vp.forVote !== 0) {
+        html += effRow({ text: 'Party Popularity (if voting for) ' + (vp.forVote >= 0 ? '+' : '−') + Math.abs(vp.forVote), cls: vp.forVote > 0 ? 'pos' : 'neg' }, 'per vote');
+        html += effRow({ text: 'Party Popularity (if voting against) ' + (vp.againstVote >= 0 ? '+' : '−') + Math.abs(vp.againstVote), cls: vp.againstVote > 0 ? 'pos' : 'neg' }, 'per vote');
+      }
       effBox.innerHTML = html || '<p class="none">No standing effects beyond the budget.</p>';
       tagBox.innerHTML = (o.tags || []).map(function (t) { return '<span class="ltag">' + esc(t) + '</span>'; }).join('');
     }
