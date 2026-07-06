@@ -18,7 +18,6 @@ import { hasUnvotedFloorMeasure } from '/proposals.js';
 const NAV = [
   { href: '/play/',             label: 'Nation',       svg: '<path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/>' },
   { href: '/play/government/',  label: 'Government',   svg: '<path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/>' },
-  { href: '/play/party/',       label: 'Party',        svg: '<path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/>' },
   { href: '/play/legislature/', label: 'Legislature',  svg: '<path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/>' },
   { href: '/play/policies/',    label: 'Policies',     svg: '<path d="M7 3h10a1 1 0 011 1v16l-3-2-3 2-3-2-3 2V4a1 1 0 011-1z"/><path d="M9 8h6M9 12h5"/>' },
   { href: '/play/inbox/',       label: 'Inbox',        svg: '<path d="M4 13l2-8h12l2 8"/><path d="M4 13v6h16v-6"/><path d="M4 13h5l1 2h4l1-2h5"/>' },
@@ -85,7 +84,7 @@ const CSS = `
 function svgEl(inner) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + inner + '</svg>'; }
 
 // Active = the item whose href matches the current path. Home only matches the index
-// itself; every other section also matches its sub-pages (e.g. /play/party/politician/).
+// itself; every other section also matches its sub-pages (e.g. /play/legislature/bill/).
 function isActive(path, href) {
   if (!href) return false;
   if (href === '/play/') return path === '/play/' || path === '/play';
