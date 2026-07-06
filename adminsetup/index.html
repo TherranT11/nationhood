@@ -891,18 +891,12 @@
 
           <div class="card">
             <div class="sec-h">Cost &amp; Timeframe</div>
-            <div class="flabel">Cost basis <span class="hint">— how each nation's price is worked out at enact</span></div>
-            <select id="i-costmodel">
-              <option value="flat">Flat amount ($B)</option>
-              <option value="production">× current production of the resource</option>
-              <option value="gdp">% of the nation's GDP</option>
-            </select>
-            <div class="two" style="margin-top:14px">
-              <div><div class="flabel" id="i-costlabel">Cost <span class="hint">($B)</span></div><input id="i-cost" type="number" step="any" value="120"></div>
-              <div><div class="flabel">Length <span class="hint">(months, min–max)</span></div>
-                <div class="two"><input id="i-minM" type="number" value="16"><input id="i-maxM" type="number" value="36"></div>
-              </div>
+            <div class="two">
+              <div><div class="flabel">Budget Balance cost <span class="hint">($B/yr while it runs)</span></div><input id="i-byear" type="number" step="any" value="5"></div>
+              <div><div class="flabel">Influence <span class="hint">(upfront to enact)</span></div><input id="i-influence" type="number" step="1" value="5"></div>
             </div>
+            <div class="flabel" style="margin-top:14px">Build-up length <span class="hint">(months, min–max — before the production increase lands)</span></div>
+            <div class="two"><input id="i-minM" type="number" value="16"><input id="i-maxM" type="number" value="36"></div>
           </div>
 
           <div class="card">
@@ -3558,7 +3552,7 @@
 
       function iBlank() {
         return { name: '', description: '', resource: 'Energy', quantity: 1, cadence: 'one_time',
-          sectors: iSectorSet('Energy'), costModel: 'flat', cost: 120, minM: 16, maxM: 36, global: false, nations: {},
+          sectors: iSectorSet('Energy'), budgetPerYear: 5, influence: 5, minM: 16, maxM: 36, global: false, nations: {},
           joint: { on: false, partner: '', quantity: 1, target: 'Energy' },
           startEvent: '', finishEvent: '' };
       }
@@ -3569,8 +3563,8 @@
         s.resource = RESOURCES.indexOf(d.resource) >= 0 ? d.resource : 'Energy';
         s.quantity = Math.max(1, parseInt(d.quantity, 10) || 1);
         s.cadence = d.cadence === 'recurring' ? 'recurring' : 'one_time';
-        s.costModel = (d.costModel === 'production' || d.costModel === 'gdp') ? d.costModel : 'flat';
-        s.cost = parseFloat(d.cost) || 0;
+        s.budgetPerYear = parseFloat(d.budgetPerYear) || 0;
+        s.influence = Math.max(1, parseInt(d.influence, 10) || 1);
         var lm = Array.isArray(d.lengthMonths) ? d.lengthMonths : [16, 36];
         s.minM = parseInt(lm[0], 10) || 0; s.maxM = parseInt(lm[1], 10) || 0;
         s.global = d.eligibleNations === '*';
@@ -3587,27 +3581,14 @@
         return s;
       }
       function iR1(n) { return String(Math.round(n * 10) / 10); }
-      // Model-aware base cost expression. Nation-agnostic (the builder can't know a nation's live
-      // production/GDP) — flat shows the $ amount, the scaled models show their rate. The ±20/25%
-      // private/state adjustment is applied at enact, when the Minister picks the execution model.
-      function iCostExpr() {
-        if (IN.costModel === 'production') return '×$' + iR1(IN.cost) + 'B per current unit';
-        if (IN.costModel === 'gdp')        return iR1(IN.cost) + '% of GDP';
-        return '$' + Math.round(IN.cost) + 'B';
-      }
+      // The standing cost line: $B/yr against Budget Balance the whole time it runs + the upfront
+      // Influence the Minister spends to enact it.
+      function iCostExpr() { return '−$' + iR1(IN.budgetPerYear) + 'B/yr · ' + IN.influence + ' Influence'; }
       // The ticked sectors — ONE source for the preview line and the saved definition.
       function iChosenSectors() { return CATEGORIES.filter(function (c) { return IN.sectors[c]; }); }
       function iNatName(id) { var n = INAT.filter(function (x) { return x.id === id; })[0]; return n ? (n.name || id) : id; }
 
       function iRenderResource() { document.getElementById('i-resource').innerHTML = RESOURCES.map(function (r) { return '<option' + (r === IN.resource ? ' selected' : '') + '>' + r + '</option>'; }).join(''); }
-      // Reflect the cost basis: set the dropdown and relabel the amount input for the chosen model.
-      function iRenderCostModel() {
-        document.getElementById('i-costmodel').value = IN.costModel;
-        var lab = document.getElementById('i-costlabel');
-        lab.innerHTML = IN.costModel === 'production' ? 'Rate <span class="hint">($B per current unit)</span>'
-                      : IN.costModel === 'gdp'        ? 'Rate <span class="hint">(% of GDP)</span>'
-                      :                                 'Cost <span class="hint">($B)</span>';
-      }
       function iRenderCadence() { document.querySelectorAll('#i-cadence [data-cad]').forEach(function (b) { b.classList.toggle('on', IN.cadence === b.dataset.cad); }); }
       // The sectors whose corporations can carry the initiative out — ALL corporate sectors are
       // available (an admin can authorise any); the resource's own producing sectors are ticked by
@@ -3656,7 +3637,7 @@
         document.getElementById('i-preview').innerHTML =
           '<div class="pl">Preview</div><h3>' + esc(IN.name || 'Untitled Initiative') + '</h3>' +
           '<span class="chipeff" style="background:rgba(127,127,127,.08);border:1px solid ' + col + ';color:' + col + '"><span class="d" style="background:' + col + '"></span>+' + IN.quantity + ' ' + esc(IN.resource) + '</span>' +
-          '<div class="meta"><b>' + esc(iCostExpr()) + '</b> · <b>' + IN.minM + '–' + IN.maxM + ' mo</b> · ' + (IN.cadence === 'recurring' ? 'Recurring' : 'One-time') + '<br>' +
+          '<div class="meta"><b>' + esc(iCostExpr()) + '</b> · <b>' + IN.minM + '–' + IN.maxM + ' mo build</b> · ' + (IN.cadence === 'recurring' ? 'Recurring' : 'One-time') + '<br>' +
           'Sectors: <b>' + esc(secTxt) + '</b><br>Eligible: <b>' + esc(elig) + '</b>' +
           (jointTxt ? '<br>Joint: <b>' + esc(jointTxt) + '</b>' : '') + '</div>';
       }
@@ -3665,12 +3646,13 @@
         document.getElementById('i-name').value = IN.name;
         document.getElementById('i-desc').value = IN.description;
         document.getElementById('i-qty').textContent = IN.quantity;
-        document.getElementById('i-cost').value = IN.cost;
+        document.getElementById('i-byear').value = IN.budgetPerYear;
+        document.getElementById('i-influence').value = IN.influence;
         document.getElementById('i-minM').value = IN.minM;
         document.getElementById('i-maxM').value = IN.maxM;
         document.getElementById('i-startEvent').value = IN.startEvent;
         document.getElementById('i-finishEvent').value = IN.finishEvent;
-        iRenderResource(); iRenderCadence(); iRenderCostModel(); iRenderSectors(); iRenderNations(); iRenderJoint(); iRenderPreview();
+        iRenderResource(); iRenderCadence(); iRenderSectors(); iRenderNations(); iRenderJoint(); iRenderPreview();
         document.getElementById('i-cancel').hidden = !iEditId;
         document.getElementById('i-save').textContent = iEditId ? 'Save changes' : 'Save Initiative';
       }
@@ -3704,7 +3686,7 @@
         var def = {
           name: IN.name.trim(), description: IN.description.trim(),
           resource: IN.resource, quantity: IN.quantity, cadence: IN.cadence,
-          costModel: IN.costModel, cost: IN.cost, lengthMonths: [IN.minM, IN.maxM],
+          budgetPerYear: IN.budgetPerYear, influence: IN.influence, lengthMonths: [IN.minM, IN.maxM],
           sectors: iChosenSectors(),
           joint: (IN.joint.on && IN.joint.partner) ? { partner: IN.joint.partner, quantity: IN.joint.quantity, target: IN.joint.target } : null,
           eligibleNations: IN.global ? '*' : Object.keys(IN.nations).filter(function (k) { return IN.nations[k]; }),
@@ -3743,8 +3725,8 @@
       document.getElementById('i-qminus').onclick = function () { if (IN.quantity > 1) { IN.quantity--; document.getElementById('i-qty').textContent = IN.quantity; iRenderPreview(); } };
       document.getElementById('i-qplus').onclick = function () { IN.quantity++; document.getElementById('i-qty').textContent = IN.quantity; iRenderPreview(); };
       document.querySelectorAll('#i-cadence [data-cad]').forEach(function (b) { b.onclick = function () { IN.cadence = b.dataset.cad; iRenderCadence(); iRenderPreview(); }; });
-      document.getElementById('i-costmodel').onchange = function () { IN.costModel = this.value; iRenderCostModel(); iRenderPreview(); };
-      document.getElementById('i-cost').oninput = function () { IN.cost = parseFloat(this.value) || 0; iRenderPreview(); };
+      document.getElementById('i-byear').oninput = function () { IN.budgetPerYear = parseFloat(this.value) || 0; iRenderPreview(); };
+      document.getElementById('i-influence').oninput = function () { IN.influence = Math.max(1, parseInt(this.value, 10) || 1); iRenderPreview(); };
       document.getElementById('i-jpartner').onchange = function () { IN.joint.partner = this.value; iRenderPreview(); };
       document.getElementById('i-jtarget').onchange = function () { IN.joint.target = this.value; iRenderPreview(); };
       document.getElementById('i-jqminus').onclick = function () { if (IN.joint.quantity > 1) { IN.joint.quantity--; document.getElementById('i-jqty').textContent = IN.joint.quantity; iRenderPreview(); } };

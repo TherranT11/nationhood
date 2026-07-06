@@ -19,6 +19,7 @@ const CSS = `
 .nini__pick{margin-top:9px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .nini__pick select{flex:1;min-width:150px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font-size:13px}
 .nini__go{border:none;background:var(--indigo);color:#fff;border-radius:8px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer}
+.nini__deact{background:var(--red,#C42B2B)}
 .nini__opts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .nini__opt{text-align:left;border:1.5px solid var(--line);background:var(--surface);border-radius:9px;padding:9px 11px;cursor:pointer;color:var(--ink);font:inherit}
 .nini__opt b{display:block;font-size:12.5px;font-weight:800}
@@ -30,27 +31,25 @@ const CSS = `
 `;
 function injectCss(){ if(document.getElementById('nini-css'))return; var s=document.createElement('style'); s.id='nini-css'; s.textContent=CSS; document.head.appendChild(s); }
 
-// Base cost from the cost basis — MIRRORS the server (schema/140/141): flat → $B; production → $B
-// per current unit of the resource (min one unit); gdp → % of GDP. Reads this nation's live figures
-// so the shown price matches what the server will charge. The Minister then picks the execution
-// model at enact — private (−20%, +1 Growth, firms bid) or state (+25%, −1D2 Unemployment &
-// Inflation, the nation's own SO firm in an authorised sector) — applied on top.
-export function baseInitiativeCost(d, nation){
-  var v=Number(d.cost)||0, model=d.costModel||'flat';
-  if(model==='production'){ var cur=Number((nation&&nation.production&&nation.production[String(d.resource||'').toLowerCase()])||0); return Math.max(cur,1)*v; }
-  if(model==='gdp'){ return Math.round(Number(nation&&nation.gdp||0)*v/100); }
-  return v;
-}
-// Effective $B after the ownership adjustment (private −20% / state +25%) — the one client-side cost,
-// used by the panel and the joint-project composer so both match the server (schema/141).
-export function effectiveInitiativeCost(d, nation, ownership){
-  var c=baseInitiativeCost(d, nation);
-  return Math.round(c * (ownership==='private'?0.8:ownership==='state'?1.25:1));
-}
-// The Influence an initiative costs to enact: 1 per $10B of its effective cost, rounded up, min 1.
-// ONE source (mirrors _initiative_influence / _initiative_cost in schema/141 — the server charges this).
-export function initiativeInfluenceCost(d, nation, ownership){
-  return Math.max(1, Math.ceil(effectiveInitiativeCost(d, nation, ownership)/10));
+// An initiative's authored costs (MIRROR schema/140/141): a standing $bn/yr against Budget Balance
+// the whole time it runs, and the upfront Influence to enact it. Both are flat authored figures now —
+// the Minister's execution choice (private → +1 Growth, firms bid; state → −1D2 Unemployment &
+// Inflation, own SO firm) only changes the on-enact effects, not the price.
+export function initiativeYearlyCost(d){ return Number(d && d.budgetPerYear) || 0; }
+export function initiativeInfluence(d){ return Math.max(1, parseInt(d && d.influence, 10) || 1); }
+
+// Active initiatives that hit a nation's Budget Balance — its own running ones plus any joint project
+// it partners — shaped for initiativeBudgetItems / nationBudgetBalance (policies.js). Best-effort → [].
+export async function fetchBudgetInitiatives(nationId){
+  try {
+    const { data } = await supabase.from('nation_initiatives')
+      .select('nation_id, partner_share, national_initiatives(definition)')
+      .eq('status', 'active').or('nation_id.eq.' + nationId + ',partner_nation.eq.' + nationId);
+    return (data || []).map(function(r){
+      return { def: (r.national_initiatives && r.national_initiatives.definition) || {},
+               partnerShare: r.partner_share, isPartner: r.nation_id !== nationId };
+    });
+  } catch(e){ return []; }
 }
 
 // A nation's initiative state: the one under way (if any) and what it can enact next. Available =
@@ -60,7 +59,7 @@ export async function fetchNationInitiatives(nationId){
   try {
     const [defsR, mineR, corpsR, natR, jpR] = await Promise.all([
       supabase.from('national_initiatives').select('id, definition').order('created_at'),
-      supabase.from('nation_initiatives').select('id, initiative_id, corp_id, status, started_tick, complete_tick, cost_per_tick').eq('nation_id', nationId),
+      supabase.from('nation_initiatives').select('id, initiative_id, corp_id, status, started_tick, complete_tick, built').eq('nation_id', nationId),
       supabase.from('corporations').select('id, name, category, type').eq('nation_id', nationId).eq('status', 'placed'),
       supabase.from('nations').select('gdp, production').eq('id', nationId).maybeSingle(),
       supabase.from('joint_proposals').select('initiative_id').eq('proposer_nation', nationId).eq('status', 'pending')
@@ -81,28 +80,38 @@ export async function fetchNationInitiatives(nationId){
 }
 
 // Render into `el`. ctx = { canEnact, currentTick, onEnact(initiativeId, ownership, corpId|null),
-// onProposeJoint(initiativeId) }. Only the Minister of Economic Development (canEnact) sees the enact
-// controls; a joint initiative shows "Propose to partner" instead of the direct enact options.
-// Everyone sees the running programme + what's available.
+// onProposeJoint(initiativeId), onDeactivate(instanceId) }. Only the Minister of Economic Development
+// (canEnact) sees the enact + deactivate controls; a joint initiative shows "Propose to partner"
+// instead of the direct enact options. Everyone sees the running programme + what's available.
 export function renderNationInitiatives(el, data, ctx){
   if(!el) return; injectCss(); ctx = ctx || {};
   var html='';
   if(data.active && data.active.def){
-    var a=data.active, d=a.def;
-    var left=Math.max(0,(a.row.complete_tick||0)-(Number(ctx.currentTick)||0));
-    var total=Math.max(1,(a.row.complete_tick||0)-(a.row.started_tick||0));
-    var pct=Math.max(0,Math.min(100,Math.round((1-left/total)*100)));
-    html += '<div class="nini run"><div class="nini__name">'+esc(d.name||'Initiative')+'</div>'+
-      '<div class="nini__meta">Under way · '+left+' month'+(left===1?'':'s')+' left · $'+(Number(a.row.cost_per_tick)||0).toFixed(1)+'B/mo</div>'+
-      '<span class="nini__gain">+'+(d.quantity||0)+' '+esc(d.resource||'')+' on completion</span>'+
-      '<div class="nini__bar"><div class="nini__fill" style="width:'+pct+'%"></div></div></div>';
+    var a=data.active, d=a.def, built=!!a.row.built;
+    var yr=initiativeYearlyCost(d), costTxt = yr ? ' · −$'+yr+'B/yr' : '';
+    var meta, bar='';
+    if(built){
+      meta = 'Operational' + costTxt;
+    } else {
+      var left=Math.max(0,(a.row.complete_tick||0)-(Number(ctx.currentTick)||0));
+      var total=Math.max(1,(a.row.complete_tick||0)-(a.row.started_tick||0));
+      var pct=Math.max(0,Math.min(100,Math.round((1-left/total)*100)));
+      meta = 'Building · '+left+' month'+(left===1?'':'s')+' left'+costTxt;
+      bar = '<div class="nini__bar"><div class="nini__fill" style="width:'+pct+'%"></div></div>';
+    }
+    html += '<div class="nini run" data-active="'+esc(a.row.id)+'"><div class="nini__name">'+esc(d.name||'Initiative')+'</div>'+
+      '<div class="nini__meta">'+meta+'</div>'+
+      '<span class="nini__gain">+'+(d.quantity||0)+' '+esc(d.resource||'')+(built?'':' on completion')+'</span>'+
+      bar +
+      (ctx.canEnact ? '<div class="nini__pick" style="margin-top:9px"><button class="nini__go nini__deact" type="button">Deactivate</button></div>' : '')+
+      '</div>';
   }
   (data.available||[]).forEach(function(row){
     var d=row.definition||{};
     var lm=d.lengthMonths||[], secs=Array.isArray(d.sectors)?d.sectors:[];
     var isJoint = !!(d.joint && d.joint.partner);
     html += '<div class="nini" data-init="'+esc(row.id)+'"'+(isJoint?' data-joint="1"':'')+'><div class="nini__name">'+esc(d.name||'Initiative')+(isJoint?' <span class="nini__jt">Joint</span>':'')+'</div>'+
-      '<div class="nini__meta">'+(lm[0]!=null?lm[0]:'?')+'–'+(lm[1]!=null?lm[1]:'?')+' mo'+(d.cadence==='recurring'?' · recurring':'')+'</div>'+
+      '<div class="nini__meta">'+(lm[0]!=null?lm[0]:'?')+'–'+(lm[1]!=null?lm[1]:'?')+' mo build'+(d.cadence==='recurring'?' · recurring':'')+'</div>'+
       '<span class="nini__gain">+'+(d.quantity||0)+' '+esc(d.resource||'')+'</span>';
     if(ctx.canEnact){
       if(isJoint){
@@ -114,27 +123,31 @@ export function renderNationInitiatives(el, data, ctx){
           html += '<button class="nini__go nini__go--solo" data-propose="1" type="button">Propose to partner ▸</button>';
         }
       } else {
-        // The Minister picks the execution model. State needs one of the nation's own SO firms in an
-        // authorised sector; private lets firms bid (no executor picked).
-        var priv=effectiveInitiativeCost(d, data.nation, 'private'), state=effectiveInitiativeCost(d, data.nation, 'state');
-        var privInf=initiativeInfluenceCost(d, data.nation, 'private'), stateInf=initiativeInfluenceCost(d, data.nation, 'state');
+        // Cost is the same either way (standing $B/yr + upfront Influence); the Minister's choice only
+        // changes the on-enact effect. State needs one of the nation's own SO firms in an authorised
+        // sector; private lets firms bid (no executor picked).
+        var cost = '−$'+initiativeYearlyCost(d)+'B/yr · '+initiativeInfluence(d)+' Inf';
         var so=(data.corps||[]).filter(function(c){ return c.type==='so' && secs.indexOf(c.category)>=0; });
         html += '<div class="nini__opts">'+
-          '<button class="nini__opt" data-own="private" type="button"><b>Private Enterprise</b><span>$'+priv+'B · '+privInf+' Inf · +1 Growth · firms bid</span></button>'+
+          '<button class="nini__opt" data-own="private" type="button"><b>Private Enterprise</b><span>'+cost+' · +1 Growth · firms bid</span></button>'+
           (so.length
-            ? '<button class="nini__opt" data-own="state" type="button"><b>State Sanctioned</b><span>$'+state+'B · '+stateInf+' Inf · −1–2 Unemployment &amp; Inflation</span></button>'
+            ? '<button class="nini__opt" data-own="state" type="button"><b>State Sanctioned</b><span>'+cost+' · −1–2 Unemployment &amp; Inflation</span></button>'
             : '<div class="nini__opt is-off"><b>State Sanctioned</b><span>Needs a state-owned '+esc(secs.join(' / ')||'sector')+' firm — you have none</span></div>')+
           '</div>';
         if(so.length){
           html += '<div class="nini__pick" hidden><select class="nini__corp">'+
             so.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join('')+
-            '</select><button class="nini__go" type="button">Enact ('+stateInf+' Inf)</button></div>';
+            '</select><button class="nini__go" type="button">Enact ('+initiativeInfluence(d)+' Inf)</button></div>';
         }
       }
     }
     html += '</div>';
   });
   el.innerHTML = html || '<p class="nini-empty">No initiatives available'+(ctx.canEnact?'':' — your Minister of Economic Development enacts these')+'.</p>';
+
+  // Deactivate the running programme (Minister only).
+  var actCard = el.querySelector('.nini[data-active]');
+  if(actCard){ var db=actCard.querySelector('.nini__deact'); if(db) db.addEventListener('click', function(){ if(ctx.onDeactivate) ctx.onDeactivate(actCard.dataset.active); }); }
 
   el.querySelectorAll('.nini[data-init]').forEach(function(card){
     if(card.dataset.joint){

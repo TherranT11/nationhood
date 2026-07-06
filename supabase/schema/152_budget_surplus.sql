@@ -4,14 +4,17 @@
 -- balance / 12, floored to one decimal. Every JANUARY, the remaining Public Debt accrues 3%
 -- interest. Both called from _advance_tick (schema/60).
 --
--- Budget Balance is the net of every policy's in-force Budget Balance effect. _nation_budget_balance
--- MIRRORS policyBudgetContribution / nationBudgetBalance in policies.js (the client shows the same
--- figure in the top bar, Budget page and Government cell) — keep the two in sync:
+-- Budget Balance is the net of every policy's in-force Budget Balance effect MINUS every running
+-- national initiative's standing $bn/yr cost. _nation_budget_balance MIRRORS nationBudgetContributions
+-- / nationBudgetBalance in policies.js (the client shows the same figure in the top bar, Budget page
+-- and Government cell) — keep the two in sync:
 --   · spectrum levels are transition deltas, so being at level N accumulates levels 1..N (base 0 has none)
 --   · a binary policy uses its in-force state's effects
 --   · a Budget Balance effect with unit 'gdp' is amount% of GDP; otherwise the flat amount in $bn
 --   · trade policy (definition.special = 'trade') has no Budget Balance effects, so it's skipped
--- Depends on: 10 (nations.gdp/economy), 90 (policies), 92 (_nation_policy_option).
+--   · a running initiative (schema/141) subtracts its authored budgetPerYear; a joint project splits it —
+--     the enacting nation bears (100 − partner_share)%, the partner covers partner_share%
+-- Depends on: 10 (nations.gdp/economy), 90 (policies), 92 (_nation_policy_option), 141 (nation_initiatives).
 
 create or replace function public._nation_budget_balance(p_nation text)
 returns numeric language plpgsql stable security definer set search_path = public as $$
@@ -36,6 +39,18 @@ begin
         v_sum := v_sum + case when v_eff->>'unit' = 'gdp' then v_v / 100.0 * coalesce(v_gdp, 0) else v_v end;
       end loop;
     end loop;
+  end loop;
+  -- Running initiatives: this nation's standing share of each active programme's $bn/yr (as the
+  -- enacting nation, (100 − share)%; as a joint partner, share%).
+  for r in
+    select coalesce((i.definition->>'budgetPerYear')::numeric, 0) as byear,
+           coalesce(ni.partner_share, 0) as share, (ni.nation_id = p_nation) as is_owner
+      from public.nation_initiatives ni
+      join public.national_initiatives i on i.id = ni.initiative_id
+     where ni.status = 'active' and (ni.nation_id = p_nation or ni.partner_nation = p_nation)
+  loop
+    v_sum := v_sum - case when r.is_owner then r.byear * (100 - r.share) / 100.0
+                          else r.byear * r.share / 100.0 end;
   end loop;
   return v_sum;
 end $$;

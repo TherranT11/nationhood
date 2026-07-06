@@ -121,7 +121,8 @@
   import { ideologyLabel } from '/archetypes.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { policyBudgetContribution, isTradePolicy } from '/policies.js';
+  import { policyBudgetContribution, isTradePolicy, initiativeBudgetItems } from '/policies.js';
+  import { fetchBudgetInitiatives } from '/initiatives.js';
 
   mountTopbar();   // shared top bar (Discord/Influence/Budget Balance/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
@@ -185,6 +186,10 @@
       var contribs = pols.filter(function (p) { return !isTradePolicy(p.definition); }).map(function (p) {
         return { name: (p.definition && p.definition.name) || 'Policy', amount: policyBudgetContribution(p.definition, nation.policies, p.id, nation.gdp) };
       }).filter(function (c) { return Math.abs(c.amount) >= 0.005; });
+      // Running national initiatives are standing spending lines too (one source: policies.js).
+      var initRows = [];
+      try { initRows = await fetchBudgetInitiatives(party.nation_id); } catch (e) {}
+      contribs = contribs.concat(initiativeBudgetItems(initRows).filter(function (c) { return Math.abs(c.amount) >= 0.005; }));
       REV = contribs.filter(function (c) { return c.amount > 0; }).sort(function (a, b) { return b.amount - a.amount; });
       SPEND = contribs.filter(function (c) { return c.amount < 0; }).sort(function (a, b) { return a.amount - b.amount; });
       var totalRev = REV.reduce(function (t, c) { return t + c.amount; }, 0);

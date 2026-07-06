@@ -85,8 +85,37 @@ export function nationStatContributions(policyRows, overrides, gdp, stat) {
   });
   return { total: total, items: items };
 }
-export function nationBudgetBalance(policyRows, overrides, gdp) {
-  return nationStatContributions(policyRows, overrides, gdp, 'Budget Balance').total;
+// A running national initiative is a STANDING Budget Balance cost (schema/141/152): while active it
+// subtracts its authored budgetPerYear ($bn/yr). A joint project splits that — the enacting nation
+// bears (100 − partnerShare)%, the partner covers partnerShare%. This returns THIS nation's yearly
+// cost as a positive number. ONE source (mirrors the initiative block in _nation_budget_balance).
+export function initiativeBudgetAmount(def, partnerShare, isPartner) {
+  var y = Number(def && def.budgetPerYear) || 0;
+  var s = Math.max(0, Math.min(100, Number(partnerShare) || 0));
+  return isPartner ? y * s / 100 : y * (100 - s) / 100;
+}
+// Active-initiative Budget Balance line items for a nation, each a COST (negative amount). rows =
+// [{ def, partnerShare, isPartner }] — the nation's own running initiatives plus any joint project it
+// partners. Filters ~zero. ONE source for the Budget page list and the balance total below.
+export function initiativeBudgetItems(rows) {
+  var items = [];
+  (rows || []).forEach(function (r) {
+    var amt = initiativeBudgetAmount(r.def, r.partnerShare, r.isPartner);
+    if (Math.abs(amt) >= 0.0001) items.push({ name: (r.def && r.def.name) || 'Initiative', amount: -amt });
+  });
+  return items;
+}
+// The nation's full Budget Balance breakdown: every policy's contribution PLUS every running
+// initiative's standing cost. ONE source for the top bar, Budget page and Government cell.
+export function nationBudgetContributions(policyRows, overrides, gdp, initiativeRows) {
+  var pol = nationStatContributions(policyRows, overrides, gdp, 'Budget Balance');
+  var ini = initiativeBudgetItems(initiativeRows);
+  var total = pol.total;
+  ini.forEach(function (i) { total += i.amount; });
+  return { total: total, items: pol.items.concat(ini) };
+}
+export function nationBudgetBalance(policyRows, overrides, gdp, initiativeRows) {
+  return nationBudgetContributions(policyRows, overrides, gdp, initiativeRows).total;
 }
 
 // Budget/Debt/Income are money targets — their value scales by the nation's size/wealth.

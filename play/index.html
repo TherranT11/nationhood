@@ -1703,7 +1703,13 @@
             canEnact: isEconDevMin, currentTick: curTick,
             onEnact: function(id, own, corp){
               performAction(function(){ return supabase.rpc('initiative_enact', { p_initiative: id, p_ownership: own, p_corp: corp }); },
-                function(d){ return 'Initiative under way — completes in ~' + d.months + ' month' + (d.months===1?'':'s') + '.'; })
+                function(d){ return 'Initiative under way — production lands in ~' + d.months + ' month' + (d.months===1?'':'s') + '.'; })
+                .then(function(){ loadInitiatives(); });
+            },
+            onDeactivate: function(instanceId){
+              if(!window.confirm('Deactivate this initiative? Its yearly cost stops and any production it added is reversed.')) return;
+              performAction(function(){ return supabase.rpc('initiative_deactivate', { p_instance: instanceId }); },
+                function(){ return 'Initiative deactivated.'; })
                 .then(function(){ loadInitiatives(); });
             },
             onProposeJoint: function(id){
