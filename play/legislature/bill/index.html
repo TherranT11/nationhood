@@ -133,7 +133,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { fetchProposals, fetchVotes, fetchPolicies, castVote, tallyVotes, proposalOutcome, proposalLocked } from '/proposals.js';
   import { ideologyLabel } from '/archetypes.js';
-  import { policyOptions, policyOptionIdx, effectText, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity } from '/policies.js';
+  import { policyOptions, policyOptionIdx, policyInForceEffects, effectText, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity } from '/policies.js';
 
   mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
@@ -206,16 +206,20 @@
     if (Math.abs(netY) >= 0.05) frows.push(fiscalRow('Net fiscal impact', 'per year', netY, true, true));
     if (Math.abs(oneT) >= 0.05) frows.push(fiscalRow('One-time cost', 'on enactment', oneT, true));
     var fiscalHtml = frows.length ? frows.join('') : '<div class="inone">No change to the budget.</div>';
-    var effs = (po.effects || []).filter(function(e){ return !isMoneyTarget(e.t) && (e.t || '').indexOf('Party Popularity') !== 0; });
+    // Standing stat effects are CUMULATIVE across the crossed levels (one source: policyInForceEffects)
+    // — rung C is the sum of every level up to C, aggregated to one line per target ("−4 Crime").
+    var effs = policyInForceEffects(def, pi).filter(function(e){ return !isMoneyTarget(e.t) && (e.t || '').indexOf('Party Popularity') !== 0; });
+    var agg = [], apos = {};
+    effs.forEach(function(e){ var k = e.t + '|' + (e.unit || ''); if (apos[k] == null) { apos[k] = agg.length; agg.push({ t: e.t, v: 0, unit: e.unit }); } agg[apos[k]].v += (Number(e.v) || 0); });
     var effHtml = '';
     // Trade rungs carry their standing modifiers (import ×, tariff) outside the effects list — show current → proposed.
     if (isTradePolicy(def)) {
       effHtml += '<div class="effrow"><span class="ek flat">In force now · ' + esc(tradeEffectText(co || {})) + '</span><span class="ecad">now</span></div>';
       effHtml += '<div class="effrow"><span class="ek flat">If enacted · ' + esc(tradeEffectText(po)) + '</span><span class="ecad">while in force</span></div>';
     }
-    effHtml += effs.map(function(e){
-      var tx = effectText(e, ST.pop, ST.pros), c = tx.cls === 'pos' ? 'up' : tx.cls === 'neg' ? 'dn' : 'flat';
-      return '<div class="effrow"><span class="ek ' + c + '">' + esc(tx.text) + '</span><span class="ecad">' + esc(tx.cad) + '</span></div>';
+    effHtml += agg.filter(function(e){ return Math.abs(e.v) >= 0.0001; }).map(function(e){
+      var tx = effectText({ t: e.t, v: e.v, unit: e.unit }, ST.pop, ST.pros), c = tx.cls === 'pos' ? 'up' : tx.cls === 'neg' ? 'dn' : 'flat';
+      return '<div class="effrow"><span class="ek ' + c + '">' + esc(tx.text) + '</span><span class="ecad">while in force</span></div>';
     }).join('');
     // Vote-popularity: computed from the direction + size of the move ci→pi (one source: policies.js).
     var vp = policyVotePopularity(def, ci, pi);

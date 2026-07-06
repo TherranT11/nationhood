@@ -71,23 +71,28 @@ export function policyOptionIdx(def, overrides, id) {
   var stored = overrides && overrides[id];
   return stored == null ? policyDefaultIdx(def) : +stored;
 }
-// One policy's in-force contribution to a given stat: the sum of that stat's effects on the
-// option/level currently in force. Spectrum levels are transition deltas, so being at level N
-// accumulates levels 1..N (the base level 0 has none); a binary policy uses its in-force state.
-// A 'gdp'-unit effect is amount% of GDP; a flat effect is the amount as-is. Trade policy is skipped.
-export function policyStatContribution(def, overrides, id, gdp, stat) {
-  if (!def || isTradePolicy(def)) return 0;
+// The effect objects in force at a given option index — the ONE source for "what a policy is doing"
+// at a rung. A spectrum is CUMULATIVE: being at level N accumulates every crossed level 1..N (the base
+// level 0 has none), so rung C = the effects of B + C together. A binary uses its in-force state's
+// effects. Trade policy carries its modifiers outside this list, so it returns none.
+export function policyInForceEffects(def, optionIdx) {
+  if (!def || isTradePolicy(def)) return [];
   var opts = policyOptions(def);
-  if (!opts.length) return 0;
-  var idx = policyOptionIdx(def, overrides, id);
+  if (!opts.length) return [];
+  var idx = Math.max(0, Math.min(Number(optionIdx) || 0, opts.length - 1));
   var inForce = (def.type === 'spectrum') ? opts.slice(1, idx + 1) : [opts[idx]];
+  var out = [];
+  inForce.forEach(function (o) { ((o && o.effects) || []).forEach(function (e) { out.push(e); }); });
+  return out;
+}
+// One policy's in-force contribution to a given stat: the sum of that stat's cumulative in-force
+// effects (policyInForceEffects). A 'gdp'-unit effect is amount% of GDP; a flat effect is as-is.
+export function policyStatContribution(def, overrides, id, gdp, stat) {
   var sum = 0;
-  inForce.forEach(function (o) {
-    ((o && o.effects) || []).forEach(function (e) {
-      if (e.t !== stat) return;
-      var v = Number(e.v) || 0;
-      sum += (e.unit === 'gdp') ? (v / 100) * (Number(gdp) || 0) : v;
-    });
+  policyInForceEffects(def, policyOptionIdx(def, overrides, id)).forEach(function (e) {
+    if (e.t !== stat) return;
+    var v = Number(e.v) || 0;
+    sum += (e.unit === 'gdp') ? (v / 100) * (Number(gdp) || 0) : v;
   });
   return sum;
 }
