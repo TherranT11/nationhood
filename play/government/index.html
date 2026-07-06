@@ -285,7 +285,13 @@
         var n = Number(ec.debt);
         return (ec.debt == null || ec.debt === '' || !isFinite(n)) ? '--' : esc(cur) + Math.abs(n) + 'bn';
       }
-      return MS[s] != null ? esc(String(MS[s])) : '--';
+      // Every other ministry stat: its authored base (ministry_stats) + the cumulative contribution of
+      // in-force policies (policies.js) — the same model as Budget Balance/Bureaucracy. "--" only when
+      // there's no base and no policy touches it.
+      var contrib = nationStatContributions(STAT_POLS, STAT_OV, STAT_GDP, s).total;
+      var hasBase = MS[s] != null && MS[s] !== '';
+      if (!hasBase && Math.abs(contrib) < 0.0001) return '--';
+      return esc(String(Math.round(((hasBase ? Number(MS[s]) : 0) + contrib) * 10) / 10));
     }
     return STAT_GROUPS.map(function (g) {
       var cells = g.stats.map(function (s) {
@@ -372,6 +378,9 @@
   var MY_PARTY_ID = null, NATION = null, NATION_ID = null, HOG_TITLE = 'Head of Government';
   var BUDGET_BAL = null;   // computed Budget Balance ($bn/yr) — Σ in-force policy effects (policies.js); null until loaded
   var BUREAUCRACY = null;  // computed Bureaucracy (%) — Σ in-force policy Bureaucracy effects; null until loaded
+  // Every other ministry stat = its authored base (ministry_stats) + Σ in-force policy contribution;
+  // these hold the inputs so cellVal can compute each one (policies.js is the one source).
+  var STAT_POLS = [], STAT_OV = {}, STAT_GDP = null;
   // State-of-the-Nation data, folded in from the retired Nation page (declaration slots +
   // cities + mayor party tags). Loaded once at boot; the panels read straight from these.
   var DECL_SLOTS = [], CITIES = [], MAYOR_ABBR = {};
@@ -448,6 +457,7 @@
         var _inits = await fetchBudgetInitiatives(party.nation_id);
         BUDGET_BAL = nationBudgetBalance(pols || [], _ov, _gdp, _inits);
         BUREAUCRACY = nationStatContributions(pols || [], _ov, _gdp, 'Bureaucracy').total;
+        STAT_POLS = pols || []; STAT_OV = _ov; STAT_GDP = _gdp;
       } catch (e) {}
 
       await loadNationState();   // declaration slots + cities for the State-of-the-Nation panels

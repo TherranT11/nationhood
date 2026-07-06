@@ -590,13 +590,15 @@
     else if (isThreshold) renderThresholdMode(nation || {});
     else if (isDecl) renderDeclMode((nation && nation.declarations) || {}, regime);
     else {
-      // Policies that already have a live bill (in committee, on the agenda, or on the floor) — the
-      // ladder greys out proposing for them (the server enforces one live bill per policy). Non-fatal.
+      // Policies with a live bill (in committee, on the agenda, or on the floor) OR a change still being
+      // implemented — the ladder greys out proposing for them (the server enforces this too). Non-fatal.
       var pendingPolicies = {};
       try {
         (await fetchProposals(party.nation_id)).forEach(function (p) {
           if (p.kind === 'law' && (p.status === 'committee' || p.status === 'voting' || p.status === 'agenda') && p.payload && p.payload.policy_id) pendingPolicies[p.payload.policy_id] = true;
         });
+        const { data: impl } = await supabase.from('nation_law_implementations').select('policy_id').eq('nation_id', party.nation_id);
+        (impl || []).forEach(function (r) { pendingPolicies[r.policy_id] = true; });
       } catch (e) { /* leave empty → server still blocks a duplicate */ }
       renderLawMode((nation && nation.policies) || {}, nation || {}, pendingPolicies, (party && party.seats) || 0);
     }

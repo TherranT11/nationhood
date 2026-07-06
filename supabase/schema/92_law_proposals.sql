@@ -175,6 +175,11 @@ begin
                  and payload->>'policy_id' = p_policy::text) then
     raise exception 'A bill to change this policy is already before the chamber — it must resolve first.';
   end if;
+  -- A change to this policy that passed and is still being implemented (schema/155) also locks it.
+  if exists (select 1 from public.nation_law_implementations
+               where nation_id = v_party.nation_id and policy_id = p_policy) then
+    raise exception 'A change to this policy is already being implemented — wait for it to take effect.';
+  end if;
 
   insert into public.proposals (nation_id, party_id, kind, title, payload, status, opened_tick)
     values (v_party.nation_id, v_party.id, 'law', v_title,

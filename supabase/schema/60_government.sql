@@ -599,6 +599,9 @@ begin
   -- Committee bills (schema/154) that have sat 6 ticks without being pushed to the floor expire.
   begin perform public._expire_committee(v_tick);
   exception when others then raise warning 'tick %: committee expiry failed — %', v_tick, sqlerrm; end;
+  -- Passed laws whose implementation time has come now flip the policy + land their effects (schema/155).
+  begin perform public._implement_laws(v_tick);
+  exception when others then raise warning 'tick %: law implementation failed — %', v_tick, sqlerrm; end;
   -- Crises (schema/99): fire any whose triggers are now all true, then climb each active
   -- crisis's meter and escalate stages. Runs last, on this tick's settled stats; its own
   -- per-nation / per-crisis isolation lives inside _apply_crisis_tick.
