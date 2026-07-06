@@ -10,6 +10,11 @@
 -- (events has no client insert policy).
 -- ===========================================================================
 
+-- Drop any earlier signature first: create-or-replace can't rename input params, so a database that
+-- still holds an older release_statement (e.g. a different arg order/name) would otherwise reject the
+-- redefinition. drop-by-arg-types clears it regardless of the old parameter names.
+drop function if exists public.release_statement(text, text);
+drop function if exists public.release_statement(text);
 create or replace function public.release_statement(p_scope text, p_message text)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
