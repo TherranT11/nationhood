@@ -18,6 +18,13 @@ export const POLICY_STATS = [
   'Party Popularity (if voting for)', 'Party Popularity (if voting against)'
 ];
 
+// The admin-typed ministry stats (the Edit Nation "Ministry Stats" grid). Derived from
+// POLICY_STATS — one source — minus Budget Balance (that cell is the nation's income,
+// economy.budget, not a typed value) and the policy-only vote-conditional popularity targets.
+export const MINISTRY_STATS = POLICY_STATS.filter(function (s) {
+  return s !== 'Budget Balance' && s.indexOf('Party Popularity') !== 0;
+});
+
 // A policy's option array: the 'spectrum' or 'binary' list, keyed by its own type.
 export function policyOptions(def) {
   return (def && def.type === 'spectrum') ? (def.spectrum || []) : ((def && def.binary) || []);

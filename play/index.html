@@ -1549,7 +1549,7 @@
     panel.hidden = false;
   }
 
-  function renderAssembly(parties, nation, govt) {
+  function renderAssembly(parties, nation) {
     var panel = document.getElementById('asmPanel'), box = document.getElementById('asmBody');
     if (!panel || !box) return;
     var total = nation.legislature_seats || parties.reduce(function (s, p) { return s + (p.seats || 0); }, 0);
@@ -1612,7 +1612,7 @@
     renderStatCards(party, myLeader);
     renderSnapshotAndMap(nation, parties, govt, decl, party.nation_id, hogName);
     renderElections(nation, curTick);
-    renderAssembly(parties, nation, govt);
+    renderAssembly(parties, nation);
     var formal = decl('formal_state_name');
     if (formal) document.getElementById('kicker').textContent = formal;   // eyebrow → declared formal state name
   }

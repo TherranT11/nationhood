@@ -1217,7 +1217,7 @@
     import { regimeLabel, statName } from '/ladders.js';
     import { SIZES, CATEGORIES, CATEGORY_BONUS, corpMoney } from '/corporations.js';
     import { ARCHETYPES } from '/archetypes.js';
-    import { policyOptions, policyDefaultIdx, isMoneyTarget, POLICY_STATS } from '/policies.js';
+    import { policyOptions, policyDefaultIdx, isMoneyTarget, POLICY_STATS, MINISTRY_STATS } from '/policies.js';
     import { CONV_ROMAN, convRoman, adoptLines, activeLines, lawLines } from '/convictions.js';
     import { MINISTRIES } from '/ministries.js';
     import { condText as objCondText, rewardText as objRewardText } from '/objectives.js';
@@ -1348,7 +1348,7 @@
     // { "<Stat>": <number> } jsonb map. A blank field is omitted, so the map only holds the
     // values an admin has actually entered (an absent stat stays "--" on the Government page).
     function renderMinistryFields() {
-      document.getElementById('ministryFields').innerHTML = POLICY_STATS.map(function (s) {
+      document.getElementById('ministryFields').innerHTML = MINISTRY_STATS.map(function (s) {
         return '<div><label>' + esc(s) + '</label><input type="number" step="any" data-mstat="' + esc(s) + '"></div>';
       }).join('');
     }

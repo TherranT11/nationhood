@@ -183,9 +183,9 @@
       // only when the nation has no income figure at all.
       var ec = (nation && nation.economy) || {};
       var cur = ec.currency || '$';
-      var income = ec.budget;
-      if (income != null && income !== '') {
-        var n = Number(income), sign = n < 0 ? '−' : '';
+      var n = Number(ec.budget);
+      if (ec.budget != null && ec.budget !== '' && isFinite(n)) {   // isFinite guards a corrupt/non-numeric value
+        var sign = n < 0 ? '−' : '';
         document.getElementById('balVal').innerHTML = sign + esc(cur) + Math.abs(n) + 'bn<span class="bhero__u"> /yr</span>';
         document.getElementById('balVal').style.color = n < 0 ? 'var(--red)' : 'var(--green)';
         document.getElementById('revVal').textContent = sign + cur + Math.abs(n) + 'bn';
