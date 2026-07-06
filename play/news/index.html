@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>News · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
+<style>
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+
+  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
+
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
+  .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
+  .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
+  .phead p{color:var(--muted);font-size:13.5px;margin-top:5px;max-width:620px}
+
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-top:18px}
+  .empty{text-align:center;padding:56px 20px;color:var(--soft)}
+  .empty b{display:block;color:var(--muted);font-size:16px;margin-bottom:6px}
+  .empty span{display:block;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:var(--soft);margin-top:8px}
+
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
+
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <div class="phead">
+      <span class="eye">The Press</span>
+      <h1>News</h1>
+      <p>The national and world news desk.</p>
+    </div>
+    <!-- Intentionally empty for now — the News feed is a later build. -->
+    <div class="panel"><div class="empty"><b>Nothing to report yet</b><span>The News desk is coming soon.</span></div></div>
+  </main>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+  import { ideologyLabel } from '/archetypes.js';
+
+  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
+  mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
+
+  // Only the shared chrome (sidebar identity + topbar) is wired; the feed itself is deferred.
+  (async () => {
+    if (!isConfigured) return;
+    const user = await requireUser();
+    if (!user) return; // redirected to login
+    try {
+      const { data: party } = await supabase.from('parties').select('name, archetype, nation_id, influence').eq('user_id', user.id).single();
+      if (!party) { window.location.replace('/nation-select/'); return; }
+      const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', party.nation_id).single();
+      document.getElementById('pname').textContent = party.name;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + ((nation && nation.name) || party.nation_id);
+      if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
+      setTopbarActions(party.influence);
+    } catch (e) { /* chrome only — nothing to surface on failure */ }
+  })();
+</script>
+</body>
+</html>

@@ -8,17 +8,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
 <style>
-  :root{
-    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
-    --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
-    --indigo:#5546E8;--indigo-soft:#ECE9FD;--amber:#E0820E;--amber-soft:#FBF0DD;
-    --red:#C42B2B;--red-soft:#FBEAE9;--green:#16915a;--green-soft:#E5F4EC;--navy:#2b3a7a;--navy-soft:#E7EAF4;--blue:#1f86d6;
-    --energy:#E0820E;--food:#16915a;--minerals:#8d6e4a;--goods:#5546E8;--services:#1f86d6;--military:#C42B2B;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
-  .app{display:flex;min-height:100vh}
   .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
   .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
   h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
@@ -241,7 +233,7 @@
   <div class="tmodal">
     <div class="tm-h"><button class="tclose" id="sancClose">✕</button>
       <div class="tm-mode">Trade sanctions</div><div class="tm-title">Embargo a nation</div>
-      <div class="tm-sub">Bars trade both ways. Sanctioning a regime ≤4 rallies your government (+1 popularity, +2 Confidence); a democracy costs −1 Image. 3 AP to enact.</div></div>
+      <div class="tm-sub">Bars trade both ways. Sanctioning a regime ≤4 rallies your government (+1 popularity, +2 Confidence); a democracy costs −1 Image. 3 Influence to enact.</div></div>
     <div class="tm-body"><div id="sancList"></div></div>
   </div>
 </div>
@@ -359,12 +351,12 @@
     var batch = RESLIST.filter(function(r){ return num(prod[r.k]) > 0; }).map(function(r){ return '+' + fmt(prod[r.k]) + ' ' + r.label; }).join(' · ') || 'no production set';
     var strip = RESLIST.map(function(r){ return '<span class="oh"><span class="rd" style="background:var(--' + r.k + ')"></span><b>' + fmt(on[r.k]) + '</b> <span class="rk">' + r.label + '</span></span>'; }).join('');
     var cdLeft = num(n.produce_until_tick) - num(STATE.tick), onCd = cdLeft > 0;
-    var canProduce = STATE.isHog && !onCd && num(STATE.party.actions_remaining) >= PRODUCE_COST;
+    var canProduce = STATE.isHog && !onCd && num(STATE.party.influence) >= PRODUCE_COST;
     var prodLabel = onCd ? ('On cooldown · ' + cdLeft + ' tick' + (cdLeft === 1 ? '' : 's'))
-      : (num(STATE.party.actions_remaining) < PRODUCE_COST ? ('Need ' + PRODUCE_COST + ' AP') : ('Produce · ' + PRODUCE_COST + ' AP'));
+      : (num(STATE.party.influence) < PRODUCE_COST ? ('Need ' + PRODUCE_COST + ' Influence') : ('Produce · ' + PRODUCE_COST + ' Influence'));
     var prodBtn = STATE.isHog ? '<button class="actbtn" id="produceBtn"' + (canProduce ? '' : ' disabled') + '>' + prodLabel + '</button>' : '';
     var produce = '<div class="actcard"><div class="pt">Produce <span class="hogtag">Head of Government action only</span></div>' +
-      '<div class="pd">Run a production cycle to top up stockpiles: <b>' + batch + '</b>. Costs ' + PRODUCE_COST + ' AP · ' + PRODUCE_COOLDOWN + '-tick cooldown.<div class="onhand">' + strip + '</div></div>' +
+      '<div class="pd">Run a production cycle to top up stockpiles: <b>' + batch + '</b>. Costs ' + PRODUCE_COST + ' Influence · ' + PRODUCE_COOLDOWN + '-tick cooldown.<div class="onhand">' + strip + '</div></div>' +
       '<div class="cost">' + (onCd ? 'Cooldown: ' + cdLeft + ' tick' + (cdLeft === 1 ? '' : 's') + ' left' : 'On-hand shown above') + '</div>' + prodBtn + '</div>';
     // Advance Society
     var pros = num((n.stats||{}).prosperity), advCost = pros + 5, goods = num(on.goods);
@@ -509,9 +501,9 @@
       var pool = a.qty_per_year * a.term_years, remaining = pool - num(a.drawn_units);
       var stock = num((seller && seller.on_hand || {})[a.resource]);
       var endsIn = a.end_tick != null ? Math.max(0, a.end_tick - STATE.tick) : null;
-      var lowAp = num(STATE.party.actions_remaining) < 2;
+      var lowAp = num(STATE.party.influence) < 2;
       var canDraw = STATE.isTradeMin && remaining > 0 && stock > 0 && !lowAp;
-      var why = remaining <= 0 ? 'Pool spent' : stock <= 0 ? 'No stock' : lowAp ? 'Need 2 AP' : 'Draw';
+      var why = remaining <= 0 ? 'Pool spent' : stock <= 0 ? 'No stock' : lowAp ? 'Need 2 Influence' : 'Draw';
       var btn = STATE.isTradeMin ? '<button class="tbtn" data-draw="' + esc(a.id) + '"' + (canDraw ? '' : ' disabled') + '>' + esc(why) + '</button>' : '';
       return '<div class="nrow"><div class="n-id"><div class="n-crest" style="background:' + colorFor(a.seller_nation) + '">' + esc(crestOf(sname)) + '</div>' +
         '<div class="n-meta"><div class="n-name">' + esc(sname) + '</div><div class="n-sub">' + a.qty_per_year + ' ' + esc(a.resource) + '/yr · ' + a.term_years + ' yr' + (a.term_years > 1 ? 's' : '') + ' · −' + a.discount_pct + '%</div></div></div>' +
@@ -520,7 +512,7 @@
         (endsIn != null ? '<span class="ta-stat"><b>' + endsIn + '</b> ticks left</span>' : '') + '</div>' +
         '<div class="nact">' + btn + '</div></div>';
     }).join('');
-    return '<div class="panel"><div class="panel-h"><div class="ph-t">Trade Agreements<span class="sub">draw units at the locked price · 2 AP</span></div></div>' +
+    return '<div class="panel"><div class="panel-h"><div class="ph-t">Trade Agreements<span class="sub">draw units at the locked price · 2 Influence</span></div></div>' +
       '<div style="padding:6px 16px 12px">' + rows + '</div></div>';
   }
 
@@ -563,8 +555,8 @@
         var mine = ns.find(function(x){ return x.id === STATE.nation.id; });
         if (mine) STATE.nation = mine;
       }
-      var { data: p } = await supabase.from('parties').select('actions_remaining').eq('id', STATE.party.id).single();
-      if (p) STATE.party.actions_remaining = p.actions_remaining;
+      var { data: p } = await supabase.from('parties').select('influence').eq('id', STATE.party.id).single();
+      if (p) STATE.party.influence = p.influence;
       var { data: fl } = await supabase.from('trade_flows').select('exporter_id, importer_id, resource, value');
       if (fl) STATE.flows = fl;
       var { data: sn } = await supabase.from('sanctions').select('by_nation, target_nation, active')
@@ -641,10 +633,10 @@
       '<div class="relnote">Treasury ' + cur + fmt(budget) + 'B · spends 2 Actions on confirm.' +
         (duty > 0 ? ' The ' + tariffPct + '% tariff is withheld from the seller and kept as customs revenue.' : '') +
         (net > budget ? ' Treasury can’t cover it — ' + cur + (Math.round((net - budget) * 10) / 10).toFixed(1) + 'B is added to national debt.' : '') + '</div>';
-    var lowAp = num(STATE.party.actions_remaining) < 2;
+    var lowAp = num(STATE.party.influence) < 2;
     var btn = document.getElementById('confirmBtn');
     btn.disabled = mx < 1 || lowAp;
-    btn.textContent = mx < 1 ? 'They have none' : (lowAp ? 'Need 2 Actions' : 'Buy ' + T.qty + ' ' + T.res + ' for ' + cur + net.toFixed(1) + 'B · 2 AP' + (net > budget ? ' (to debt)' : ''));
+    btn.textContent = mx < 1 ? 'They have none' : (lowAp ? 'Need 2 Influence' : 'Buy ' + T.qty + ' ' + T.res + ' for ' + cur + net.toFixed(1) + 'B · 2 Influence' + (net > budget ? ' (to debt)' : ''));
   }
   async function confirmImport(){
     var btn = document.getElementById('confirmBtn'); btn.disabled = true;
@@ -668,7 +660,7 @@
   function renderSanctionList(){
     var others = STATE.nations.filter(function(n){ return n.id !== STATE.nation.id; })
       .slice().sort(function(a, b){ return (a.name || '').localeCompare(b.name || ''); });
-    var ap = num(STATE.party.actions_remaining);
+    var ap = num(STATE.party.influence);
     document.getElementById('sancList').innerHTML = others.map(function(n){
       var byMe = !!STATE.sanctions.byMe[n.id], onMe = !!STATE.sanctions.onMe[n.id];
       var reg = regimeNum((n.economy || {}).regime), auth = reg != null && reg <= 4;
@@ -679,7 +671,7 @@
         : 'Regime unknown';
       var btn = byMe
         ? '<button class="liftbtn" data-lift="' + esc(n.id) + '">Lift Sanctions</button>'
-        : '<button class="enactbtn" data-sanc="' + esc(n.id) + '"' + (ap < 3 ? ' disabled' : '') + '>' + (ap < 3 ? 'Need 3 AP' : 'Enact Sanctions') + '</button>';
+        : '<button class="enactbtn" data-sanc="' + esc(n.id) + '"' + (ap < 3 ? ' disabled' : '') + '>' + (ap < 3 ? 'Need 3 Influence' : 'Enact Sanctions') + '</button>';
       return '<div class="sancrow"><div class="sc-crest" style="background:' + colorFor(n.id) + '">' + esc(crestOf(n.name)) + '</div>' +
         '<div class="sc-id"><div class="sc-nm">' + esc(n.name) + '</div><div class="sc-rg ' + (auth ? 'auth' : 'dem') + '">' + esc(hint) + '</div></div>' + btn + '</div>';
     }).join('') || '<div class="sc-rg" style="padding:14px">No other nations to sanction.</div>';
@@ -698,7 +690,7 @@
     } else {
       ping('Sanctions lifted on <b>' + esc((data && data.target) || 'the nation') + '</b>.');
     }
-    await reload();              // refreshes STATE.sanctions, AP and the partner table behind the modal
+    await reload();              // refreshes STATE.sanctions, Influence and the partner table behind the modal
     renderSanctionList();        // the modal stays open — re-render its rows with the new state
   }
   document.getElementById('sancClose').onclick = closeSanctions;
@@ -728,9 +720,9 @@
       '<div class="drow"><span>Locked price</span><span class="dv">' + cur + num(D.a.unit_price).toFixed(2) + 'B / unit</span></div>' +
       '<div class="drow total"><span>You pay</span><span class="dv">' + cur + total.toFixed(1) + 'B</span></div>' +
       '<div class="relnote">Treasury ' + cur + fmt(budget) + 'B · spends 2 Actions on confirm.' + (total > budget ? ' The shortfall is added to national debt.' : '') + '</div>';
-    var lowAp = num(STATE.party.actions_remaining) < 2, btn = document.getElementById('drawConfirm');
+    var lowAp = num(STATE.party.influence) < 2, btn = document.getElementById('drawConfirm');
     btn.disabled = mx < 1 || lowAp;
-    btn.textContent = mx < 1 ? 'Nothing to draw' : (lowAp ? 'Need 2 Actions' : 'Draw ' + D.qty + ' ' + D.a.resource + ' · 2 AP');
+    btn.textContent = mx < 1 ? 'Nothing to draw' : (lowAp ? 'Need 2 Influence' : 'Draw ' + D.qty + ' ' + D.a.resource + ' · 2 Influence');
   }
   async function confirmDraw(){
     var btn = document.getElementById('drawConfirm'); btn.disabled = true;
@@ -751,7 +743,7 @@
     const user = await requireUser();
     if (!user) return;
     try {
-      const { data: party } = await supabase.from('parties').select('id, name, archetype, nation_id, actions_remaining').eq('user_id', user.id).single();
+      const { data: party } = await supabase.from('parties').select('id, name, archetype, nation_id, influence').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: nations } = await supabase.from('nations')
         .select('id, name, flag, population, stats, economy, on_hand, production, demands, advanced_year, produce_until_tick')

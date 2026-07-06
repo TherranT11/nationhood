@@ -160,7 +160,7 @@ begin
   v_p := public._begin_action(0);   -- requires >= 1 action; 3 checked below
   if not public._party_holds_ministry(v_p.id, 'Trade') then
     raise exception 'Only the Minister of Trade can commit a trade agreement.'; end if;
-  if v_p.actions_remaining < 3 then raise exception 'Not enough actions left this turn (need 3).'; end if;
+  if v_p.influence < 3 then raise exception 'Not enough Influence (need 3).'; end if;
   select * into v_a from public.trade_agreements where id = p_id for update;
   if not found then raise exception 'No such trade agreement.'; end if;
   if v_a.buyer_party_id <> v_p.id then raise exception 'Only the proposing nation commits the agreement.'; end if;
@@ -174,7 +174,7 @@ begin
   update public.trade_agreements
      set status = 'active', unit_price = v_unit, start_tick = v_tick, end_tick = v_tick + v_a.term_years * 12
    where id = p_id;
-  update public.parties set actions_remaining = actions_remaining - 3 where id = v_p.id;
+  update public.parties set influence = influence - 3 where id = v_p.id;
 
   select name into v_bname from public.nations where id = v_a.buyer_nation;
   select name into v_sname from public.nations where id = v_a.seller_nation;
@@ -184,7 +184,7 @@ begin
            || ' have signed a ' || v_a.term_years || '-year trade agreement: ' || v_a.qty_per_year || ' '
            || v_a.resource || '/yr at −' || v_a.discount_pct || '%.', public.current_game_date()
       from (values (v_a.buyer_nation), (v_a.seller_nation)) as t(n);
-  return jsonb_build_object('id', p_id, 'unit_price', v_unit, 'actions', v_p.actions_remaining - 3);
+  return jsonb_build_object('id', p_id, 'unit_price', v_unit, 'actions', v_p.influence - 3);
 end $$;
 grant execute on function public.commit_trade_agreement(uuid) to authenticated;
 

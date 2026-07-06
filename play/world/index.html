@@ -8,16 +8,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
 <style>
-  :root{
-    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
-    --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
-    --indigo:#5546E8;--indigo-soft:#ECE9FD;
-    --red:#C42B2B;--red-soft:#FBEAE9;--amber:#E0820E;--amber-soft:#FBF0DD;--green:#16915a;--green-soft:#E5F4EC;--blue:#1f86d6;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
-  .app{display:flex;min-height:100vh}
 
   /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
 
@@ -86,7 +79,7 @@
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { esc, fmtGdp, fmtPop, declaredValue, loadHogTitleSlot } from '/util.js';
   import { regimeText, statLabel, statName, statBand } from '/ladders.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
 
@@ -182,7 +175,7 @@
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      const { data: party } = await supabase.from('parties').select('name, archetype, nation_id, funds, actions_remaining').eq('user_id', user.id).single();
+      const { data: party } = await supabase.from('parties').select('name, archetype, nation_id, influence').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
 
       // Home nation drives the sidebar brand + the topbar's currency.
@@ -228,8 +221,7 @@
       if (home && home.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = home.flag; }
 
       var currency = (home && home.economy && home.economy.currency) || '$';
-      setTopbarFunds(currency, party.funds);
-      setTopbarActions(party.actions_remaining);
+      setTopbarActions(party.influence);
 
       // Relations 1–10 between the player's nation and each other nation (symmetric; missing = 5).
       var relMap = {};

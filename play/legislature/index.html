@@ -8,16 +8,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
 <style>
-  :root{
-    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
-    --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
-    --indigo:#5546E8;--indigo-soft:#ECE9FD;
-    --red:#C42B2B;--red-soft:#FBEAE9;--amber:#E0820E;--amber-soft:#FBF0DD;--green:#16915a;--green-soft:#E5F4EC;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
-  .app{display:flex;min-height:100vh}
 
   /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
 
@@ -62,10 +55,15 @@
   .lawchg__k{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
   .lawchg__v{font-weight:700;font-size:14px;color:var(--ink);text-align:right}
   .lawchg__v.hl{color:var(--indigo)}
-  .votebar{display:flex;height:9px;border-radius:6px;overflow:hidden;background:var(--chip);margin:11px 0 7px}
+  /* vote bar + the outright-majority threshold marker (tutorial's tally shape) */
+  .votewrap{position:relative;margin:11px 0 7px}
+  .votebar{display:flex;height:9px;border-radius:6px;overflow:hidden;background:var(--chip)}
   .votebar .va{background:var(--green)}.votebar .vn{background:var(--red)}
-  .votenums{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+  .votebar__maj{position:absolute;top:-3px;height:15px;width:2px;background:var(--ink);opacity:.5;transform:translateX(-1px);border-radius:1px}
+  .votenums{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;align-items:center}
   .votenums b{color:var(--ink)}
+  .votenums .verdict{font-weight:700}
+  .votenums .verdict.pass{color:var(--green)}.votenums .verdict.fail{color:var(--red)}
   /* live resolution readout under the bar */
   .reso{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.02em;margin:9px 0 2px;font-weight:700}
   .reso.pass{color:var(--green)}.reso.fail{color:var(--red)}
@@ -77,6 +75,7 @@
   .rollhd span:nth-child(2){text-align:right}.rollhd span:nth-child(3){text-align:center}
   .rollr{border-top:1px solid var(--line);padding:6px 0}
   .rollr .pn{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:7px;min-width:0}
+  .rollr .rolldot{width:9px;height:9px;border-radius:3px;flex:none}
   /* The owner's OOC nickname shown after a party name — "Centrist Union (Theo)". */
   .pnick{font-weight:600;color:var(--soft)}
   .rollr .ru{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.05em;text-transform:uppercase;background:var(--indigo-soft);color:var(--indigo);padding:1px 6px;border-radius:20px;font-weight:700;flex:none}
@@ -151,13 +150,13 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
   import { esc, majority, tickToDate } from '/util.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchProposals, fetchVotes, proposalToFloor, castVote, tallyVotes, proposalOutcome, proposalLocked, fetchPolicies } from '/proposals.js';
-  import { ideologyLabel } from '/archetypes.js';
+  import { ideologyLabel, partyColor } from '/archetypes.js';
   import { policyOptions, policyOptionIdx } from '/policies.js';
 
-  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
+  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
   // Propose New Law → Law / Declaration choice, then route to the propose page.
@@ -172,7 +171,7 @@
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">' + msg + '</div></div>'; }
 
   var FLOOR_WINDOW = 6;  // ticks a measure stands on the floor before failing — mirrors advance_tick (schema/60)
-  var ST = { party:null, session:'', tick:0, total:0, maj:0, govBloc:0, seatsByParty:{}, partyName:{}, partyHandle:{}, proposals:[], votes:[], policyDefs:{}, nationPolicies:{}, pop:0, pros:10, busy:false };
+  var ST = { party:null, session:'', tick:0, total:0, maj:0, govBloc:0, seatsByParty:{}, partyName:{}, partyHandle:{}, colorByParty:{}, proposals:[], votes:[], policyDefs:{}, nationPolicies:{}, pop:0, pros:10, busy:false };
   // Owner OOC nickname after a party name — "Centrist Union (Theo)". One source for the suffix.
   function nickSuffix(pid){ var h = ST.partyHandle[pid]; return h ? ' <span class="pnick">(' + esc(h) + ')</span>' : ''; }
 
@@ -199,7 +198,7 @@
       ids.map(function (id) {
         var v = by[id], cls = v === undefined ? 'none' : v ? 'aye' : 'nay', lbl = v === undefined ? 'Awaiting' : v ? 'Aye' : 'Nay';
         var seats = ST.seatsByParty[id] || 0, you = id === ST.party.id ? '<span class="ru">You</span>' : '';
-        return '<div class="rollr"><span class="pn">' + esc(ST.partyName[id]) + nickSuffix(id) + you + '</span>' +
+        return '<div class="rollr"><span class="pn"><span class="rolldot" style="background:' + (ST.colorByParty[id] || 'var(--chip)') + '"></span>' + esc(ST.partyName[id]) + nickSuffix(id) + you + '</span>' +
           '<span class="ps">' + seats + '</span><span class="pv ' + cls + '">' + lbl + '</span></div>';
       }).join('') + '</div>';
   }
@@ -257,8 +256,9 @@
     var top = introLine(p) + lawChange(p);
     var toggle = isLaw ? '<a class="billtoggle" href="/play/legislature/bill/?id=' + encodeURIComponent(p.id) + '">View full bill ▸</a>' : '';
     return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + top + toggle +
-      '<div class="votebar"><span class="va" style="width:' + ayePct + '%"></span><span class="vn" style="width:' + nayPct + '%"></span></div>' +
-      '<div class="votenums"><span>Aye <b>' + t.aye + '</b></span><span>Nay <b>' + t.nay + '</b></span><span>Not voted <b>' + notv + '</b></span><span><b>' + cast + '</b> / ' + ST.total + ' seats cast</span></div>' +
+      '<div class="votewrap"><div class="votebar"><span class="va" style="width:' + ayePct + '%"></span><span class="vn" style="width:' + nayPct + '%"></span></div>' +
+        (ST.total ? '<i class="votebar__maj" style="left:' + (ST.maj / ST.total * 100).toFixed(1) + '%" title="' + ST.maj + ' for an outright majority"></i>' : '') + '</div>' +
+      '<div class="votenums"><span>Aye <b>' + t.aye + '</b></span><span>Nay <b>' + t.nay + '</b></span><span>Not voted <b>' + notv + '</b></span><span>' + ST.maj + ' to pass</span><span class="verdict ' + (carry ? 'pass' : 'fail') + '">' + (carry ? 'Passing' : 'Failing') + '</span></div>' +
       '<div class="reso ' + (carry ? 'pass' : 'fail') + '">' + reso + (locked ? ' · resolves next tick' : ticksLeft(p)) + '</div>' +
       '<div class="rolltitle">' + (noConf ? 'Roll call · the government must vote No to survive' : 'Roll call · carries on a simple majority (more Aye than Nay), or ' + ST.maj + '+ Aye outright') + '</div>' +
       rollCall(p.id) +
@@ -338,10 +338,15 @@
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, funds, actions_remaining').eq('user_id', user.id).single();
+      const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy, policies, population, stats').eq('id', party.nation_id).single();
-      const { data: parties } = await supabase.from('parties').select('id, name, seats, in_government').eq('nation_id', party.nation_id);
+      // archetype + color drive the roll-call party dots (partyColor falls back to the archetype
+      // hue when a party has no custom colour). Defensive: retry without `color` if that column
+      // isn't migrated here, so the chamber never fails over a cosmetic field.
+      var pRes = await supabase.from('parties').select('id, name, seats, in_government, archetype, color').eq('nation_id', party.nation_id);
+      if (pRes.error) pRes = await supabase.from('parties').select('id, name, seats, in_government, archetype').eq('nation_id', party.nation_id);
+      const parties = pRes.data;
       const nationName = (nation && nation.name) || party.nation_id;
       // Policy definitions + this nation's in-force options — so a law measure can show
       // the Current Law it would change (proposed option is already in the proposal payload).
@@ -355,7 +360,7 @@
       ST.party = party;
       ST.total = (nation && nation.legislature_seats) || 0;
       ST.maj = ST.total ? majority(ST.total) : 0;
-      (parties || []).forEach(function (p) { ST.seatsByParty[p.id] = p.seats || 0; ST.partyName[p.id] = p.name; if (p.in_government) ST.govBloc += (p.seats || 0); });
+      (parties || []).forEach(function (p) { ST.seatsByParty[p.id] = p.seats || 0; ST.partyName[p.id] = p.name; ST.colorByParty[p.id] = partyColor(p); if (p.in_government) ST.govBloc += (p.seats || 0); });
       // Owner OOC nicknames, keyed by party (cosmetic — a failure must never block the chamber).
       try {
         const { data: hrows } = await supabase.rpc('nation_party_handles', { p_nation: party.nation_id });
@@ -370,8 +375,7 @@
       ST.tick = await currentTick();
       ST.session = tickToDate(ST.tick); // assembly summary; the topbar owns its own date
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
-      setTopbarFunds(currency, party.funds);
-      setTopbarActions(party.actions_remaining);
+      setTopbarActions(party.influence);
       await loadProposals();
     } catch (e) {
       fail('Couldn’t load the Legislature right now. Refresh to try again.');

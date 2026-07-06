@@ -1,6 +1,13 @@
 -- 45 · Coalition negotiations (cross-player deal-making) + RPCs
 -- Depends on: 10 (nations), 20 (parties), 40 (action helpers + current_game_date).
 -- Run after 40.
+--
+-- DORMANT BUT LOAD-BEARING (post-teardown). The player-facing coalition actions that WROTE to
+-- these tables were removed (schema/146), so in normal play the tables stay empty and government
+-- formation falls through to the single-party path. Do NOT drop these tables or _majority() /
+-- is_negotiation_participant(): _seat_government() and resolve_election() (schema/60) still read
+-- negotiations / negotiation_parties / negotiation_terms, and governments.source_negotiation_id is
+-- a live FK. Removing them means rewriting the seating + election resolver — deliberately deferred.
 
 -- ---------------------------------------------------------------------------
 -- A negotiation is opened by a HOST party and brings one or more other parties
@@ -207,7 +214,7 @@ begin
     values (v_host.nation_id, v_host.id, 'coalition',
             'The ' || v_host.name || ' has opened coalition talks with the ' || v_target.name || '.',
             public.current_game_date());
-  return jsonb_build_object('id', v_neg, 'actions', v_host.actions_remaining);
+  return jsonb_build_object('id', v_neg, 'actions', v_host.influence);
 end $$;
 grant execute on function public.coalition_open(uuid) to authenticated;
 
@@ -234,8 +241,8 @@ begin
   end if;
 
   insert into public.negotiation_parties (negotiation_id, party_id) values (p_neg, p_target);
-  update public.parties set actions_remaining = actions_remaining - 1 where id = v_host.id;
-  return jsonb_build_object('actions', v_host.actions_remaining - 1);
+  update public.parties set influence = influence - 1 where id = v_host.id;
+  return jsonb_build_object('actions', v_host.influence - 1);
 end $$;
 grant execute on function public.coalition_invite(uuid, uuid) to authenticated;
 
@@ -472,7 +479,7 @@ begin
   -- concurrent commits serialize on this row, and the loser must see 'committed' here
   -- so it raises instead of charging a second action for an already-locked deal.
   if (select status from public.negotiations where id = p_neg) <> 'active' then raise exception 'This agreement is already committed.'; end if;
-  if v_host.actions_remaining < 1 then raise exception 'You need an action to lock in the agreement.'; end if;
+  if v_host.influence < 1 then raise exception 'You need an action to lock in the agreement.'; end if;
 
   if not exists (select 1 from public.negotiation_parties where negotiation_id = p_neg and status = 'accepted') then
     raise exception 'At least one party must be at the table and have accepted.';
@@ -511,7 +518,7 @@ begin
   end if;
 
   update public.negotiations set status = 'committed' where id = p_neg;
-  update public.parties set actions_remaining = actions_remaining - 1 where id = v_host.id;   -- the action lands here, on a clean commit
+  update public.parties set influence = influence - 1 where id = v_host.id;   -- the action lands here, on a clean commit
 end $$;
 grant execute on function public.coalition_commit(uuid) to authenticated;
 

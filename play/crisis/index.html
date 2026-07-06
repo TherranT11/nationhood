@@ -8,22 +8,16 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
 <style>
-  :root{
-    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
-    --line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD;
-    --red:#C42B2B;--green:#16915a;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100%}
-  .app{display:flex;min-height:100vh}
 
   /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
 
   /* main */
   .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
-  /* top bar (Discord/funds/actions/date/settings gear) now lives in /topbar.js */
+  /* top bar (Discord/Influence/budget/date/settings gear) now lives in /topbar.js */
 
   .back{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;margin-bottom:16px;text-decoration:none}
   .back:hover{color:var(--indigo)}
@@ -117,10 +111,10 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, currentParty, currentTick } from '/supabase.js';
   import { esc } from '/util.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
-  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
+  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
 
   var id = new URLSearchParams(location.search).get('id') || '';
@@ -257,7 +251,7 @@
       html += '<section class="mod"><div class="mod__hd">Options</div><div class="opts">' +
         acts.map(function (a, i) { return actionHtml(a, i, stage, amPM); }).join('') + '</div>' +
         '<div class="opthint">' + (amPM
-          ? 'Taking an action costs 2 party actions.'
+          ? 'Taking an action costs 2 Influence.'
           : 'Only the head of government can act on a national crisis.') + '</div></section>';
     }
 
@@ -274,8 +268,8 @@
     }
   }
 
-  // Head of government acts on the crisis (server-side crisis_act); 1 party action.
-  // On success, ping the outcome, sync the AP pill, and reload the whole view so the
+  // Head of government acts on the crisis (server-side crisis_act); 1 Influence.
+  // On success, ping the outcome, sync the Influence pill, and reload the whole view so the
   // meter/stage, options and history all refresh. Busy-locked against double-fire.
   async function manageCrisis(actionIdx, stage) {
     if (acting) return;
@@ -324,8 +318,8 @@
     const me = await currentParty();
     var amPM = false, myName = '', currency = (nation && nation.economy && nation.economy.currency) || '$';
     if (me && me.id) {
-      const { data: myParty } = await supabase.from('parties').select('name, funds, actions_remaining').eq('id', me.id).maybeSingle();
-      if (myParty) { myName = myParty.name || ''; setTopbarFunds(currency, myParty.funds); setTopbarActions(myParty.actions_remaining); }
+      const { data: myParty } = await supabase.from('parties').select('name, influence').eq('id', me.id).maybeSingle();
+      if (myParty) { myName = myParty.name || ''; setTopbarActions(myParty.influence); }
       const { data: govt } = await supabase.from('governments')
         .select('formateur_party_id').eq('nation_id', nc.nation_id).eq('status', 'active').maybeSingle();
       amPM = !!(govt && govt.formateur_party_id === me.id);

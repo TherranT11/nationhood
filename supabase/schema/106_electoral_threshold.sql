@@ -89,13 +89,13 @@ begin
     returning id into v_pid;
 
   if not p_to_floor then
-    return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_party.actions_remaining);
+    return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_party.influence);
   end if;
 
-  update public.parties set actions_remaining = actions_remaining - 1 where id = v_party.id;
+  update public.parties set influence = influence - 1 where id = v_party.id;
   insert into public.proposal_votes (proposal_id, party_id, aye) values (v_pid, v_party.id, true);
   v_res := public._resolve_proposal(v_pid);
-  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_party.actions_remaining - 1);
+  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_party.influence - 1);
 end $$;
 grant execute on function public.propose_threshold(int, boolean) to authenticated;
 

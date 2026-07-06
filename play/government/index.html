@@ -8,16 +8,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
 <style>
-  :root{
-    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
-    --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
-    --indigo:#5546E8;--indigo-soft:#ECE9FD;
-    --red:#C42B2B;--red-soft:#FBEAE9;--amber:#E0820E;--amber-soft:#FBF0DD;--green:#16915a;--green-soft:#E5F4EC;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
-  .app{display:flex;min-height:100vh}
 
   /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
 
@@ -65,12 +58,11 @@
   .gov__id .pnick{font-size:.7em}
   .subhd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin:18px 0 2px}
 
-  /* confidence rail */
-  .conf__n{font-weight:900;font-size:clamp(40px,7vw,52px);line-height:.9;letter-spacing:-.04em}
-  .conf__n span{font-size:20px;font-weight:800}
+  /* confidence — health hearts (tutorial shape) */
+  .conf__hearts{display:flex;gap:9px;margin-bottom:4px}
+  .conf__hearts .heart{width:34px;height:34px;fill:none;stroke:var(--line2,#D9D6D0);stroke-width:1.5}
+  .conf__hearts .heart.on{stroke:none}
   .conf__band{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;margin:8px 0 14px}
-  .conf__bar{height:12px;border-radius:7px;background:var(--chip);overflow:hidden;margin-bottom:6px}
-  .conf__fill{height:100%;width:0;border-radius:7px;transition:width .3s}
   .conf__note{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);line-height:1.5;margin-top:12px}
   .conf__break{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 2px}
   .bk{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.03em;font-weight:700;padding:4px 8px;border-radius:7px;background:var(--chip);color:var(--soft);white-space:nowrap}
@@ -133,21 +125,40 @@
   .polopt .role{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
   .mcard__empty{color:var(--soft);font-style:italic;font-size:13px;padding:8px 0}
 
-  /* formation-window decision card */
-  .decide{border-top:3px solid var(--tc,var(--indigo));margin-bottom:18px}
-  .decide__eye{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--indigo);font-weight:700}
-  .decide h2{font-family:inherit;text-transform:none;font-weight:900;font-size:21px;letter-spacing:-.02em;color:var(--ink);margin:6px 0 8px}
-  .decide p{color:var(--muted);font-size:13.5px;line-height:1.55;max-width:640px}
-  .decide p b{color:var(--ink);font-weight:700}
-  .decide__btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
-  .decide__hint{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);margin-top:10px}
-  .btn{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;font-weight:700;text-transform:uppercase;padding:11px 18px;border-radius:10px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:filter .15s,opacity .15s}
-  .btn:hover{filter:brightness(1.06)}
-  .btn--ghost{background:var(--surface);color:var(--indigo)}
-  .btn--danger{background:var(--red);border-color:var(--red)}
-  .btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--bg);font-family:'Space Mono',monospace;font-size:12px;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:120;max-width:90vw;text-align:center;line-height:1.55}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* State of the Nation — economy facts, domestic production, identity declarations, cities
+     (folded in from the retired Nation page; the map + nation-browser moved to World). */
+  .facts{display:flex;flex-direction:column}
+  .frow{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .frow:last-child{border-bottom:none}
+  .frow .fk{color:var(--muted);font-size:12.5px;font-family:'Space Mono',monospace;letter-spacing:.03em}
+  .frow .fv{font-weight:700;font-size:14.5px;text-align:right}
+  .econ{display:flex;flex-wrap:wrap;gap:10px}
+  .ecell{flex:1;min-width:118px;border:1px solid var(--line);border-radius:11px;padding:11px 14px;background:var(--field)}
+  .ecell .k{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .ecell .v{font-weight:800;font-size:19px;letter-spacing:-.01em;margin-top:3px}
+  .ecell .oh{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
+  .decls{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:16px 26px}
+  .dgrp__h{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:4px}
+  .drow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+  .drow:last-child{border-bottom:none}
+  .drow .dk{color:var(--muted)}
+  .drow .dv{font-weight:700;text-align:right}
+  .citygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(262px,1fr));gap:14px}
+  .citycard{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--field)}
+  .citycard__hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .cityname{font-weight:800;font-size:15.5px;letter-spacing:-.01em}
+  .citycap{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border-radius:20px;padding:3px 8px;flex:none}
+  .citypct{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-top:5px}
+  .citypct b{color:var(--ink);font-weight:700}
+  .citydesc{font-size:13px;color:var(--muted);line-height:1.5;margin-top:8px}
+  .citygov{margin-top:9px;padding-top:9px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:5px}
+  .citygov .g{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .citygov .gk{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
+  .citygov .gv{font-weight:700;font-size:13px;text-align:right}
+  .citygov .mtag{font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.04em;color:var(--soft);margin-left:2px}
 
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -178,15 +189,15 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
   import { condText as objCondText, rewardText as objRewardText } from '/objectives.js';
-  import { esc, majority, declaredValue, loadHogTitleSlot } from '/util.js';
+  import { esc, majority, declaredValue, loadHogTitleSlot, fmtGdp, fmtPop, tickToDate } from '/util.js';
   import { fetchAdministrations, renderAdministrations } from '/administrations.js';
   import { partyColor, ideologyLabel } from '/archetypes.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
   import { MINISTRIES } from '/ministries.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
-  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
+  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
   function typeLabel(t){ return t === 'coalition' ? 'Coalition Government' : t === 'minority' ? 'Minority Government' : 'Majority Government'; }
@@ -318,8 +329,78 @@
     return rows + eligible.slice(MINISTRIES.length).map(function(p){ return cabRow('Non-Descript Minister', esc(polFullName(p)) + tag); }).join('');
   }
 
+  // ---- State of the Nation (folded in from the retired Nation page): the nation's economy
+  // facts + domestic production, its identity declarations, and its cities. The world map and
+  // the nation browser moved to World; this is the your-nation summary only. ----
+  function cap(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+  // The domestic production resources shown in the strip. Each accrues an on-hand stockpile
+  // through the produce tick (schema/113), Diplomacy included — produced, banked, and spent.
+  var ECON = ['energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy'];
 
-  function render(govt, nation, parties, agenda, amPM, formation, pmLeader, formateurPols, polsByParty, appts){
+  // Cities roster — capital first, then by population share (desc), then name. The capital is
+  // the one whose name matches the declared capital_name (ONE source — the declaration). Each
+  // city shows its share of the nation's population and the derived headcount. Flavour only.
+  function citiesBox(cities, population, capitalName, mayorAbbr){
+    function isCap(c){ return !!capitalName && !!c.name && c.name.trim().toLowerCase() === String(capitalName).trim().toLowerCase(); }
+    var list = (cities || []).slice().sort(function(a, b){
+      return ((isCap(b) ? 1 : 0) - (isCap(a) ? 1 : 0)) || (Number(b.pop_pct) || 0) - (Number(a.pop_pct) || 0) || ((a.name || '') < (b.name || '') ? -1 : 1);
+    });
+    var body = list.length
+      ? '<div class="citygrid">' + list.map(function(c){
+          var pct = (c.pop_pct == null || c.pop_pct === '') ? null : Number(c.pop_pct);
+          var head = (pct != null && population) ? ' · ' + fmtPop(Math.round(population * pct / 100)) : '';
+          var pctLine = pct != null ? '<div class="citypct"><b>' + pct + '%</b> of population' + head + '</div>' : '';
+          var desc = c.description ? '<div class="citydesc">' + esc(c.description) + '</div>' : '';
+          // Mayor (NPC) + their party tag ([IND] for an unaffiliated seed) + next election date.
+          var govRows = '';
+          if (c.mayor_name) {
+            var mAbbr = (mayorAbbr && c.mayor_party_id && mayorAbbr[c.mayor_party_id]) ? mayorAbbr[c.mayor_party_id] : 'IND';
+            govRows += '<div class="g"><span class="gk">Mayor</span><span class="gv">' + esc(c.mayor_name) + ' <span class="mtag">[' + esc(mAbbr) + ']</span></span></div>';
+          }
+          if (c.mayor_election_tick != null) govRows += '<div class="g"><span class="gk">Next election</span><span class="gv">' + esc(tickToDate(c.mayor_election_tick)) + '</span></div>';
+          var gov = govRows ? '<div class="citygov">' + govRows + '</div>' : '';
+          return '<div class="citycard"><div class="citycard__hd"><span class="cityname">' + esc(c.name || 'City') + '</span>' +
+            (isCap(c) ? '<span class="citycap">Capital</span>' : '') + '</div>' + pctLine + desc + gov + '</div>';
+        }).join('') + '</div>'
+      : '<p class="empty" style="padding:20px">No cities have been added yet.</p>';
+    return '<section class="panel"><h2>Cities</h2>' + body + '</section>';
+  }
+
+  // Assemble the State-of-the-Nation panels (Domestic Economy, National Identity, Cities) for
+  // the given nation, reading the module-level declaration slots + cities loaded at boot.
+  function stateOfNation(nation){
+    var eco = nation.economy || {}, prod = nation.production || {}, onhand = nation.on_hand || {};
+    var vals = nation.declarations || {};
+    var slotBySlug = {}; DECL_SLOTS.forEach(function(s){ slotBySlug[s.slug] = s; });
+    function declValue(slug){ return declaredValue(slotBySlug[slug], vals); }
+    function frow(k, v){ return '<div class="frow"><span class="fk">' + k + '</span><span class="fv">' + v + '</span></div>'; }
+
+    var economy =
+      '<section class="panel"><h2>Domestic Economy</h2>' +
+        '<div class="facts">' +
+          frow('GDP', (eco.currency || '$') + fmtGdp(nation.gdp)) +
+          frow('Population', fmtPop(nation.population)) +
+        '</div>' +
+        '<div class="econ" style="margin-top:14px">' +
+          ECON.map(function(k){ var v = prod[k], oh = onhand[k]; return '<div class="ecell"><div class="k">' + cap(k) + ' Production</div><div class="v">' + (v != null ? v : '—') + '</div><div class="oh">On hand · ' + (oh != null ? oh : '—') + '</div></div>'; }).join('') +
+        '</div></section>';
+
+    // National Identity = every declaration slot's current value, grouped.
+    var groups = [];
+    DECL_SLOTS.forEach(function(s){ var g = s.grp || 'Other'; if (groups.indexOf(g) < 0) groups.push(g); });
+    var declHtml = DECL_SLOTS.length
+      ? '<div class="decls">' + groups.map(function(g){
+          var rows = DECL_SLOTS.filter(function(s){ return (s.grp || 'Other') === g; })
+            .map(function(s){ return '<div class="drow"><span class="dk">' + esc(s.label) + '</span><span class="dv">' + esc(declValue(s.slug)) + '</span></div>'; }).join('');
+          return '<div class="dgrp"><div class="dgrp__h">' + esc(g) + '</div>' + rows + '</div>';
+        }).join('') + '</div>'
+      : '<p class="muted" style="padding:8px 0">No declarations have been defined yet.</p>';
+    var identityBox = '<section class="panel"><h2>National Identity</h2>' + declHtml + '</section>';
+
+    return economy + identityBox + citiesBox(CITIES, nation.population, declValue('capital_name'), MAYOR_ABBR);
+  }
+
+  function render(govt, nation, parties, agenda, amPM, pmLeader, formateurPols, polsByParty, appts){
     polsByParty = polsByParty || {};
     FULFILL = {};   // rebuilt below for each pending ministry the PM can fill
     var box = document.getElementById('content');
@@ -332,7 +413,8 @@
         (oneParty
           ? esc(nation.name || 'This nation') + ' is a one-party state — power isn’t shared through a coalition, so there’s no Government Confidence to track here.'
           : 'A government is seated when the nation holds its first general election.') +
-        '</span></div></div>';
+        '</span></div></div>' +
+        stateOfNation(nation);   // the nation still has an economy, identity, and cities without a government
       return;
     }
     var byId = {}; parties.forEach(function(p){ byId[p.id] = p; });
@@ -352,6 +434,7 @@
     var maj = majority(total);
     var c = Math.max(0, Math.min(100, Number(govt.confidence) || 0));
     var bd = band(c);
+    var hearts = c > 50 ? 3 : c >= 40 ? 2 : 1;   // 3 confidence bands → filled hearts (tutorial's health shape)
 
     var members = gov.map(function(p, i){
       var role = govt.type === 'coalition' ? (i === 0 ? 'Leading party' : 'Coalition partner')
@@ -418,46 +501,22 @@
           '<small>' + sub + '</small></div>' +
           '<span class="ag__s ' + (done ? 'done' : 'pending') + '">' + (done ? 'Done' : 'Pending') + '</span>' + action + '</div>';
       }).join('');
-      if (amPM) agendaHtml += '<p class="conf__note" style="text-align:left;margin-top:12px">Enacting a promise costs 1 party action and raises Government Confidence +3%. Filling a ministry is free and raises it +0.5%.</p>';
+      if (amPM) agendaHtml += '<p class="conf__note" style="text-align:left;margin-top:12px">Enacting a promise costs 1 Influence and raises Government Confidence +3%. Filling a ministry is free and raises it +0.5%.</p>';
     } else {
       agendaHtml = '<p class="muted">No coalition agenda — this government is not bound by negotiated terms.</p>';
     }
 
-    // Formation-window decision card (formateur only, the tick the government formed).
-    var f = formation || {};
-    var cardHtml = '';
-    if (f.canRenege){
-      cardHtml =
-        '<div class="panel decide">' +
-          '<span class="decide__eye">Form your government</span>' +
-          '<h2>You won the most seats</h2>' +
-          '<p>Your pre-agreed coalition has taken office. You can honour that deal, or tear it up and build a different majority — but only this turn. Breaking it costs <b>−5% Government Confidence</b> and <b>−5% of your Popularity</b>, and there’s no going back to the current coalition.</p>' +
-          '<div class="decide__btns">' +
-            '<button class="btn btn--ghost" id="enterAgreed" type="button">Enter Agreed Coalition</button>' +
-            '<button class="btn btn--danger" id="formNew" type="button">Form New Coalition</button>' +
-          '</div>' +
-        '</div>';
-    } else if (f.postRenege){
-      var hasNeg = !!f.negId;
-      cardHtml =
-        '<div class="panel decide">' +
-          '<span class="decide__eye">Form your government</span>' +
-          '<h2>Governing alone</h2>' +
-          '<p>You walked away from your coalition and now hold power as a minority. Assemble a new majority at the negotiating table before the turn ends — otherwise you stay a minority government. Sealing a new coalition costs <b>−5% Government Confidence</b> and <b>−5% of your Popularity</b>.</p>' +
-          '<div class="decide__btns">' +
-            '<a class="btn btn--ghost" href="/play/negotiate/">Go to Negotiate</a>' +
-            '<button class="btn" id="installNew" type="button"' + (hasNeg ? '' : ' disabled') + '>Install New Coalition</button>' +
-          '</div>' +
-          (hasNeg ? '' : '<div class="decide__hint">No committed majority agreement yet — form one at Negotiate, then install it here.</div>') +
-        '</div>';
-    }
-
-    box.innerHTML = cardHtml +
+    box.innerHTML =
       // 1 — Government Confidence
       '<div class="panel"><h2>Government Confidence</h2>' +
-        '<div class="conf__n" style="color:' + bd.color + '">' + c.toFixed(1) + '<span>%</span></div>' +
-        '<div class="conf__band" style="color:' + bd.color + '">' + bd.word + '</div>' +
-        '<div class="conf__bar"><div class="conf__fill" style="width:' + c + '%;background:' + bd.color + '"></div></div>' +
+        '<div class="conf__hearts">' +
+          [1, 2, 3].map(function (i) {
+            return '<svg class="heart' + (i <= hearts ? ' on' : '') + '" viewBox="0 0 24 24"' +
+              (i <= hearts ? ' style="fill:' + bd.color + '"' : '') +
+              '><path d="M12 21s-8-5.3-8-11a4.6 4.6 0 0 1 8-2.9 4.6 4.6 0 0 1 8 2.9c0 5.7-8 11-8 11z"/></svg>';
+          }).join('') +
+        '</div>' +
+        '<div class="conf__band" style="color:' + bd.color + '">' + bd.word + ' &middot; ' + c.toFixed(0) + '%</div>' +
         confChips(govt) +
         '<div class="conf__note">Public approval of the sitting government. Below 40% it costs incumbents seats at the next election; above 50% it wins them. Carrying out the agenda moves it.' +
           (govt.type === 'minority' ? ' A minority government also loses 0.3% each tick — if it falls below 20%, the head of government’s party is penalised and a snap election is called.' : '') + '</div>' +
@@ -483,7 +542,10 @@
         '<div class="panel"><h2>Agenda &amp; National Objectives</h2>' + agendaHtml + '<div id="natObjectives"></div></div>' +
         '<div class="panel"><h2>The Cabinet</h2>' + cabinetHtml + '</div>' +
       '</div>' +
-      // 6 — the collapsible Administration History (past + current governments and their events).
+      // 6 — State of the Nation: the nation's economy, identity, and cities (folded in from
+      // the retired Nation page).
+      stateOfNation(nation) +
+      // 7 — the collapsible Administration History (past + current governments and their events).
       '<div id="adminHistory"></div>';
 
     box.querySelectorAll('.enact').forEach(function(b){
@@ -491,13 +553,13 @@
       if (b.dataset.fulfill) b.addEventListener('click', function(){ openFulfill(b.dataset.fulfill); });
       else b.addEventListener('click', function(){ enact(b.dataset.id); });
     });
-    var ea = document.getElementById('enterAgreed'); if (ea) ea.addEventListener('click', function(){ enterAgreed(govt.id); });
-    var fnb = document.getElementById('formNew');     if (fnb) fnb.addEventListener('click', renege);
-    var inb = document.getElementById('installNew');  if (inb && f.negId) inb.addEventListener('click', function(){ install(f.negId); });
   }
 
   // --- state shared by the boot + the post-enact refresh ---
   var MY_PARTY_ID = null, NATION = null, NATION_ID = null, HOG_TITLE = 'Head of Government', busy = false;
+  // State-of-the-Nation data, folded in from the retired Nation page (declaration slots +
+  // cities + mayor party tags). Loaded once at boot; the panels read straight from these.
+  var DECL_SLOTS = [], CITIES = [], MAYOR_ABBR = {};
   var FULFILL = {};   // itemId → { ministry, recipName, pool:[{id,name,role}] }, rebuilt each render
   var toast = document.getElementById('toast'), toastT;
   function ping(h){ toast.textContent = h; toast.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function(){ toast.classList.remove('show'); }, 4200); }
@@ -599,6 +661,25 @@
     finally { busy = false; }
   }
 
+  // State-of-the-Nation data (declaration slots + cities + mayor party tags), folded in from
+  // the retired Nation page. Loaded once at boot; each fetch is non-fatal so a missing/unmigrated
+  // table just leaves the corresponding panel in its empty state rather than failing the page.
+  async function loadNationState(){
+    try {
+      const { data: slots } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed, grp, sort_order').order('sort_order').order('created_at');
+      DECL_SLOTS = slots || [];
+    } catch (e) { DECL_SLOTS = []; }
+    try {
+      var cRes = await supabase.from('cities').select('id, name, pop_pct, description, mayor_name, mayor_election_tick, mayor_party_id').eq('nation_id', NATION_ID);
+      if (cRes.error) cRes = await supabase.from('cities').select('id, name, pop_pct, description, mayor_name, mayor_election_tick').eq('nation_id', NATION_ID);   // mayor_party_id not migrated yet
+      if (!cRes.error) CITIES = cRes.data || [];
+    } catch (e) { CITIES = []; }
+    try {
+      var mpIds = Array.from(new Set(CITIES.map(function(c){ return c.mayor_party_id; }).filter(Boolean)));
+      if (mpIds.length) { var mpRes = await supabase.from('parties').select('id, abbreviation').in('id', mpIds); (mpRes.data || []).forEach(function(p){ MAYOR_ABBR[p.id] = p.abbreviation; }); }
+    } catch (e) {}
+  }
+
   // Re-fetch the government + agenda and redraw. Called on load and after enacting.
   async function load(){
     try {
@@ -619,15 +700,6 @@
         agenda = ag || [];
       }
       var amPM = !!(govt && govt.formateur_party_id === MY_PARTY_ID); // only the leading party enacts
-      // The formation-window choice (formateur-only, the tick it formed) — one
-      // source, shared with the Home banner. Loaded lazily and defensively: this
-      // optional nudge must never block the core page from rendering. render()
-      // treats a missing object as "no card", so the fallback is just {}.
-      var formation = {};
-      try {
-        const fm = await import('/formation.js');
-        formation = await fm.formationState({ id: MY_PARTY_ID, nation_id: NATION_ID });
-      } catch (e) { /* non-critical enhancement — fall through with no card */ }
       // Rosters of every governing party, in one query: the formateur's leader is the Head of
       // Government (cabinet top row), a minority government staffs the rest of the cabinet from
       // its own roster, and a coalition fills portfolios from the promised parties' rosters via
@@ -662,7 +734,7 @@
           });
         } catch (e) { /* cabinet falls back to the derived view */ }
       }
-      render(govt, NATION || {}, parties || [], agenda, amPM, formation, pmLeader, formateurPols, polsByParty, appts);
+      render(govt, NATION || {}, parties || [], agenda, amPM, pmLeader, formateurPols, polsByParty, appts);
       loadNatObjectives(govt && govt.id, NATION_ID, amPM);   // fill the National Objectives area (non-blocking)
       // Administration History (collapsible, past + current governments) — non-blocking enhancement.
       var ahTick = null; try { ahTick = await currentTick(); } catch (e) { /* duration falls back to the formed tick */ }
@@ -687,46 +759,14 @@
   }
 
 
-  // [Form New Coalition]: burn the agreed deal, drop to a minority. Destructive
-  // and one-way, so confirm first. The penalty only lands later, on install.
-  async function renege(){
-    if (busy) return;
-    if (!confirm('Form a new coalition? This dissolves your agreed coalition immediately — you’ll govern alone until you seal a new majority, and you can’t return to the current deal. Building the replacement at the negotiating table costs party actions, so be sure you have some left this turn.')) return;
-    busy = true;
-    try {
-      const { error } = await supabase.rpc('coalition_renege');
-      if (error) throw error;
-      ping('Coalition dissolved — you’re governing alone. Build a new majority before the turn ends.');
-      await load();
-    } catch (e) { ping(e.message || 'Couldn’t do that right now.'); }
-    finally { busy = false; }
-  }
-
-  // [Install New Coalition]: seal the replacement (−5 Confidence, −5% Popularity).
-  async function install(negId){
-    if (busy) return;
-    busy = true;
-    try {
-      const { data, error } = await supabase.rpc('coalition_install', { p_neg: negId });
-      if (error) throw error;
-      ping('New coalition installed — Government Confidence ' + Number(data.confidence).toFixed(1) + '%, Popularity −' + data.pop_delta + '%.');
-      await load();
-    } catch (e) { ping(e.message || 'Couldn’t install that coalition.'); }
-    finally { busy = false; }
-  }
-
-  // [Enter Agreed Coalition]: keep what formed. No server action — just dismiss
-  // the prompt for this government so it doesn't nag on reload.
-  function enterAgreed(govId){ sessionStorage.setItem('govConfirmed', govId); load(); }
-
   (async () => {
     if (!isConfigured) { document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">Supabase isn’t configured.</div></div>'; return; }
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, funds, actions_remaining').eq('user_id', user.id).single();
+      const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations, population, gdp, production, on_hand').eq('id', party.nation_id).single();
       MY_PARTY_ID = party.id; NATION_ID = party.nation_id; NATION = nation || {};
       // The declared Head of Government title (e.g. "Prime Minister"), via the
       // shared slot loader + declaredValue — one source (see util.js). Keeps the
@@ -741,9 +781,9 @@
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
-      setTopbarFunds(currency, party.funds);
-      setTopbarActions(party.actions_remaining);
+      setTopbarActions(party.influence);
 
+      await loadNationState();   // declaration slots + cities for the State-of-the-Nation panels
       await load();
     } catch (e) {
       document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">Couldn’t load the government right now. Refresh to try again.</div></div>';

@@ -45,13 +45,13 @@ begin
       fleets    = fleets    + (case when v_type = 'fleet'    then v_qty else 0 end),
       air_wings = air_wings + (case when v_type = 'air_wing' then v_qty else 0 end)
    where id = p_to;
-  update public.parties set actions_remaining = actions_remaining - 1 where id = v_p.id;
+  update public.parties set influence = influence - 1 where id = v_p.id;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_nation, v_p.id, 'declaration',
             v_p.name || ' redeployed ' || v_qty || ' ' || public._unit_label(v_type, v_qty) || '.',
             public.current_game_date());
-  return jsonb_build_object('deployed', v_qty, 'actions', v_p.actions_remaining - 1);
+  return jsonb_build_object('deployed', v_qty, 'actions', v_p.influence - 1);
 end $$;
 grant execute on function public.deploy_military(uuid, uuid, text, int) to authenticated;
 

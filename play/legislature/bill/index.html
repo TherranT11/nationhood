@@ -129,13 +129,13 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
   import { esc, majority, tickToDate } from '/util.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchProposals, fetchVotes, fetchPolicies, castVote, tallyVotes, proposalOutcome, proposalLocked } from '/proposals.js';
   import { ideologyLabel } from '/archetypes.js';
   import { policyOptions, policyOptionIdx, effectText, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText } from '/policies.js';
 
-  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
+  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
 
   var pid = new URLSearchParams(location.search).get('id') || '';
@@ -329,7 +329,7 @@
     if (!user) return; // redirected to login
     if (!pid) { fail('No bill specified.'); return; }
     try {
-      const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, funds, actions_remaining').eq('user_id', user.id).single();
+      const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy, policies, population, stats').eq('id', party.nation_id).single();
       const { data: parties } = await supabase.from('parties').select('id, name, seats, in_government').eq('nation_id', party.nation_id);
@@ -362,8 +362,7 @@
       document.getElementById('pname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + ST.nationName;
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
-      setTopbarFunds(currency, party.funds);
-      setTopbarActions(party.actions_remaining);
+      setTopbarActions(party.influence);
 
       render();
     } catch (e) {

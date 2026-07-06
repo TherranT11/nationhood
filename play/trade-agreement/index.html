@@ -8,16 +8,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
 <style>
-  :root{
-    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
-    --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
-    --indigo:#5546E8;--indigo-soft:#ECE9FD;--amber:#E0820E;--amber-soft:#FBF0DD;--red:#C42B2B;--red-soft:#FBEAE9;--green:#16915a;--green-soft:#E5F4EC;--navy:#2b3a7a;--navy-soft:#E7EAF4;--blue:#1f86d6;
-    --energy:#E0820E;--food:#16915a;--minerals:#8d6e4a;--goods:#5546E8;--services:#1f86d6;--military:#C42B2B;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
-  .app{display:flex;min-height:100vh}
   .main{flex:1;padding:24px clamp(16px,3vw,40px) 60px;min-width:0;max-width:1040px}
   .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--indigo)}
   h1{font-weight:900;font-size:clamp(22px,3.4vw,30px);letter-spacing:-.03em;margin-top:4px}
@@ -300,7 +293,7 @@
     }
     if (imBuyer(a) && a.status === 'negotiating'){
       var both = a.buyer_approved && a.seller_approved;
-      btns.push('<button class="btn primary" id="commitBtn"' + (both ? '' : ' disabled') + '>' + (both ? 'Commit · 3 AP' : 'Awaiting sign-off') + '</button>');
+      btns.push('<button class="btn primary" id="commitBtn"' + (both ? '' : ' disabled') + '>' + (both ? 'Commit · 3 Influence' : 'Awaiting sign-off') + '</button>');
     }
     if (a.status === 'negotiating' || a.status === 'active') btns.push('<button class="btn danger" id="cancelBtn">Cancel agreement</button>');
     return '<div class="actrow">' + btns.join('') + '</div>';

@@ -8,16 +8,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
 <style>
-  :root{
-    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
-    --line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD;
-    --red:#C42B2B;--green:#16915a;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100%}
-  .app{display:flex;min-height:100vh}
 
   /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
 
@@ -25,7 +19,7 @@
      true far-right of the screen (the instance uses the whole UI). */
   .main{flex:1;padding:24px clamp(16px,4vw,56px) 48px;min-width:0}
 
-  /* top bar (Discord/funds/actions/date/settings gear) now lives in /topbar.js */
+  /* top bar (Discord/Influence/budget/date/settings gear) now lives in /topbar.js */
   .kicker{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--indigo)}
   /* Dormancy warning — shown when the party hasn't taken a meaningful action in 6+ days. */
   .inactban{margin-top:14px;padding:13px 16px;border-radius:12px;font-size:14px;font-weight:600;line-height:1.45;color:var(--red);border:1px solid color-mix(in srgb,var(--red) 35%,transparent);background:color-mix(in srgb,var(--red) 9%,var(--surface))}
@@ -72,15 +66,15 @@
   .crisis__stgname{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin:6px 0 9px}
   .crisis__meter{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);margin-top:5px}
 
-  /* Party Leader · This Week's Action. Enabled actions are live buttons; the
-     not-yet-wired ones are real <button disabled> (dimmed, can't click/focus).
-     Four per row (eight total). */
+  /* Action cards (the PM / ministerial "This Week's Action" bars). Enabled
+     actions are live buttons; not-yet-wired ones are real <button disabled>
+     (dimmed, can't click/focus). Four per row. */
   .leadbar__grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
   @media(max-width:700px){.leadbar__grid{grid-template-columns:repeat(2,1fr)}}
   .lead{position:relative;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:15px 16px;color:var(--muted);font-family:inherit;cursor:pointer;transition:border-color .15s,transform .12s,box-shadow .2s}
   .lead:not(:disabled):hover{border-color:var(--indigo);transform:translateY(-1px);box-shadow:0 12px 26px -18px rgba(85,70,232,.5)}
   .lead:disabled{cursor:not-allowed;opacity:.5;background:var(--chip)}
-  /* AP cost pill (top-right). The "Soon" variant marks an action not yet wired up. */
+  /* Influence cost pill (top-right). The "Soon" variant marks an action not yet wired up. */
   .lead__cost{position:absolute;top:12px;right:13px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);padding:3px 7px;border-radius:20px;white-space:nowrap}
   .lead__cost--soon{color:var(--soft);background:var(--chip)}
   .lead b{display:block;font-weight:800;font-size:17px;letter-spacing:-.01em;color:var(--ink);margin-bottom:7px;padding-right:52px}
@@ -162,73 +156,6 @@
   .appoint__btns .noco__btn{flex:0 0 130px}
   .appoint__ap{font-size:9px;opacity:.85;margin-left:4px}
   @media(max-width:560px){.appoint__row{flex-direction:column;align-items:stretch;gap:5px}.appoint__min{flex:none}}
-  .atarget{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:12px 14px;cursor:pointer;color:var(--ink);font-family:inherit;transition:border-color .15s}
-  .atarget:hover{border-color:var(--indigo)}
-  .atarget__id b{font-weight:800;font-size:14.5px;letter-spacing:-.01em}
-  .atarget__id span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;color:var(--soft);margin-left:6px}
-  .atarget__st{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap;text-align:right}
-  /* DIRECT modal: member picker + field-action cards (reuse the .amodal shell). */
-  .dir-sub{font-size:12.5px;color:var(--muted);margin:-2px 0 4px}
-  .dir-members{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:4px}
-  .dir-mem{font-family:'Space Mono',monospace;font-size:11px;border:1px solid var(--line2);background:var(--surface);border-radius:20px;padding:7px 12px;cursor:pointer;color:var(--muted);text-align:left}
-  .dir-mem.on{border-color:var(--indigo);color:var(--indigo);font-weight:700;background:var(--indigo-soft)}
-  .dir-mem .dep{color:var(--amber);font-weight:700}
-  .dir-stats{display:flex;gap:6px;flex-wrap:wrap}
-  .dir-stat{font-family:'Space Mono',monospace;font-size:10px;background:var(--chip);border-radius:7px;padding:4px 8px;color:var(--muted)}
-  .dir-minban{margin-top:10px;padding:10px 13px;border-radius:10px;font-size:12.5px;line-height:1.45;color:var(--red);border:1px solid color-mix(in srgb,var(--red) 30%,transparent);background:color-mix(in srgb,var(--red) 8%,var(--surface))}
-  .dir-minban b{color:var(--ink)}
-  .dir-stat b{color:var(--ink)}
-  .dcard{border:1px solid var(--line);border-radius:13px;padding:14px 15px}
-  .dcard.para{border-color:color-mix(in srgb,var(--red) 35%,transparent);background:color-mix(in srgb,var(--red) 8%,var(--surface))}
-  .dcard__t{font-weight:800;font-size:15px;letter-spacing:-.01em}
-  .dcard__mech{font-family:'Space Mono',monospace;font-size:11px;color:var(--ink);margin-top:8px;background:var(--chip);border-radius:8px;padding:7px 10px}
-  .dcard__eff{font-size:12.5px;margin-top:8px;color:var(--muted);line-height:1.5}
-  .dcard__eff b{color:var(--green)} .dcard__eff b.bad{color:var(--red)}
-  .dcard__foot{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin-top:12px}
-  .dgo{background:var(--ink);color:#fff;border:none;border-radius:9px;padding:9px 16px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;font-weight:700;cursor:pointer}
-  .dgo:hover{filter:brightness(1.15)} .dgo:disabled{background:var(--line2);cursor:not-allowed}
-  .dgo.idg{background:var(--indigo)} .dgo.red{background:var(--red)}
-  .dboost{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:11px;padding:8px 10px;border:1px dashed var(--line2);border-radius:10px}
-  .dboost .bl{font-size:11px;color:var(--muted)}
-  .dstep{display:flex;align-items:center;border:1px solid var(--line2);border-radius:8px;overflow:hidden;background:var(--surface)}
-  .dstep button{width:28px;height:28px;border:none;background:transparent;font-size:14px;color:var(--muted);cursor:pointer}
-  .dstep button:disabled{color:var(--line2);cursor:not-allowed}
-  .dstep .v{min-width:34px;text-align:center;font-family:'Space Mono',monospace;font-weight:700;font-size:12px}
-  .dboost .calc{font-family:'Space Mono',monospace;font-size:10px;color:var(--indigo)}
-  .dnote{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted)} .dnote b{color:var(--ink)}
-  /* RECRUIT candidate cards (reuse the .amodal shell). */
-  .cand{display:flex;flex-direction:column;gap:9px;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;color:var(--ink);font-family:inherit;transition:border-color .15s}
-  .cand:hover{border-color:var(--indigo)}
-  .cand:disabled{opacity:.5;cursor:not-allowed}
-  .cand:disabled:hover{border-color:var(--line)}
-  .cand__top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-  .cand__name b{font-weight:800;font-size:15px;letter-spacing:-.01em}
-  .cand__tag{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);padding:4px 9px;border-radius:20px;white-space:nowrap}
-  .cand__meta{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
-  .cand__stats{display:flex;flex-wrap:wrap;gap:6px}
-  .cand__stat{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--muted);background:var(--chip);border-radius:6px;padding:4px 8px}
-  .cand__stat b{color:var(--ink)}
-  .cand__cost{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo)}
-  /* NEGOTIATE modal: reuses .atarget rows; adds the Start-New button + a back link. */
-  .negnew{width:100%;text-align:center;background:var(--surface);border:1px dashed var(--line2,#D9D6D0);border-radius:11px;padding:13px;cursor:pointer;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--indigo)}
-  .negnew:hover{border-color:var(--indigo)}
-  .negback{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft);cursor:pointer;background:none;border:none;padding:0 0 2px}
-  .negback:hover{color:var(--indigo)}
-  /* Pending coalition-invite banners (Home). */
-  #inviteBanners:empty{display:none}
-  #inviteBanners{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
-  .invite{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:13px;padding:14px 16px}
-  .invite__t{font-size:13.5px;color:var(--ink);line-height:1.45;min-width:240px}
-  .invite__lbl{display:block;margin-top:9px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
-  .invite__p{display:block;font-size:13px;color:var(--ink);margin-top:3px}
-  .invite__p span{color:var(--muted)}
-  .invite__a{display:flex;gap:8px;flex:none}
-  .invite__dec,.invite__go{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:9px 14px;border-radius:9px;cursor:pointer;border:1px solid var(--line)}
-  .invite__dec{background:var(--surface);color:var(--muted)}
-  .invite__dec:hover{color:var(--red);border-color:var(--red)}
-  .invite__go{background:var(--indigo);border-color:var(--indigo);color:#fff}
-  .invite__go:hover{filter:brightness(1.06)}
-  .invite__dec:disabled,.invite__go:disabled{opacity:.5;cursor:not-allowed;filter:none}
   a.invite{text-decoration:none;margin-bottom:14px}
 
   /* Events feed (currently just the party-founding entry). Sized ~15% up. */
@@ -306,6 +233,23 @@
     .amodal__list{padding-bottom:max(18px,env(safe-area-inset-bottom))}   /* clear the home indicator */
   }
 
+  /* Party Approval card — the real per-tick popularity trend (schema/147) + labelled factors. */
+  .appr__now{display:flex;align-items:baseline;gap:10px;margin:2px 0 10px}
+  .appr__val{font-size:28px;font-weight:900;letter-spacing:-.02em;color:var(--ink)}
+  .appr__delta{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft)}
+  .appr__delta.pos{color:var(--green)} .appr__delta.neg{color:var(--red)}
+  .appr__chart{width:100%;height:150px;display:block;color:var(--indigo)}
+  .appr__grid{stroke:var(--line);stroke-width:1}
+  .appr__axis-x{stroke:var(--soft);stroke-width:1}
+  .appr__lbl{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;fill:var(--soft)}
+  .appr__factors{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+  .appr__factors-k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:8px}
+  .factor{display:flex;align-items:baseline;gap:10px;padding:5px 0}
+  .factor__amt{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;min-width:52px;flex:none}
+  .factor__amt--neg{color:var(--red)} .factor__amt--pos{color:var(--green)}
+  .factor__what{font-size:13px;color:var(--ink);line-height:1.45}
+  .factor--none{font-size:13px;color:var(--soft);line-height:1.45}
+
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -321,8 +265,6 @@
     <h1 id="welcome">Welcome</h1>
     <p id="lede">Your party is now part of the nation.</p>
 
-    <div id="formBanner"></div>
-    <div id="inviteBanners"></div>
 
     <!-- World Events sit at the very top — a nation-level prompt above the party + ministry bars. -->
     <section class="panel" id="weventPanel" hidden>
@@ -336,23 +278,19 @@
     <div id="tradebar"></div>
     <div id="defencebar"></div>
 
-    <section class="panel leadbar">
-      <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
-      <div class="leadbar__grid">
-        <button class="lead" id="act-campaign" type="button" data-standing title="Raise your party's popularity: hold a Rally (Charisma, $25K) or run an Ad Blitz (Guile, $100K). Cost: %COST% actions + funds."><b>Campaign</b><span class="lead__lane">Charisma / Guile &middot; The Public</span><span class="lead__desc">Raise your party's popularity.</span></button>
-        <button class="lead" id="act-direct" type="button" data-cost="1" title="Direct a party member to a field action (1 AP): run for a seat, raise a paramilitary wing, or appoint a Deputy Leader."><b>Direct</b><span class="lead__lane">The Whip</span><span class="lead__desc">Direct members of your party to action.</span></button>
-        <button class="lead" id="act-fundraise" type="button" data-standing title="Roll 1d6 + Charisma, ×$15K, added to your funds. Cost: %COST% actions."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
-        <button class="lead" id="act-attack" type="button" data-standing title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: $25K + %COST% actions."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
-        <button class="lead" id="act-leave" type="button" data-cost="1" disabled title="Leave the governing coalition (1 AP)."><b>Leave Coalition</b><span class="lead__lane">The Cabinet</span><span class="lead__desc">Walk out of the government.</span></button>
-        <button class="lead" id="act-noconfidence" type="button" data-cost="1" title="Table a vote of no confidence in the sitting government (1 AP). It carries unless the government votes No; 12-tick cooldown."><b>No Confidence</b><span class="lead__lane">The Chamber</span><span class="lead__desc">A vote of no confidence against the current government.</span></button>
-        <button class="lead" id="act-recruit" type="button" data-cost="1" data-cost-label="1–2" title="Opens a recruitment drive ($25K): a Newcomer (1 action) and a Seasoned candidate (2 actions, 1d3 years of experience) step forward — hire one."><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span><span class="lead__desc">Adds a politician to your bench.</span></button>
-        <button class="lead" id="act-negotiate" type="button" data-cost-free title="Open coalition talks: invite another party to the table, trade promises term by term, and form a government once everything's agreed. Opening talks is free — an action is spent only when you bring in another party or lock in the agreement."><b>Negotiate</b><span class="lead__lane">Guile &middot; The Backroom</span><span class="lead__desc">Builds a coalition deal.</span></button>
-      </div>
-    </section>
-
     <section class="panel" id="glance">
       <div class="glance-hd"><span>The Nation at a Glance</span><a class="glance-link">Nation &#9656;</a></div>
       <div class="snap" id="snap"><p class="empty">Loading the nation&rsquo;s figures&hellip;</p></div>
+    </section>
+
+    <section class="panel" id="apprPanel">
+      <div class="glance-hd"><span>Party Approval</span></div>
+      <div class="appr__now"><span class="appr__val" id="apprVal">&mdash;</span><span class="appr__delta" id="apprDelta"></span></div>
+      <svg class="appr__chart" id="apprSpark" role="img" aria-label="Party approval trend"></svg>
+      <div class="appr__factors">
+        <div class="appr__factors-k">Last Factors Affecting Popularity</div>
+        <div id="apprFactors"><p class="empty">Loading&hellip;</p></div>
+      </div>
     </section>
 
     <div class="cols">
@@ -386,37 +324,6 @@
 </div>
 
 <div class="toast" id="toast"></div>
-
-<div class="amodal" id="attackModal" hidden>
-  <div class="amodal__panel">
-    <div class="amodal__hd"><b>Attack a Rival</b><button class="amodal__x" id="attackClose" type="button" aria-label="Close">&times;</button></div>
-    <div class="amodal__list" id="attackList"></div>
-  </div>
-</div>
-
-<div class="amodal" id="directModal" hidden>
-  <div class="amodal__panel amodal__panel--wide">
-    <div class="amodal__hd"><b>Direct a Party Member</b><button class="amodal__x" id="directClose" type="button" aria-label="Close">&times;</button></div>
-    <div class="amodal__list" id="directBody"><p class="empty">Loading members…</p></div>
-  </div>
-</div>
-
-<div class="amodal" id="recruitModal" hidden>
-  <div class="amodal__panel">
-    <div class="amodal__hd"><b>Recruitment Drive</b><button class="amodal__x" id="recruitClose" type="button" aria-label="Close">&times;</button></div>
-    <div class="amodal__list" id="recruitList"></div>
-  </div>
-</div>
-
-<div class="amodal" id="campaignModal" hidden>
-  <div class="amodal__panel">
-    <div class="amodal__hd"><b>Run a Campaign</b><button class="amodal__x" id="campaignClose" type="button" aria-label="Close">&times;</button></div>
-    <div class="amodal__list">
-      <button class="atarget" id="campRally" type="button"><span class="atarget__id"><b>Hold a Rally</b><span>Charisma &middot; The Base</span></span><span class="atarget__st" data-funds="$25K"></span></button>
-      <button class="atarget" id="campBlitz" type="button"><span class="atarget__id"><b>Ad Blitz</b><span>Guile &middot; The Airwaves</span></span><span class="atarget__st" data-funds="$100K"></span></button>
-    </div>
-  </div>
-</div>
 
 <div class="amodal" id="buildBaseModal" hidden>
   <div class="amodal__panel">
@@ -452,40 +359,13 @@
   </div>
 </div>
 
-<div class="amodal" id="negotiateModal" hidden>
-  <div class="amodal__panel">
-    <div class="amodal__hd"><b id="negTitle">Coalition Talks</b><button class="amodal__x" id="negClose" type="button" aria-label="Close">&times;</button></div>
-    <div class="amodal__list" id="negList"></div>
-  </div>
-</div>
-
 <div class="amodal" id="appointModal" hidden>
   <div class="amodal__panel amodal__panel--wide">
     <div class="amodal__hd"><b>Name the Cabinet</b><button class="amodal__x" id="appointClose" type="button" aria-label="Close">&times;</button></div>
     <div class="amodal__list" id="appointBody"></div>
     <div class="appoint__foot">
       <span class="appoint__note">Economic Development, Interior, Foreign Affairs &amp; Trade grant the appointee <b>+1 Image</b>.</span>
-      <div class="appoint__btns"><button class="noco__btn noco__cancel" id="appointCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="appointConfirm" type="button">Confirm <span class="appoint__ap">1 AP</span></button></div>
-    </div>
-  </div>
-</div>
-
-<div class="amodal" id="nocoModal" hidden>
-  <div class="amodal__panel">
-    <div class="amodal__hd"><b>Vote of No Confidence</b><button class="amodal__x" id="nocoClose" type="button" aria-label="Close">&times;</button></div>
-    <div class="amodal__list">
-      <p class="noco__warn">A vote of no confidence is dangerous. If you are <b>successful</b>, it drops the Head of Government party by <b>−5% Party Popularity</b> and <b>−3% Party Floor</b>, then holds new elections. If it <b>fails</b>, the proposer loses <b>−5% Party Popularity</b> and <b>−3% Party Floor</b>. The motion carries unless the government votes No. <b>12-tick cooldown.</b></p>
-      <div class="noco__btns"><button class="noco__btn noco__cancel" id="nocoCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="nocoConfirm" type="button">Confirm</button></div>
-    </div>
-  </div>
-</div>
-
-<div class="amodal" id="leaveModal" hidden>
-  <div class="amodal__panel">
-    <div class="amodal__hd"><b id="leaveTitle">Leave the Coalition</b><button class="amodal__x" id="leaveClose" type="button" aria-label="Close">&times;</button></div>
-    <div class="amodal__list">
-      <p class="noco__warn" id="leaveWarn"></p>
-      <div class="noco__btns"><button class="noco__btn noco__cancel" id="leaveCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="leaveConfirm" type="button">Leave</button></div>
+      <div class="appoint__btns"><button class="noco__btn noco__cancel" id="appointCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="appointConfirm" type="button">Confirm <span class="appoint__ap">1 Influence</span></button></div>
     </div>
   </div>
 </div>
@@ -508,14 +388,13 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { fetchNationInitiatives, renderNationInitiatives } from '/initiatives.js';
   import { openJointProposer, fetchJointNegotiations, renderJointNegotiations } from '/joint.js';
   import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
-  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, STANDING_COST, PRODUCE_COST, PRODUCE_COOLDOWN } from '/util.js';
-  import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
+  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, PRODUCE_COST, PRODUCE_COOLDOWN } from '/util.js';
   import { ideologyLabel } from '/archetypes.js';
   import { MINISTRIES } from '/ministries.js';
 
@@ -682,25 +561,18 @@
   // action count — it updates the label AND gates every action button (0 →
   // disabled), so the buttons are correct on load and after every action.
   var partyActions = 0, feedCtx = null, acting = false, actionBtns = [], myPartyId = null, amPM = false, isEconDevMin = false, myCurrency = '$';
-  // No-confidence is nation-wide cooldown-gated: while nocoUntilTick is in the future the
-  // action stays disabled for everyone in the nation, on top of the usual AP gate.
-  // Produce (the PM action) is nation-wide cooldown-gated the same way no-confidence is.
-  var NOW_TICK = 0, nocoUntilTick = 0, produceUntilTick = 0, produceBtn = null, reshuffleUntilTick = 0, reshuffleBtn = null, electionUntilTick = 0, electionBtn = null;
-  // Leave Coalition is gated by government membership (set at load), not just AP — like the
-  // cooldown gates below, this override keeps setActions from re-enabling it on AP alone.
-  var leaveBtn = null, leaveEligible = false;
+  // Produce/Reshuffle/Election are nation-wide cooldown-gated: while the until-tick is in the
+  // future the action stays disabled for everyone in the nation, on top of the usual Influence gate.
+  var NOW_TICK = 0, produceUntilTick = 0, produceBtn = null, reshuffleUntilTick = 0, reshuffleBtn = null, electionUntilTick = 0, electionBtn = null;
   function setActions(n) {
     partyActions = n;
     setTopbarActions(n);
-    // Each button carries its action cost (data-cost; default 1, Standing actions
-    // STANDING_COST — stamped just below), so a button greys out the moment you can't
-    // afford it — not just at zero.
+    // Each button carries its action cost (data-cost; default 1), so a button greys
+    // out the moment you can't afford it — not just at zero.
     actionBtns.forEach(function (b) { b.disabled = n < (parseInt(b.dataset.cost, 10) || 1); });
-    if (nocoBtn && nocoUntilTick > NOW_TICK) nocoBtn.disabled = true;   // cooldown overrides the AP gate
     if (produceBtn && produceUntilTick > NOW_TICK) produceBtn.disabled = true;
     if (reshuffleBtn && reshuffleUntilTick > NOW_TICK) reshuffleBtn.disabled = true;
     if (electionBtn && electionUntilTick > NOW_TICK) electionBtn.disabled = true;
-    if (leaveBtn && !leaveEligible) leaveBtn.disabled = true;           // must be in government (membership gate)
   }
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
@@ -915,72 +787,12 @@
     } catch (e) { ping('Action failed. Try again.'); }
     finally { acting = false; setActions(partyActions); }
   }
-  function wireAction(btn, rpc, okMsg) {
-    if (!btn) return;
-    actionBtns.push(btn);
-    btn.addEventListener('click', function () { if (!btn.disabled) performAction(function () { return supabase.rpc(rpc); }, okMsg); });
-  }
-  wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +$' + (d.funds_gain / 1000) + 'K.'; });
 
-  // CAMPAIGN — one action, two ways to raise popularity: a Rally (Charisma, $25K) or an Ad
-  // Blitz (Guile, $100K). A picker; each choice fires its existing RPC through performAction
-  // so the AP budget + feed refresh. (Replaces the old standalone Rally / Ad Blitz buttons.)
-  var campaignBtn = document.getElementById('act-campaign');
-  var campaignModal = document.getElementById('campaignModal');
-  var closeCampaign = wireModalClose(campaignModal, 'campaignClose');
-  if (campaignBtn) {
-    actionBtns.push(campaignBtn);
-    campaignBtn.addEventListener('click', function () {
-      if (campaignBtn.disabled || !feedCtx) return;
-      // Fill the AP figure from the one source (STANDING_COST) so it can't drift from the pill.
-      campaignModal.querySelectorAll('.atarget__st').forEach(function (s) { s.textContent = s.dataset.funds + ' · ' + STANDING_COST + ' AP'; });
-      campaignModal.hidden = false;
-    });
-  }
-  var campRally = document.getElementById('campRally');
-  if (campRally) campRally.addEventListener('click', function () { closeCampaign(); performAction(function () { return supabase.rpc('party_rally'); }, function (d) { return 'Rally held — popularity +' + d.delta + '%.'; }); });
-  var campBlitz = document.getElementById('campBlitz');
-  if (campBlitz) campBlitz.addEventListener('click', function () { closeCampaign(); performAction(function () { return supabase.rpc('party_ad_blitz'); }, function (d) { return 'Ad blitz — popularity +' + d.delta + '%' + (d.ceiling_gain ? ' (ceiling +' + d.ceiling_gain + '%)' : '') + '.'; }); });
 
-  // LEAVE COALITION — walk out of the government (1 AP). A junior partner takes −3% Party
-  // Popularity and the government −5% Confidence; the Head of Government leaving IS a
-  // resignation (−5% Party Popularity + a snap election). The button is enabled only for a
-  // party in government (leaveEligible, set at load); the confirm copy is chosen from amPM.
-  leaveBtn = document.getElementById('act-leave');
-  var leaveModal = document.getElementById('leaveModal');
-  var closeLeave = wireModalClose(leaveModal, 'leaveClose');
-  var leaveCancel = document.getElementById('leaveCancel'); if (leaveCancel) leaveCancel.addEventListener('click', closeLeave);
-  if (leaveBtn) {
-    actionBtns.push(leaveBtn);
-    leaveBtn.addEventListener('click', function () {
-      if (leaveBtn.disabled) return;
-      document.getElementById('leaveTitle').textContent = amPM ? 'Resign as Head of Government' : 'Leave the Coalition';
-      document.getElementById('leaveWarn').innerHTML = amPM
-        ? 'As Head of Government, leaving means <b>resigning</b> — it dissolves your government and calls a <b>snap election</b> you may not win. Your party loses <b>−5% Party Popularity</b>. Costs <b>1 action</b>.'
-        : 'Walking out of the coalition costs your party <b>−3% Party Popularity</b> and the government <b>−5% Confidence</b>. Costs <b>1 action</b>.';
-      document.getElementById('leaveConfirm').textContent = amPM ? 'Resign' : 'Leave';
-      leaveModal.hidden = false;
-    });
-  }
-  var leaveConfirm = document.getElementById('leaveConfirm');
-  if (leaveConfirm) leaveConfirm.addEventListener('click', function () {
-    if (acting) return;
-    closeLeave();
-    acting = true;
-    actionBtns.forEach(function (b) { b.disabled = true; });
-    // Leaving reseats the government (a junior exit, or a snap election for the premier), so
-    // reload on success to pick up the new composition rather than patch the page in place.
-    supabase.rpc('leave_coalition').then(function (r) {
-      if (r.error) { ping(r.error.message || 'Action failed.'); acting = false; setActions(partyActions); return; }
-      ping(r.data && r.data.resigned ? 'You have resigned as Head of Government — fresh elections held.' : 'Your party has left the coalition.');
-      setTimeout(function () { location.reload(); }, 900);
-    }).catch(function () { ping('Action failed. Try again.'); acting = false; setActions(partyActions); });
-  });
-
-  // BUILD MILITARY BASE — the Minister of Defence commissions a base (2 AP, $15B from the
+  // BUILD MILITARY BASE — the Minister of Defence commissions a base (2 Influence, $15B from the
   // Budget; a shortfall rolls into Debt). Home builds in your own territory; Abroad builds in
   // an allied nation — a Continent → Nation drilldown where nations you have no mutual defence
-  // pact with are disabled. Fires through performAction so the AP budget + feed refresh.
+  // pact with are disabled. Fires through performAction so the Influence budget + feed refresh.
   var buildBaseModal = document.getElementById('buildBaseModal');
   var BB = { mode: 'home', byCont: {}, allies: {} };
   function openBuildBase() {
@@ -1065,7 +877,7 @@
       function (d) { return 'A new military base has been commissioned' + (d && d.abroad ? ' abroad.' : '.'); });
   });
 
-  // EXPAND MILITARY — build typed units (Army / Fleet / Air Wing) at one of your bases (1 AP).
+  // EXPAND MILITARY — build typed units (Army / Fleet / Air Wing) at one of your bases (1 Influence).
   // Each unit is paid in Military (the on_hand pool): Army 1, Fleet 2, Air Wing 1, and takes its
   // build time (1 / 3 / 2 ticks). A base holds at most 5 units (built + building). UNIT_SPEC
   // mirrors schema/129; the server is authoritative.
@@ -1149,7 +961,7 @@
     };
   }
 
-  // DEPLOY MILITARY — move built units between two of your bases (1 AP, instant). Pick a source
+  // DEPLOY MILITARY — move built units between two of your bases (1 Influence, instant). Pick a source
   // base, a unit type there, and a destination; the destination can't exceed 5 units. Fires
   // deploy_military through performAction. Uses UNIT_ORDER / UNIT_SPEC / unitIcon from Expand.
   var UNIT_COL = { army: 'armies', fleet: 'fleets', air_wing: 'air_wings' };
@@ -1221,229 +1033,9 @@
         function (r) { var n = r.deployed || qty; return n + ' ' + uplur(type, n) + ' deployed.'; });
     };
   }
-  // DIRECT opens a modal to assign a field action to a chosen party member: Run for
-  // Parliament, Raise a Paramilitary Wing, or appoint a Deputy Leader. 1 AP per field
-  // action (the appointment is free). Like Attack/Recruit, it's a picker that fires via
-  // performAction so the action budget + feed refresh. Mayor + Youth Wing are deferred.
-  var directBtn = document.getElementById('act-direct');
-  var directModal = document.getElementById('directModal');
-  var DIR = { members: [], sel: 0, funds: 0, spend: 0, cities: [], pop: 0, cands: [], selCity: 0, spendMayor: 0, mpRuns: [], ministers: {} };
-  if (directBtn) { actionBtns.push(directBtn); directBtn.addEventListener('click', openDirectModal); }
-  var closeDirectModal = wireModalClose(directModal, 'directClose');
 
-  function dirName(p) { return ((p.first_name || '') + ' ' + (p.last_name || '')).trim(); }
-  function dirMember() { return DIR.members[DIR.sel] || DIR.members[0]; }
-  function dirDeputy() { return DIR.members.filter(function (m) { return m.status === 'Deputy Leader'; })[0] || null; }
-  // A member mid-run (Parliament or Mayor) is "busy" — can't be directed elsewhere until it
-  // resolves (the server enforces this too). mpCd = ticks left on the post-run MP cooldown.
-  function memberMpRun(m) { return DIR.mpRuns.filter(function (r) { return r.politician_id === m.id; })[0] || null; }
-  function memberMayorRun(m) { return DIR.cands.filter(function (c) { return c.politician_id === m.id && c.party_id === myPartyId; })[0] || null; }
-  function memberBusy(m) { return !!memberMpRun(m) || !!memberMayorRun(m); }
-  function memberBusyLabel(m) { return memberMpRun(m) ? 'running for Parliament' : memberMayorRun(m) ? 'running for mayor' : ''; }
-  // A sitting minister (DIR.ministers, mirrors _politician_is_minister) can't run for office,
-  // raise a paramilitary, or expand the youth wing — but CAN still be made Deputy, so they're
-  // not memberBusy (the member stays selectable; only those four cards grey out).
-  function memberMinister(m) { return !!DIR.ministers[m.id]; }
-  function memberMpCd(m) { return (m.mp_until_tick && NOW_TICK && m.mp_until_tick > NOW_TICK) ? (m.mp_until_tick - NOW_TICK) : 0; }
 
-  async function openDirectModal() {
-    if (acting || directBtn.disabled || !feedCtx) return;
-    var body = document.getElementById('directBody');
-    body.innerHTML = '<p class="empty">Loading members…</p>';
-    directModal.hidden = false;
-    try {
-      var pr = await supabase.from('parties').select('funds').eq('id', myPartyId).maybeSingle();
-      DIR.funds = (pr.data && Number(pr.data.funds)) || 0;
-      var mr = await supabase.from('politicians').select('id, first_name, last_name, status, cha, acu, gui, res, com, mp_until_tick').eq('party_id', myPartyId).order('created_at');
-      DIR.members = mr.data || [];
-      if (!DIR.members.length) { body.innerHTML = '<p class="empty">Your party has no members to direct.</p>'; return; }
-      // Mayor card data: the nation's population (for the floor prize), its cities, and the
-      // existing candidacies (the field). Non-fatal — the Mayor card degrades if any fail.
-      DIR.pop = 0; DIR.cities = []; DIR.cands = [];
-      try {
-        var nr = await supabase.from('nations').select('population').eq('id', feedCtx.nationId).maybeSingle();
-        DIR.pop = (nr.data && Number(nr.data.population)) || 0;
-        var cr = await supabase.from('cities').select('id, name, pop_pct, mayor_election_tick').eq('nation_id', feedCtx.nationId).order('pop_pct', { ascending: false });
-        DIR.cities = cr.data || [];
-        var ids = DIR.cities.map(function (c) { return c.id; });
-        if (ids.length) { var mc = await supabase.from('mayoral_candidacies').select('city_id, party_id, candidate_name, politician_id').in('city_id', ids); DIR.cands = mc.data || []; }
-      } catch (e) { /* Mayor card shows its empty state */ }
-      // Our party's pending parliamentary runs → which members are mid-run (occupied).
-      DIR.mpRuns = [];
-      try { var mp = await supabase.from('mp_candidacies').select('politician_id, opponent_name, resolve_tick').eq('party_id', myPartyId); DIR.mpRuns = mp.data || []; } catch (e) { /* occupation just isn't pre-marked; the server still blocks it */ }
-      // Which members currently hold a cabinet ministry → those four cards grey out (mirrors
-      // _politician_is_minister: explicit appointment wins, else a fulfilled promise not since
-      // reassigned). Non-fatal — the server still blocks it if this can't load.
-      DIR.ministers = {};
-      try {
-        var gr = await supabase.from('governments').select('id').eq('nation_id', feedCtx.nationId).eq('status', 'active').maybeSingle();
-        var gid = gr.data && gr.data.id;
-        if (gid) {
-          var ca = await supabase.from('cabinet_appointments').select('ministry, politician_id').eq('government_id', gid);
-          var ga = await supabase.from('government_agenda').select('params').eq('government_id', gid).eq('type', 'ministry').eq('status', 'done');
-          var apptMin = {};
-          (ca.data || []).forEach(function (c) { apptMin[c.ministry] = true; if (c.politician_id) DIR.ministers[c.politician_id] = true; });
-          (ga.data || []).forEach(function (a) { var p = a.params || {}; if (p.minister_id && !apptMin[p.ministry]) DIR.ministers[p.minister_id] = true; });
-        }
-      } catch (e) { /* minister gating just isn't pre-marked; the server still blocks it */ }
-      // Default to the first member who isn't already standing for office.
-      var firstFree = DIR.members.findIndex(function (m) { return !memberBusy(m); });
-      DIR.sel = firstFree >= 0 ? firstFree : 0; DIR.spend = 0; DIR.selCity = 0; DIR.spendMayor = 0;
-      renderDirect();
-    } catch (e) { body.innerHTML = '<p class="empty">Couldn’t load your members.</p>'; }
-  }
-
-  function renderDirect() {
-    var body = document.getElementById('directBody'), m = dirMember(), dep = dirDeputy();
-    var isMin = memberMinister(m);   // greys out Parliament / Mayor / Paramilitary / Youth Wing
-    var image = Number(m.com) || 0, spendCost = DIR.spend * 25000, mpCd = memberMpCd(m);
-    var mpCost = 50000 + spendCost, canAffordMp = DIR.funds >= mpCost, canAddSpend = (50000 + (DIR.spend + 1) * 25000) <= DIR.funds;
-    var chips = DIR.members.map(function (p, i) {
-      var busy = memberBusy(p);
-      var tag = p.status === 'Party Leader' ? ' · Leader' : p.status === 'Deputy Leader' ? ' <span class="dep">· Deputy</span>' : '';
-      var rt = busy ? ' <span style="color:var(--amber)">· ' + memberBusyLabel(p) + '</span>' : (memberMinister(p) ? ' <span style="color:var(--amber)">· Minister</span>' : '');
-      return '<button class="dir-mem' + (i === DIR.sel ? ' on' : '') + '" data-i="' + i + '"' + (busy ? ' disabled' : '') + '>' + esc(dirName(p)) + tag + rt + '</button>';
-    }).join('');
-    var stats = [['Cha', m.cha], ['Acu', m.acu], ['Gui', m.gui], ['Res', m.res], ['Img', m.com]]
-      .map(function (s) { return '<span class="dir-stat">' + s[0] + ' <b>' + (s[1] != null ? s[1] : 0) + '</b></span>'; }).join('');
-    // Deputy card varies by who's selected.
-    var selIsDep = m.status === 'Deputy Leader', selIsLeader = m.status === 'Party Leader';
-    var depNote = selIsDep ? '<b>' + esc(dirName(m)) + '</b> is the Deputy Leader.'
-      : dep ? 'Deputy held by <b>' + esc(dirName(dep)) + '</b> — appointing replaces them.'
-      : selIsLeader ? 'The Party Leader can’t be Deputy.' : 'No Deputy Leader appointed.';
-    var depBtn = selIsLeader ? '<button class="dgo idg" id="dDep" type="button" disabled>Appoint as Deputy</button>'
-      : selIsDep ? '<button class="dgo idg" id="dDep" data-appoint="0" type="button">Dismiss as Deputy</button>'
-      : '<button class="dgo idg" id="dDep" data-appoint="1" type="button">Appoint as Deputy</button>';
-
-    // Mayor card: pick a city, see the floor prize + the field, announce a run (resolution deferred).
-    var mayorHtml;
-    if (!DIR.cities.length) {
-      mayorHtml = '<div class="dcard"><div class="dcard__t">Announce Candidacy for Mayor</div><div class="dcard__eff">No cities to run in yet.</div></div>';
-    } else {
-      if (DIR.selCity >= DIR.cities.length) DIR.selCity = 0;
-      var city = DIR.cities[DIR.selCity];
-      var cityPopM = DIR.pop ? (DIR.pop * (Number(city.pop_pct) || 0) / 100) : 0;   // nations.population is already in millions
-      var prize = Math.round(0.4 * cityPopM * 10) / 10;
-      var field = DIR.cands.filter(function (c) { return c.city_id === city.id; });
-      var mineCand = field.filter(function (c) { return c.party_id === myPartyId; })[0];
-      var rivals = field.length - (mineCand ? 1 : 0);
-      var mayorCost = 100000 + DIR.spendMayor * 25000, canAffordMayor = DIR.funds >= mayorCost, canAddMy = (100000 + (DIR.spendMayor + 1) * 25000) <= DIR.funds;
-      var cityOpts = DIR.cities.map(function (c, i) { return '<option value="' + i + '"' + (i === DIR.selCity ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('');
-      var fieldTxt = mineCand ? 'You are already running here (' + esc(mineCand.candidate_name) + ').'
-        : rivals ? (rivals + ' rival candidate' + (rivals === 1 ? '' : 's') + ' declared.') : 'Open race — no candidates yet.';
-      var elDate = (city.mayor_election_tick != null) ? tickToDate(city.mayor_election_tick) : null;   // the city's next election (1D6 roll, then +12 per term)
-      mayorHtml =
-        '<div class="dcard"><div class="dcard__t">Announce Candidacy for Mayor</div>' +
-        '<div class="dboost" style="margin-top:9px"><span class="bl">City</span><select id="dCity" class="appoint__sel" style="flex:1;min-width:120px">' + cityOpts + '</select></div>' +
-        '<div class="dcard__eff">' + (DIR.pop ? 'Population <b style="color:var(--ink)">' + cityPopM.toFixed(2) + 'M</b> · on victory <b>+' + prize + '% popularity floor</b> at the next election. ' : '') + esc(fieldTxt) + '</div>' +
-        (elDate ? '<div class="dnote" style="margin-top:8px">Next Election: <b>' + esc(elDate) + '</b></div>' : '') +
-        (mineCand ? '' :
-          '<div class="dboost"><span class="bl">Campaign spend</span><div class="dstep"><button id="dMyMinus" type="button"' + (DIR.spendMayor ? '' : ' disabled') + '>−</button><span class="v">+' + DIR.spendMayor + '</span><button id="dMyPlus" type="button"' + (canAddMy ? '' : ' disabled') + '>+</button></div><span class="calc">$100K base' + (DIR.spendMayor ? ' + $' + (DIR.spendMayor * 25) + 'K' : '') + '</span></div>' +
-          '<div class="dcard__foot"><button class="dgo idg" id="dMayor" type="button"' + (canAffordMayor && !isMin ? '' : ' disabled') + '>Announce Candidacy</button><span class="dnote">' + (isMin ? 'A sitting minister can’t run' : canAffordMayor ? 'Costs $' + (mayorCost / 1000) + 'K + 1 action' : 'Need $' + (mayorCost / 1000) + 'K') + '</span></div>') +
-        '</div>';
-    }
-
-    body.innerHTML =
-      '<p class="dir-sub">Pick a member, then assign one action. Each costs 1 of your party’s actions.</p>' +
-      '<div class="dir-members">' + chips + '</div>' +
-      '<div class="dir-stats">' + stats + '</div>' +
-      (isMin ? '<div class="dir-minban">⛔ <b>' + esc(dirName(m)) + '</b> holds a cabinet ministry — they can’t run for Parliament or mayor, raise a paramilitary wing, or expand the youth wing. (A minister can still be appointed Deputy Leader.)</div>' : '') +
-      // Parliament
-      '<div class="dcard"><div class="dcard__t">Run for Parliament</div>' +
-        '<div class="dcard__mech">1D6 + Image(' + image + ')' + (DIR.spend ? ' + ' + DIR.spend : '') + ' vs the rival’s 1D10 · resolves in 1–3 ticks</div>' +
-        '<div class="dcard__eff">A seat-holding rival is locked in now; the contest resolves over the next few ticks. <b>Win:</b> +1 seat &amp; +1% popularity for you; the beaten party loses <b class="bad">1 seat &amp; 1% popularity</b>.</div>' +
-        '<div class="dboost"><span class="bl">Campaign spend</span><div class="dstep"><button id="dSpMinus" type="button"' + (DIR.spend ? '' : ' disabled') + '>−</button><span class="v">+' + DIR.spend + '</span><button id="dSpPlus" type="button"' + (canAddSpend ? '' : ' disabled') + '>+</button></div>' +
-          '<span class="calc">' + (DIR.spend ? '$' + (spendCost / 1000) + 'K → +' + DIR.spend + ' to your roll' : '$25K = +1 to your roll') + '</span></div>' +
-        '<div class="dcard__foot"><button class="dgo idg" id="dPar" type="button"' + (mpCd || !canAffordMp || isMin ? ' disabled' : '') + '>Stand for the seat</button><span class="dnote">' + (isMin ? 'A sitting minister can’t run' : mpCd ? 'On cooldown — <b>' + mpCd + '</b> tick' + (mpCd === 1 ? '' : 's') + ' left' : canAffordMp ? 'Costs $' + (mpCost / 1000) + 'K + 1 action' : 'Need $' + (mpCost / 1000) + 'K') + '</span></div></div>' +
-      mayorHtml +
-      // Youth Wing
-      '<div class="dcard"><div class="dcard__t">Expand the Youth Wing</div>' +
-        '<div class="dcard__mech">Roll 1D12 + 3 ticks · then ceiling +0.1% × (1D3 + Image(' + image + '))</div>' +
-        '<div class="dcard__eff">A patient investment in the base — the drive lands in <b>4–15 ticks</b>, then raises your <b>popularity ceiling</b>. A higher-Image organiser builds more.</div>' +
-        '<div class="dcard__foot"><button class="dgo idg" id="dYw" type="button"' + (DIR.funds >= 25000 && !isMin ? '' : ' disabled') + '>Expand the Wing</button><span class="dnote">' + (isMin ? 'A sitting minister can’t' : DIR.funds >= 25000 ? 'Costs $25K + 1 action' : 'Need $25K') + '</span></div></div>' +
-      // Paramilitary
-      '<div class="dcard para"><div class="dcard__t">Raise a Paramilitary Wing</div>' +
-        '<div class="dcard__eff"><b>+3% popularity</b> now — but the Republic notices: <b class="bad">−1 Regime, −3% popularity ceiling, −1% Government Confidence</b>.</div>' +
-        '<div class="dcard__foot"><button class="dgo red" id="dPara" type="button"' + (isMin ? ' disabled' : '') + '>Raise the Wing</button>' + (isMin ? '<span class="dnote">A sitting minister can’t</span>' : '') + '</div></div>' +
-      // Deputy
-      '<div class="dcard"><div class="dcard__t">Appoint as Deputy Leader</div>' +
-        '<div class="dcard__eff">A standing role (one per party). While a Deputy serves, your party gets <b>+1 action per turn</b>.</div>' +
-        '<div class="dcard__foot">' + depBtn + '<span class="dnote">' + depNote + '</span></div></div>';
-
-    body.querySelectorAll('.dir-mem').forEach(function (b) { b.onclick = function () { DIR.sel = +b.dataset.i; DIR.spend = 0; renderDirect(); }; });
-    document.getElementById('dSpPlus').onclick = function () { if ((DIR.spend + 1) * 25000 <= DIR.funds) { DIR.spend++; renderDirect(); } };
-    document.getElementById('dSpMinus').onclick = function () { if (DIR.spend > 0) { DIR.spend--; renderDirect(); } };
-    document.getElementById('dPar').onclick = function () {
-      var mem = dirMember().id, nm = dirName(dirMember()), sp = DIR.spend; closeDirectModal();
-      performAction(function () { return supabase.rpc('direct_parliament', { p_member: mem, p_spend: sp }); }, function (d) {
-        return nm + ' is standing for Parliament against ' + d.opponent + ' — the result lands in 1–3 ticks.';
-      });
-    };
-    document.getElementById('dPara').onclick = function () {
-      var mem = dirMember().id; closeDirectModal();
-      performAction(function () { return supabase.rpc('direct_paramilitary', { p_member: mem }); }, function (d) {
-        return 'Paramilitary wing raised — popularity +' + d.pop_gain + '%, −1 Regime, −3% ceiling, −1% Gov Confidence.';
-      });
-    };
-    var dYw = document.getElementById('dYw');
-    if (dYw && !dYw.disabled) dYw.onclick = function () {
-      var mem = dirMember().id, nm = dirName(dirMember()); closeDirectModal();
-      performAction(function () { return supabase.rpc('direct_youth_wing', { p_member: mem }); }, function (d) {
-        return nm + ' is expanding the youth wing — a ceiling boost lands in ' + d.ticks + ' ticks.';
-      });
-    };
-    var dCity = document.getElementById('dCity');
-    if (dCity) dCity.onchange = function () { DIR.selCity = +dCity.value; DIR.spendMayor = 0; renderDirect(); };
-    var dMyPlus = document.getElementById('dMyPlus'); if (dMyPlus) dMyPlus.onclick = function () { if ((100000 + (DIR.spendMayor + 1) * 25000) <= DIR.funds) { DIR.spendMayor++; renderDirect(); } };
-    var dMyMinus = document.getElementById('dMyMinus'); if (dMyMinus) dMyMinus.onclick = function () { if (DIR.spendMayor > 0) { DIR.spendMayor--; renderDirect(); } };
-    var dMayor = document.getElementById('dMayor');
-    if (dMayor && !dMayor.disabled) dMayor.onclick = function () {
-      var mem = dirMember().id, cityId = DIR.cities[DIR.selCity].id, sp = DIR.spendMayor; closeDirectModal();
-      performAction(function () { return supabase.rpc('direct_mayor_announce', { p_member: mem, p_city: cityId, p_spend: sp }); }, function (d) {
-        return d.candidate + ' announced for mayor of ' + d.city + '.';
-      });
-    };
-    var dDep = document.getElementById('dDep');
-    if (dDep && !dDep.disabled) dDep.onclick = function () {
-      var mem = dirMember().id, appoint = dDep.dataset.appoint === '1'; closeDirectModal();
-      performAction(function () { return supabase.rpc('direct_appoint_deputy', { p_member: mem, p_appoint: appoint }); }, function (d) {
-        return d.deputy ? (d.deputy + ' appointed Deputy Leader.') : (d.member + ' dismissed as Deputy Leader.');
-      });
-    };
-  }
-
-  // NO CONFIDENCE opens a confirm modal (the action is destructive + has a cooldown), then
-  // tables the motion via propose_no_confidence. Shares the action lock/budget gate.
-  var nocoBtn = document.getElementById('act-noconfidence');
-  var nocoModal = document.getElementById('nocoModal');
-  if (nocoBtn) {
-    actionBtns.push(nocoBtn);
-    nocoBtn.addEventListener('click', function () { if (!acting && !nocoBtn.disabled) nocoModal.hidden = false; });
-  }
-  var closeNoco = wireModalClose(nocoModal, 'nocoClose');
-  var nocoCancel = document.getElementById('nocoCancel'); if (nocoCancel) nocoCancel.addEventListener('click', closeNoco);
-  var nocoConfirm = document.getElementById('nocoConfirm');
-  if (nocoConfirm) nocoConfirm.addEventListener('click', function () {
-    closeNoco();
-    performAction(function () { return supabase.rpc('propose_no_confidence'); }, function (d) {
-      if (d && d.until != null) applyNocoCooldown(NOW_TICK, d.until);   // grey the button out at once
-      return 'No-confidence motion tabled — it reaches the floor next month.';
-    });
-  });
-  // Reflect the nation-wide cooldown on the button: disabled + a "Cooldown" pill while it's
-  // active, so every player in the nation sees it greyed (the server is still authoritative).
-  function applyNocoCooldown(now, until) {
-    NOW_TICK = now; nocoUntilTick = until || 0;
-    if (!nocoBtn) return;
-    var left = nocoUntilTick - now, pill = nocoBtn.querySelector('.lead__cost');
-    if (left > 0) {
-      nocoBtn.disabled = true;
-      nocoBtn.title = 'No confidence is on cooldown for this nation — ' + left + ' more tick' + (left === 1 ? '' : 's') + '.';
-      if (pill) { pill.textContent = 'Cooldown'; pill.classList.add('lead__cost--soon'); }
-    }
-  }
-
-  // STATEMENT — the head of government releases a written address (0 AP, $10K funds).
+  // STATEMENT — the head of government releases a written address (0 Influence, $10K funds).
   // International reaches every nation's feed; domestic stays in the home nation. The
   // server renders the wording (one source) and writes the events; we just refresh.
   var STMT = { scope: 'international', busy: false };
@@ -1471,7 +1063,6 @@
       supabase.rpc('release_statement', { p_scope: STMT.scope, p_message: msg }).then(function (r) {
         STMT.busy = false;
         if (r.error) { ping(r.error.message || 'Couldn’t release the statement.'); refreshStmt(); return; }
-        if (r.data && r.data.funds != null) setTopbarFunds(myCurrency, r.data.funds);   // spent $10K
         ping('Statement released' + (STMT.scope === 'international' ? ' worldwide.' : '.'));
         closeStmt();
         if (feedCtx) refreshFeed();   // surface it in the home feed
@@ -1486,7 +1077,7 @@
   var appointModal = document.getElementById('appointModal');
   var closeAppoint = wireModalClose(appointModal, 'appointClose');
   var appointCancel = document.getElementById('appointCancel'); if (appointCancel) appointCancel.addEventListener('click', closeAppoint);
-  // The same cabinet picker serves Appoint (formation, 1 AP) and Reshuffle (mid-term, 2 AP +
+  // The same cabinet picker serves Appoint (formation, 1 Influence) and Reshuffle (mid-term, 2 Influence +
   // popularity/Image consequences + a 6-tick cooldown). apMode tells the confirm which RPC to fire.
   var apMode = 'appoint';
   async function openAppointModal(mode) {
@@ -1494,7 +1085,7 @@
     apMode = mode === 'reshuffle' ? 'reshuffle' : 'appoint';
     var reshuffle = apMode === 'reshuffle';
     appointModal.querySelector('.amodal__hd b').textContent = reshuffle ? 'Reshuffle the Cabinet' : 'Name the Cabinet';
-    var apPill = document.querySelector('#appointConfirm .appoint__ap'); if (apPill) apPill.textContent = reshuffle ? '2 AP' : '1 AP';
+    var apPill = document.querySelector('#appointConfirm .appoint__ap'); if (apPill) apPill.textContent = reshuffle ? '2 Influence' : '1 Influence';
     var foot = appointModal.querySelector('.appoint__note');
     if (foot) foot.innerHTML = reshuffle
       ? 'Parties gain <b>+0.2%</b> popularity per ministry gained, <b>−0.3%</b> per ministry lost. Prestige posts: incoming <b>+1 Image</b>, outgoing <b>−2</b>.'
@@ -1550,264 +1141,25 @@
     }
   });
 
-  // Stamp every action card with its AP cost. Standing actions (data-standing) take
-  // their cost from STANDING_COST (util.js → mirrors schema/40 _standing_cost()), so the
-  // gate, the pill, and the tooltip all read one source; %COST% in the title resolves to
-  // it. data-cost-label overrides the pill text for a variable cost (Recruit: 1–2);
-  // data-soon marks a not-yet-wired action with a "Soon" pill. The gate is setActions.
+  // Stamp every action card with its Influence cost from data-cost. data-cost-free marks a
+  // deferred/free action (a "Free" pill); data-soon marks a not-yet-wired action
+  // (a "Soon" pill). The action budget gate is setActions.
   function stampCost(b) {
     if (b.querySelector('.lead__cost')) return;   // already stamped (PM bar can re-render)
-    if (b.hasAttribute('data-standing')) { b.dataset.cost = STANDING_COST; b.title = b.title.replace('%COST%', STANDING_COST); }
     var pill = document.createElement('span');
     if (b.hasAttribute('data-soon')) { pill.className = 'lead__cost lead__cost--soon'; pill.textContent = 'Soon'; }
-    else if (b.hasAttribute('data-cost-free')) { pill.className = 'lead__cost'; pill.textContent = 'Free'; }   // cost is deferred (Negotiate: paid on invite/commit, not on open)
-    else { pill.className = 'lead__cost'; pill.textContent = (b.dataset.costLabel || (parseInt(b.dataset.cost, 10) || 1)) + ' AP'; }
+    else if (b.hasAttribute('data-cost-free')) { pill.className = 'lead__cost'; pill.textContent = 'Free'; }
+    else { pill.className = 'lead__cost'; pill.textContent = (parseInt(b.dataset.cost, 10) || 1) + ' Influence'; }
     b.appendChild(pill);
-  }
-  document.querySelectorAll('.leadbar__grid .lead').forEach(stampCost);
-
-  // ATTACK targets a rival → open a picker (all other parties, with seats +
-  // popularity), then call party_attack(targetId). Shares the action lock/budget.
-  var attackBtn = document.getElementById('act-attack');
-  var attackModal = document.getElementById('attackModal');
-  if (attackBtn) {
-    actionBtns.push(attackBtn);
-    attackBtn.addEventListener('click', openAttackModal);
-  }
-  async function openAttackModal() {
-    if (acting || attackBtn.disabled || !feedCtx) return;
-    var list = document.getElementById('attackList');
-    list.innerHTML = '<p class="empty">Loading rivals…</p>';
-    attackModal.hidden = false;
-    try {
-      const { data: rivals } = await supabase.from('parties')
-        .select('id, name, abbreviation, seats, popularity')
-        .eq('nation_id', feedCtx.nationId).neq('id', myPartyId).order('seats', { ascending: false });
-      var r = rivals || [];
-      if (!r.length) { list.innerHTML = '<p class="empty">No rival parties to attack yet.</p>'; return; }
-      list.innerHTML = r.map(function (p) {
-        return '<button class="atarget" type="button" data-id="' + esc(p.id) + '">' +
-          '<span class="atarget__id"><b>' + esc(p.name) + '</b><span>' + esc(p.abbreviation || '') + '</span></span>' +
-          '<span class="atarget__st">' + (p.seats || 0) + ' seats &middot; ' + (Number(p.popularity) || 0) + '% pop</span></button>';
-      }).join('');
-      list.querySelectorAll('.atarget').forEach(function (b) { b.addEventListener('click', function () { runAttack(b.dataset.id); }); });
-    } catch (e) { list.innerHTML = '<p class="empty">Couldn’t load rivals.</p>'; }
-  }
-  var closeAttackModal = wireModalClose(attackModal, 'attackClose');
-  function runAttack(targetId) {
-    closeAttackModal();
-    performAction(function () { return supabase.rpc('party_attack', { p_target: targetId }); }, function (d) {
-      return d.hit
-        ? ('Hit — ' + d.target + ' popularity −' + d.cut + '%' + (d.self_penalty ? ' (−' + d.self_penalty + '% you)' : '') + '.')
-        : ('Backfired — your popularity −' + d.self_penalty + '%.');
-    });
-  }
-
-  // RECRUIT is two-step: opening the drive (party_recruit_scout) charges $25K and
-  // surfaces two candidates; hiring one (party_recruit_hire) spends the action
-  // cost. Scouting is a side-effecting "picker" like Attack, so it opens the modal
-  // itself; the hire goes through performAction to refresh the budget + feed.
-  var recruitBtn = document.getElementById('act-recruit');
-  var recruitModal = document.getElementById('recruitModal');
-  if (recruitBtn) {
-    actionBtns.push(recruitBtn);
-    recruitBtn.addEventListener('click', openRecruitModal);
-  }
-  function candCard(choice, c, acts) {
-    if (!c) return '';
-    var label = choice === 'seasoned' ? 'Seasoned' : 'Newcomer';
-    var afford = partyActions >= acts;   // enough AP left to hire this candidate?
-    var stats = COMPETENCIES.map(function (k) { return '<span class="cand__stat">' + k.abbr + ' <b>' + (c[k.key] || 0) + '</b></span>'; }).join('');
-    return '<button class="cand" type="button" data-choice="' + choice + '"' + (afford ? '' : ' disabled') + '>' +
-      '<span class="cand__top"><span class="cand__name"><b>' + esc((c.first_name || '') + ' ' + (c.last_name || '')) + '</b></span><span class="cand__tag">' + label + '</span></span>' +
-      '<span class="cand__meta">Age ' + (c.age || 0) + ' &middot; Exp ' + (c.experience || 0) + '</span>' +
-      '<span class="cand__stats">' + stats + '</span>' +
-      '<span class="cand__cost">Recruit &middot; ' + acts + ' action' + (acts > 1 ? 's' : '') + (afford ? '' : ' &middot; need ' + acts + ' AP') + '</span></button>';
-  }
-  function renderCandidates(d) {
-    var list = document.getElementById('recruitList');
-    list.innerHTML = candCard('newcomer', d.newcomer, 1) + candCard('seasoned', d.seasoned, 2);
-    list.querySelectorAll('.cand').forEach(function (b) { b.addEventListener('click', function () { hireCandidate(b.dataset.choice); }); });
-  }
-  async function openRecruitModal() {
-    if (acting || recruitBtn.disabled || !feedCtx) return;
-    acting = true;
-    actionBtns.forEach(function (b) { b.disabled = true; });
-    var list = document.getElementById('recruitList');
-    list.innerHTML = '<p class="empty">Opening the recruitment drive…</p>';
-    recruitModal.hidden = false;
-    try {
-      const { data, error } = await supabase.rpc('party_recruit_scout');
-      if (error) { recruitModal.hidden = true; ping(error.message || 'Couldn’t open the drive.'); return; }
-      setActions(data.actions);
-      renderCandidates(data);
-    } catch (e) { recruitModal.hidden = true; ping('Couldn’t open the drive.'); }
-    finally { acting = false; setActions(partyActions); }
-  }
-  var closeRecruitModal = wireModalClose(recruitModal, 'recruitClose');
-  function hireCandidate(choice) {
-    closeRecruitModal();
-    performAction(function () { return supabase.rpc('party_recruit_hire', { p_choice: choice }); }, function (d) {
-      return 'Recruited ' + d.name + ' (' + (d.choice === 'seasoned' ? 'Seasoned' : 'Newcomer') + ').';
-    });
-  }
-
-  // NEGOTIATE opens coalition talks (server-backed — see /negotiations.js): a
-  // modal listing the player's active talks plus a Start-New flow that picks a
-  // party and opens the negotiation page. Opening talks is free (the action is
-  // charged later — on coalition_invite or coalition_commit), so the button stays
-  // out of the AP lock; viewing existing talks is free too.
-  var negotiateBtn = document.getElementById('act-negotiate');
-  var negotiateModal = document.getElementById('negotiateModal');
-  var negPool = [];   // other parties in the nation, cached when the modal opens
-  var negStarting = false; // double-fire lock for the (action-costing) open call
-  if (negotiateBtn) negotiateBtn.addEventListener('click', openNegotiateModal);
-  wireModalClose(negotiateModal, 'negClose');
-
-  async function openNegotiateModal() {
-    if (!feedCtx || !myPartyId) return;
-    var list = document.getElementById('negList');
-    list.innerHTML = '<p class="empty">Loading…</p>';
-    negotiateModal.hidden = false;
-    try {
-      const others = await supabase.from('parties')
-        .select('id, name, abbreviation, seats, popularity, archetype')
-        .eq('nation_id', feedCtx.nationId).neq('id', myPartyId).order('seats', { ascending: false });
-      negPool = others.data || [];
-      var all = await fetchNegotiations();
-      renderNegList(activeTalks(all, myPartyId));
-    } catch (e) { list.innerHTML = '<p class="empty">Couldn’t open coalition talks.</p>'; }
-  }
-  function negPartyName(id) { var p = negPool.filter(function (x) { return x.id === id; })[0]; return p ? p.name : 'A party'; }
-  // The other parties involved in a talk, from the player's vantage: if hosting,
-  // the invited parties; if invited, the host.
-  function talkOthers(n) {
-    return n.host_party_id === myPartyId
-      ? (n.negotiation_parties || []).map(function (p) { return p.party_id; })
-      : [n.host_party_id];
-  }
-
-  function renderNegList(negs) {
-    document.getElementById('negTitle').textContent = 'Coalition Talks';
-    var list = document.getElementById('negList');
-    var html = negs.length ? negs.map(function (n) {
-      var c = termCounts(n);
-      var label = talkOthers(n).map(negPartyName).join(' + ') || 'Talks';
-      var role = (n.host_party_id === myPartyId ? 'Hosting' : 'Invited') + (n.status === 'committed' ? ' · Committed' : '');
-      return '<button class="atarget" type="button" data-id="' + esc(n.id) + '">' +
-        '<span class="atarget__id"><b>' + esc(label) + '</b><span>' + role + '</span></span>' +
-        '<span class="atarget__st">' + (n.status === 'committed' ? '✓ committed' : c.agreed + '/' + c.total + ' agreed') + '</span></button>';
-    }).join('') : '<p class="empty">No coalition talks yet. Start one to bring a party to the table.</p>';
-    html += '<button class="negnew" id="negNewBtn" type="button">+ Start New Negotiation</button>';   // opening is free — no AP gate
-    list.innerHTML = html;
-    list.querySelectorAll('.atarget').forEach(function (b) { b.addEventListener('click', function () { window.location.href = '/play/negotiate/?id=' + encodeURIComponent(b.dataset.id); }); });
-    document.getElementById('negNewBtn').addEventListener('click', renderNegPicker);
-  }
-
-  function renderNegPicker() {
-    document.getElementById('negTitle').textContent = 'Bring a Party to the Table';
-    var list = document.getElementById('negList');
-    var html = '<button class="negback" id="negBack" type="button">&lsaquo; Back</button>';
-    html += negPool.length ? negPool.map(function (p) {
-      return '<button class="atarget" type="button" data-id="' + esc(p.id) + '">' +
-        '<span class="atarget__id"><b>' + esc(p.name) + '</b><span>' + esc(p.abbreviation || '') + '</span></span>' +
-        '<span class="atarget__st">' + (p.seats || 0) + ' seats &middot; ' + (Number(p.popularity) || 0) + '% &middot; ' + esc(ideologyLabel(p)) + '</span></button>';
-    }).join('') : '<p class="empty">No other parties in the nation to negotiate with yet.</p>';
-    list.innerHTML = html;
-    document.getElementById('negBack').addEventListener('click', function () { openNegotiateModal(); });
-    list.querySelectorAll('.atarget').forEach(function (b) { b.addEventListener('click', function () { startNegotiation(b.dataset.id); }); });
-  }
-  async function startNegotiation(targetId) {
-    if (negStarting) return; // opening is free, but the lock still stops a double-click spawning two talks
-    negStarting = true;
-    try {
-      var res = await openNegotiation(targetId);
-      window.location.href = '/play/negotiate/?id=' + encodeURIComponent(res.id);
-    } catch (e) { negStarting = false; ping(e.message || 'Couldn’t open talks.'); }
-  }
-
-  // If the player is a formateur with an open formation window, nudge them to the
-  // Government page where the decision lives (the election fires on the clock, so
-  // they could be anywhere when it lands). Shares formationState with that page.
-  async function renderFormation() {
-    if (!myPartyId || !feedCtx) return;
-    var box = document.getElementById('formBanner');
-    try {
-      const fm = await import('/formation.js');           // lazy: an optional nudge, never a hard dependency
-      var fs = await fm.formationState({ id: myPartyId, nation_id: feedCtx.nationId });
-      var msg = fs.canRenege
-        ? '🏛 <b>Your government has formed.</b> Keep your agreed coalition or form a new one — this turn only.'
-        : fs.postRenege
-        ? '🏛 <b>You’re governing alone.</b> Finish forming a new coalition before the turn ends.'
-        : '';
-      box.innerHTML = msg
-        ? '<a class="invite" href="/play/government/"><span class="invite__t">' + msg +
-          '</span><span class="invite__a"><span class="invite__go">Go to Government ▸</span></span></a>'
-        : '';
-    } catch (e) { box.innerHTML = ''; }
-  }
-
-  // Flag the Negotiate action when the player has open coalition talks (hosting or invited) —
-  // the same activeTalks() the modal lists, so the tag and the list can't disagree.
-  async function refreshNegotiateTag() {
-    var btn = document.getElementById('act-negotiate');
-    if (!btn || !myPartyId) return;
-    try {
-      var open = activeTalks(await fetchNegotiations(), myPartyId).length;
-      var tag = btn.querySelector('.lead__tag');
-      if (!open) { if (tag) tag.remove(); return; }
-      if (!tag) { tag = document.createElement('span'); tag.className = 'lead__tag'; btn.appendChild(tag); }
-      tag.textContent = 'Open Negotiations' + (open > 1 ? ' · ' + open : '');
-    } catch (e) { /* leave the button untagged on failure */ }
-  }
-
-  // Pending coalition invites surface as banners on Home: Decline, or Enter Talks
-  // (which accepts and opens the negotiation page).
-  async function renderInvites() {
-    if (!myPartyId) return;
-    var box = document.getElementById('inviteBanners');
-    try {
-      var invites = await coalitionInvitesForMe();   // host + full invited roster (server-side; RLS hides co-invitees)
-      if (!invites.length) { box.innerHTML = ''; return; }
-      box.innerHTML = invites.map(function (n) {
-        var host = (n.host && n.host.name) || 'Another party';
-        var roster = (n.parties || []).map(function (p) {
-          return '<span class="invite__p"><b>' + esc(p.name) + '</b> <span>· ' + esc(ideologyLabel(p)) + '</span></span>';
-        }).join('');
-        return '<div class="invite" data-id="' + esc(n.id) + '"><div class="invite__t"><b>' + esc(host) + '</b> has invited you to Coalition Talks.' +
-          (roster ? '<span class="invite__lbl">Invited Parties</span>' + roster : '') + '</div>' +
-          '<span class="invite__a"><button class="invite__dec" type="button">Reject Talks</button><button class="invite__go" type="button">Accept Talks</button></span></div>';
-      }).join('');
-      box.querySelectorAll('.invite').forEach(function (el) {
-        var id = el.dataset.id, go = el.querySelector('.invite__go'), dec = el.querySelector('.invite__dec');
-        // Both buttons write (coalition_respond) — lock the pair on first click.
-        function lock() { go.disabled = true; dec.disabled = true; }
-        go.addEventListener('click', function () { if (go.disabled) return; lock(); enterInvite(id, true, go, dec); });
-        dec.addEventListener('click', function () { if (dec.disabled) return; lock(); enterInvite(id, false, go, dec); });
-      });
-    } catch (e) { box.innerHTML = ''; }
-  }
-  async function enterInvite(negId, accept, go, dec) {
-    try {
-      await respondInvite(negId, accept);
-      if (accept) { window.location.href = '/play/negotiate/?id=' + encodeURIComponent(negId); return; }
-      renderInvites();
-    } catch (e) {
-      if (go) go.disabled = false; if (dec) dec.disabled = false; // failed — let them retry
-      ping(e.message || 'Couldn’t respond to the invite.');
-    }
   }
 
   function chip(k, body) { return '<div class="chip"><span class="chip__k">' + k + '</span>' + body + '</div>'; }
   function val(t) { return '<span class="chip__v">' + esc(t) + '</span>'; }
 
-  // Prime Minister actions — shown ONLY to the party holding the premiership (the
-  // active government's formateur). Coalition opens the coalition-talks flow (the
-  // same one the leader's Negotiate action uses — opening new talks is free, the
-  // action is charged later on invite/commit); the rest aren't wired yet, so they
-  // render as dimmed scaffolds. When the player isn't PM the bar isn't rendered.
+  // Prime Minister actions — shown ONLY to the party holding the premiership (the active
+  // government's formateur). The wired ones are live; the rest render as dimmed scaffolds.
+  // When the player isn't PM the bar isn't rendered.
   var PM_ACTIONS = [
-    ['Coalition', 'Build your governing coalition.'],
     ['Produce',   'Ensure the nation’s resources are generated.'],
     ['Direct',    'Direct a ministry’s work.'],
     ['Statement', 'Release a public statement.'],
@@ -1823,19 +1175,17 @@
       '<p class="leadbar__sub">Your leader holds the premiership. One action only. Choose where to spend it.</p>' +
       '<div class="leadbar__grid">' +
       PM_ACTIONS.map(function (a) {
-        // Coalition, Produce, Appoint, Statement, Reshuffle and Elections are live; the rest stay dimmed scaffolds.
-        var id = a[0] === 'Coalition' ? ' id="pm-coalition"' : a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : a[0] === 'Statement' ? ' id="pm-statement"' : a[0] === 'Reshuffle' ? ' id="pm-reshuffle"' : a[0] === 'Elections' ? ' id="pm-elections"' : '';
-        // Most premiership actions spend the single weekly action (1 AP). Coalition and Statement
-        // cost no action (Statement is paid in $10K funds); Produce costs PRODUCE_COST on a cooldown;
-        // Reshuffle costs 2 AP on a 6-tick cooldown.
-        var cost = a[0] === 'Coalition' || a[0] === 'Statement' ? ' data-cost-free' : a[0] === 'Produce' ? ' data-cost="' + PRODUCE_COST + '"' : a[0] === 'Reshuffle' ? ' data-cost="2"' : '';
+        // Produce, Appoint, Statement, Reshuffle and Elections are live; the rest stay dimmed scaffolds.
+        var id = a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : a[0] === 'Statement' ? ' id="pm-statement"' : a[0] === 'Reshuffle' ? ' id="pm-reshuffle"' : a[0] === 'Elections' ? ' id="pm-elections"' : '';
+        // Most premiership actions spend the single weekly action (1 Influence). Statement costs no
+        // action (it's paid in $10K funds); Produce costs PRODUCE_COST on a cooldown;
+        // Reshuffle costs 2 Influence on a 6-tick cooldown.
+        var cost = a[0] === 'Statement' ? ' data-cost-free' : a[0] === 'Produce' ? ' data-cost="' + PRODUCE_COST + '"' : a[0] === 'Reshuffle' ? ' data-cost="2"' : '';
         return '<button class="lead" type="button"' + (id || ' disabled') + cost +
           '><b>' + a[0] + '</b><span class="lead__desc">' + a[1] + '</span></button>';
       }).join('') +
       '</div></section>';
     el.querySelectorAll('.lead').forEach(stampCost);
-    var coalBtn = el.querySelector('#pm-coalition');
-    if (coalBtn) coalBtn.addEventListener('click', openNegotiateModal);
     // Statement: free of action, $10K funds. Override the "Free" pill to show the cash cost.
     var stmtBtn = el.querySelector('#pm-statement');
     if (stmtBtn) {
@@ -1844,8 +1194,8 @@
     }
     var apptBtn = el.querySelector('#pm-appoint');
     if (apptBtn) apptBtn.addEventListener('click', openAppointModal);
-    // Produce: run a production cycle (PRODUCE_COST AP, 12-tick nation cooldown). Fires via
-    // performAction so the AP budget + feed refresh; the returned `until` greys it out at once.
+    // Produce: run a production cycle (PRODUCE_COST Influence, 12-tick nation cooldown). Fires via
+    // performAction so the Influence budget + feed refresh; the returned `until` greys it out at once.
     produceBtn = el.querySelector('#pm-produce');
     if (produceBtn) {
       actionBtns.push(produceBtn);
@@ -1857,14 +1207,14 @@
         });
       });
     }
-    // Reshuffle: reopen the cabinet picker in reshuffle mode (2 AP, 6-tick cooldown).
+    // Reshuffle: reopen the cabinet picker in reshuffle mode (2 Influence, 6-tick cooldown).
     reshuffleBtn = el.querySelector('#pm-reshuffle');
     if (reshuffleBtn) {
       actionBtns.push(reshuffleBtn);
       reshuffleBtn.addEventListener('click', function () { if (!reshuffleBtn.disabled && !acting) openAppointModal('reshuffle'); });
     }
-    // Elections: dissolve the legislature early (1 AP, 12-tick cooldown). Fires via
-    // performAction (AP budget + feed refresh); the returned `until` greys it out at once.
+    // Elections: dissolve the legislature early (1 Influence, 12-tick cooldown). Fires via
+    // performAction (Influence budget + feed refresh); the returned `until` greys it out at once.
     // In a one-party state this calls a Party Congress; multiparty, a general election.
     electionBtn = el.querySelector('#pm-elections');
     if (electionBtn) {
@@ -1915,8 +1265,8 @@
   }
 
   // Minister of Trade bar — shown to a party that holds the Trade portfolio, above the
-  // party actions. The Import card just navigates to the Economy page (where the actual
-  // import, and its 2-AP cost, happens); the "2 AP" pill is informational here.
+  // Influence. The Import card just navigates to the Economy page (where the actual
+  // import, and its 2-Influence cost, happens); the "2 Influence" pill is informational here.
   function renderTradeBar(isTradeMin) {
     var el = document.getElementById('tradebar');
     if (!el) return;
@@ -1940,7 +1290,7 @@
 
   // The Minister of Economic Development container — shown only to the party holding the
   // Economic Development portfolio, directly below the Prime Minister bar. Its Initiative action
-  // (2 AP) is the entry point to the National Initiatives panel lower on the page, where the
+  // (2 Influence) is the entry point to the National Initiatives panel lower on the page, where the
   // minister enacts a programme (server gate: initiative_enact, schema/141).
   function renderEconDevBar(isEconDevMin) {
     var el = document.getElementById('econdevbar');
@@ -1982,6 +1332,84 @@
     if (dp) { actionBtns.push(dp); dp.addEventListener('click', function () { if (!dp.disabled) openDeploy(); }); }
   }
 
+  // ---- Party Approval card (Phase C): the real popularity trend from party_popularity_history
+  // (schema/147), plus the labelled factors from the structured events feed. ----
+  var APPR_PTS = null;   // last-drawn points, so a resize can redraw without refetching
+  function drawApprChart(svg, pts){
+    var d = pts.map(function(p){ return p.pop; }), n = d.length;
+    if (!n){ svg.innerHTML = ''; return; }
+    var W = Math.max(200, Math.round(svg.clientWidth || 320)), H = 150;
+    var x0 = 40, x1 = W - 14, y0 = 10, y1 = H - 26;                 // plot rect (gutters for labels)
+    var dMin = Math.min.apply(null, d), dMax = Math.max.apply(null, d);
+    // Y bounds snap to 5% steps with a little headroom, clamped to the real [0,100] popularity range.
+    var yMin = Math.max(0, Math.floor((dMin - 3) / 5) * 5), yMax = Math.min(100, Math.max(yMin + 5, Math.ceil((dMax + 2) / 5) * 5));
+    var xi = function(i){ return n === 1 ? (x0 + x1) / 2 : x0 + (i / (n - 1)) * (x1 - x0); };
+    var yv = function(v){ return y1 - ((v - yMin) / (yMax - yMin)) * (y1 - y0); };
+    var g = '';
+    for (var t = yMin; t <= yMax; t += 5){
+      var gy = yv(t).toFixed(1);
+      g += '<line class="appr__grid" x1="' + x0 + '" y1="' + gy + '" x2="' + x1 + '" y2="' + gy + '"/>';
+      g += '<text class="appr__lbl" x="' + (x0 - 8) + '" y="' + gy + '" text-anchor="end" dominant-baseline="middle">' + t + '%</text>';
+    }
+    // X tick labels (in-game dates): every point when few, else 5 evenly spaced.
+    var idxs = n <= 6 ? d.map(function(_, i){ return i; }) : [0, Math.round((n - 1) / 4), Math.round((n - 1) / 2), Math.round(3 * (n - 1) / 4), n - 1];
+    var xl = '';
+    idxs.forEach(function(i){
+      var anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
+      xl += '<text class="appr__lbl" x="' + xi(i).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="' + anchor + '">' + esc(tickToDate(pts[i].tick)) + '</text>';
+    });
+    var line = d.map(function(v, i){ return (i ? 'L' : 'M') + xi(i).toFixed(1) + ' ' + yv(v).toFixed(1); }).join(' ');
+    var area = 'M' + xi(0).toFixed(1) + ' ' + y1 + ' ' + d.map(function(v, i){ return 'L' + xi(i).toFixed(1) + ' ' + yv(v).toFixed(1); }).join(' ') + ' L' + xi(n - 1).toFixed(1) + ' ' + y1 + ' Z';
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.innerHTML = g +
+      '<line class="appr__axis-x" x1="' + x0 + '" y1="' + y1 + '" x2="' + x1 + '" y2="' + y1 + '"/>' +
+      '<path d="' + area + '" fill="rgba(85,70,232,.12)"/>' +
+      '<path d="' + line + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<circle cx="' + xi(n - 1).toFixed(1) + '" cy="' + yv(d[n - 1]).toFixed(1) + '" r="3.2" fill="currentColor"/>' +
+      xl;
+  }
+  window.addEventListener('resize', function(){ var s = document.getElementById('apprSpark'); if (s && APPR_PTS) drawApprChart(s, APPR_PTS); });
+
+  async function loadApproval(party, curTick){
+    var valEl = document.getElementById('apprVal'), deltaEl = document.getElementById('apprDelta');
+    var svg = document.getElementById('apprSpark'), factorsEl = document.getElementById('apprFactors');
+    if (!valEl || !svg) return;
+    var live = Math.max(0, Math.min(100, Number(party.popularity) || 0));
+    var hist = [];
+    try {
+      var hr = await supabase.from('party_popularity_history').select('tick, popularity').eq('party_id', party.id).order('tick', { ascending: true });
+      if (!hr.error) hist = (hr.data || []).map(function(r){ return { tick: Number(r.tick), pop: Math.max(0, Math.min(100, Number(r.popularity) || 0)) }; });
+    } catch (e) { /* history table not migrated yet → card shows the live point only */ }
+    // "Now" is authoritative: the live popularity at the current tick wins over any stored snapshot
+    // for this tick (which may predate a same-tick change or not exist yet).
+    var byTick = {}; hist.forEach(function(p){ byTick[p.tick] = p.pop; });
+    byTick[curTick] = live;
+    APPR_PTS = Object.keys(byTick).map(Number).sort(function(a, b){ return a - b; }).map(function(t){ return { tick: t, pop: byTick[t] }; });
+
+    valEl.textContent = (Math.round(live * 10) / 10) + '%';
+    if (APPR_PTS.length >= 2) {
+      var dr = Math.round((APPR_PTS[APPR_PTS.length - 1].pop - APPR_PTS[APPR_PTS.length - 2].pop) * 10) / 10;
+      deltaEl.className = 'appr__delta' + (dr > 0 ? ' pos' : dr < 0 ? ' neg' : '');
+      deltaEl.textContent = dr > 0 ? '▲ +' + dr + ' pts since last tick' : dr < 0 ? '▼ ' + Math.abs(dr) + ' pts since last tick' : 'Flat since last tick';
+    } else { deltaEl.className = 'appr__delta'; deltaEl.textContent = 'No prior history yet — the trend builds each tick'; }
+    drawApprChart(svg, APPR_PTS);
+
+    // Factors: recent labelled popularity events for this party — the structured, forge-proof
+    // source (admin_fire_event stamps effect_target/effect_value/tone). We never parse body text.
+    if (factorsEl) {
+      var factors = [];
+      try {
+        var er = await supabase.from('events').select('body, effect_target, effect_value, tone, created_at')
+          .eq('party_id', party.id).not('effect_value', 'is', null).order('created_at', { ascending: false }).limit(25);
+        if (!er.error) factors = (er.data || []).filter(function(e){ return /party popularity/i.test(e.effect_target || ''); }).slice(0, 5);   // not 'Popularity Ceiling'
+      } catch (e) { /* feed unavailable → the none-state below */ }
+      factorsEl.innerHTML = factors.length
+        ? factors.map(function(f){ var a = Math.round((Number(f.effect_value) || 0) * 10) / 10;
+            return '<div class="factor"><span class="factor__amt factor__amt--' + (a < 0 ? 'neg' : 'pos') + '">' + (a < 0 ? '−' : '+') + Math.abs(a) + '%</span><span class="factor__what">' + esc(f.body) + '</span></div>'; }).join('')
+        : '<div class="factor--none">No labelled popularity changes recently — the chart above tracks the net movement each tick.</div>';
+    }
+  }
+
   (async () => {
     if (!isConfigured) return; // local dev: leave placeholders
     const user = await requireUser();
@@ -2007,7 +1435,6 @@
       // Party funds in the topbar, just right of the Discord logo.
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
       myCurrency = currency;   // module-scope, for the Statement funds refresh
-      setTopbarFunds(currency, party.funds);
 
       // Inactivity warning, escalating with idle days (party.last_active_at, stamped server-side).
       // Any action revives it. At INACTIVE_DAYS the party sits out elections; at INACTIVE_DELETE_DAYS
@@ -2052,36 +1479,17 @@
       // "Loading…" if the nation row failed to load (e.g. a column drift).
       if (nation) renderGlance(nation);
       else document.getElementById('snap').innerHTML = '<p class="empty">Couldn’t load the nation’s figures right now. Refresh to try again.</p>';
-      applyNocoCooldown(curTick, nation && nation.no_confidence_until_tick);   // nation-wide no-confidence cooldown gate
-      setActions(party.actions_remaining != null ? party.actions_remaining : 12);
+      setActions(party.influence != null ? party.influence : 12);
       feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };
       myPartyId = party.id;  // used to exclude self from the attack target list
+      loadApproval(party, curTick).catch(function(){});   // Party Approval card — non-blocking (schema/147 trend + factors)
 
       // Prime Minister actions appear only for the party that holds the premiership.
       try {
         const { data: govt } = await supabase.from('governments')
           .select('formateur_party_id, reshuffle_until_tick').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
         amPM = !!(govt && govt.formateur_party_id === party.id);   // head of government — manages crises too
-        // A live no-confidence motion (agenda or voting) blocks the premier from leaving
-        // (resigning) until it resolves — junior partners can still walk.
-        var nocoLive = false;
-        if (amPM) {
-          const { data: liveNoco } = await supabase.from('proposals').select('id')
-            .eq('nation_id', party.nation_id).eq('kind', 'no_confidence').in('status', ['agenda', 'voting']).limit(1);
-          nocoLive = !!(liveNoco && liveNoco.length);
-        }
         renderPMBar(amPM);
-        // Gate Leave Coalition: only a party in the government can walk out; the premier is
-        // additionally blocked while a no-confidence motion is live. AP is applied by setActions
-        // via the leaveEligible override, so re-run it once membership is known.
-        leaveEligible = !!party.in_government && !(amPM && nocoLive);
-        if (leaveBtn) {
-          leaveBtn.title = !party.in_government
-            ? 'Your party is not in the government.'
-            : (amPM && nocoLive) ? 'A no-confidence motion is on the floor — it must be resolved first.'
-            : amPM ? 'Resign as Head of Government (1 AP): −5% Party Popularity and a snap election.'
-            : 'Leave the governing coalition (1 AP): −5% Government Confidence, −3% your Party Popularity.';
-        }
         setActions(partyActions);
         applyProduceCooldown(curTick, nation && nation.produce_until_tick);   // nation-wide Produce cooldown gate
         applyReshuffleCooldown(curTick, govt && govt.reshuffle_until_tick);   // 6-tick reshuffle cooldown gate
@@ -2107,12 +1515,9 @@
       }
       await selectFeed('global');
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
-      renderInvites();   // surface any pending coalition invites (non-blocking)
-      refreshNegotiateTag();   // tag the Negotiate action if the player has open coalition talks (non-blocking)
-      renderFormation(); // nudge a formateur to the Government page if the window is open
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));
       // National Initiatives panel: what's available + the one under way. The Minister of Economic
-      // Development enacts through initiative_enact (2 AP) via performAction (AP + feed refresh),
+      // Development enacts through initiative_enact (2 Influence) via performAction (Influence + feed refresh),
       // then the panel reloads.
       function loadInitiatives(){
         fetchNationInitiatives(party.nation_id).then(function(data){

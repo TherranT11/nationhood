@@ -20,7 +20,7 @@ declare
 begin
   if coalesce(p_qty, 0) < 1 then raise exception 'Choose how much to draw.'; end if;
   v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
-  if v_p.actions_remaining < 2 then raise exception 'Not enough actions left this turn (need 2).'; end if;
+  if v_p.influence < 2 then raise exception 'Not enough Influence (need 2).'; end if;
   if not public._party_holds_ministry(v_p.id, 'Trade') then
     raise exception 'Only the Minister of Trade can draw on a trade agreement.'; end if;
 
@@ -50,7 +50,7 @@ begin
 
   v_total := round(v_a.unit_price * p_qty, 1);
   perform public._settle_import(v_a.buyer_nation, v_a.seller_nation, v_a.resource, p_qty, v_total, 0);   -- no tariff on a deal
-  update public.parties set actions_remaining = actions_remaining - 2 where id = v_p.id;
+  update public.parties set influence = influence - 2 where id = v_p.id;
   -- Bank the draw; close the deal if this empties the pool (RHS reads the pre-update count).
   update public.trade_agreements
      set drawn_units = drawn_units + p_qty,
@@ -64,7 +64,7 @@ begin
             || ' under their trade agreement for ' || v_cur || v_total || 'B.', public.current_game_date());
 
   return jsonb_build_object('qty', p_qty, 'total', v_total, 'remaining', v_remaining - p_qty,
-    'actions', v_p.actions_remaining - 2);
+    'actions', v_p.influence - 2);
 end $$;
 grant execute on function public.draw_trade_agreement(uuid, int) to authenticated;
 

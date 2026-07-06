@@ -115,7 +115,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { esc, declaredValue } from '/util.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals } from '/proposals.js';
   import { policyOptions, policyOptionIdx, effectText, optMoney, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText } from '/policies.js';
@@ -126,7 +126,7 @@
   // the picker greys them out elsewhere (isMonarchy, ladders.js) — flavour gate only.
   var ROYAL_TITLES = ['King', 'Queen', 'Emperor'];
 
-  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
+  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
   var modeParam = new URLSearchParams(location.search).get('type');
@@ -539,7 +539,7 @@
     if (!user) return; // redirected to login
     var party = null, nation = null;
     try {
-      ({ data: party } = await supabase.from('parties').select('name, archetype, nation_id, funds, actions_remaining, seats').eq('user_id', user.id).single());
+      ({ data: party } = await supabase.from('parties').select('name, archetype, nation_id, influence, seats').eq('user_id', user.id).single());
       if (!party) { window.location.replace('/nation-select/'); return; }
       ({ data: nation } = await supabase.from('nations').select('name, flag, economy, declarations, policies, population, stats, electoral_threshold').eq('id', party.nation_id).single());
       const nationName = (nation && nation.name) || party.nation_id;
@@ -549,8 +549,7 @@
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
-      setTopbarFunds(currency, party.funds);
-      setTopbarActions(party.actions_remaining);
+      setTopbarActions(party.influence);
     } catch (e) { /* chrome is best-effort; the picker below still loads */ }
     // Each mode renders here so it can show the nation's CURRENT value/option.
     var regime = nation && nation.economy && nation.economy.regime;

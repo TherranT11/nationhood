@@ -25,7 +25,7 @@ create table if not exists public.parties (
   pop_ceiling   numeric not null default 5,     -- support ceiling: current reach / cap on popularity, % (fractional — Ad Blitz nudges it)
   funds         bigint  not null default 0,      -- party treasury, in the nation's currency
   in_government boolean not null default false, -- governing vs in opposition
-  actions_remaining int not null default 12,    -- party actions left this turn; reset to 12 each tick by advance_tick(). Standing actions cost 4 (schema/40 _standing_cost), the rest cost 1.
+  influence int not null default 12,    -- Influence: the party's action budget. Banks up to 100, accruing +3/tick (+1 for the largest party in the nation) in advance_tick (schema/60); spent on actions and campaigning. Formerly Action Points (reset to 12/tick).
   conviction    int     not null default 1,     -- Manifesto currency: earned over time, spent on planks. Every new party starts with 1.
   description   text,                            -- founding identity statement (≤360 chars); replaces the archetype picker at creation
   created_at   timestamptz not null default now(),
@@ -42,11 +42,25 @@ alter table public.parties add column if not exists pop_ceiling numeric not null
 alter table public.parties alter column pop_ceiling type numeric using pop_ceiling::numeric; -- widen int → numeric for fractional ceiling
 alter table public.parties add column if not exists funds bigint not null default 0;
 alter table public.parties add column if not exists in_government boolean not null default false;
-alter table public.parties add column if not exists actions_remaining int not null default 12;
--- A new party starts with the full 12 actions. The add-column above is a no-op on an
--- existing DB (it never updates the default), so set it explicitly — otherwise a freshly
--- founded party falls back to the stale legacy default (3) the column was first created with.
-alter table public.parties alter column actions_remaining set default 12;
+-- Influence was formerly `actions_remaining` (Action Points). Rename the column IN PLACE on any
+-- database that still carries the old name, so existing balances migrate rather than reset. Fresh
+-- installs already have `influence` from the create table above. Idempotent: skipped once renamed,
+-- and guarded so it never clashes with a manually-added `influence` column.
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'parties' and column_name = 'actions_remaining')
+     and not exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'parties' and column_name = 'influence')
+  then
+    alter table public.parties rename column actions_remaining to influence;
+  end if;
+end $$;
+alter table public.parties add column if not exists influence int not null default 12;
+-- A new party starts with 12 Influence and banks upward to 100. The add-column above is a no-op on
+-- an existing DB (it never updates the default), so set it explicitly — otherwise a freshly founded
+-- party falls back to the stale legacy default the column was first created with.
+alter table public.parties alter column influence set default 12;
 alter table public.parties add column if not exists conviction int not null default 0;
 -- Engagement heartbeat for the inactivity metric: wall-clock of the player's last
 -- meaningful action. Stamped by _lock_party() (schema/40) on every action/vote/adoption.

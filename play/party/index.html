@@ -8,22 +8,16 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
 <style>
-  :root{
-    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
-    --line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD;
-    --red:#C42B2B;--red-soft:#FBEAE9;--amber:#E0820E;--green:#16915a;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100%}
-  .app{display:flex;min-height:100vh}
 
   /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
 
   .main{flex:1;padding:24px clamp(16px,4vw,56px) 48px;min-width:0}
 
-  /* top bar (Discord/funds/actions/date/settings gear) now lives in /topbar.js */
+  /* top bar (Discord/Influence/budget/date/settings gear) now lives in /topbar.js */
   .kicker{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--indigo);margin-bottom:14px}
 
   /* party header card */
@@ -433,7 +427,7 @@
   import { ARCHETYPES, archetypeColor, partyColor, ideologyLabel, opposes } from '/archetypes.js';
   import { convRoman, adoptLines, activeLines, lawLines, convsByLevel, convScaledCost } from '/convictions.js';
 
-  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
+  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
   // ---- Party branding: accent colour + crest (logo or initials) -------------
@@ -980,7 +974,7 @@
       const currency = (nation && nation.economy && nation.economy.currency) || '$';
 
       // Topbar action budget (one source: the party row).
-      setTopbarActions(party.actions_remaining);
+      setTopbarActions(party.influence);
 
       // Sidebar + title. setIdeology shows the archetype, or "No Ideology" until the
       // party adopts its first conviction (which sets the archetype).
