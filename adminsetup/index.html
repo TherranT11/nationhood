@@ -1727,6 +1727,25 @@
         ministry_stats: collectMinistryStats()
       };
 
+      // Write the row, tolerating a DB that's behind on migrations: PostgREST rejects an
+      // unknown column with "Could not find the 'X' column of 'nations' in the schema
+      // cache". Drop that field and retry, looping over successive missing columns, so the
+      // rest of the edit still saves. Dropped columns are reported (below) so the admin
+      // knows which migrations to apply — never silently swallowed.
+      var droppedCols = [];
+      async function writeNation(row, id) {
+        var op = function (r) { return id ? supabase.from('nations').update(r).eq('id', id) : supabase.from('nations').insert(r); };
+        var r = Object.assign({}, row);
+        for (var i = 0; i < 12; i++) {              // bounded: at most a dozen missing columns
+          var res = await op(r);
+          if (!res.error) return null;
+          var m = /Could not find the '([^']+)' column/.exec(res.error.message || '');
+          if (!m || !(m[1] in r)) return res.error;  // not a droppable missing-column error
+          droppedCols.push(m[1]); delete r[m[1]];
+        }
+        return { message: 'Too many missing columns — apply the pending migrations.' };
+      }
+
       btn.disabled = true;
       try {
         var error;
@@ -1738,7 +1757,7 @@
           if (!data.dormant && editing.next_election_tick == null) {
             data.next_election_tick = (await currentTick()) + 1 + Math.floor(Math.random() * 6);
           }
-          ({ error } = await supabase.from('nations').update(data).eq('id', editing.id));
+          error = await writeNation(data, editing.id);
         } else {
           var id = slugify(name);
           if (!id) { addNote.textContent = 'Enter a valid nation name.'; addNote.className = 'note error'; return; }
@@ -1746,7 +1765,7 @@
           // First election 1d6 ticks (months) out (tick falls back to 1 if unavailable).
           // A dormant nation isn't scheduled — it gets its first election when activated.
           if (!data.dormant) data.next_election_tick = (await currentTick()) + 1 + Math.floor(Math.random() * 6);
-          ({ error } = await supabase.from('nations').insert(data));
+          error = await writeNation(data, null);
         }
         if (error) {
           addNote.textContent = /duplicate|already exists|unique/i.test(error.message)
@@ -1768,9 +1787,10 @@
           loadNations();
           return;
         }
-        addNote.textContent = editing ? ('Saved changes to “' + name + '”.') : ('Added “' + name + '”. It’s now joinable on the nation-select screen.');
-        addNote.className = 'note ok';
-        if (editing) cancelEdit(); else { e.target.reset(); resetDeclFields(); resetPolFields(); }
+        addNote.textContent = (editing ? ('Saved changes to “' + name + '”.') : ('Added “' + name + '”. It’s now joinable on the nation-select screen.')) +
+          (droppedCols.length ? ' NOT saved (column missing — apply the pending migrations): ' + droppedCols.join(', ') + '.' : '');
+        addNote.className = droppedCols.length ? 'note error' : 'note ok';
+        if (editing) cancelEdit(); else { e.target.reset(); resetDeclFields(); resetPolFields(); resetMinistryFields(); }
         loadNations();
       } catch (e) { addNote.textContent = 'Couldn’t save the nation. Try again.'; addNote.className = 'note error'; }
       finally { btn.disabled = false; }
