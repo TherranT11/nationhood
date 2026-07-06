@@ -101,8 +101,9 @@
   import { ideologyLabel } from '/archetypes.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
+  import { nationStatContributions } from '/policies.js';
 
-  mountTopbar();   // shared top bar (Discord/Influence/budget/date/gear) into #topbar
+  mountTopbar();   // shared top bar (Discord/Influence/Budget Balance/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
 
   (async () => {
@@ -112,9 +113,7 @@
     try {
       const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      // ministry_stats holds Bureaucracy; fall back gracefully if schema/150 isn't applied yet.
-      var nRes = await supabase.from('nations').select('name, flag, declarations, ministry_stats').eq('id', party.nation_id).single();
-      if (nRes.error) nRes = await supabase.from('nations').select('name, flag, declarations').eq('id', party.nation_id).single();
+      var nRes = await supabase.from('nations').select('name, flag, declarations, policies, gdp').eq('id', party.nation_id).single();
       var nation = nRes.data || {};
 
       var nationName = nation.name || party.nation_id;
@@ -129,19 +128,31 @@
       if (nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
       setTopbarActions(party.influence);
 
-      // Bureaucracy value (a percentage, 0–100) from the ministry stats; "--" when unset.
-      var b = (nation.ministry_stats || {})['Bureaucracy'];
-      var bn = Number(b);
-      if (b != null && b !== '' && isFinite(bn)) {
-        document.getElementById('bureauVal').innerHTML = Math.round(bn) + '<span class="bhero__u">%</span>';
-        // Plot the value on the chart between the 30% (y=96) and 80% (y=24) guide lines,
-        // linearly across 0–100% (y=108 at 0, y=12 at 100). Red in the critical range (>=80).
-        var y = 108 - (Math.max(0, Math.min(100, bn)) / 100) * 96;
-        var line = document.getElementById('bureauLine');
-        line.setAttribute('y1', y.toFixed(1)); line.setAttribute('y2', y.toFixed(1));
-        line.setAttribute('stroke', bn >= 80 ? 'var(--red)' : 'var(--ink)');
-        line.hidden = false;
-      }
+      // Bureaucracy (a percentage) is the SUM of every in-force policy's Bureaucracy effect
+      // (one source: policies.js) — the same generalisation as Budget Balance. The contributing
+      // policies are listed below.
+      var pols = [];
+      try { const { data } = await supabase.from('policies').select('id, definition'); pols = data || []; } catch (e) {}
+      var bureau = nationStatContributions(pols, nation.policies, nation.gdp, 'Bureaucracy');
+      var bn = Math.round(bureau.total);
+      document.getElementById('bureauVal').innerHTML = bn + '<span class="bhero__u">%</span>';
+      // Plot the value between the 30% (y=96) and 80% (y=24) guide lines, linear across 0–100%
+      // (y=108 at 0, y=12 at 100). Red in the critical range (>= 80).
+      var y = 108 - (Math.max(0, Math.min(100, bn)) / 100) * 96;
+      var line = document.getElementById('bureauLine');
+      line.setAttribute('y1', y.toFixed(1)); line.setAttribute('y2', y.toFixed(1));
+      line.setAttribute('stroke', bn >= 80 ? 'var(--red)' : 'var(--ink)');
+      line.hidden = false;
+
+      // Laws Affecting Bureaucracy — every policy contributing to the total. Adding bureaucracy
+      // (overhead) reads red; reducing it reads green.
+      document.getElementById('lawList').innerHTML = bureau.items.length
+        ? bureau.items.sort(function (a, b) { return Math.abs(b.amount) - Math.abs(a.amount); }).map(function (it) {
+            var up = it.amount > 0;
+            return '<div class="law"><span class="law__name">' + esc(it.name) + '</span>' +
+              '<span class="law__val law__val--' + (up ? 'up' : 'down') + '">' + (up ? '+' : '−') + (Math.round(Math.abs(it.amount) * 10) / 10) + '</span></div>';
+          }).join('')
+        : '<div class="lawempty">No active laws affecting Bureaucracy.</div>';
 
       // Does the player's party control the Head of Government (the formateur of the active
       // government)? If so, its law changes here are discounted — surface that in green.

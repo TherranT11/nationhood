@@ -1,7 +1,8 @@
--- 152 · Budget surplus → debt paydown (per tick)
+-- 152 · Public Debt dynamics (per tick + annual interest)
 --
 -- Every tick, a nation with a POSITIVE Budget Balance pays down its Public Debt by the annual
--- balance / 12, floored to one decimal. Called from _advance_tick (schema/60).
+-- balance / 12, floored to one decimal. Every JANUARY, the remaining Public Debt accrues 3%
+-- interest. Both called from _advance_tick (schema/60).
 --
 -- Budget Balance is the net of every policy's in-force Budget Balance effect. _nation_budget_balance
 -- MIRRORS policyBudgetContribution / nationBudgetBalance in policies.js (the client shows the same
@@ -59,5 +60,19 @@ begin
   end loop;
 end $$;
 revoke all on function public._apply_budget_surplus(int) from public, anon, authenticated;
+
+-- Annual interest: every January (tick 1 = Jan 1980, so (tick−1) mod 12 = 0), Public Debt grows
+-- 3% — a $20bn debt gains $0.6bn. Result rounded to one decimal; zero-debt / dormant nations skip.
+create or replace function public._apply_debt_interest(p_tick int)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if (p_tick - 1) % 12 <> 0 then return; end if;   -- January only
+  update public.nations
+     set economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{debt}',
+           to_jsonb(round(coalesce((economy->>'debt')::numeric, 0) * 1.03, 1)))
+   where coalesce((economy->>'debt')::numeric, 0) > 0
+     and coalesce(dormant, false) = false;
+end $$;
+revoke all on function public._apply_debt_interest(int) from public, anon, authenticated;
 
 notify pgrst, 'reload schema';

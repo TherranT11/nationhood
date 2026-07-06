@@ -487,6 +487,9 @@ begin
   -- by the annual balance / 12, floored to one decimal — _apply_budget_surplus (schema/152).
   begin perform public._apply_budget_surplus(v_tick);
   exception when others then raise warning 'tick %: budget surplus paydown failed — %', v_tick, sqlerrm; end;
+  -- Every January: Public Debt accrues 3% interest — _apply_debt_interest (schema/152).
+  begin perform public._apply_debt_interest(v_tick);
+  exception when others then raise warning 'tick %: debt interest failed — %', v_tick, sqlerrm; end;
   -- January (the new month is January when (tick − 1) is a multiple of 12): apply
   -- each nation's annual income to its budget. A surplus fills the bank; a deficit
   -- (negative income) drains a positive budget, and any shortfall past zero rolls
