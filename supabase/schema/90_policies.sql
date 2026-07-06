@@ -13,6 +13,11 @@
 -- also carry unit:'gdp' to author the amount as a PERCENT OF GDP (else it's a flat amount),
 -- so one policy's fiscal cost scales to nation size.
 --
+-- popRaise (number) is the vote-popularity reaction: a party's popularity swing PER RUNG for
+-- voting to RAISE the policy (signed; negative = raising is unpopular). It scales by the rungs
+-- moved and flips sign for a drop; voting against is the mirror. Computed on the propose page /
+-- bill view (policyVotePopularity in policies.js), not authored per level.
+--
 -- AUTHOR + STORE ONLY for now: the ministry-stat backend and the level-change engine
 -- don't exist yet, so definitions are stored but NOT applied. The effects engine
 -- (schema/91) harmlessly ignores POLICY_STATS targets (its case list doesn't match

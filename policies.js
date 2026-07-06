@@ -13,17 +13,21 @@ export const POLICY_STATS = [
   'Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Interest Rates',
   'Crime', 'Immigration', 'Extremism', 'Unemployment', 'Poverty', 'Wages',
   'Prosperity', 'Press Freedom', 'Social Integration', 'Armed Forces Funding',
-  'Military Research', 'Cybersecurity', 'Energy Availability', 'CO₂ Emissions', 'Global Warming',
-  // Vote-conditional popularity swings — applied to a party by how it votes on the policy.
-  'Party Popularity (if voting for)', 'Party Popularity (if voting against)'
+  'Military Research', 'Cybersecurity', 'Energy Availability', 'CO₂ Emissions', 'Global Warming'
 ];
 
 // The admin-typed ministry stats (the Edit Nation "Ministry Stats" grid). Derived from
-// POLICY_STATS — one source — minus Budget Balance (that cell is the nation's income,
-// economy.budget, not a typed value) and the policy-only vote-conditional popularity targets.
-export const MINISTRY_STATS = POLICY_STATS.filter(function (s) {
-  return s !== 'Budget Balance' && s.indexOf('Party Popularity') !== 0;
-});
+// POLICY_STATS — one source — minus Budget Balance (that cell is computed, not a typed value).
+export const MINISTRY_STATS = POLICY_STATS.filter(function (s) { return s !== 'Budget Balance'; });
+
+// A policy's vote-popularity reaction: how a party's popularity moves for how it votes on a
+// proposed level change. def.popRaise is the swing per rung for voting to RAISE the policy
+// (signed; negative = raising is unpopular). It scales by the rungs moved and flips for a drop;
+// voting against is the mirror. ONE source for the propose preview and the Legislature bill view.
+export function policyVotePopularity(def, fromIdx, toIdx) {
+  var forVote = (Number(def && def.popRaise) || 0) * ((Number(toIdx) || 0) - (Number(fromIdx) || 0));
+  return { forVote: forVote, againstVote: -forVote };
+}
 
 // A policy's option array: the 'spectrum' or 'binary' list, keyed by its own type.
 export function policyOptions(def) {
