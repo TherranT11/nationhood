@@ -483,10 +483,10 @@ begin
   -- close — a fed nation grows +1M, each unmet demand drops its stat, then the flags reset.
   begin perform public._resolve_economy_demands(v_tick);
   exception when others then raise warning 'tick %: economy demands failed — %', v_tick, sqlerrm; end;
-  -- Every tick: a positive Budget Balance (net of in-force policy effects) pays down Public Debt
-  -- by the annual balance / 12, floored to one decimal — _apply_budget_surplus (schema/152).
-  begin perform public._apply_budget_surplus(v_tick);
-  exception when others then raise warning 'tick %: budget surplus paydown failed — %', v_tick, sqlerrm; end;
+  -- Every tick: the nation's Budget Balance moves Public Debt by the annual balance / 12 — a surplus
+  -- pays it down, a deficit adds to it (symmetric) — _apply_budget_balance (schema/152).
+  begin perform public._apply_budget_balance(v_tick);
+  exception when others then raise warning 'tick %: budget balance debt move failed — %', v_tick, sqlerrm; end;
   -- Every January: Public Debt accrues 3% interest — _apply_debt_interest (schema/152).
   begin perform public._apply_debt_interest(v_tick);
   exception when others then raise warning 'tick %: debt interest failed — %', v_tick, sqlerrm; end;
