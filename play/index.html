@@ -250,6 +250,46 @@
   .factor__what{font-size:13px;color:var(--ink);line-height:1.45}
   .factor--none{font-size:13px;color:var(--soft);line-height:1.45}
 
+  /* ---- Tutorial-style Nation overview: stat cards · territory + snapshot · elections · assembly ---- */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:6px}
+  @media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:420px){.stats{grid-template-columns:1fr}}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .stat__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .stat__v{font-size:20px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin-top:9px;line-height:1.2}
+  .stat__sub{font-weight:600;font-size:15px;color:var(--muted)}
+  .terr{margin-top:16px;display:grid;grid-template-columns:repeat(2,1fr);gap:14px;align-items:start}
+  @media(max-width:760px){.terr{grid-template-columns:1fr}}
+  .terr__card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .terr__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:12px}
+  .map__ph{position:relative;aspect-ratio:4/3;background:var(--chip);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+  .natmap{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .map__none{position:relative;z-index:1}
+  .snap__list{display:flex;flex-direction:column}
+  .snap__row{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .snap__row:last-child{border-bottom:none}
+  .snap__row dt{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);flex:none;padding-top:2px}
+  .snap__row dd{font-size:14px;font-weight:600;color:var(--ink);text-align:right}
+  .ptag{display:inline-block;margin-left:6px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;line-height:1.6;padding:1px 7px;border-radius:6px;color:#fff;vertical-align:middle}
+  .elec__when{font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin-bottom:14px}
+  .elec__when b{color:var(--indigo)}
+  .elec__bar{height:8px;border-radius:5px;background:var(--chip);border:1px solid var(--line);overflow:hidden;margin-bottom:16px}
+  .elec__bar span{display:block;height:100%;background:var(--indigo)}
+  .asm__sub{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin:-6px 0 14px}
+  .asm__bar{display:flex;height:12px;border-radius:6px;overflow:hidden;margin-bottom:18px;background:var(--chip)}
+  .asm__bar span{display:block;height:100%}
+  .asm__group{margin-bottom:14px}
+  .asm__group:last-child{margin-bottom:0}
+  .asm__gk{display:flex;align-items:baseline;gap:8px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .asm__gt{color:var(--ink);font-weight:700}
+  .asm__note{text-transform:none;letter-spacing:0;color:var(--soft);font-size:10px}
+  .asm__row{display:flex;align-items:center;gap:10px;padding:8px 0}
+  .asm__dot{width:10px;height:10px;border-radius:3px;flex:none}
+  .asm__pname{flex:1;font-size:14px;font-weight:600;color:var(--ink)}
+  .asm__abbr{color:var(--soft);font-weight:600}
+  .asm__pct{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--ink)}
+  .asm__row--muted .asm__pname,.asm__row--muted .asm__pct{color:var(--muted)}
+
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -278,10 +318,9 @@
     <div id="tradebar"></div>
     <div id="defencebar"></div>
 
-    <section class="panel" id="glance">
-      <div class="glance-hd"><span>The Nation at a Glance</span><a class="glance-link">Nation &#9656;</a></div>
-      <div class="snap" id="snap"><p class="empty">Loading the nation&rsquo;s figures&hellip;</p></div>
-    </section>
+    <!-- Tutorial-style Nation overview begins here (operational bars stay above). -->
+    <div class="stats" id="statCards"></div>
+    <div class="terr" id="terrRow"></div>
 
     <section class="panel" id="apprPanel">
       <div class="glance-hd"><span>Party Approval</span></div>
@@ -291,6 +330,21 @@
         <div class="appr__factors-k">Last Factors Affecting Popularity</div>
         <div id="apprFactors"><p class="empty">Loading&hellip;</p></div>
       </div>
+    </section>
+
+    <section class="panel" id="elecPanel" hidden>
+      <div class="glance-hd"><span>Elections</span></div>
+      <div id="elecBody"></div>
+    </section>
+    <section class="panel" id="asmPanel" hidden>
+      <div class="glance-hd"><span>National Assembly</span></div>
+      <div id="asmBody"></div>
+    </section>
+
+    <!-- National stat ladders (kept below the overview). -->
+    <section class="panel" id="glance">
+      <div class="glance-hd"><span>The Nation at a Glance</span><a class="glance-link">Nation &#9656;</a></div>
+      <div class="snap" id="snap"><p class="empty">Loading the nation&rsquo;s figures&hellip;</p></div>
     </section>
 
     <div class="cols">
@@ -393,10 +447,11 @@
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { fetchNationInitiatives, renderNationInitiatives } from '/initiatives.js';
   import { openJointProposer, fetchJointNegotiations, renderJointNegotiations } from '/joint.js';
-  import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
-  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, PRODUCE_COST, PRODUCE_COOLDOWN } from '/util.js';
-  import { ideologyLabel } from '/archetypes.js';
+  import { statLabel, statBand, regimeLabel, statName, regimeText } from '/ladders.js';
+  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, PRODUCE_COST, PRODUCE_COOLDOWN, declaredValue, fmtPop, fmtGdp, majority } from '/util.js';
+  import { ideologyLabel, partyColor } from '/archetypes.js';
   import { MINISTRIES } from '/ministries.js';
+  import { nationColors, drawNationMiniMap } from '/hexmap.js';
 
   mountTopbar();   // shared top bar into #topbar + the settings gear (Log out lives there now)
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -1410,6 +1465,141 @@
     }
   }
 
+  // ---- Tutorial-style Nation overview: stat cards · territory + snapshot · elections · assembly.
+  // Self-contained + non-blocking: fetches its own leader/parties/govt/declarations/hexes and fills
+  // the placeholder containers. Every fetch is guarded, so a missing table/column just degrades the
+  // affected panel rather than the page. ----
+  function capFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+
+  function renderStatCards(party, leader) {
+    var box = document.getElementById('statCards'); if (!box) return;
+    var partyV = esc(party.name) + (party.abbreviation ? ' <span class="stat__sub">(' + esc(party.abbreviation) + ')</span>' : '');
+    var leaderV = leader ? (esc(((leader.first_name || '') + ' ' + (leader.last_name || '')).trim()) + (leader.age != null ? ' <span class="stat__sub">(' + leader.age + ')</span>' : '')) : '—';
+    var appr = Math.max(0, Math.min(100, Number(party.popularity) || 0));
+    box.innerHTML =
+      '<div class="stat"><div class="stat__k">Party</div><div class="stat__v">' + partyV + '</div></div>' +
+      '<div class="stat"><div class="stat__k">Party Leader</div><div class="stat__v">' + leaderV + '</div></div>' +
+      '<div class="stat"><div class="stat__k">Seats</div><div class="stat__v">' + (party.seats || 0) + '</div></div>' +
+      '<div class="stat"><div class="stat__k">Party Approval</div><div class="stat__v">' + (Math.round(appr * 10) / 10) + '%</div></div>';
+  }
+
+  async function drawTerritory(nationId) {
+    var box = document.getElementById('natMapBox'), cv = document.getElementById('natMap'), none = document.getElementById('natMapNone');
+    if (!box || !cv) return;
+    try {
+      var nr = await supabase.from('nations').select('id, name, color').order('name');
+      if (nr.error) nr = await supabase.from('nations').select('id, name').order('name');   // color not migrated yet
+      var nations = nr.data || [];
+      var hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id, continent');
+      if (hr.error) hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id');   // continent not migrated yet
+      var opts = { hexes: hr.error ? [] : (hr.data || []), natColor: nationColors(nations), viewedId: nationId, mode: 'nation' };
+      function paint() { var ok = drawNationMiniMap(cv, box, opts); if (none) none.style.display = ok ? 'none' : ''; cv.style.display = ok ? 'block' : 'none'; if (none && !ok) none.textContent = 'Map unavailable'; }
+      paint();
+      window.addEventListener('resize', paint);
+    } catch (e) { if (none) { none.style.display = ''; none.textContent = 'Map unavailable'; } cv.style.display = 'none'; }
+  }
+
+  function renderSnapshotAndMap(nation, parties, govt, decl, nationId) {
+    var box = document.getElementById('terrRow'); if (!box) return;
+    var byId = {}; parties.forEach(function (p) { byId[p.id] = p; });
+    var formateur = govt ? byId[govt.formateur_party_id] : null;
+    var eco = nation.economy || {};
+    var regimeTxt = regimeText(eco.regime);
+    var govType = (govt ? capFirst(govt.type) + ' government' : (nation.ruling_party ? 'One-party state' : 'No government')) + (regimeTxt && regimeTxt !== '—' ? ' · ' + regimeTxt : '');
+    function row(k, v) { return v ? '<div class="snap__row"><dt>' + k + '</dt><dd>' + v + '</dd></div>' : ''; }
+    function ptag(p) { return p ? ' <span class="ptag" style="background:' + partyColor(p) + '">' + esc((p.abbreviation || p.name.slice(0, 2)).toUpperCase()) + '</span>' : ''; }
+    var pmName = formateur ? esc(formateur.name) : (nation.ruling_party ? esc(nation.ruling_party) : '');
+    var snapHtml =
+      row('Capital', esc(decl('capital_name'))) +
+      row('Official Name', esc(decl('formal_state_name'))) +
+      row('Official Language', esc(decl('official_language'))) +
+      row('Demonym', esc(decl('demonym'))) +
+      row('Government', esc(govType)) +
+      row('Head of Government', pmName ? (pmName + ptag(formateur)) : '') +
+      row('Legislature', esc(decl('legislature_name') || 'National Assembly')) +
+      row('Population', nation.population != null ? fmtPop(nation.population) : '') +
+      row('GDP', nation.gdp != null ? ((eco.currency || '$') + fmtGdp(nation.gdp)) : '');
+    box.innerHTML =
+      '<div class="terr__card"><div class="terr__k">Territory</div>' +
+        '<div class="map__ph" id="natMapBox"><canvas class="natmap" id="natMap"></canvas><span class="map__none" id="natMapNone">Loading map&hellip;</span></div></div>' +
+      '<div class="terr__card"><div class="terr__k">Nation Snapshot</div><dl class="snap__list">' + (snapHtml || '<p class="empty">No figures yet.</p>') + '</dl></div>';
+    drawTerritory(nationId);
+  }
+
+  function renderElections(nation, curTick) {
+    var panel = document.getElementById('elecPanel'), box = document.getElementById('elecBody');
+    if (!panel || !box) return;
+    var nextTick = nation.next_election_tick;
+    if (nation.ruling_party || nextTick == null) { panel.hidden = true; return; }   // one-party state / unscheduled → no card
+    var away = nextTick - curTick;
+    var term = Number(nation.election_frequency_months) || 60;
+    var elapsed = Math.max(0, Math.min(term, term - away));
+    var pct = term > 0 ? Math.min(100, elapsed / term * 100) : 0;
+    box.innerHTML =
+      '<div class="elec__when">Election in <b>' + esc(tickToDate(nextTick)) + '</b></div>' +
+      '<div class="elec__bar"><span style="width:' + pct.toFixed(1) + '%"></span></div>' +
+      '<dl class="snap__list"><div class="snap__row"><dt>Months Elapsed</dt><dd>' + elapsed + '</dd></div>' +
+        '<div class="snap__row"><dt>Months Remaining</dt><dd>' + Math.max(0, away) + '</dd></div></dl>';
+    panel.hidden = false;
+  }
+
+  function renderAssembly(parties, nation, govt) {
+    var panel = document.getElementById('asmPanel'), box = document.getElementById('asmBody');
+    if (!panel || !box) return;
+    var total = nation.legislature_seats || parties.reduce(function (s, p) { return s + (p.seats || 0); }, 0);
+    if (!total) { panel.hidden = true; return; }
+    var maj = majority(total);
+    var seated = parties.filter(function (p) { return (p.seats || 0) > 0; }).sort(function (a, b) { return (b.seats || 0) - (a.seats || 0); });
+    var gov = seated.filter(function (p) { return p.in_government; });
+    var opp = seated.filter(function (p) { return !p.in_government; });
+    var govSeats = gov.reduce(function (s, p) { return s + (p.seats || 0); }, 0);
+    var oppSeats = opp.reduce(function (s, p) { return s + (p.seats || 0); }, 0);
+    var pct = function (n) { return (n / total * 100).toFixed(1); };
+    function bar(list) { return list.map(function (p) { return '<span style="width:' + pct(p.seats) + '%;background:' + partyColor(p) + '"></span>'; }).join(''); }
+    function rows(list) { return list.map(function (p) {
+      return '<div class="asm__row"><span class="asm__dot" style="background:' + partyColor(p) + '"></span>' +
+        '<span class="asm__pname">' + esc(p.name) + (p.abbreviation ? ' <span class="asm__abbr">(' + esc(p.abbreviation) + ')</span>' : '') + '</span>' +
+        '<span class="asm__pct"><b>' + (p.seats || 0) + '</b> seats · ' + pct(p.seats) + '%</span></div>';
+    }).join(''); }
+    box.innerHTML =
+      '<div class="asm__sub">' + total + ' Seats · ' + maj + ' for a majority</div>' +
+      '<div class="asm__bar">' + bar(gov) + bar(opp) + '</div>' +
+      (gov.length ? '<div class="asm__group"><div class="asm__gk">' + (govt && govt.type === 'coalition' ? 'Coalition' : 'Government') + ' <span class="asm__gt">' + govSeats + ' seats · ' + pct(govSeats) + '%</span></div>' + rows(gov) + '</div>' : '') +
+      (opp.length ? '<div class="asm__group"><div class="asm__gk">Opposition <span class="asm__gt">' + oppSeats + ' seats · ' + pct(oppSeats) + '%</span></div>' + rows(opp) + '</div>' : '');
+    panel.hidden = false;
+  }
+
+  async function loadOverview(party, nation, curTick) {
+    nation = nation || {};
+    var myLeader = null;
+    try {
+      const { data } = await supabase.from('politicians').select('first_name, last_name, age')
+        .eq('party_id', party.id).eq('status', 'Party Leader').order('created_at').limit(1).maybeSingle();
+      myLeader = data;
+    } catch (e) { /* leader stat falls back to — */ }
+    var parties = [];
+    try {
+      var pr = await supabase.from('parties').select('id, name, abbreviation, seats, archetype, color, in_government').eq('nation_id', party.nation_id);
+      if (pr.error) pr = await supabase.from('parties').select('id, name, abbreviation, seats, archetype, in_government').eq('nation_id', party.nation_id);   // color not migrated
+      parties = pr.data || [];
+    } catch (e) { /* assembly hides on failure */ }
+    var govt = null;
+    try { const { data } = await supabase.from('governments').select('type, formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle(); govt = data; } catch (e) {}
+    var slots = [];
+    try { const { data } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed, grp, sort_order').order('sort_order'); slots = data || []; } catch (e) {}
+
+    var slotBySlug = {}; slots.forEach(function (s) { slotBySlug[s.slug] = s; });
+    var vals = nation.declarations || {};
+    function decl(slug) { var v = slotBySlug[slug] ? declaredValue(slotBySlug[slug], vals) : ''; return (v && v !== '—') ? v : ''; }
+
+    renderStatCards(party, myLeader);
+    renderSnapshotAndMap(nation, parties, govt, decl, party.nation_id);
+    renderElections(nation, curTick);
+    renderAssembly(parties, nation, govt);
+    var formal = decl('formal_state_name');
+    if (formal) document.getElementById('kicker').textContent = formal;   // eyebrow → declared formal state name
+  }
+
   (async () => {
     if (!isConfigured) return; // local dev: leave placeholders
     const user = await requireUser();
@@ -1425,7 +1615,7 @@
       // former_ruling_party feed the one-party-restored banner. If the full select
       // errors (e.g. an older DB missing those two columns), fall back to the core
       // columns so a drifted optional column can't blank the whole nation snapshot.
-      var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, former_ruling_party, no_confidence_until_tick, produce_until_tick, call_election_until_tick').eq('id', party.nation_id).single();
+      var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, former_ruling_party, no_confidence_until_tick, produce_until_tick, call_election_until_tick, population, gdp, declarations, legislature_seats, next_election_tick, election_frequency_months').eq('id', party.nation_id).single();
       var nation = nsel.data;
       if (nsel.error) nation = (await supabase.from('nations').select('name, flag, stats, economy, policies').eq('id', party.nation_id).single()).data;
       const nationName = (nation && nation.name) || party.nation_id;
@@ -1471,8 +1661,8 @@
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
       document.getElementById('kicker').textContent = nationName;
       document.getElementById('eventsHd').textContent = 'Events in ' + nationName;
-      document.getElementById('welcome').textContent = 'Welcome to ' + nationName;
-      document.getElementById('lede').textContent = party.name + ' is now part of ' + nationName + '. The nation is yours to shape.';
+      document.getElementById('welcome').textContent = party.name;   // h1 = your party (tutorial shape)
+      document.getElementById('lede').style.display = 'none';         // eyebrow + party name is the whole header now
       document.title = party.name + ' · Nationhood';
 
       // Render the glance, or show a clear fallback — never leave it stuck on
@@ -1483,6 +1673,7 @@
       feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };
       myPartyId = party.id;  // used to exclude self from the attack target list
       loadApproval(party, curTick).catch(function(){});   // Party Approval card — non-blocking (schema/147 trend + factors)
+      loadOverview(party, nation, curTick).catch(function(){});   // stat cards · territory + snapshot · elections · assembly — non-blocking
 
       // Prime Minister actions appear only for the party that holds the premiership.
       try {
@@ -1556,7 +1747,9 @@
         flag.src = nation.flag;
       }
     } catch (e) {
-      document.getElementById('lede').textContent = 'Could not load your party right now. Refresh to try again.';
+      var ledeEl = document.getElementById('lede');
+      ledeEl.style.display = '';   // un-hide (the header normally hides it) so the error is visible
+      ledeEl.textContent = 'Could not load your party right now. Refresh to try again.';
       document.getElementById('snap').innerHTML = '<p class="empty">Couldn’t load the nation’s figures.</p>';
     }
   })();
