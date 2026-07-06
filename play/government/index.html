@@ -250,7 +250,7 @@
   // backend is built). One collapsible group per ministry cluster, mirroring the tutorial.
   var STAT_GROUPS = [
     { name: 'Head of Government', stats: ['Budget Balance', 'Growth', 'Bureaucracy'] },
-    { name: 'Finance', stats: ['Tax Burden', 'Debt', 'Interest Rates'] },
+    { name: 'Finance', stats: ['Tax Burden', 'Public Debt', 'Interest Rates'] },
     { name: 'Interior', stats: ['Crime', 'Immigration', 'Extremism'] },
     { name: 'Economy', stats: ['Unemployment', 'Poverty', 'Wages'] },
     { name: 'Labor, Health and Social Affairs', stats: ['Prosperity', 'Press Freedom', 'Social Integration'] },
@@ -261,18 +261,22 @@
   // slug→href map keeps that special-case out of the generic cell loop.
   var STAT_LINKS = { 'Budget Balance': '/play/budget/', 'Bureaucracy': '/play/bureaucracy/' };
   // Ministry stat values come from the nation's admin-authored ministry_stats map (schema/150,
-  // keyed by the same stat names) — the ONE source — EXCEPT Budget Balance, which is the nation's
-  // income (economy.budget), the same source the Budget page reads ("Budget Balance = Income").
-  // A stat with no value shows "--".
+  // keyed by the same stat names) — the ONE source — EXCEPT the two money figures, which come
+  // from the economy: Budget Balance = income (economy.budget, shared with the Budget page) and
+  // Public Debt = economy.debt (the "Starting Debt" field). A stat with no value shows "--".
   function ministryStats(nation){
     var MS = (nation && nation.ministry_stats) || {};
     var ec = (nation && nation.economy) || {};
     var cur = ec.currency || '$';
+    function money(v){ var n = Number(v); return (v == null || v === '' || !isFinite(n)) ? null : n; }
     function cellVal(s){
       if (s === 'Budget Balance'){
-        var inc = Number(ec.budget);
-        if (ec.budget == null || ec.budget === '' || !isFinite(inc)) return '--';
-        return (inc < 0 ? '−' : '') + esc(cur) + Math.abs(inc) + 'bn';
+        var inc = money(ec.budget);
+        return inc == null ? '--' : (inc < 0 ? '−' : '') + esc(cur) + Math.abs(inc) + 'bn';
+      }
+      if (s === 'Public Debt'){
+        var d = money(ec.debt);
+        return d == null ? '--' : esc(cur) + Math.abs(d) + 'bn';
       }
       return MS[s] != null ? esc(String(MS[s])) : '--';
     }

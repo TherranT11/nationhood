@@ -101,7 +101,7 @@
 
       <div class="bdebt">
         <div class="bdebt__k">Public Debt</div>
-        <div class="bdebt__v">$--</div>
+        <div class="bdebt__v" id="debtVal">$--</div>
       </div>
 
       <div class="budtabs">
@@ -189,6 +189,12 @@
         document.getElementById('balVal').innerHTML = sign + esc(cur) + Math.abs(n) + 'bn<span class="bhero__u"> /yr</span>';
         document.getElementById('balVal').style.color = n < 0 ? 'var(--red)' : 'var(--green)';
         document.getElementById('revVal').textContent = sign + cur + Math.abs(n) + 'bn';
+      }
+      // Public Debt = economy.debt (the "Starting Debt" field), the same source as the
+      // Government page's Public Debt cell. Shown as a stock; "$--" when unset.
+      var d = Number(ec.debt);
+      if (ec.debt != null && ec.debt !== '' && isFinite(d)) {
+        document.getElementById('debtVal').textContent = cur + Math.abs(d) + 'bn';
       }
     } catch (e) { /* placeholders already shown; topbar still renders */ }
   })();
