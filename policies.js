@@ -16,7 +16,7 @@ export const POLICY_STATS = [
   'Military Research', 'Cybersecurity', 'Energy Availability', 'CO₂ Emissions', 'Global Warming',
   'Rule of Law', 'Standard of Living', 'Housing Affordability',
   'Pension Quality', 'Equity Between Generations', 'Demographic Pressure', 'Birth Rate',
-  'Education', 'Health', 'Innovation'
+  'Education', 'Health', 'Innovation', 'Environment', 'Infrastructure'
 ];
 
 // The valid input range for a ministry stat, where one is defined — used to bound the admin
