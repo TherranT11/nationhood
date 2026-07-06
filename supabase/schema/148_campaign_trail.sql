@@ -86,6 +86,10 @@ begin
   v_p := public._lock_party();
   perform public._require_campaign(v_p.nation_id);
   if v_p.influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
+  -- Lock the target too: FOR UPDATE so two attackers can't both read-then-write its popularity and
+  -- lose one update. Lock order is caller-then-target, so two players targeting each other at the
+  -- same instant can deadlock — benign: Postgres aborts one, the client surfaces the error, retry
+  -- succeeds. Not worth serialising for so rare a clash.
   select * into v_t from public.parties where id = p_target for update;
   if not found or v_t.nation_id <> v_p.nation_id then raise exception 'Choose an opponent in your nation.'; end if;
   if v_t.id = v_p.id then raise exception 'Choose an opponent other than your own party.'; end if;
