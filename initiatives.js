@@ -5,6 +5,7 @@
 // any failure so the panel never breaks the home page.
 import { supabase } from '/supabase.js';
 import { esc } from '/util.js';
+import { fmtInitiativeCost } from '/policies.js';
 
 const CSS = `
 .nini{border:1px solid var(--line);border-radius:11px;padding:12px 14px;margin-bottom:10px;background:var(--surface)}
@@ -36,12 +37,8 @@ function injectCss(){ if(document.getElementById('nini-css'))return; var s=docum
 // Influence to enact it. The Minister's execution choice (private → +1 Growth, firms bid; state →
 // −1D2 Unemployment & Inflation, own SO firm) only changes the on-enact effects, not the price.
 export function initiativeInfluence(d){ return Math.max(1, parseInt(d && d.influence, 10) || 1); }
-// The display label for the running cost: "$X B/yr" (flat) or "X% of GDP/yr". Nation-agnostic (a %
-// resolves to real $bn against each nation's GDP where the Budget Balance is computed).
-export function initiativeCostLabel(d){
-  var v = Number(d && d.budgetPerYear) || 0;
-  return (d && d.budgetUnit === 'gdp') ? (v + '% of GDP/yr') : ('$' + v + 'B/yr');
-}
+// The display label for a definition's running cost (one source: fmtInitiativeCost, policies.js).
+export function initiativeCostLabel(d){ return fmtInitiativeCost(d && d.budgetPerYear, d && d.budgetUnit === 'gdp'); }
 
 // Active initiatives that hit a nation's Budget Balance — its own running ones plus any joint project
 // it partners — shaped for initiativeBudgetItems / nationBudgetBalance (policies.js). ownerGdp (the

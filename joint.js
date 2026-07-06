@@ -3,15 +3,14 @@
 // National Initiatives panel for a joint initiative → joint_propose; and (2) the negotiation inbox,
 // a card at the top of home showing the player's live joint negotiations — the message thread plus
 // Accept / Counter / Decline when it's their turn. All writes go through the security-definer RPCs;
-// read-resilient. Cost math is reused from initiatives.js (one source, mirrors schema/141).
+// read-resilient. Cost formatting is reused from policies.js (fmtInitiativeCost — one source).
 import { supabase } from '/supabase.js';
 import { esc } from '/util.js';
+import { fmtInitiativeCost } from '/policies.js';
 const SHARES = [0, 25, 50];   // % of the standing yearly cost the partner can be asked to cover (consent / quarter / half)
-function r1(v){ return Math.round((Number(v)||0) * 10) / 10; }
-// An initiative's authored yearly cost + unit (flat $bn/yr or % of GDP/yr) — mirrors initiatives.js.
+// An initiative's authored yearly cost + unit (flat $bn/yr or % of GDP/yr); fmtInitiativeCost formats it.
 function costVal(d){ return Number(d && d.budgetPerYear) || 0; }
 function costPct(d){ return !!(d && d.budgetUnit === 'gdp'); }
-function fmtCost(v, pct){ return pct ? (r1(v) + '% of GDP/yr') : ('$' + r1(v) + 'B/yr'); }
 
 const CSS = `
 .jov{position:fixed;inset:0;background:rgba(10,10,16,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:60}
@@ -79,7 +78,7 @@ async function relationValue(a, b){
 async function nationName(id){
   try { const { data } = await supabase.from('nations').select('name').eq('id', id).maybeSingle(); return (data && data.name) || id; } catch(e){ return id; }
 }
-function splitLine(eff, share, pct){ var them = eff * share / 100, you = eff - them; return '<span class="you">You '+fmtCost(you, pct)+'</span> · <span class="them">Them '+fmtCost(them, pct)+'</span>'; }
+function splitLine(eff, share, pct){ var them = eff * share / 100, you = eff - them; return '<span class="you">You '+fmtInitiativeCost(you, pct)+'</span> · <span class="them">Them '+fmtInitiativeCost(them, pct)+'</span>'; }
 
 var busy = false;   // one in-flight write at a time across the module
 
@@ -196,8 +195,8 @@ export function renderJointNegotiations(el, data, ctx){
     var theyGet= iAmPartner ? ('+'+(d.quantity||0)+' '+esc(d.resource||'')) : ('+'+(joint.quantity||0)+' '+esc(joint.target||''));
     var myTurn = (iAmPartner && p.turn==='partner') || (!iAmPartner && p.turn==='proposer');
     var termsTxt = p.share>0
-      ? '<b>'+esc(other.name||other.id)+'</b>'+(iAmPartner?' asks you to cover ':' would cover ')+'<b>'+p.share+'%</b> — you '+fmtCost(iAmPartner?them:prop, ipct)+', them '+fmtCost(iAmPartner?prop:them, ipct)+'.'
-      : '<b>Consent only</b> — '+(iAmPartner?'you pay nothing; the proposer funds it in full.':'you fund it in full ('+fmtCost(eff, ipct)+').');
+      ? '<b>'+esc(other.name||other.id)+'</b>'+(iAmPartner?' asks you to cover ':' would cover ')+'<b>'+p.share+'%</b> — you '+fmtInitiativeCost(iAmPartner?them:prop, ipct)+', them '+fmtInitiativeCost(iAmPartner?prop:them, ipct)+'.'
+      : '<b>Consent only</b> — '+(iAmPartner?'you pay nothing; the proposer funds it in full.':'you fund it in full ('+fmtInitiativeCost(eff, ipct)+').');
     var thread = (it.messages||[]).map(function(m){
       if(m.from_nation==null) return '<div class="jmsg sys">'+esc(m.body)+'</div>';
       var mine = m.from_nation === ctx.nationId;

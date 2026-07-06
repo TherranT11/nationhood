@@ -16,7 +16,7 @@ export const POLICY_STATS = [
   'Military Research', 'Cybersecurity', 'Energy Availability', 'CO₂ Emissions', 'Global Warming',
   'Rule of Law', 'Standard of Living', 'Housing Affordability',
   'Pension Quality', 'Equity Between Generations', 'Demographic Pressure', 'Birth Rate',
-  'Education', 'Health', 'Innovation'
+  'Education', 'Health', 'Innovation', 'Environment', 'Infrastructure'
 ];
 
 // The valid input range for a ministry stat, where one is defined — used to bound the admin
@@ -106,6 +106,14 @@ export function nationStatContributions(policyRows, overrides, gdp, stat) {
     if (Math.abs(amt) >= 0.0001) { items.push({ name: (r.definition && r.definition.name) || 'Policy', amount: amt }); total += amt; }
   });
   return { total: total, items: items };
+}
+// Display label for an initiative's running Budget Balance cost: "$X B/yr" (flat) or "X% of GDP/yr" (a
+// % of the enacting nation's GDP). ONE source for the wording — the builder preview, the home panel,
+// and the joint composer all read this. `value` is the authored figure (flat $bn or the %); isPct is
+// definition.budgetUnit === 'gdp'.
+export function fmtInitiativeCost(value, isPct) {
+  var v = Math.round((Number(value) || 0) * 10) / 10;
+  return isPct ? (v + '% of GDP/yr') : ('$' + v + 'B/yr');
 }
 // The $bn/yr a running initiative costs its ENACTING nation — a flat figure, or a % of that nation's
 // GDP (definition.budgetUnit === 'gdp'). ownerGdp is the enacting nation's GDP. ONE source (mirrors the
