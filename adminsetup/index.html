@@ -202,11 +202,9 @@
   .poltab .pvtagrow{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 2px}
   .poltab .pvltag{font-size:9.5px;font-weight:700;letter-spacing:.02em;padding:3px 8px;border-radius:14px;background:var(--indigo-soft,#ECE9FD);color:var(--indigo,#5546E8)}
   .poltab .sublab .hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--soft)}
-  .poltab .effwrap{margin-bottom:9px}
-  .poltab .effrow{display:grid;grid-template-columns:1.6fr .7fr .9fr .95fr 30px;gap:7px;margin-bottom:0;align-items:center}
+  .poltab .effrow{display:grid;grid-template-columns:1.6fr .9fr .8fr 30px;gap:7px;margin-bottom:8px;align-items:center}
   @media(max-width:560px){.poltab .effrow{grid-template-columns:1fr 1fr}}
   .poltab .effrow select,.poltab .effrow input{padding:8px 9px;font-size:12.5px}
-  .poltab .effrow .dur.hide{visibility:hidden}
   .poltab .add.sm{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:var(--surface);border:1px dashed var(--line2);border-radius:8px;padding:8px 12px;cursor:pointer;margin-top:2px}
   .poltab .add.sm:hover{border-color:var(--ink)}
   .poltab .addopt{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:var(--surface);border:1px dashed var(--line2);border-radius:9px;padding:9px 14px;cursor:pointer}
@@ -752,7 +750,7 @@
               <h2 style="margin:0">Policies</h2>
               <button class="btn btn-solid" id="polNew" type="button">+ New policy</button>
             </div>
-            <p class="sub" style="margin:8px 0 14px">A policy populates every nation. A <b>Binary</b> policy is passed or repealed; a <b>Spectrum</b> policy is set to one of several options. Each option carries its identity tags and structured effects.</p>
+            <p class="sub" style="margin:8px 0 14px">A policy populates every nation. An <b>On/Off</b> policy toggles for a flat influence cost, each state carrying its own stat effects. A <b>Spectrum</b> policy is an ordered ladder of <b>levels</b> — moving between them costs influence and takes implementation time, and each level’s effects sum across the levels crossed. Effects are stored now and applied once the ministry-stat backend lands.</p>
             <div id="polList"><p class="empty">Loading…</p></div>
           </div>
           <div class="panel" id="polEditorPanel" hidden>
@@ -1234,7 +1232,7 @@
     import { regimeLabel, statName } from '/ladders.js';
     import { SIZES, CATEGORIES, CATEGORY_BONUS, corpMoney } from '/corporations.js';
     import { ARCHETYPES } from '/archetypes.js';
-    import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget, polTgtLabel } from '/policies.js';
+    import { policyOptions, policyDefaultIdx, isMoneyTarget, POLICY_STATS } from '/policies.js';
     import { CONV_ROMAN, convRoman, adoptLines, activeLines, lawLines } from '/convictions.js';
     import { MINISTRIES } from '/ministries.js';
     import { condText as objCondText, rewardText as objRewardText } from '/objectives.js';
@@ -2484,28 +2482,17 @@
       }catch(e){ alert('Could not delete: '+(e.message||e)); }
     }
 
-    // ---- Policies (admin authoring; one JSONB definition per policy, is_admin RLS) ----
-    // Stage 1: author + persist. Per-nation state + effects engine + player UI come later.
+    // ---- Live effect-target vocabulary (the CURRENT backend stats). Shared by the Convictions
+    // and World Events authoring tabs, which DO apply live. Policies now author against the
+    // separate ministry-stat set (POLICY_STATS, imported) ahead of the stat backend, so they
+    // no longer read POL_TGT. Keep POL_TGT here — the conviction/world-event editors depend on it.
     var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Budget','Debt','Income','Regime'],
                     Government: ['Government Confidence','Party Popularity','Popularity Ceiling'],
                     Resource: ['Energy','Food','Minerals','Goods','Services','Diplomacy'] };
-    // polTgtLabel (imported from policies.js) scopes Party Popularity / Popularity Ceiling
-    // to "(parties in govt)" — the one source shared with the player-facing effect display.
-    // Figures a conviction's DIRECTIONAL onLaw rule can WATCH (its axis) — what an option
-    // moves. Tax Burden % lives here (read via each option's contribution) even though it's
-    // no longer a deltable effect target. Used by the conviction directional rules (policies
-    // moved to per-option transitions).
-    var AXIS_TGT = ['Tax Burden %','Income','Budget','Debt','Unemployment %','Inflation %','Prosperity','Welfare','Growth','Order','Image','Regime'];
+    // Figures a conviction's DIRECTIONAL onLaw rule can WATCH (its axis) — what a live effect
+    // moves. Used by the conviction directional rules.
+    var AXIS_TGT =['Tax Burden %','Income','Budget','Debt','Unemployment %','Inflation %','Prosperity','Welfare','Growth','Order','Image','Regime'];
     function axisSelect(cls, sel){ return '<select class="'+cls+'">'+AXIS_TGT.map(function(t){ return '<option'+(t===sel?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>'; }
-    // The plain-language summary of an option's transition rule {dir,rung,t,v} — the ONE
-    // source for the sentence, shared by the editor's live echo and the right-hand preview.
-    // The rule is relative to its own option: 'to' = leaving for that rung, 'from' = arriving
-    // from it. v is signed; the magnitude shows as increases/decreases.
-    function trSentence(t){
-      var v = Number(t.v)||0, up = v>=0;
-      return 'When moving <b>'+(t.dir==='from'?'from':'to')+'</b> <b>'+esc(t.rung||'?')+'</b> → <b>'+esc(polTgtLabel(t.t||'?'))+'</b> '+
-        '<span class="'+(up?'up':'dn')+'">'+(up?'increases':'decreases')+' by '+Math.abs(v)+'</span>';
-    }
     // Identity tags — metadata describing what a law IS (not a popularity score). A
     // policy option carries any of these; a conviction's "when a tagged law passes"
     // effect keys off them. Loaded from public.identity_tags (the ONE source — an admin
@@ -2531,84 +2518,27 @@
         onDone && onDone(name);
       }catch(e){ alert('Could not add that tag: '+(e.message||e)); }
     }
-    function polEff(t,v,cad,dur,scale){ return { t:t, v:v, cad:cad, dur:dur, scale:scale||'pop' }; }
-    var POL_SAMPLES = [{n:'2M·P10',pop:2,pros:10},{n:'70M·P14',pop:70,pros:14},{n:'200M·P16',pop:200,pros:16}];
-    function polFmtAmt(a){ return (a>=0?'+':'−')+'₣'+Math.abs(a).toFixed(2)+'B'; }
-    function polWorked(e){ if(e.scale==='flat') return 'Fixed · '+polFmtAmt(e.v)+' — same for every nation';
-      return POL_SAMPLES.map(function(s){ return s.n+' '+polFmtAmt(policyMoney(e.v,e.scale,s.pop,s.pros))+(e.cad==='tick'?'/t':e.cad==='year'?'/yr':''); }).join('   ·   '); }
-
-    // ---- Doorway transition model (Phase 1: authoring only — _apply_law still reads the
-    // legacy `transitions` until Phase 2, so editing doorways changes nothing live yet). Each
-    // option (rung) owns two doorways: doorUp = effects when stepping UP into it from the rung
-    // below; doorDown = effects when stepping DOWN into it from the rung above. A longer move
-    // sums the doorways it crosses (Phase 2). Effects are flat {t, v} (transitions never scaled).
-    function doorEcho(arr){
-      if(!arr || !arr.length) return '<span class="hint">no change</span>';
-      return arr.map(function(e){ var v=Number(e.v)||0;
-        var sc=(isMoneyTarget(e.t)&&e.scale&&e.scale!=='flat')?' <span class="hint">'+(e.scale==='perm'?'per M pop':'×pop×prosp')+'</span>':'';
-        return '<b>'+esc(polTgtLabel(e.t))+'</b> <span class="'+(v>=0?'up':'dn')+'">'+(v>=0?'+':'−')+Math.abs(v)+'</span>'+sc; }).join(' · ');
-    }
-    // A doorway's effect chips (target + value + remove) and the full up/down section. Pure
-    // (params only) — defined once here, not per option, and reused by buildPolOpt.
-    function doorChips(dir, arr){
-      return arr.map(function(e,ei){
-        // Money targets (Budget/Debt/Income) carry the same scaling as enactment effects, so a
-        // doorway can be e.g. Income −1 per million pop; non-money targets are always flat.
-        var sc=isMoneyTarget(e.t) ? '<select class="ds" title="Scaling" style="max-width:104px"><option value="flat"'+(e.scale==='perm'||e.scale==='pop'?'':' selected')+'>flat</option><option value="perm"'+(e.scale==='perm'?' selected':'')+'>/M pop</option><option value="pop"'+(e.scale==='pop'?' selected':'')+'>×pop×prosp</option></select>' : '';
-        return '<span class="dchip" data-dir="'+dir+'" data-ei="'+ei+'">'+polTgtSelect(e.t,'dt')+
-          '<input type="number" class="dv" step="any" value="'+(Number(e.v)||0)+'" style="max-width:64px">'+sc+
-          '<button class="xb dx" type="button" title="Remove">×</button></span>';
-      }).join('');
-    }
-    function doorSection(dir, arr, fromName){
-      return '<div class="door" data-dir="'+dir+'"><div class="doorlbl"><span class="'+(dir==='up'?'up':'dn')+'">'+(dir==='up'?'↑':'↓')+'</span> Step '+dir+' · arriving from <b>'+esc(fromName||'?')+'</b></div>'+
-        '<div class="dchips">'+doorChips(dir,arr)+'<button class="add sm dadd" type="button">+ effect</button></div>'+
-        '<div class="echo">'+doorEcho(arr)+'</div></div>';
-    }
-    // An option's standing (per-tick) effects summed per target — the source the auto-fill derives doorways from.
-    function standingMap(o){ var m={}; (o.effects||[]).forEach(function(e){ if(e.cad==='tick'){ m[e.t]=(m[e.t]||0)+(Number(e.v)||0); } }); return m; }
-    function standingDelta(oTo, oFrom){ var a=standingMap(oTo), b=standingMap(oFrom), keys={}, out=[];
-      Object.keys(a).forEach(function(k){keys[k]=1;}); Object.keys(b).forEach(function(k){keys[k]=1;});
-      Object.keys(keys).forEach(function(k){ var v=(a[k]||0)-(b[k]||0); if(v!==0) out.push({t:k,v:v}); }); return out; }
-    // Fill every doorway from the standing-effect delta between adjacent rungs (overwrites).
-    function autofillDoors(){ var opts=polOpts(); opts.forEach(function(o,i){
-      o.doorUp   = i>0            ? standingDelta(opts[i], opts[i-1]) : [];
-      o.doorDown = i<opts.length-1 ? standingDelta(opts[i], opts[i+1]) : []; }); }
-    // One-time migration of legacy rung-specific transitions → doorways. Adjacent rules map to
-    // the matching doorway; non-adjacent rules are collected (reported, never silently dropped).
-    // Idempotent: skips if doorways already exist (a prior migration/save). Does NOT clear
-    // `transitions` — Phase 1 keeps them so live enactment is unchanged.
-    function migrateDoors(opts){
-      if(opts.some(function(o){ return o.doorUp!==undefined || o.doorDown!==undefined; })) return [];  // already migrated
-      var names=opts.map(function(x){return x.name;}), flagged=[];
-      opts.forEach(function(o){ o.doorUp=[]; o.doorDown=[]; });
-      opts.forEach(function(o,i){
-        (o.transitions||[]).forEach(function(t){
-          var ri=names.indexOf(t.rung), eff={t:t.t, v:Number(t.v)||0};
-          // A rung that no longer exists (renamed/removed option) can't map to a
-          // doorway — flag it instead of indexing opts[-1] (which crashed the editor).
-          if(ri<0){ flagged.push({opt:o.name, rule:trSentence(t)}); return; }
-          if(t.dir==='from'){            // arriving at i from rung ri
-            if(ri===i-1) o.doorUp.push(eff);
-            else if(ri===i+1) o.doorDown.push(eff);
-            else flagged.push({opt:o.name, rule:trSentence(t)});
-          } else {                       // leaving i for rung ri
-            if(ri===i+1) opts[ri].doorUp.push(eff);
-            else if(ri===i-1) opts[ri].doorDown.push(eff);
-            else flagged.push({opt:o.name, rule:trSentence(t)});
-          }
-        });
-      });
-      return flagged;
-    }
+    // A blank policy effect: a stat plus a signed amount ({t, v}). v carries the direction
+    // (Increase → +, Decrease → −); the editor shows the magnitude and a direction select.
+    // No cadence/scale — a policy effect is a plain stat delta authored against POLICY_STATS,
+    // stored now and applied once the ministry-stat backend and the level-change engine land.
+    function polEff(t, v){ return { t: t, v: (v == null ? 0 : v) }; }
 
     var polCache = [], P = null, polEditingId = null;
+    // The new definition shape (author + store only — no live application yet):
+    //   { name, desc, type:'binary'|'spectrum',
+    //     influence,            // binary: cost to switch · spectrum: BASE influence to change
+    //     impl,                 // spectrum: BASE implementation time (months)
+    //     binary:  [ {name:'Off', effects}, {name:'On', effects} ], binDefault,
+    //     spectrum:[ {name, desc, effects} … ordered levels ], defaultIdx }
+    // where each effect is a plain {t, v} stat delta (v signed). Spectrum runtime (deferred):
+    // crossing N levels costs N×(base+N−1) influence, sums each crossed level's effects, and
+    // adds +1 month implementation per 10 Bureaucracy (rounded up).
     function blankPolicy(){ return {
-      name:'New policy', desc:'', type:'spectrum', defaultIdx:0, binDefault:1,
-      binary:[ {name:'If Passed',desc:'The policy is in force.',tags:[],effects:[],transitions:[]},
-               {name:'If Repealed',desc:'The policy is struck down — undo its standing effect.',tags:[],effects:[],transitions:[]} ],
-      spectrum:[ {name:'Option A',desc:'',tags:[],effects:[polEff('Budget',0,'tick',0)],transitions:[]},
-                 {name:'Option B',desc:'',tags:[],effects:[],transitions:[]} ]
+      name:'New policy', desc:'', type:'spectrum', influence:5, impl:1, defaultIdx:0, binDefault:0,
+      binary:[ {name:'Off',effects:[]}, {name:'On',effects:[]} ],
+      spectrum:[ {name:'Level A',desc:'',effects:[]},
+                 {name:'Level B',desc:'',effects:[polEff('Budget Balance',0)]} ]
     }; }
     function polOpts(){ return policyOptions(P); }
     var polSaving = false;   // double-fire lock for the create/save path
@@ -2630,9 +2560,9 @@
       if (!polCache.length){ box.innerHTML='<p class="empty">No policies yet. Click “New policy” to create one.</p>'; return; }
       box.innerHTML = polCache.map(function(row){
         var d = row.definition || {};
-        var n = d.type==='spectrum' ? ((d.spectrum||[]).length+' options') : 'pass / repeal';
+        var n = d.type==='spectrum' ? ((d.spectrum||[]).length+' levels') : 'on / off';
         return '<div class="plcard"><div><div class="plcard__name">'+esc(d.name||'Untitled policy')+'</div>'+
-          '<div class="plcard__meta">'+esc(d.type||'spectrum')+' · '+n+'</div></div>'+
+          '<div class="plcard__meta">'+esc(d.type==='spectrum'?'spectrum':'on/off')+' · '+n+'</div></div>'+
           '<div class="plcard__btns"><button class="ed" data-id="'+row.id+'" type="button">Edit</button>'+
           '<button class="rm" data-id="'+row.id+'" type="button">Remove</button></div></div>';
       }).join('');
@@ -2644,9 +2574,7 @@
       // type/options/defaults exist); def's own fields win where present.
       P = Object.assign(blankPolicy(), def || {}); polEditingId = id || null;
       document.getElementById('polEditorPanel').hidden = false;
-      // Migrate legacy rung-specific transitions → doorways (adjacent map; non-adjacent flagged).
-      var _fl = migrateDoors(policyOptions(P));
-      setPolNote(_fl.length ? (_fl.length + ' transition rule(s) weren’t adjacent and couldn’t auto-map — re-author as doorways: ' + _fl.map(function(f){ return f.opt + ' — ' + f.rule.replace(/<[^>]+>/g,''); }).join('; ')) : '', _fl.length ? 'warn' : '');
+      setPolNote('');
       renderPolEditor(); renderPolPrev();
       document.getElementById('polEditorPanel').scrollIntoView({ behavior:'smooth', block:'start' });
     }
@@ -2762,132 +2690,114 @@
     }
     (function(){ var b=document.getElementById('tpSave'); if(b) b.addEventListener('click', saveTradePolicy); })();
 
+    // The policy effect stat picker — the ministry-stat vocabulary (POLICY_STATS, one source
+    // in policies.js). A flat list (no optgroups): a policy effect is a plain stat delta.
     function polTgtSelect(sel, cls){
-      var h='<select class="'+(cls||'et')+'">';
-      Object.keys(POL_TGT).forEach(function(g){ h+='<optgroup label="'+g+'">'+POL_TGT[g].map(function(t){ return '<option value="'+esc(t)+'"'+(t===sel?' selected':'')+'>'+esc(polTgtLabel(t))+'</option>'; }).join('')+'</optgroup>'; });
-      return h+'</select>';
+      return '<select class="'+(cls||'et')+'">'+POLICY_STATS.map(function(t){ return '<option value="'+esc(t)+'"'+(t===sel?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>';
+    }
+    // One effect row: stat · Increase/Decrease · amount. v carries the sign; the row shows the
+    // magnitude and a direction select, so the stored value is signed but the admin picks up/down.
+    function polEffRow(e){
+      var up=(Number(e.v)||0)>=0;
+      return '<div class="effrow">'+polTgtSelect(e.t)+
+        '<select class="edir"><option value="up"'+(up?' selected':'')+'>Increase</option><option value="down"'+(!up?' selected':'')+'>Decrease</option></select>'+
+        '<input type="number" class="ev" min="0" step="any" value="'+Math.abs(Number(e.v)||0)+'" style="max-width:96px">'+
+        '<button class="xb efx" type="button" title="Remove">×</button></div>';
     }
     function renderPolEditor(){
       var box=document.getElementById('polEditor'); box.innerHTML='';
       var idc=document.createElement('div'); idc.className='card';
       idc.innerHTML='<div class="f"><label>Policy name</label><input type="text" id="pol-name" value="'+esc(P.name).replace(/"/g,'&quot;')+'"></div>'+
         '<div class="f"><label>Description</label><textarea id="pol-desc">'+esc(P.desc||'')+'</textarea></div>'+
-        '<div class="f" style="margin-bottom:0"><label>Type</label><div class="seg" id="pol-typeSeg"><span data-v="binary" class="'+(P.type==='binary'?'on':'')+'">Binary</span><span data-v="spectrum" class="'+(P.type==='spectrum'?'on':'')+'">Spectrum</span></div></div>';
+        '<div class="f" style="margin-bottom:0"><label>Type</label><div class="seg" id="pol-typeSeg"><span data-v="binary" class="'+(P.type==='binary'?'on':'')+'">On/Off</span><span data-v="spectrum" class="'+(P.type==='spectrum'?'on':'')+'">Spectrum</span></div></div>';
       box.appendChild(idc);
 
+      // Cost card — On/Off is a single influence cost; Spectrum carries the base influence and
+      // base implementation time the level-change engine will scale (deferred).
+      var cc=document.createElement('div'); cc.className='card';
+      if (P.type==='binary'){
+        cc.innerHTML='<div class="f" style="margin-bottom:0"><label>Influence cost to switch</label><input type="number" id="pol-inf" min="0" step="1" value="'+(P.influence!=null?P.influence:0)+'" style="max-width:160px"></div>';
+      } else {
+        cc.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
+          '<div class="f" style="margin-bottom:0"><label>Base influence to change</label><input type="number" id="pol-inf" min="0" step="1" value="'+(P.influence!=null?P.influence:0)+'"></div>'+
+          '<div class="f" style="margin-bottom:0"><label>Base implementation time (months)</label><input type="number" id="pol-impl" min="0" step="1" value="'+(P.impl!=null?P.impl:0)+'"></div></div>'+
+          '<p class="hint" style="margin:8px 0 0">Crossing N levels costs N×(base+N−1) influence and sums each crossed level’s effects; implementation adds +1 month per 10 Bureaucracy (rounded up). Applied once the level-change engine lands.</p>';
+      }
+      box.appendChild(cc);
+
       var oc=document.createElement('div'); oc.className='card';
-      oc.innerHTML='<div class="opthd"><span class="t">'+(P.type==='spectrum'?'Spectrum options':'States')+'</span>'+(P.type==='spectrum'?'<button class="addopt" id="pol-addOpt" type="button">+ add option</button>':'')+'</div>';
+      oc.innerHTML='<div class="opthd"><span class="t">'+(P.type==='spectrum'?'Levels':'States')+'</span>'+(P.type==='spectrum'?'<button class="addopt" id="pol-addOpt" type="button">+ add level</button>':'')+'</div>';
       if (P.type==='binary'){
         var bd=document.createElement('div'); bd.className='bindefault';
-        bd.innerHTML='<span>Every nation starts:</span><select id="pol-binDef"><option value="0"'+(P.binDefault===0?' selected':'')+'>Passed</option><option value="1"'+(P.binDefault===1?' selected':'')+'>Repealed</option></select>';
+        bd.innerHTML='<span>Every nation starts:</span><select id="pol-binDef"><option value="0"'+(P.binDefault===0?' selected':'')+'>Off</option><option value="1"'+(P.binDefault===1?' selected':'')+'>On</option></select>';
         oc.appendChild(bd);
       }
       polOpts().forEach(function(o,i){ oc.appendChild(buildPolOpt(o,i)); });
       box.appendChild(oc);
 
       var foot=document.createElement('div'); foot.style.display='flex'; foot.style.gap='8px'; foot.style.flexWrap='wrap';
-      var af=document.createElement('button'); af.className='btn btn-ghost'; af.type='button'; af.textContent='✨ Fill doorways from standing deltas'; af.onclick=function(){ autofillDoors(); renderPolEditor(); renderPolPrev(); setPolNote('Doorways filled from the per-tick standing-effect deltas — manual exceptions overwritten.'); };
       var sv=document.createElement('button'); sv.className='btn btn-solid'; sv.type='button'; sv.textContent=polEditingId?'Save changes':'Create policy'; sv.onclick=savePolicy;
       var cx=document.createElement('button'); cx.className='btn btn-ghost'; cx.type='button'; cx.textContent='Close'; cx.onclick=function(){ document.getElementById('polEditorPanel').hidden=true; };
-      foot.appendChild(af); foot.appendChild(sv); foot.appendChild(cx); box.appendChild(foot);
+      foot.appendChild(sv); foot.appendChild(cx); box.appendChild(foot);
 
       box.querySelector('#pol-name').oninput=function(e){ P.name=e.target.value; renderPolPrev(); };
       box.querySelector('#pol-desc').oninput=function(e){ P.desc=e.target.value; };
       box.querySelectorAll('#pol-typeSeg span').forEach(function(s){ s.onclick=function(){ P.type=s.dataset.v; renderPolEditor(); renderPolPrev(); }; });
-      var ao=box.querySelector('#pol-addOpt'); if(ao)ao.onclick=function(){ P.spectrum.push({name:'New option',desc:'',tags:[],effects:[polEff('Budget',0,'tick',0)],transitions:[]}); renderPolEditor(); renderPolPrev(); };
+      var inf=box.querySelector('#pol-inf'); if(inf)inf.oninput=function(e){ P.influence=parseInt(e.target.value,10)||0; renderPolPrev(); };
+      var impl=box.querySelector('#pol-impl'); if(impl)impl.oninput=function(e){ P.impl=parseInt(e.target.value,10)||0; };
+      var ao=box.querySelector('#pol-addOpt'); if(ao)ao.onclick=function(){ P.spectrum.push({name:'Level '+String.fromCharCode(65+P.spectrum.length),desc:'',effects:[]}); renderPolEditor(); renderPolPrev(); };
       var bdf=box.querySelector('#pol-binDef'); if(bdf)bdf.onchange=function(e){ P.binDefault=+e.target.value; renderPolEditor(); renderPolPrev(); };
     }
     function buildPolOpt(o,i){
+      o.effects = o.effects || [];
       var card=document.createElement('div');
-      card.className='opt'+(P.type==='binary'?(i===0?' binyes':' binno'):'');
+      card.className='opt'+(P.type==='binary'?(i===1?' binyes':' binno'):'');   // On (i=1) green, Off (i=0) red
       var isStart = P.type==='spectrum' ? i===P.defaultIdx : i===P.binDefault;
       var head='<div class="oh">';
       if (P.type==='spectrum'){
-        head+='<span class="ord">'+(i+1)+'</span><input type="text" class="onm" value="'+esc(o.name).replace(/"/g,'&quot;')+'">'+
-          '<button class="star'+(isStart?' on':'')+'" type="button" title="Starting option">'+(isStart?'★':'☆')+'</button>'+
+        head+='<span class="ord">'+String.fromCharCode(65+i)+'</span><input type="text" class="onm" value="'+esc(o.name).replace(/"/g,'&quot;')+'">'+
+          '<button class="star'+(isStart?' on':'')+'" type="button" title="Starting level">'+(isStart?'★':'☆')+'</button>'+
           (P.spectrum.length>2?'<button class="xb" type="button">×</button>':'');
       } else {
         head+='<input type="text" class="onm" value="'+esc(o.name).replace(/"/g,'&quot;')+'">'+(isStart?'<span class="startpill">Default</span>':'');
       }
       head+='</div>';
-      o.tags = o.tags || [];   // older policies predate identity tags
-      var tagChips=IDENTITY_TAGS.map(function(t){ return '<span class="achip'+(o.tags.indexOf(t)>=0?' on':'')+'" data-t="'+esc(t)+'">'+esc(t)+'</span>'; }).join('');
-      var effHtml=o.effects.map(function(e){
-        var scaleRow = isMoneyTarget(e.t) ? '<div class="scalerow"><span class="lbl">Scaled by</span><select class="es"><option value="flat"'+(e.scale==='flat'?' selected':'')+'>Flat amount</option><option value="perm"'+(e.scale==='perm'?' selected':'')+'>Per million pop</option><option value="pop"'+(e.scale==='pop'?' selected':'')+'>× Pop × Prosperity</option></select><span class="worked">'+polWorked(e)+'</span></div>' : '';
-        return '<div class="effwrap"><div class="effrow">'+polTgtSelect(e.t)+
-          '<input type="number" class="ev" step="any" value="'+e.v+'">'+
-          '<select class="ec"><option value="once"'+(e.cad==='once'?' selected':'')+'>Once</option><option value="tick"'+(e.cad==='tick'?' selected':'')+'>Per tick</option><option value="year"'+(e.cad==='year'?' selected':'')+'>Per year</option></select>'+
-          '<input type="number" class="dur'+(e.cad!=='tick'?' hide':'')+'" min="0" placeholder="∞ while enacted" value="'+(e.dur?e.dur:'')+'">'+
-          '<button class="xb efx" type="button" title="Remove">×</button></div>'+scaleRow+'</div>';
-      }).join('');
-      o.doorUp = o.doorUp || []; o.doorDown = o.doorDown || [];   // legacy transitions migrate on open
-      var _opts = polOpts();
-      var doorHtml = (i>0 ? doorSection('up', o.doorUp, _opts[i-1]&&_opts[i-1].name) : '') +
-                     (i<_opts.length-1 ? doorSection('down', o.doorDown, _opts[i+1]&&_opts[i+1].name) : '');
+      var effHtml=o.effects.map(polEffRow).join('');
       card.innerHTML=head+
-        '<div class="f" style="margin-bottom:10px"><textarea class="odesc" placeholder="What this option means">'+esc(o.desc||'')+'</textarea></div>'+
-        '<div class="sublab">Tax burden contribution <span class="hint">· this option’s share of the nation’s Tax Burden % (summed across tax policies); a level, not a delta</span></div>'+
-        '<div class="f" style="margin-bottom:0"><input type="number" class="otax" step="0.1" value="'+(o.taxBurden!=null?o.taxBurden:0)+'" style="max-width:140px"></div>'+
-        '<div class="sublab" style="margin-top:14px">Identity tags <span class="hint">· what this law is — metadata that lets tag-keyed convictions fire</span></div><div class="archrow tag">'+tagChips+'<button type="button" class="tagadd">+ tag</button></div>'+
-        '<div class="sublab" style="margin-top:14px">Effect if enacted</div>'+effHtml+
-        '<button class="add sm addeff" type="button">+ effect</button>'+
-        '<div class="sublab" style="margin-top:16px">Doorways <span class="hint">· one-time effects when the nation steps into this rung; a longer move sums the doorways it crosses (live in a later pass)</span></div>'+
-        doorHtml;
+        (P.type==='spectrum'?'<div class="f" style="margin-bottom:10px"><textarea class="odesc" placeholder="What this level means">'+esc(o.desc||'')+'</textarea></div>':'')+
+        '<div class="sublab"'+(P.type==='spectrum'?'':' style="margin-top:8px"')+'>Effects'+(P.type==='spectrum'?' <span class="hint">· the change applied when moving up into this level (reversed moving down); multi-level moves sum</span>':'')+'</div>'+effHtml+
+        '<button class="add sm addeff" type="button">+ effect</button>';
 
       card.querySelector('.onm').oninput=function(e){ o.name=e.target.value; renderPolPrev(); };
-      card.querySelector('.odesc').oninput=function(e){ o.desc=e.target.value; };
-      card.querySelector('.otax').oninput=function(e){ o.taxBurden=parseFloat(e.target.value)||0; renderPolPrev(); };
+      var od=card.querySelector('.odesc'); if(od)od.oninput=function(e){ o.desc=e.target.value; };
       var star=card.querySelector('.star'); if(star && P.type==='spectrum')star.onclick=function(){ P.defaultIdx=i; renderPolEditor(); renderPolPrev(); };
       var rm=card.querySelector('.oh .xb'); if(rm)rm.onclick=function(){ P.spectrum.splice(i,1); if(P.defaultIdx>i)P.defaultIdx--; if(P.defaultIdx>=P.spectrum.length)P.defaultIdx=P.spectrum.length-1; if(P.defaultIdx<0)P.defaultIdx=0; renderPolEditor(); renderPolPrev(); };
-      card.querySelectorAll('.archrow.tag .achip').forEach(function(ch){ ch.onclick=function(){ var t=ch.dataset.t, k=o.tags.indexOf(t); if(k>=0)o.tags.splice(k,1); else o.tags.push(t); renderPolEditor(); renderPolPrev(); }; });
-      card.querySelector('.archrow.tag .tagadd').onclick=function(){ addIdentityTag(function(name){ if(name&&o.tags.indexOf(name)<0)o.tags.push(name); renderPolEditor(); renderPolPrev(); }); };
-      card.querySelectorAll('.effwrap').forEach(function(wrap,j){
-        var e=o.effects[j], row=wrap.querySelector('.effrow');
-        row.querySelector('.et').onchange=function(ev){ e.t=ev.target.value; if(isMoneyTarget(e.t)&&!e.scale)e.scale='pop'; renderPolEditor(); renderPolPrev(); };
-        row.querySelector('.ev').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; var w=wrap.querySelector('.worked'); if(w)w.textContent=polWorked(e); renderPolPrev(); };
-        row.querySelector('.ec').onchange=function(ev){ e.cad=ev.target.value; if(e.cad!=='tick')e.dur=null; renderPolEditor(); renderPolPrev(); };
-        var dur=row.querySelector('.dur'); dur.oninput=function(ev){ e.dur=ev.target.value?+ev.target.value:0; renderPolPrev(); };
+      card.querySelectorAll('.effrow').forEach(function(row,j){
+        var e=o.effects[j];
+        // v stays signed: the stat picker sets the target; direction × magnitude sets the value.
+        function apply(){ var dir=row.querySelector('.edir').value, mag=Math.abs(parseFloat(row.querySelector('.ev').value)||0); e.v=(dir==='down'?-1:1)*mag; renderPolPrev(); }
+        row.querySelector('.et').onchange=function(ev){ e.t=ev.target.value; renderPolPrev(); };
+        row.querySelector('.edir').onchange=apply;
+        row.querySelector('.ev').oninput=apply;
         row.querySelector('.efx').onclick=function(){ o.effects.splice(j,1); renderPolEditor(); renderPolPrev(); };
-        var es=wrap.querySelector('.es'); if(es)es.onchange=function(ev){ e.scale=ev.target.value; var w=wrap.querySelector('.worked'); if(w)w.textContent=polWorked(e); renderPolPrev(); };
       });
-      card.querySelector('.addeff').onclick=function(){ o.effects.push(polEff('Budget',0,'tick',0)); renderPolEditor(); renderPolPrev(); };
-      card.querySelectorAll('.door').forEach(function(ds){
-        var dir=ds.dataset.dir, arr=dir==='up'?o.doorUp:o.doorDown;
-        ds.querySelectorAll('.dchip').forEach(function(ch){
-          var ei=+ch.dataset.ei, e=arr[ei];
-          ch.querySelector('.dt').onchange=function(ev){ e.t=ev.target.value; if(!isMoneyTarget(e.t)) delete e.scale; renderPolEditor(); renderPolPrev(); };  // scale only meaningful for money targets
-          ch.querySelector('.dv').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; ds.querySelector('.echo').innerHTML=doorEcho(arr); renderPolPrev(); };
-          var dsSel=ch.querySelector('.ds'); if(dsSel)dsSel.onchange=function(ev){ e.scale=ev.target.value; ds.querySelector('.echo').innerHTML=doorEcho(arr); renderPolPrev(); };
-          ch.querySelector('.dx').onclick=function(){ arr.splice(ei,1); renderPolEditor(); renderPolPrev(); };
-        });
-        ds.querySelector('.dadd').onclick=function(){ arr.push({t:'Growth', v:-1}); renderPolEditor(); renderPolPrev(); };
-      });
+      card.querySelector('.addeff').onclick=function(){ o.effects.push(polEff('Budget Balance',0)); renderPolEditor(); renderPolPrev(); };
       return card;
     }
     function polEffLine(e){
-      var cad = e.cad==='once' ? 'once' : e.cad==='year' ? '/ year' : (e.dur && e.dur>0 ? '/ tick · '+e.dur+'t' : '/ tick · while enacted');
-      if (isMoneyTarget(e.t)){
-        var mid=policyMoney(e.v,e.scale,70,14), modeT=e.scale==='flat'?'flat':e.scale==='perm'?'×pop':'×pop×prosp', s=mid>=0?'+':'−';
-        return '<div class="e '+(mid>0?'pos':mid<0?'neg':'')+'"><b>'+esc(polTgtLabel(e.t))+' '+s+'₣'+Math.abs(mid).toFixed(2)+'B</b> <span class="cad">'+cad+' · '+modeT+' @ 70M·P14</span></div>';
-      }
-      var sign=e.v>=0?'+':'−', mag=Math.abs(e.v), cls=e.v>0?'pos':e.v<0?'neg':'';
-      return '<div class="e '+cls+'"><b>'+esc(polTgtLabel(e.t))+' '+sign+mag+'</b> <span class="cad">'+cad+'</span></div>';
+      var v=Number(e.v)||0, sign=v>=0?'+':'−', cls=v>0?'pos':v<0?'neg':'';
+      return '<div class="e '+cls+'"><b>'+esc(e.t)+' '+sign+Math.abs(v)+'</b></div>';
     }
     function renderPolPrev(){
       var box=document.getElementById('polPrev');
-      var typeLabel=P.type==='spectrum'?('Spectrum · '+P.spectrum.length+' options'):'Binary · pass / repeal';
+      var typeLabel=P.type==='spectrum'
+        ? ('Spectrum · '+P.spectrum.length+' levels · base '+(P.influence||0)+' Inf · '+(P.impl||0)+' mo')
+        : ('On/Off · '+(P.influence||0)+' Inf');
       var html='<div class="pvname">'+esc(P.name||'Untitled policy')+'</div><span class="pvtype">'+typeLabel+'</span>';
       polOpts().forEach(function(o,i){
         var isStart=P.type==='spectrum'? i===P.defaultIdx : i===P.binDefault;
-        var tb=Number(o.taxBurden)||0;
-        var tbLine=tb?'<div class="pveff"><div class="e"><b>Tax burden '+(tb>0?'+':'')+tb+'%</b> <span class="cad">contribution</span></div></div>':'';
-        var effs=o.effects.length?'<div class="pveff">'+o.effects.map(polEffLine).join('')+'</div>':(tb?'':'<div class="pvnone">No effects</div>');
-        var trs=((o.doorUp&&o.doorUp.length)||(o.doorDown&&o.doorDown.length))?'<div class="pveff">'+
-          (o.doorUp&&o.doorUp.length?'<div class="e"><span class="echo">↑ in · '+doorEcho(o.doorUp)+'</span></div>':'')+
-          (o.doorDown&&o.doorDown.length?'<div class="e"><span class="echo">↓ in · '+doorEcho(o.doorDown)+'</span></div>':'')+'</div>':'';
-        var tags=(o.tags&&o.tags.length)?'<div class="pvtagrow">'+o.tags.map(function(t){ return '<span class="pvltag">'+esc(t)+'</span>'; }).join('')+'</div>':'';
-        html+='<div class="pvopt"><div class="on">'+(P.type==='spectrum'?(i+1)+'. ':'')+esc(o.name||'—')+(isStart?'<span class="startt">start</span>':'')+'</div>'+
-          tags+tbLine+effs+trs+'</div>';
+        var effs=(o.effects&&o.effects.length)?'<div class="pveff">'+o.effects.map(polEffLine).join('')+'</div>':'<div class="pvnone">No effects</div>';
+        html+='<div class="pvopt"><div class="on">'+(P.type==='spectrum'?String.fromCharCode(65+i)+'. ':'')+esc(o.name||'—')+(isStart?'<span class="startt">start</span>':'')+'</div>'+effs+'</div>';
       });
       box.innerHTML=html;
     }

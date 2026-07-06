@@ -1,11 +1,30 @@
 -- 90 · Policies (authoring storage)
 --
--- Admin-authored policies. Stage 1 stores the whole policy as one JSONB
--- definition per row — the canonical object the admin tool edits:
---   { name, desc, type ('binary'|'spectrum'), defaultIdx, binDefault,
---     binary:[ {name,desc,support[],oppose[],effects[]} x2 ],
---     spectrum:[ {name,desc,support[],oppose[],effects[]} ... ] }
--- where each effect is { t (target), v (value), cad ('once'|'tick'), dur, scale }.
+-- Admin-authored policies. The whole policy is one JSONB definition per row — the
+-- canonical object the admin tool edits. Two kinds, both authored against the
+-- ministry-stat vocabulary (POLICY_STATS in policies.js):
+--   On/Off (binary): a flat influence cost to switch, each state's own effects —
+--     { name, desc, type:'binary', influence, binDefault (0=Off,1=On),
+--       binary:[ {name:'Off',effects[]}, {name:'On',effects[]} ] }
+--   Spectrum: an ordered ladder of levels A,B,C… —
+--     { name, desc, type:'spectrum', influence (BASE to change), impl (BASE months),
+--       defaultIdx, spectrum:[ {name,desc,effects[]} … ] }
+-- where each effect is a plain { t (stat), v (signed amount) }.
+--
+-- AUTHOR + STORE ONLY for now: the ministry-stat backend and the level-change engine
+-- don't exist yet, so definitions are stored but NOT applied. The effects engine
+-- (schema/91) harmlessly ignores POLICY_STATS targets (its case list doesn't match
+-- them). Deferred runtime rules, recorded here so they land consistently:
+--   · Moving between spectrum levels SUMS each crossed level's effects (A→C = A→B + B→C).
+--   · Influence to cross N levels = N × (base + N − 1)  [A→B=base, A→C=2×(base+1)].
+--   · Implementation time = base + ceil(Bureaucracy / 10) months.
+-- Trade Policy (definition.special = 'trade') is a separate model in its own tab and
+-- is unaffected by the above.
+--
+-- Legacy note: older rows used type 'binary'|'spectrum' with option support[]/oppose[]/
+-- identity tags / doorway transitions and {t,v,cad,dur,scale} effects. The new authoring
+-- tool no longer writes those fields; any surviving legacy rows still apply through
+-- schema/91 until re-authored.
 --
 -- Public read; admin-only write — same is_admin() pattern as the modifier tables
 -- (schema/70). Per-nation policy state and the effects engine arrive in later
