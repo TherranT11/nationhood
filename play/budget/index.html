@@ -178,17 +178,11 @@
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
       setTopbarActions(party.influence);
 
-      // Revenue = the nation's income (economy.budget, the field the topbar renders as income).
-      // Budget Balance is NOT this: it's the computed net of active policy effects, so its headline
-      // stays "$--" until the policy engine sums them. Spending stays "$--" for the same reason.
+      // Budget Balance, Revenue and Spending are all computed from active policy effects
+      // (pending the policy engine), so they stay "$--". Only Public Debt is a stored figure —
+      // economy.debt (the "Starting Debt" field), the same source the Government page reads.
       var ec = (nation && nation.economy) || {};
       var cur = ec.currency || '$';
-      var n = Number(ec.budget);
-      if (ec.budget != null && ec.budget !== '' && isFinite(n)) {   // isFinite guards a corrupt/non-numeric value
-        document.getElementById('revVal').textContent = (n < 0 ? '−' : '') + cur + Math.abs(n) + 'bn';
-      }
-      // Public Debt = economy.debt (the "Starting Debt" field), the same source as the
-      // Government page's Public Debt cell. Shown as a stock; "$--" when unset.
       var d = Number(ec.debt);
       if (ec.debt != null && ec.debt !== '' && isFinite(d)) {
         document.getElementById('debtVal').textContent = cur + Math.abs(d) + 'bn';
