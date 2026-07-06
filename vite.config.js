@@ -16,7 +16,7 @@ const SKIP = new Set(['node_modules', 'dist', 'public', 'supabase', '.git', '.gi
 
 // Every *.html under the project root → a Rollup input, keyed by its path (so the
 // list is never hand-maintained as pages are added). Output keeps the directory
-// layout, so /play/party/ etc. resolve exactly as they do today.
+// layout, so /play/government/ etc. resolve exactly as they do today.
 function htmlEntries(dir, out = {}) {
   for (const name of readdirSync(dir)) {
     if (SKIP.has(name)) continue;
