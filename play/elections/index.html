@@ -95,6 +95,26 @@
   .proj-seats{font-family:'Space Mono',monospace;font-weight:700;font-size:14px;min-width:74px;text-align:right;white-space:nowrap}
   .proj-seats small{color:var(--soft);font-weight:400}
 
+  /* Campaign Trail — the four campaign actions, shown only inside the 6-month election window. */
+  .camp-intro{font-size:13px;color:var(--muted);line-height:1.55;margin-bottom:14px}
+  .camp-wallet{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  .cw{flex:1;min-width:96px;background:var(--chip);border:1px solid var(--line);border-radius:12px;padding:12px 14px;text-align:center}
+  .cw .v{font-weight:900;font-size:22px;letter-spacing:-.02em}
+  .cw .l{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft);margin-top:4px}
+  .camp-acts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .camp-act{border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;background:var(--surface)}
+  .camp-act__hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .camp-act__nm{font-weight:800;font-size:14.5px;letter-spacing:-.01em}
+  .camp-act__cost{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--amber);background:var(--amber-soft);border-radius:20px;padding:4px 9px;white-space:nowrap;flex:none}
+  .camp-act__eff{font-size:12.5px;color:var(--muted);line-height:1.5;flex:1}
+  .camp__target{font-family:'Archivo',sans-serif;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--field);color:var(--ink)}
+  .camp__use{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:9px 14px;border-radius:9px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer;align-self:flex-start}
+  .camp__use:hover{filter:brightness(1.06)}
+  .camp__use:disabled{opacity:.5;cursor:not-allowed;filter:none}
+  .camp-result{margin-top:14px;font-family:'Space Mono',monospace;font-size:12px;color:var(--ink);line-height:1.55}
+  .camp-result:empty{display:none}
+  @media(max-width:560px){.camp-acts{grid-template-columns:1fr}}
+
   /* Phone refresh (matches the Party page): tighter padding, smaller hero, drop
      the placeholder "Next Month" pill, and spread the projection stats evenly. */
   @media(max-width:560px){
@@ -133,6 +153,41 @@
         </div>
       </div>
       <p class="candnote" id="candnote"></p>
+    </section>
+
+    <section class="mod" id="campMod" hidden>
+      <div class="mod__hd"><span>Campaign Trail</span><span class="r">Six months to the vote</span></div>
+      <p class="camp-intro">The election is close enough to campaign. Each action is paid in Influence the moment you use it, and moves standing before the ballot.</p>
+      <div class="camp-wallet">
+        <div class="cw"><div class="v" id="campInf">&mdash;</div><div class="l">Influence</div></div>
+        <div class="cw"><div class="v" id="campPop">&mdash;</div><div class="l">Your popularity</div></div>
+        <div class="cw"><div class="v" id="campSeats">&mdash;</div><div class="l">Projected seats</div></div>
+      </div>
+      <div class="camp-acts">
+        <div class="camp-act" data-act="door">
+          <div class="camp-act__hd"><span class="camp-act__nm">Door Knocking</span><span class="camp-act__cost">4 Influence</span></div>
+          <div class="camp-act__eff">&plus;1D4 Party Popularity.</div>
+          <button class="camp__use" type="button">Use</button>
+        </div>
+        <div class="camp-act" data-act="public">
+          <div class="camp-act__hd"><span class="camp-act__nm">Public Appearance</span><span class="camp-act__cost">3 Influence</span></div>
+          <div class="camp-act__eff">&plus;1 Party Popularity.</div>
+          <button class="camp__use" type="button">Use</button>
+        </div>
+        <div class="camp-act" data-act="debate">
+          <div class="camp-act__hd"><span class="camp-act__nm">TV Debate</span><span class="camp-act__cost">5 Influence</span></div>
+          <div class="camp-act__eff">50/50: you gain &plus;6% and they lose 6%, or the reverse. Pick any party.</div>
+          <select class="camp__target" aria-label="Debate opponent"></select>
+          <button class="camp__use" type="button">Use</button>
+        </div>
+        <div class="camp-act" data-act="attack">
+          <div class="camp-act__hd"><span class="camp-act__nm">Attack Campaign</span><span class="camp-act__cost">2 Influence</span></div>
+          <div class="camp-act__eff">50/50: they lose 3% Popularity, or it backfires and you lose 5%.</div>
+          <select class="camp__target" aria-label="Attack target"></select>
+          <button class="camp__use" type="button">Use</button>
+        </div>
+      </div>
+      <p class="camp-result" id="campResult"></p>
     </section>
 
     <section class="mod" id="projMod">
@@ -405,37 +460,86 @@
       document.title = 'Elections · ' + nationName;
       if (nation && nation.flag) { var flag = document.getElementById('flag'); flag.onload = function () { flag.hidden = false; }; flag.src = nation.flag; }
 
-      // The projection. Seats fill by RELATIVE share at the election (resolver,
-      // schema/60): each party's weight over the contesting field × the chamber —
-      // not an absolute % of seats. Computed ONCE for the whole field here, then read
-      // by both the player's stat row and the full-field Projected Result card, so the
-      // two can never disagree and the page can't promise seats the resolver won't give.
-      // Defensive on `color` (a cosmetic column that may not be migrated here): retry without it
-      // and let partyColor fall back to the archetype hue, so the projection never fails the page.
-      var rosterRes = await supabase.from('parties')
-        .select('id, name, popularity, archetype, color, in_government').eq('nation_id', party.nation_id);
-      if (rosterRes.error) rosterRes = await supabase.from('parties')
-        .select('id, name, popularity, archetype, in_government').eq('nation_id', party.nation_id);
-      var roster = rosterRes.data;
+      // The projection. Seats fill by RELATIVE share at the election (resolver, schema/60): each
+      // party's weight over the contesting field × the chamber — not an absolute % of seats.
+      // loadProjection() computes it for the whole field and repaints the player stat, the
+      // Projected Result card, and the Campaign Trail wallet — re-run after each campaign action so
+      // a popularity swing shows at once. One source, so the stat and the card never disagree.
       var thr = Number(nation && nation.electoral_threshold) || 0; // resolver gate: parties contest at/above the threshold
       var maj = seatsTotal ? majority(seatsTotal) : 0;
-      var fieldWeight = (roster || []).reduce(function (s, p) { var pop = Math.max(0, Number(p.popularity) || 0); return s + (pop >= thr ? pop : 0); }, 0);
-      var projection = (roster || []).map(function (p) {
-        var pop = Math.max(0, Number(p.popularity) || 0);
-        var contesting = pop >= thr && fieldWeight > 0;
-        var sh = contesting ? pop / fieldWeight : 0;
-        return { name: p.name, pop: pop, color: partyColor(p), share: sh, contesting: contesting, seats: Math.round(sh * seatsTotal), mine: p.id === party.id };
-      }).sort(function (a, b) { return b.seats - a.seats || b.pop - a.pop; });
-      var me = projection.filter(function (p) { return p.mine; })[0] || { pop: Math.max(0, Number(party.popularity) || 0), share: 0, seats: 0 };
-      var polling = me.pop, share = me.share, projected = me.seats;   // read by the candnote copy below
-      document.getElementById('polling').textContent = polling + '%';
-      document.getElementById('projSeats').textContent = projected;
-      document.getElementById('standing').textContent = party.in_government ? 'In government' : 'Opposition';
-      if (!ruling) renderProjection(projection, seatsTotal, maj, fieldWeight);
+      var campInfluence = Math.max(0, Number(party.influence) || 0); // Influence wallet for the Campaign Trail
+
+      async function loadProjection() {
+        // Defensive on `color` (a cosmetic column that may not be migrated): retry without it and
+        // let partyColor fall back to the archetype hue, so the projection never fails the page.
+        var rr = await supabase.from('parties').select('id, name, popularity, archetype, color, in_government').eq('nation_id', party.nation_id);
+        if (rr.error) rr = await supabase.from('parties').select('id, name, popularity, archetype, in_government').eq('nation_id', party.nation_id);
+        var roster = rr.data || [];
+        var fw = roster.reduce(function (s, p) { var pop = Math.max(0, Number(p.popularity) || 0); return s + (pop >= thr ? pop : 0); }, 0);
+        var proj = roster.map(function (p) {
+          var pop = Math.max(0, Number(p.popularity) || 0);
+          var contesting = pop >= thr && fw > 0;
+          var sh = contesting ? pop / fw : 0;
+          return { id: p.id, name: p.name, pop: pop, color: partyColor(p), share: sh, contesting: contesting, seats: Math.round(sh * seatsTotal), mine: p.id === party.id };
+        }).sort(function (a, b) { return b.seats - a.seats || b.pop - a.pop; });
+        var meRow = proj.filter(function (p) { return p.mine; })[0] || { pop: Math.max(0, Number(party.popularity) || 0), share: 0, seats: 0 };
+        document.getElementById('polling').textContent = meRow.pop + '%';
+        document.getElementById('projSeats').textContent = meRow.seats;
+        document.getElementById('standing').textContent = party.in_government ? 'In government' : 'Opposition';
+        if (!ruling) renderProjection(proj, seatsTotal, maj, fw);
+        var wi = document.getElementById('campInf'), wp = document.getElementById('campPop'), ws = document.getElementById('campSeats');
+        if (wi) wi.textContent = campInfluence;
+        if (wp) wp.textContent = (Math.round(meRow.pop * 10) / 10) + '%';
+        if (ws) ws.textContent = meRow.seats;
+        return { me: meRow, fieldWeight: fw, projection: proj };
+      }
+
+      // Campaign Trail wiring (F-B): revealed only inside the 6-month window; the server RPCs
+      // enforce the same gate, cost, and popularity bounds. Each Use spends Influence and repaints.
+      function setupCampaign(projection) {
+        var mod = document.getElementById('campMod'); if (!mod) return;
+        mod.hidden = false;
+        var CAMP = { door: { rpc: 'campaign_door_knock', cost: 4, target: false }, public: { rpc: 'campaign_public_appearance', cost: 3, target: false }, debate: { rpc: 'campaign_tv_debate', cost: 5, target: true }, attack: { rpc: 'campaign_attack', cost: 2, target: true } };
+        var rivals = projection.filter(function (p) { return !p.mine; });
+        var optHtml = rivals.length ? rivals.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>'; }).join('') : '<option value="">No rival parties</option>';
+        mod.querySelectorAll('.camp__target').forEach(function (sel) { sel.innerHTML = optHtml; });
+        var result = document.getElementById('campResult'), busy = false;
+        function affordability() {
+          mod.querySelectorAll('.camp-act').forEach(function (el) {
+            var cfg = CAMP[el.dataset.act];
+            el.querySelector('.camp__use').disabled = busy || campInfluence < cfg.cost || (cfg.target && !rivals.length);
+          });
+        }
+        mod.querySelectorAll('.camp-act').forEach(function (el) {
+          var cfg = CAMP[el.dataset.act], sel = el.querySelector('.camp__target');
+          el.querySelector('.camp-act__cost').textContent = cfg.cost + ' Influence';   // CAMP is the one source for the cost
+          el.querySelector('.camp__use').onclick = function () {
+            if (busy) return;
+            var args = {};
+            if (cfg.target) { if (!sel || !sel.value) { result.textContent = 'Pick a party to target first.'; return; } args = { p_target: sel.value }; }
+            busy = true; affordability();
+            supabase.rpc(cfg.rpc, args).then(function (r) {
+              if (r.error) throw r.error;
+              var d = r.data || {};
+              if (d.influence != null) { campInfluence = Number(d.influence); setTopbarActions(campInfluence); }
+              result.textContent = d.body || 'Done.';
+              return loadProjection();   // repaint wallet + projection with the new popularity
+            }).catch(function (e) { result.textContent = (e && e.message) || 'That campaign action could not be completed.'; })
+              .then(function () { busy = false; affordability(); });
+          };
+        });
+        affordability();
+      }
+
+      var proj0 = await loadProjection();
+      var me = proj0.me, polling = me.pop, share = me.share, projected = me.seats, fieldWeight = proj0.fieldWeight;
       // Scheduled election — derived from the nation's next_election_tick and the
       // game clock (one tick = one month; tick 1 = January 1980).
       var nextTick = nation && nation.next_election_tick;
       var ticksAway = (nextTick != null) ? (nextTick - tick) : null;
+      // Campaign Trail opens only in the six months before a general election (never a one-party
+      // state). The server RPCs enforce the same window, so this is purely the reveal.
+      if (!ruling && ticksAway != null && ticksAway >= 1 && ticksAway <= 6) setupCampaign(proj0.projection);
       var projNote;
       if (polling < thr) {
         projNote = 'At <b>' + polling + '%</b> you sit below the <b>' + thr + '%</b> threshold and would take <b>no</b> seats. ';
