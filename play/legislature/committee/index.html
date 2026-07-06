@@ -110,13 +110,15 @@
 
   var PID = new URLSearchParams(location.search).get('id');
   var ME = null, PROP = null, DEF = null, CUR_TICK = 0, ENDORSED_BY_ME = false, POLL = null, BUSY = false;
-  var PARTY = {};   // party_id → { name, color }
+  var NAT_POLICIES = {};   // the bill nation's in-force policy options (for the "from" rung)
+  var PARTY = {};          // party_id → { name, color }
+  var COMMITTEE_WINDOW = 6;   // ticks a bill sits in committee — mirrors _expire_committee (schema/154)
 
   function statusChip() {
     var el = document.getElementById('cStatus');
     if (!PROP) { el.textContent = 'Not found'; el.className = 'status status--dead'; return; }
     if (PROP.status === 'committee') {
-      var left = Math.max(0, 6 - (CUR_TICK - (PROP.opened_tick || CUR_TICK)));
+      var left = Math.max(0, COMMITTEE_WINDOW - (CUR_TICK - (PROP.opened_tick || CUR_TICK)));
       el.textContent = 'In Committee · ' + left + ' tick' + (left === 1 ? '' : 's') + ' left';
       el.className = 'status status--committee';
     } else if (PROP.status === 'voting') {
@@ -132,7 +134,7 @@
     document.getElementById('cTitle').textContent = PROP.title || 'Bill';
     var toName = pl.option_name || (DEF && (policyOptions(DEF)[pl.option_idx] || {}).name) || '—';
     var fromName = '—';
-    if (DEF) { var ci = policyOptionIdx(DEF, window.__natPolicies || {}, pl.policy_id); fromName = (policyOptions(DEF)[ci] || {}).name || '—'; }
+    if (DEF) { var ci = policyOptionIdx(DEF, NAT_POLICIES, pl.policy_id); fromName = (policyOptions(DEF)[ci] || {}).name || '—'; }
     document.getElementById('billFrom').textContent = fromName;
     document.getElementById('billTo').textContent = toName;
     var desc = DEF && DEF.desc;
@@ -191,6 +193,8 @@
       return '<div class="msg"><div class="msg__hd"><b style="color:' + c + '">' + esc(p.name || 'Party') + '</b> · ' + when + '</div>' +
         '<div class="msg__body">' + esc(m.body) + '</div></div>';
     }).join('') : '<div class="chatempty">No messages yet.</div>';
+    box.scrollTop = box.scrollHeight;   // keep the latest message in view across polls
+
     // chat input only for parties in the nation, while it's in committee
     var footer = document.getElementById('chatFooter');
     var inNation = ME && PROP.nation_id === ME.nation_id;
@@ -266,7 +270,7 @@
       ]);
       CUR_TICK = (gsR.data && gsR.data.current_tick) || 0;
       DEF = defR.data && defR.data.definition;
-      window.__natPolicies = (natR.data && natR.data.policies) || {};
+      NAT_POLICIES = (natR.data && natR.data.policies) || {};
       document.getElementById('cNation').textContent = (natR.data && natR.data.name) || prop.nation_id;
       (partiesR.data || []).forEach(function (p) { PARTY[p.id] = { name: p.name, color: partyColor(p) }; });
 
