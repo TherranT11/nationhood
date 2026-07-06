@@ -1727,19 +1727,23 @@
         ministry_stats: collectMinistryStats()
       };
 
-      // Write the row, tolerating a DB that hasn't had schema/150 applied yet: if the
-      // ministry_stats column is missing, drop it and retry so the rest of the edit still
-      // saves (the admin is told below to run the migration to persist ministry stats).
-      var droppedMinistry = false;
+      // Write the row, tolerating a DB that's behind on migrations: PostgREST rejects an
+      // unknown column with "Could not find the 'X' column of 'nations' in the schema
+      // cache". Drop that field and retry, looping over successive missing columns, so the
+      // rest of the edit still saves. Dropped columns are reported (below) so the admin
+      // knows which migrations to apply — never silently swallowed.
+      var droppedCols = [];
       async function writeNation(row, id) {
         var op = function (r) { return id ? supabase.from('nations').update(r).eq('id', id) : supabase.from('nations').insert(r); };
-        var res = await op(row);
-        if (res.error && /ministry_stats/.test(res.error.message || '')) {
-          var r2 = Object.assign({}, row); delete r2.ministry_stats;
-          res = await op(r2);
-          if (!res.error) droppedMinistry = true;
+        var r = Object.assign({}, row);
+        for (var i = 0; i < 12; i++) {              // bounded: at most a dozen missing columns
+          var res = await op(r);
+          if (!res.error) return null;
+          var m = /Could not find the '([^']+)' column/.exec(res.error.message || '');
+          if (!m || !(m[1] in r)) return res.error;  // not a droppable missing-column error
+          droppedCols.push(m[1]); delete r[m[1]];
         }
-        return res.error;
+        return { message: 'Too many missing columns — apply the pending migrations.' };
       }
 
       btn.disabled = true;
@@ -1784,8 +1788,8 @@
           return;
         }
         addNote.textContent = (editing ? ('Saved changes to “' + name + '”.') : ('Added “' + name + '”. It’s now joinable on the nation-select screen.')) +
-          (droppedMinistry ? ' Ministry stats were NOT saved — apply supabase/schema/150 (the ministry_stats column is missing).' : '');
-        addNote.className = droppedMinistry ? 'note error' : 'note ok';
+          (droppedCols.length ? ' NOT saved (column missing — apply the pending migrations): ' + droppedCols.join(', ') + '.' : '');
+        addNote.className = droppedCols.length ? 'note error' : 'note ok';
         if (editing) cancelEdit(); else { e.target.reset(); resetDeclFields(); resetPolFields(); resetMinistryFields(); }
         loadNations();
       } catch (e) { addNote.textContent = 'Couldn’t save the nation. Try again.'; addNote.className = 'note error'; }
