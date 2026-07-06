@@ -6,10 +6,12 @@
 // read-resilient. Cost math is reused from initiatives.js (one source, mirrors schema/141).
 import { supabase } from '/supabase.js';
 import { esc } from '/util.js';
-import { initiativeYearlyCost } from '/initiatives.js';
-
 const SHARES = [0, 25, 50];   // % of the standing yearly cost the partner can be asked to cover (consent / quarter / half)
 function r1(v){ return Math.round((Number(v)||0) * 10) / 10; }
+// An initiative's authored yearly cost + unit (flat $bn/yr or % of GDP/yr) — mirrors initiatives.js.
+function costVal(d){ return Number(d && d.budgetPerYear) || 0; }
+function costPct(d){ return !!(d && d.budgetUnit === 'gdp'); }
+function fmtCost(v, pct){ return pct ? (r1(v) + '% of GDP/yr') : ('$' + r1(v) + 'B/yr'); }
 
 const CSS = `
 .jov{position:fixed;inset:0;background:rgba(10,10,16,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:60}
@@ -77,7 +79,7 @@ async function relationValue(a, b){
 async function nationName(id){
   try { const { data } = await supabase.from('nations').select('name').eq('id', id).maybeSingle(); return (data && data.name) || id; } catch(e){ return id; }
 }
-function splitLine(eff, share){ var them = r1(eff * share / 100), you = r1(eff - them); return '<span class="you">You $'+you+'B/yr</span> · <span class="them">Them $'+them+'B/yr</span>'; }
+function splitLine(eff, share, pct){ var them = eff * share / 100, you = eff - them; return '<span class="you">You '+fmtCost(you, pct)+'</span> · <span class="them">Them '+fmtCost(them, pct)+'</span>'; }
 
 var busy = false;   // one in-flight write at a time across the module
 
@@ -100,7 +102,7 @@ export async function openJointProposer(opts){
   function close(){ ov.remove(); }
 
   function draw(){
-    var eff = initiativeYearlyCost(d);
+    var eff = costVal(d), ipct = costPct(d);
     var canState = soCorps.length > 0;
     var ready = relOk && st.share != null && (st.own !== 'state' || st.corp);
     ov.innerHTML =
@@ -118,7 +120,7 @@ export async function openJointProposer(opts){
         (st.own==='state' && !canState ? '<div class="jni__terms">You have no state-owned firm in an authorised sector — choose Private.</div>' : '')+
         '<div class="jov__lbl">What do you ask of '+esc(pname)+'?</div>'+
         SHARES.map(function(s){ return '<div class="jask'+(st.share===s?' on':'')+'" data-share="'+s+'"><div class="jask__h"><span class="jask__n">'+(s===0?'Consent only':'They cover '+s+'%')+'</span>'+
-          '<span class="jask__sp">'+splitLine(eff, s)+'</span></div></div>'; }).join('')+
+          '<span class="jask__sp">'+splitLine(eff, s, ipct)+'</span></div></div>'; }).join('')+
         '<div class="jov__lbl">Message to their government</div>'+
         '<textarea class="jtx" id="jmsg" placeholder="Make your case…">'+esc(st.msg)+'</textarea>'+
         '<button class="jbtn" id="jsend"'+(ready?'':' disabled')+'>'+(relOk?'Send proposal to '+esc(pname):'Relations too low to propose')+'</button>'+
@@ -188,14 +190,14 @@ export function renderJointNegotiations(el, data, ctx){
     var p=it.p, d=it.def, joint=d.joint||{};
     var iAmPartner = p.partner_nation === ctx.nationId;
     var other = iAmPartner ? it.proposer : it.partner;
-    var eff = initiativeYearlyCost(d);   // the standing $B/yr, split with the partner per share
-    var them = r1(eff * p.share / 100), prop = r1(eff - them);
+    var eff = costVal(d), ipct = costPct(d);   // the standing cost, split with the partner per share
+    var them = eff * p.share / 100, prop = eff - them;
     var youGet = iAmPartner ? ('+'+(joint.quantity||0)+' '+esc(joint.target||'')) : ('+'+(d.quantity||0)+' '+esc(d.resource||''));
     var theyGet= iAmPartner ? ('+'+(d.quantity||0)+' '+esc(d.resource||'')) : ('+'+(joint.quantity||0)+' '+esc(joint.target||''));
     var myTurn = (iAmPartner && p.turn==='partner') || (!iAmPartner && p.turn==='proposer');
     var termsTxt = p.share>0
-      ? '<b>'+esc(other.name||other.id)+'</b>'+(iAmPartner?' asks you to cover ':' would cover ')+'<b>'+p.share+'%</b> — you $'+(iAmPartner?them:prop)+'B/yr, them $'+(iAmPartner?prop:them)+'B/yr.'
-      : '<b>Consent only</b> — '+(iAmPartner?'you pay nothing; the proposer funds it in full.':'you fund it in full ($'+eff+'B/yr).');
+      ? '<b>'+esc(other.name||other.id)+'</b>'+(iAmPartner?' asks you to cover ':' would cover ')+'<b>'+p.share+'%</b> — you '+fmtCost(iAmPartner?them:prop, ipct)+', them '+fmtCost(iAmPartner?prop:them, ipct)+'.'
+      : '<b>Consent only</b> — '+(iAmPartner?'you pay nothing; the proposer funds it in full.':'you fund it in full ('+fmtCost(eff, ipct)+').');
     var thread = (it.messages||[]).map(function(m){
       if(m.from_nation==null) return '<div class="jmsg sys">'+esc(m.body)+'</div>';
       var mine = m.from_nation === ctx.nationId;

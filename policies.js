@@ -107,22 +107,28 @@ export function nationStatContributions(policyRows, overrides, gdp, stat) {
   });
   return { total: total, items: items };
 }
-// A running national initiative is a STANDING Budget Balance cost (schema/141/152): while active it
-// subtracts its authored budgetPerYear ($bn/yr). A joint project splits that — the enacting nation
-// bears (100 − partnerShare)%, the partner covers partnerShare%. This returns THIS nation's yearly
-// cost as a positive number. ONE source (mirrors the initiative block in _nation_budget_balance).
-export function initiativeBudgetAmount(def, partnerShare, isPartner) {
-  var y = Number(def && def.budgetPerYear) || 0;
+// The $bn/yr a running initiative costs its ENACTING nation — a flat figure, or a % of that nation's
+// GDP (definition.budgetUnit === 'gdp'). ownerGdp is the enacting nation's GDP. ONE source (mirrors the
+// gdp resolution in _nation_budget_balance).
+export function initiativeYearlyCost(def, ownerGdp) {
+  var v = Number(def && def.budgetPerYear) || 0;
+  return (def && def.budgetUnit === 'gdp') ? (v / 100 * (Number(ownerGdp) || 0)) : v;
+}
+// A running national initiative is a STANDING Budget Balance cost (schema/141/152). A joint project
+// splits it — the enacting nation bears (100 − partnerShare)%, the partner covers partnerShare%. This
+// returns THIS nation's yearly cost as a positive number. ONE source (mirrors _nation_budget_balance).
+export function initiativeBudgetAmount(def, partnerShare, isPartner, ownerGdp) {
+  var y = initiativeYearlyCost(def, ownerGdp);
   var s = Math.max(0, Math.min(100, Number(partnerShare) || 0));
   return isPartner ? y * s / 100 : y * (100 - s) / 100;
 }
 // Active-initiative Budget Balance line items for a nation, each a COST (negative amount). rows =
-// [{ def, partnerShare, isPartner }] — the nation's own running initiatives plus any joint project it
-// partners. Filters ~zero. ONE source for the Budget page list and the balance total below.
+// [{ def, partnerShare, isPartner, ownerGdp }] — the nation's own running initiatives plus any joint
+// project it partners. Filters ~zero. ONE source for the Budget page list and the balance total below.
 export function initiativeBudgetItems(rows) {
   var items = [];
   (rows || []).forEach(function (r) {
-    var amt = initiativeBudgetAmount(r.def, r.partnerShare, r.isPartner);
+    var amt = initiativeBudgetAmount(r.def, r.partnerShare, r.isPartner, r.ownerGdp);
     if (Math.abs(amt) >= 0.0001) items.push({ name: (r.def && r.def.name) || 'Initiative', amount: -amt });
   });
   return items;

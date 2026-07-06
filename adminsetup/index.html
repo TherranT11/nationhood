@@ -886,7 +886,9 @@
           <div class="card">
             <div class="sec-h">Cost &amp; Timeframe</div>
             <div class="two">
-              <div><div class="flabel">Budget Balance cost <span class="hint">($B/yr while it runs)</span></div><input id="i-byear" type="number" step="any" value="5"></div>
+              <div><div class="flabel">Budget Balance cost <span class="hint">while it runs</span></div>
+                <div style="display:flex;gap:8px"><input id="i-byear" type="number" step="any" value="5" style="flex:1;min-width:0">
+                  <select id="i-byear-unit" style="flex:0 0 118px"><option value="flat">$B / yr</option><option value="gdp">% of GDP</option></select></div></div>
               <div><div class="flabel">Influence <span class="hint">(upfront to enact)</span></div><input id="i-influence" type="number" step="1" value="5"></div>
             </div>
             <div class="flabel" style="margin-top:14px">Build-up length <span class="hint">(months, min–max — before the production increase lands)</span></div>
@@ -3576,7 +3578,7 @@
 
       function iBlank() {
         return { name: '', description: '', resource: 'Energy', quantity: 1, cadence: 'one_time',
-          sectors: iSectorSet('Energy'), budgetPerYear: 5, influence: 5, minM: 16, maxM: 36, global: false, nations: {},
+          sectors: iSectorSet('Energy'), budgetPerYear: 5, budgetUnit: 'flat', influence: 5, minM: 16, maxM: 36, global: false, nations: {},
           joint: { on: false, partner: '', quantity: 1, target: 'Energy' },
           startEvent: '', finishEvent: '' };
       }
@@ -3588,6 +3590,7 @@
         s.quantity = Math.max(1, parseInt(d.quantity, 10) || 1);
         s.cadence = d.cadence === 'recurring' ? 'recurring' : 'one_time';
         s.budgetPerYear = parseFloat(d.budgetPerYear) || 0;
+        s.budgetUnit = (d.budgetUnit === 'gdp') ? 'gdp' : 'flat';
         s.influence = Math.max(1, parseInt(d.influence, 10) || 1);
         var lm = Array.isArray(d.lengthMonths) ? d.lengthMonths : [16, 36];
         s.minM = parseInt(lm[0], 10) || 0; s.maxM = parseInt(lm[1], 10) || 0;
@@ -3607,7 +3610,10 @@
       function iR1(n) { return String(Math.round(n * 10) / 10); }
       // The standing cost line: $B/yr against Budget Balance the whole time it runs + the upfront
       // Influence the Minister spends to enact it.
-      function iCostExpr() { return '−$' + iR1(IN.budgetPerYear) + 'B/yr · ' + IN.influence + ' Influence'; }
+      function iCostExpr() {
+        var c = IN.budgetUnit === 'gdp' ? ('−' + iR1(IN.budgetPerYear) + '% of GDP/yr') : ('−$' + iR1(IN.budgetPerYear) + 'B/yr');
+        return c + ' · ' + IN.influence + ' Influence';
+      }
       // The ticked sectors — ONE source for the preview line and the saved definition.
       function iChosenSectors() { return CATEGORIES.filter(function (c) { return IN.sectors[c]; }); }
       function iNatName(id) { var n = INAT.filter(function (x) { return x.id === id; })[0]; return n ? (n.name || id) : id; }
@@ -3671,6 +3677,7 @@
         document.getElementById('i-desc').value = IN.description;
         document.getElementById('i-qty').textContent = IN.quantity;
         document.getElementById('i-byear').value = IN.budgetPerYear;
+        document.getElementById('i-byear-unit').value = IN.budgetUnit;
         document.getElementById('i-influence').value = IN.influence;
         document.getElementById('i-minM').value = IN.minM;
         document.getElementById('i-maxM').value = IN.maxM;
@@ -3710,7 +3717,7 @@
         var def = {
           name: IN.name.trim(), description: IN.description.trim(),
           resource: IN.resource, quantity: IN.quantity, cadence: IN.cadence,
-          budgetPerYear: IN.budgetPerYear, influence: IN.influence, lengthMonths: [IN.minM, IN.maxM],
+          budgetPerYear: IN.budgetPerYear, budgetUnit: IN.budgetUnit, influence: IN.influence, lengthMonths: [IN.minM, IN.maxM],
           sectors: iChosenSectors(),
           joint: (IN.joint.on && IN.joint.partner) ? { partner: IN.joint.partner, quantity: IN.joint.quantity, target: IN.joint.target } : null,
           eligibleNations: IN.global ? '*' : Object.keys(IN.nations).filter(function (k) { return IN.nations[k]; }),
@@ -3750,6 +3757,7 @@
       document.getElementById('i-qplus').onclick = function () { IN.quantity++; document.getElementById('i-qty').textContent = IN.quantity; iRenderPreview(); };
       document.querySelectorAll('#i-cadence [data-cad]').forEach(function (b) { b.onclick = function () { IN.cadence = b.dataset.cad; iRenderCadence(); iRenderPreview(); }; });
       document.getElementById('i-byear').oninput = function () { IN.budgetPerYear = parseFloat(this.value) || 0; iRenderPreview(); };
+      document.getElementById('i-byear-unit').onchange = function () { IN.budgetUnit = this.value; iRenderPreview(); };
       document.getElementById('i-influence').oninput = function () { IN.influence = Math.max(1, parseInt(this.value, 10) || 1); iRenderPreview(); };
       document.getElementById('i-jpartner').onchange = function () { IN.joint.partner = this.value; iRenderPreview(); };
       document.getElementById('i-jtarget').onchange = function () { IN.joint.target = this.value; iRenderPreview(); };
