@@ -42,6 +42,7 @@
   .inp::placeholder{color:var(--soft)}
   .inp:focus{outline:none;border-color:var(--indigo);background:var(--surface);box-shadow:0 0 0 3px var(--indigo-soft)}
   .curval{font-size:15px;font-weight:700;color:var(--ink);padding:10px 13px;border:1px solid var(--line);border-radius:10px;background:var(--chip)}
+  .poldesc{color:var(--muted);font-size:13.5px;line-height:1.5;margin:10px 0 0}
 
   .preview{position:sticky;top:20px}
   .pvlabel{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin:0 4px 8px}
@@ -154,6 +155,7 @@
     grid.innerHTML =
       '<div><section class="mod"><div class="mod__hd"><span>Policy</span><span class="hint">one policy per law</span></div>' +
         '<label class="lbl">Policy</label><select id="l-policy" class="inp"></select>' +
+        '<p id="l-desc" class="poldesc" hidden></p>' +
         '<label class="lbl" style="margin-top:14px">In force now</label><div id="l-current" class="curval">—</div>' +
         '<label class="lbl" style="margin-top:14px">Proposed change <span class="hint" style="text-transform:none;letter-spacing:0">— pick a rung</span></label><div id="l-ladder" class="ladder"></div>' +
       '</section>' +
@@ -193,7 +195,9 @@
     }
 
     function renderLadder() {
-      var opts = policyOptions(curDef()), cur = inForceIdx();
+      var def = curDef(), opts = policyOptions(def), cur = inForceIdx();
+      var descEl = document.getElementById('l-desc');   // the policy's description, above In force now
+      descEl.textContent = def.desc || ''; descEl.hidden = !def.desc;
       document.getElementById('l-current').textContent = (opts[cur] && opts[cur].name) || '—';
       var lad = document.getElementById('l-ladder');
       lad.innerHTML = opts.map(function (o, i) {

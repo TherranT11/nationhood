@@ -13,12 +13,15 @@ export const POLICY_STATS = [
   'Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Interest Rates',
   'Crime', 'Immigration', 'Extremism', 'Unemployment', 'Poverty', 'Wages',
   'Prosperity', 'Press Freedom', 'Social Integration', 'Armed Forces Funding',
-  'Military Research', 'Cybersecurity', 'Energy Availability', 'CO₂ Emissions', 'Global Warming'
+  'Military Research', 'Cybersecurity', 'Energy Availability', 'CO₂ Emissions', 'Global Warming',
+  'Rule of Law', 'Standard of Living', 'Housing Affordability'
 ];
 
 // The admin-typed ministry stats (the Edit Nation "Ministry Stats" grid). Derived from
-// POLICY_STATS — one source — minus Budget Balance (that cell is computed, not a typed value).
-export const MINISTRY_STATS = POLICY_STATS.filter(function (s) { return s !== 'Budget Balance'; });
+// POLICY_STATS — one source — minus the stats that are COMPUTED from policy effects rather than
+// typed: Budget Balance and Bureaucracy.
+var COMPUTED_STATS = ['Budget Balance', 'Bureaucracy'];
+export const MINISTRY_STATS = POLICY_STATS.filter(function (s) { return COMPUTED_STATS.indexOf(s) < 0; });
 
 // A policy's vote-popularity reaction: how a party's popularity moves for how it votes on a
 // proposed level change. def.popRaise is the swing per rung for voting to RAISE the policy
@@ -46,12 +49,11 @@ export function policyOptionIdx(def, overrides, id) {
   var stored = overrides && overrides[id];
   return stored == null ? policyDefaultIdx(def) : +stored;
 }
-// One policy's in-force contribution to Budget Balance ($bn/yr): the sum of the Budget Balance
-// effects of the option/level currently in force for the nation. Spectrum levels are transition
-// deltas, so being at level N accumulates the deltas of levels 1..N (the base level 0 has none);
-// a binary policy uses its in-force state's effects. A 'gdp'-unit effect is amount% of GDP; a
-// flat effect is the amount in $bn. Trade policy has no Budget Balance effects, so it's skipped.
-export function policyBudgetContribution(def, overrides, id, gdp) {
+// One policy's in-force contribution to a given stat: the sum of that stat's effects on the
+// option/level currently in force. Spectrum levels are transition deltas, so being at level N
+// accumulates levels 1..N (the base level 0 has none); a binary policy uses its in-force state.
+// A 'gdp'-unit effect is amount% of GDP; a flat effect is the amount as-is. Trade policy is skipped.
+export function policyStatContribution(def, overrides, id, gdp, stat) {
   if (!def || isTradePolicy(def)) return 0;
   var opts = policyOptions(def);
   if (!opts.length) return 0;
@@ -60,20 +62,31 @@ export function policyBudgetContribution(def, overrides, id, gdp) {
   var sum = 0;
   inForce.forEach(function (o) {
     ((o && o.effects) || []).forEach(function (e) {
-      if (e.t !== 'Budget Balance') return;
+      if (e.t !== stat) return;
       var v = Number(e.v) || 0;
       sum += (e.unit === 'gdp') ? (v / 100) * (Number(gdp) || 0) : v;
     });
   });
   return sum;
 }
-// The nation's Budget Balance ($bn/yr): the net of every policy's in-force contribution —
-// all that ADD minus all that SUBTRACT. policyRows = [{ id, definition }]; overrides =
-// nation.policies; gdp = nation.gdp. ONE source for the top-bar chip and the Budget page.
+// Budget Balance ($bn/yr) is one such stat.
+export function policyBudgetContribution(def, overrides, id, gdp) {
+  return policyStatContribution(def, overrides, id, gdp, 'Budget Balance');
+}
+// The nation's total for a stat (Σ every policy's in-force contribution — all that ADD minus all
+// that SUBTRACT), with the per-policy breakdown of the non-zero contributors ({name, amount}).
+// policyRows = [{ id, definition }]; overrides = nation.policies; gdp = nation.gdp. ONE source for
+// the top-bar / Budget page (Budget Balance) and the stat detail pages (e.g. Bureaucracy).
+export function nationStatContributions(policyRows, overrides, gdp, stat) {
+  var items = [], total = 0;
+  (policyRows || []).forEach(function (r) {
+    var amt = policyStatContribution(r.definition, overrides, r.id, gdp, stat);
+    if (Math.abs(amt) >= 0.0001) { items.push({ name: (r.definition && r.definition.name) || 'Policy', amount: amt }); total += amt; }
+  });
+  return { total: total, items: items };
+}
 export function nationBudgetBalance(policyRows, overrides, gdp) {
-  return (policyRows || []).reduce(function (t, r) {
-    return t + policyBudgetContribution(r.definition, overrides, r.id, gdp);
-  }, 0);
+  return nationStatContributions(policyRows, overrides, gdp, 'Budget Balance').total;
 }
 
 // Budget/Debt/Income are money targets — their value scales by the nation's size/wealth.
