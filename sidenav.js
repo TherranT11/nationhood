@@ -22,7 +22,7 @@ const NAV = [
   { href: '/play/legislature/', label: 'Legislature',  svg: '<path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/>' },
   { href: '/play/policies/',    label: 'Policies',     svg: '<path d="M7 3h10a1 1 0 011 1v16l-3-2-3 2-3-2-3 2V4a1 1 0 011-1z"/><path d="M9 8h6M9 12h5"/>' },
   { href: null,                 label: 'Inbox',        svg: '<path d="M4 13l2-8h12l2 8"/><path d="M4 13v6h16v-6"/><path d="M4 13h5l1 2h4l1-2h5"/>' },
-  { href: null,                 label: 'News',         svg: '<path d="M5 4h11v15a1 1 0 01-1 1H5z"/><path d="M16 8h3v10a2 2 0 01-2 2"/><path d="M8 8h5M8 11h5M8 14h5"/>' },
+  { href: '/play/news/',        label: 'News',         svg: '<path d="M5 4h11v15a1 1 0 01-1 1H5z"/><path d="M16 8h3v10a2 2 0 01-2 2"/><path d="M8 8h5M8 11h5M8 14h5"/>' },
   { href: '/play/elections/',   label: 'Elections',    svg: '<path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/>' },
   { href: '/play/economy/',     label: 'Economy',      svg: '<path d="M4 19h16"/><path d="M4 15l4-4 3 3 5-6"/><path d="M16 8h2v2"/>' },
   { href: '/play/corporations/',label: 'Corporations', svg: '<path d="M3 21h18"/><path d="M6 21V5a1 1 0 011-1h6a1 1 0 011 1v16"/><path d="M14 21V10h4a1 1 0 011 1v10"/><path d="M9 8h2M9 12h2M9 16h2"/>' },

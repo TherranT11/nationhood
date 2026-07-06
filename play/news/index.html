@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>News · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
+<style>
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+
+  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
+
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
+  .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
+  .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
+  .phead p{color:var(--muted);font-size:13.5px;margin-top:5px;max-width:620px}
+
+  /* scope chips */
+  .scope{display:flex;gap:8px;margin:18px 0 4px;flex-wrap:wrap}
+  .schip{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:8px 14px;cursor:pointer;transition:background .15s,color .15s}
+  .schip:hover{color:var(--ink)}
+  .schip.on{color:var(--indigo);background:var(--indigo-soft);border-color:color-mix(in srgb,var(--indigo) 30%,transparent)}
+
+  /* the paper: a column of stories, newest first */
+  .paper{margin-top:16px;display:flex;flex-direction:column;gap:14px}
+  .story{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:flex;gap:14px}
+  .story__img{width:96px;height:96px;flex:none;border-radius:10px;object-fit:cover;border:1px solid var(--line);background:var(--chip)}
+  @media(max-width:560px){.story__img{width:64px;height:64px}}
+  .story__b{min-width:0;flex:1}
+  .story__meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:7px}
+  .story__cat{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border-radius:20px;padding:3px 9px}
+  .story__cat.world{color:var(--blue);background:var(--blue-soft)}
+  .story__cat.govt{color:var(--navy);background:var(--navy-soft)}
+  .story__date{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--soft)}
+  .story__body{font-size:14.5px;color:var(--ink);line-height:1.55}
+  .story__body b{font-weight:700}
+  .story--major{border-left:3px solid var(--blue)}
+  .eff{display:inline-block;margin-top:8px;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.02em;padding:4px 9px;border-radius:7px;background:var(--chip);color:var(--muted)}
+  .eff.pos{background:var(--green-soft);color:var(--green)} .eff.neg{background:var(--red-soft);color:var(--red)} .eff.warn{background:var(--amber-soft);color:var(--amber)}
+
+  .empty{text-align:center;padding:48px 20px;color:var(--soft)}
+  .empty b{display:block;color:var(--muted);font-size:16px;margin-bottom:5px}
+
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
+
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <div class="phead">
+      <span class="eye">The Press</span>
+      <h1>News</h1>
+      <p>Dispatches from across the world — turning points, national bulletins, and the business of the chamber.</p>
+    </div>
+    <div class="scope" id="scope">
+      <button class="schip on" data-scope="world" type="button">World</button>
+      <button class="schip" data-scope="home" type="button" id="homeChip">My Nation</button>
+    </div>
+    <div class="paper" id="paper"><p class="empty">Loading the news…</p></div>
+  </main>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { esc, eventEffectLabel } from '/util.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+  import { ideologyLabel } from '/archetypes.js';
+
+  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
+  mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
+
+  // A coarse display category for a stored event's kind — the paper's section tag only (the news
+  // itself lives in the shared events feed, schema/40). Campaign electioneering is filtered out
+  // upstream; anything unmapped files under "Dispatch".
+  function catOf(kind) {
+    if (kind === 'world_broadcast' || kind === 'world' || kind === 'world_event') return { cls: 'world', label: 'World' };
+    if (kind === 'admin') return { cls: '', label: 'Bulletin' };
+    if (kind === 'proposal' || kind === 'law' || kind === 'legislative') return { cls: 'govt', label: 'Legislature' };
+    if (kind === 'government' || kind === 'confidence' || kind === 'election') return { cls: 'govt', label: 'Government' };
+    if (kind === 'party') return { cls: '', label: 'Politics' };
+    return { cls: '', label: 'Dispatch' };
+  }
+  // The coloured effect pill — reuses the shared eventEffectLabel (one source, util.js). Only
+  // admin/world events carry a structured effect; organic events narrate their outcome in the body.
+  function effPill(e, currency) {
+    if (e.effect_target == null || e.effect_value == null) return '';
+    return '<div class="eff ' + esc(e.tone || 'warn') + '">' + esc(eventEffectLabel(e.effect_target, e.effect_value, currency)) + '</div>';
+  }
+
+  var STATE = { scope: 'world', nationId: null, currency: '$' };
+
+  function storyCard(e) {
+    var cat = catOf(e.kind);
+    var major = e.kind === 'world_broadcast';
+    var img = e.image_url ? '<img class="story__img" src="' + esc(e.image_url) + '" alt="" onerror="this.remove()">' : '';
+    return '<article class="story' + (major ? ' story--major' : '') + '">' + img +
+      '<div class="story__b"><div class="story__meta"><span class="story__cat ' + cat.cls + '">' + cat.label + '</span>' +
+        '<span class="story__date">' + esc(e.game_date || '') + '</span></div>' +
+      '<div class="story__body">' + esc(e.body) + '</div>' + effPill(e, STATE.currency) + '</div></article>';
+  }
+
+  async function loadNews() {
+    var box = document.getElementById('paper');
+    box.innerHTML = '<p class="empty">Loading the news…</p>';
+    try {
+      // Newsworthy stored events, newest first. Campaign electioneering ('campaign') is excluded —
+      // it's local party colour, not national/world news. World scope reads every nation; My Nation
+      // scope narrows to the home feed. Falls back if image_url isn't migrated yet.
+      var q = supabase.from('events')
+        .select('kind, body, game_date, created_at, effect_target, effect_value, tone, image_url')
+        .neq('kind', 'campaign').order('created_at', { ascending: false }).limit(120);
+      if (STATE.scope === 'home' && STATE.nationId) q = q.eq('nation_id', STATE.nationId);
+      var res = await q;
+      if (res.error) {
+        // image_url column not migrated — retry without it.
+        var q2 = supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone')
+          .neq('kind', 'campaign').order('created_at', { ascending: false }).limit(120);
+        if (STATE.scope === 'home' && STATE.nationId) q2 = q2.eq('nation_id', STATE.nationId);
+        res = await q2;
+      }
+      if (res.error) throw res.error;
+      var rows = res.data || [];
+      // Turning Points (world_broadcast) fire to every nation identically — dedupe to one story.
+      var seen = {}, stories = [];
+      rows.forEach(function (e) {
+        if (e.kind === 'world_broadcast') { var key = (e.created_at || '') + '|' + (e.body || ''); if (seen[key]) return; seen[key] = 1; }
+        stories.push(e);
+      });
+      box.innerHTML = stories.length
+        ? stories.map(storyCard).join('')
+        : '<div class="empty"><b>No news yet</b><span>Dispatches will appear here as the world turns.</span></div>';
+    } catch (e) {
+      box.innerHTML = '<div class="empty"><b>Couldn’t load the news</b><span>Refresh to try again.</span></div>';
+    }
+  }
+
+  (async () => {
+    if (!isConfigured) { document.getElementById('paper').innerHTML = '<div class="empty">Supabase isn’t configured.</div>'; return; }
+    const user = await requireUser();
+    if (!user) return; // redirected to login
+    try {
+      const { data: party } = await supabase.from('parties').select('name, archetype, nation_id, influence').eq('user_id', user.id).single();
+      if (!party) { window.location.replace('/nation-select/'); return; }
+      const { data: nation } = await supabase.from('nations').select('name, flag, economy').eq('id', party.nation_id).single();
+      var nationName = (nation && nation.name) || party.nation_id;
+      STATE.nationId = party.nation_id;
+      STATE.currency = (nation && nation.economy && nation.economy.currency) || '$';
+
+      document.getElementById('pname').textContent = party.name;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
+      document.getElementById('homeChip').textContent = nationName;
+      if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
+      setTopbarActions(party.influence);
+
+      document.querySelectorAll('.schip').forEach(function (b) {
+        b.onclick = function () {
+          if (b.classList.contains('on')) return;
+          document.querySelectorAll('.schip').forEach(function (x) { x.classList.toggle('on', x === b); });
+          STATE.scope = b.dataset.scope;
+          loadNews();
+        };
+      });
+      await loadNews();
+    } catch (e) {
+      document.getElementById('paper').innerHTML = '<div class="empty"><b>Couldn’t load the news</b><span>Refresh to try again.</span></div>';
+    }
+  })();
+</script>
+</body>
+</html>
