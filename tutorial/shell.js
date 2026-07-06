@@ -600,6 +600,11 @@ function renderGuideStep() {
     if (wk) {
       wk.removeAttribute('disabled');
       wk.classList.add('nhbar__week--live', 'nhbar__week--pulse');
+      // Lift the button above the guide mask (z-index 300) so its click always lands — otherwise a
+      // beat whose ring highlights a different chip (e.g. .nhbar__bal) leaves Next Week under a mask
+      // rectangle that eats the click. No ancestor establishes a stacking context, so this wins.
+      wk.style.position = 'relative';
+      wk.style.zIndex = '302';
       wk.onclick = async () => {
         wk.onclick = null;                    // guard against a double push
         await persistStep(guideStep + 1);     // advance the tour into the next turn's first beat (step is re-hydrated cross-session)
