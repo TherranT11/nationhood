@@ -974,7 +974,7 @@
       const currency = (nation && nation.economy && nation.economy.currency) || '$';
 
       // Topbar action budget (one source: the party row).
-      setTopbarActions(party.actions_remaining);
+      setTopbarActions(party.influence);
 
       // Sidebar + title. setIdeology shows the archetype, or "No Ideology" until the
       // party adopts its first conviction (which sets the archetype).

@@ -353,13 +353,13 @@ begin
     returning id into v_pid;
 
   if not p_to_floor then
-    return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_party.actions_remaining);
+    return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_party.influence);
   end if;
 
-  update public.parties set actions_remaining = actions_remaining - 1 where id = v_party.id;
+  update public.parties set influence = influence - 1 where id = v_party.id;
   insert into public.proposal_votes (proposal_id, party_id, aye) values (v_pid, v_party.id, true);
   v_res := public._resolve_proposal(v_pid);
-  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_party.actions_remaining - 1);
+  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_party.influence - 1);
 end $$;
 grant execute on function public.propose_declaration(text, text, boolean) to authenticated;
 
@@ -414,13 +414,13 @@ begin
     returning id into v_pid;
 
   if not p_to_floor then
-    return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_party.actions_remaining);
+    return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_party.influence);
   end if;
 
-  update public.parties set actions_remaining = actions_remaining - 1 where id = v_party.id;
+  update public.parties set influence = influence - 1 where id = v_party.id;
   insert into public.proposal_votes (proposal_id, party_id, aye) values (v_pid, v_party.id, true);
   v_res := public._resolve_proposal(v_pid);
-  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_party.actions_remaining - 1);
+  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_party.influence - 1);
 end $$;
 grant execute on function public.propose_regime_change(int, boolean) to authenticated;
 
@@ -441,11 +441,11 @@ begin
   if public._party_seats(v_party.nation_id) = 0 then raise exception 'The assembly is vacant — hold an election first.'; end if;
 
   update public.proposals set status = 'voting', opened_tick = (select current_tick from public.game_state where id), scheduled_tick = null where id = p_proposal;
-  update public.parties  set actions_remaining = actions_remaining - 1 where id = v_party.id;
+  update public.parties  set influence = influence - 1 where id = v_party.id;
   insert into public.proposal_votes (proposal_id, party_id, aye) values (p_proposal, v_party.id, true)
     on conflict (proposal_id, party_id) do update set aye = excluded.aye;
   v_res := public._resolve_proposal(p_proposal);
-  return jsonb_build_object('status', v_res, 'actions', v_party.actions_remaining - 1);
+  return jsonb_build_object('status', v_res, 'actions', v_party.influence - 1);
 end $$;
 grant execute on function public.proposal_to_floor(uuid) to authenticated;
 
@@ -583,13 +583,13 @@ begin
             '{}'::jsonb, 'agenda', v_sched)
     returning id into v_pid;
 
-  update public.parties set actions_remaining = actions_remaining - 1 where id = v_party.id;
+  update public.parties set influence = influence - 1 where id = v_party.id;
   update public.nations set no_confidence_until_tick = v_tick + 12 where id = v_party.nation_id;   -- nation-wide cooldown
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_party.nation_id, v_party.id, 'declaration',
             v_party.name || ' tabled a vote of no confidence in ' || coalesce(v_hogname, 'the government') || '.', public.current_game_date());
 
-  return jsonb_build_object('id', v_pid, 'scheduled_tick', v_sched, 'actions', v_party.actions_remaining - 1, 'until', v_tick + 12);
+  return jsonb_build_object('id', v_pid, 'scheduled_tick', v_sched, 'actions', v_party.influence - 1, 'until', v_tick + 12);
 end $$;
 grant execute on function public.propose_no_confidence() to authenticated;
 

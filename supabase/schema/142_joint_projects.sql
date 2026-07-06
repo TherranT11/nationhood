@@ -200,7 +200,7 @@ begin
   end if;
 
   v_res := public._initiative_start(v_pr.proposer_nation, v_pr.initiative_id, v_pr.ownership, v_pr.corp_id, v_pr.partner_nation, v_pr.share);
-  update public.parties set actions_remaining = greatest(0, actions_remaining - 2) where id = v_pr.proposer_party;
+  update public.parties set influence = greatest(0, influence - 2) where id = v_pr.proposer_party;
   update public.joint_proposals set status = 'accepted', updated_at = now() where id = p_proposal;
 
   insert into public.joint_messages (proposal_id, from_nation, body)

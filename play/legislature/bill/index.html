@@ -329,7 +329,7 @@
     if (!user) return; // redirected to login
     if (!pid) { fail('No bill specified.'); return; }
     try {
-      const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, actions_remaining').eq('user_id', user.id).single();
+      const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy, policies, population, stats').eq('id', party.nation_id).single();
       const { data: parties } = await supabase.from('parties').select('id, name, seats, in_government').eq('nation_id', party.nation_id);
@@ -362,7 +362,7 @@
       document.getElementById('pname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + ST.nationName;
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
-      setTopbarActions(party.actions_remaining);
+      setTopbarActions(party.influence);
 
       render();
     } catch (e) {

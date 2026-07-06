@@ -123,7 +123,7 @@
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      const { data: party } = await supabase.from('parties').select('name, archetype, nation_id, actions_remaining').eq('user_id', user.id).single();
+      const { data: party } = await supabase.from('parties').select('name, archetype, nation_id, influence').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations')
         .select('name, flag, economy, population, stats, policies').eq('id', party.nation_id).single();
@@ -134,7 +134,7 @@
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
-      setTopbarActions(party.actions_remaining);
+      setTopbarActions(party.influence);
 
       var policies;
       try { policies = await fetchPolicies(); }

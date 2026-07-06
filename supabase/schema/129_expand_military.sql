@@ -80,7 +80,7 @@ begin
   select current_tick into v_tick from public.game_state where id;
   insert into public.military_builds (nation_id, base_id, unit_type, qty, ready_tick)
     values (v_nation, p_base_id, v_type, v_qty, v_tick + v_dur);
-  update public.parties set actions_remaining = actions_remaining - 1 where id = v_p.id;
+  update public.parties set influence = influence - 1 where id = v_p.id;
 
   -- Feed announcement, keyed by the unit type (the exact build count + ready time is in the
   -- player's own action toast). Third-person, so it reads as news about the nation.
@@ -93,7 +93,7 @@ begin
                    else                 ' has started to expand its military.'
                  end,
             public.current_game_date());
-  return jsonb_build_object('ordered', v_qty, 'ticks', v_dur, 'actions', v_p.actions_remaining - 1);
+  return jsonb_build_object('ordered', v_qty, 'ticks', v_dur, 'actions', v_p.influence - 1);
 end $$;
 grant execute on function public.expand_military(uuid, text, int) to authenticated;
 drop function if exists public.expand_military(uuid, int);   -- old raw-military signature

@@ -162,7 +162,7 @@
       if (error || !pol) { notFound(); return; }
       // The politician's party drives both the role line and (for now, since you
       // only reach this from your own roster) the sidebar brand.
-      const { data: party } = await supabase.from('parties').select('name, archetype, nation_id, actions_remaining').eq('id', pol.party_id).single();
+      const { data: party } = await supabase.from('parties').select('name, archetype, nation_id, influence').eq('id', pol.party_id).single();
       const p = party || { name: '', archetype: '', nation_id: '' };
       const { data: nation } = await supabase.from('nations').select('name, flag, economy').eq('id', p.nation_id).single();
       const nationName = (nation && nation.name) || p.nation_id;
@@ -177,7 +177,7 @@
 
       // Topbar funds + the live action budget (one source: the party row).
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
-      setTopbarActions(p.actions_remaining);
+      setTopbarActions(p.influence);
 
       var gameDate = tickToDate(await currentTick()); // for the bio timeline; the topbar owns its own date
       render(pol, p, gameDate);

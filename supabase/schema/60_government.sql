@@ -441,12 +441,14 @@ as $$
 declare v_tick int; v_n text; v_count int := 0; v_rec record;
 begin
   update public.game_state set current_tick = current_tick + 1 where id returning current_tick into v_tick;
-  -- Every party gets a fresh turn: action budget reset to 12 each tick — plus 1 while a
-  -- Deputy Leader serves (the Direct appointment, schema/109). The per-party target varies,
-  -- so this resets all parties (still satisfies the require-a-WHERE-clause guard via id is not null).
-  update public.parties p set actions_remaining = 12 + (case when exists (
-           select 1 from public.politicians pl where pl.party_id = p.id and pl.status = 'Deputy Leader'
-         ) then 1 else 0 end)
+  -- Influence banks each tick: +3, capped at 100 (schema/20), plus 1 for the largest party in each
+  -- nation — the one holding the most legislature seats (ties share the bonus). Replaces the old
+  -- reset-to-12 Action-Point budget, so unspent Influence now carries forward. Touches every row
+  -- (still satisfies the require-a-WHERE-clause guard via id is not null).
+  update public.parties p set influence = least(100, influence + 3 + (
+           case when p.seats > 0 and p.seats = (
+             select max(p2.seats) from public.parties p2 where p2.nation_id = p.nation_id
+           ) then 1 else 0 end))
    where p.id is not null;
   -- Debt→inflation backlog: snapshot each nation's debt BEFORE this tick's economics, so the
   -- close-out step (end of tick) can measure how much debt was ADDED across the whole tick.
@@ -745,14 +747,14 @@ begin
 
   update public.government_agenda set status = 'done' where id = p_item;
   update public.governments set confidence = v_newconf where id = v_gov.id;
-  update public.parties set actions_remaining = actions_remaining - 1 where id = v_p.id;
+  update public.parties set influence = influence - 1 where id = v_p.id;
 
   v_body := 'The ' || v_p.name || ' government delivered on its agenda. Government Confidence +'
             || v_delta || '% (now ' || v_newconf || '%).';
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_gov.nation_id, v_p.id, 'agenda', v_body, public.current_game_date());
 
-  return jsonb_build_object('delta', v_delta, 'confidence', v_newconf, 'actions', v_p.actions_remaining - 1);
+  return jsonb_build_object('delta', v_delta, 'confidence', v_newconf, 'actions', v_p.influence - 1);
 end $$;
 grant execute on function public.agenda_enact(uuid) to authenticated;
 
@@ -1087,11 +1089,11 @@ begin
 
   perform public._apply_cabinet_slate(v_gov.id, v_party.nation_id, p_set);   -- one source for the slate write
 
-  update public.parties set actions_remaining = actions_remaining - 1 where id = v_party.id;
+  update public.parties set influence = influence - 1 where id = v_party.id;
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_party.nation_id, v_party.id, 'government', v_party.name || ' named its cabinet.', public.current_game_date());
 
-  return jsonb_build_object('actions', v_party.actions_remaining - 1, 'image_grants', v_grants);
+  return jsonb_build_object('actions', v_party.influence - 1, 'image_grants', v_grants);
 end $$;
 grant execute on function public.cabinet_appoint(jsonb) to authenticated;
 

@@ -43,14 +43,14 @@ begin
 
   insert into public.youth_wings (party_id, politician_id, organiser_name, organiser_image, resolve_tick)
     values (v_p.id, p_member, v_mname, v_image, v_resolve);
-  update public.parties set funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
+  update public.parties set funds = funds - v_cost, influence = influence - 1 where id = v_p.id;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_p.nation_id, v_p.id, 'party',
             v_mname || ' of the ' || public._bare_party(v_p.name) || ' has begun expanding the party''s youth wing — it pays off in ' || (v_resolve - v_tick) || ' ticks.',
             public.current_game_date());
 
-  return jsonb_build_object('ticks', v_resolve - v_tick, 'actions', v_p.actions_remaining - 1, 'funds', v_p.funds - v_cost);
+  return jsonb_build_object('ticks', v_resolve - v_tick, 'actions', v_p.influence - 1, 'funds', v_p.funds - v_cost);
 end $$;
 grant execute on function public.direct_youth_wing(uuid) to authenticated;
 

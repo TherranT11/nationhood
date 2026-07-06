@@ -401,7 +401,7 @@
       document.getElementById('pname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
       document.getElementById('kicker').textContent = 'The Assembly · ' + nationName;
-      setTopbarActions(party.actions_remaining);
+      setTopbarActions(party.influence);
       document.title = 'Elections · ' + nationName;
       if (nation && nation.flag) { var flag = document.getElementById('flag'); flag.onload = function () { flag.hidden = false; }; flag.src = nation.flag; }
 

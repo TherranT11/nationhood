@@ -166,7 +166,7 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_p public.parties%rowtype; v_def jsonb; v_res jsonb;
 begin
   v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
-  if v_p.actions_remaining < 2 then raise exception 'Not enough actions left this turn (need 2).'; end if;
+  if v_p.influence < 2 then raise exception 'Not enough actions left this turn (need 2).'; end if;
   if not exists (select 1 from public.governments where nation_id = v_p.nation_id and status = 'active') then
     raise exception 'There is no sitting government to enact an initiative.';
   end if;
@@ -181,9 +181,9 @@ begin
   end if;
 
   v_res := public._initiative_start(v_p.nation_id, p_initiative, p_ownership, p_corp, null, 0);
-  update public.parties set actions_remaining = actions_remaining - 2 where id = v_p.id;
+  update public.parties set influence = influence - 2 where id = v_p.id;
 
-  return v_res || jsonb_build_object('actions', v_p.actions_remaining - 2);
+  return v_res || jsonb_build_object('actions', v_p.influence - 2);
 end $$;
 grant execute on function public.initiative_enact(uuid, text, uuid) to authenticated;
 

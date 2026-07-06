@@ -54,14 +54,14 @@ begin
 
   insert into public.mayoral_candidacies (city_id, party_id, politician_id, candidate_name, spend, election_tick)
     values (p_city, v_p.id, p_member, v_mname, v_spend, v_city.mayor_election_tick);
-  update public.parties set funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
+  update public.parties set funds = funds - v_cost, influence = influence - 1 where id = v_p.id;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_p.nation_id, v_p.id, 'party',
             v_mname || ' of the ' || public._bare_party(v_p.name) || ' has announced their candidacy for mayor of ' || v_city.name || '.',
             public.current_game_date());
 
-  return jsonb_build_object('city', v_city.name, 'candidate', v_mname, 'actions', v_p.actions_remaining - 1, 'funds', v_p.funds - v_cost);
+  return jsonb_build_object('city', v_city.name, 'candidate', v_mname, 'actions', v_p.influence - 1, 'funds', v_p.funds - v_cost);
 end $$;
 grant execute on function public.direct_mayor_announce(uuid, uuid, int) to authenticated;
 

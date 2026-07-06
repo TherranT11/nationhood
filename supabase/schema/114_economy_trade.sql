@@ -149,7 +149,7 @@ begin
   if coalesce(p_qty, 0) < 1 then raise exception 'Choose how much to import.'; end if;
 
   v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
-  if v_p.actions_remaining < 2 then raise exception 'Not enough actions left this turn (need 2).'; end if;
+  if v_p.influence < 2 then raise exception 'Not enough actions left this turn (need 2).'; end if;
   v_buyer := v_p.nation_id;
   if not public._party_holds_ministry(v_p.id, 'Trade') then
     raise exception 'Only the Minister of Trade can import.'; end if;
@@ -186,7 +186,7 @@ begin
   v_cur    := coalesce((select economy->>'currency' from public.nations where id = v_buyer), '$');
 
   perform public._settle_import(v_buyer, p_seller, p_resource, p_qty, v_total, v_duty);           -- goods + money + ledger (one source)
-  update public.parties set actions_remaining = actions_remaining - 2 where id = v_p.id;          -- 2 AP on confirm
+  update public.parties set influence = influence - 2 where id = v_p.id;          -- 2 AP on confirm
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_buyer, v_p.id, 'economy',
@@ -196,7 +196,7 @@ begin
             public.current_game_date());
 
   return jsonb_build_object('resource', p_resource, 'qty', p_qty, 'world', v_world, 'total', v_total,
-    'duty', v_duty, 'net', v_net, 'actions', v_p.actions_remaining - 2);
+    'duty', v_duty, 'net', v_net, 'actions', v_p.influence - 2);
 end $$;
 grant execute on function public.economy_import(text, text, int) to authenticated;
 

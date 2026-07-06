@@ -22,7 +22,7 @@ declare
   c_prestige constant text[] := array['Economic Development', 'Interior', 'Foreign Affairs', 'Trade'];
 begin
   v_party := public._begin_action(0);   -- requires >= 1 action; needs 2, checked next
-  if v_party.actions_remaining < 2 then raise exception 'Not enough actions left this turn (need 2).'; end if;
+  if v_party.influence < 2 then raise exception 'Not enough actions left this turn (need 2).'; end if;
   select * into v_gov from public.governments where nation_id = v_party.nation_id and status = 'active' for update;
   if not found then raise exception 'There is no sitting government.'; end if;
   if v_gov.formateur_party_id is distinct from v_party.id then
@@ -91,12 +91,12 @@ begin
      where id = r.id;
   end loop;
 
-  update public.parties set actions_remaining = actions_remaining - 2 where id = v_party.id;
+  update public.parties set influence = influence - 2 where id = v_party.id;
   update public.governments set reshuffle_until_tick = v_tick + v_cooldown where id = v_gov.id;
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_party.nation_id, v_party.id, 'government', v_party.name || ' reshuffled the cabinet.', public.current_game_date());
 
-  return jsonb_build_object('actions', v_party.actions_remaining - 2, 'until', v_tick + v_cooldown,
+  return jsonb_build_object('actions', v_party.influence - 2, 'until', v_tick + v_cooldown,
     'image_grants', v_grants, 'image_strips', v_strips);
 end $$;
 grant execute on function public.cabinet_reshuffle(jsonb) to authenticated;

@@ -764,7 +764,7 @@
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, actions_remaining').eq('user_id', user.id).single();
+      const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations, population, gdp, production, on_hand').eq('id', party.nation_id).single();
       MY_PARTY_ID = party.id; NATION_ID = party.nation_id; NATION = nation || {};
@@ -781,7 +781,7 @@
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
-      setTopbarActions(party.actions_remaining);
+      setTopbarActions(party.influence);
 
       await loadNationState();   // declaration slots + cities for the State-of-the-Nation panels
       await load();

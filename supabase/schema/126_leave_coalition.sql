@@ -37,7 +37,7 @@ begin
     raise exception 'A no-confidence motion is on the floor — it must be resolved first.'; end if;
 
   v_is_pm := v_gov.formateur_party_id is not distinct from v_p.id;
-  update public.parties set actions_remaining = actions_remaining - 1 where id = v_p.id;
+  update public.parties set influence = influence - 1 where id = v_p.id;
 
   if v_is_pm then
     -- The premier walking out = resigning: their party −5 Party Popularity (floor-respecting,
@@ -51,7 +51,7 @@ begin
               v_p.name || ' has resigned as Head of Government and left office — fresh elections are called.',
               public.current_game_date());
     perform public.resolve_election(v_nation, 'the Head of Government''s resignation');
-    return jsonb_build_object('left', true, 'resigned', true, 'actions', v_p.actions_remaining - 1);
+    return jsonb_build_object('left', true, 'resigned', true, 'actions', v_p.influence - 1);
   end if;
 
   -- A junior partner walks: −3 their Party Popularity (floor-respecting), clear their seat at
@@ -82,7 +82,7 @@ begin
     values (v_nation, v_p.id, 'declaration',
             v_p.name || ' has walked out of the governing coalition.',
             public.current_game_date());
-  return jsonb_build_object('left', true, 'resigned', false, 'actions', v_p.actions_remaining - 1);
+  return jsonb_build_object('left', true, 'resigned', false, 'actions', v_p.influence - 1);
 end $$;
 grant execute on function public.leave_coalition() to authenticated;
 

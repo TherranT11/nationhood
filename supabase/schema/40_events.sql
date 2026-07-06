@@ -108,7 +108,7 @@ declare
   v_p public.parties%rowtype;
 begin
   v_p := public._lock_party();
-  if v_p.actions_remaining < 1 then raise exception 'No actions left this turn.'; end if;
+  if v_p.influence < 1 then raise exception 'No actions left this turn.'; end if;
   if v_p.funds < p_cost then raise exception 'Not enough funds (need $%K).', (p_cost / 1000); end if;
   return v_p;
 end $$;
@@ -136,7 +136,7 @@ declare
   v_cost bigint := 25000;
 begin
   v_p := public._begin_action(v_cost);
-  if v_p.actions_remaining < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
+  if v_p.influence < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
   select coalesce(cha, 0) into v_cha from public.politicians
     where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
   v_cha := coalesce(v_cha, 0);
@@ -155,9 +155,9 @@ begin
     else                 ', but the seats sat half-empty and the speech fell flat. Those who came went home unmoved, and the press stayed away.'
   end || ' Popularity +' || trim(to_char(v_delta, 'FM990.0')) || '%.';
 
-  update public.parties set popularity = v_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - public._standing_cost() where id = v_p.id;
+  update public.parties set popularity = v_newpop, funds = funds - v_cost, influence = influence - public._standing_cost() where id = v_p.id;
   insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'rally', v_body, public.current_game_date());
-  return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'popularity', v_newpop, 'funds', v_p.funds - v_cost, 'actions', v_p.actions_remaining - public._standing_cost(), 'body', v_body);
+  return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'popularity', v_newpop, 'funds', v_p.funds - v_cost, 'actions', v_p.influence - public._standing_cost(), 'body', v_body);
 end $$;
 
 grant execute on function public.party_rally() to authenticated;
@@ -186,7 +186,7 @@ declare
   v_haul bigint; v_tier text; v_body text;
 begin
   v_p := public._begin_action(0);  -- fundraising is free; only the action is spent
-  if v_p.actions_remaining < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
+  if v_p.influence < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
   select coalesce(cha, 0) into v_cha from public.politicians
     where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
   v_cha := coalesce(v_cha, 0);
@@ -202,9 +202,9 @@ begin
     else                 ' passed the hat this week, but the donors stayed shy. A thin trickle of small gifts was all the drive could manage.'
   end || ' Funds +$' || (v_haul / 1000) || 'K.';
 
-  update public.parties set funds = funds + v_haul, actions_remaining = actions_remaining - public._standing_cost() where id = v_p.id;
+  update public.parties set funds = funds + v_haul, influence = influence - public._standing_cost() where id = v_p.id;
   insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'fundraise', v_body, public.current_game_date());
-  return jsonb_build_object('tier', v_tier, 'funds_gain', v_haul, 'funds', v_p.funds + v_haul, 'actions', v_p.actions_remaining - public._standing_cost(), 'body', v_body);
+  return jsonb_build_object('tier', v_tier, 'funds_gain', v_haul, 'funds', v_p.funds + v_haul, 'actions', v_p.influence - public._standing_cost(), 'body', v_body);
 end $$;
 
 grant execute on function public.party_fundraise() to authenticated;
@@ -231,7 +231,7 @@ declare
   v_tname text; v_tnation text; v_tarch text; v_toldpop numeric; v_tnewpop numeric;
 begin
   v_p := public._begin_action(v_cost);  -- attacker locked + checked
-  if v_p.actions_remaining < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
+  if v_p.influence < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
   select name, nation_id, archetype, popularity into v_tname, v_tnation, v_tarch, v_toldpop from public.parties where id = p_target;
   if not found then raise exception 'No such party.'; end if;
   if p_target = v_p.id then raise exception 'You can''t attack your own party.'; end if;
@@ -273,10 +273,10 @@ begin
     v_body := 'The ' || public._bare_party(v_p.name) || ' tried to smear the ' || public._bare_party(v_tname) || ', but the attack rebounded — the line didn''t land, and it was the ' || public._bare_party(v_p.name) || ' that looked desperate. Popularity −' || trim(to_char(v_self_pen::numeric, 'FM990.0')) || '%.';
   end if;
 
-  update public.parties set popularity = v_p_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - public._standing_cost() where id = v_p.id;
+  update public.parties set popularity = v_p_newpop, funds = funds - v_cost, influence = influence - public._standing_cost() where id = v_p.id;
   insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'attack', v_body, public.current_game_date());
 
-  return jsonb_build_object('hit', v_hit, 'cut', v_cut, 'self_penalty', v_self_pen, 'target', v_tname, 'actions', v_p.actions_remaining - public._standing_cost(), 'body', v_body);
+  return jsonb_build_object('hit', v_hit, 'cut', v_cut, 'self_penalty', v_self_pen, 'target', v_tname, 'actions', v_p.influence - public._standing_cost(), 'body', v_body);
 end $$;
 
 grant execute on function public.party_attack(uuid) to authenticated;
@@ -297,7 +297,7 @@ declare
   v_cost bigint := 100000; v_tier text; v_body text;
 begin
   v_p := public._begin_action(v_cost);
-  if v_p.actions_remaining < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
+  if v_p.influence < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
   select coalesce(gui, 0) into v_gui from public.politicians
     where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
   v_gui := coalesce(v_gui, 0);
@@ -318,10 +318,10 @@ begin
     else                 ' bought up airtime, but the ads fell flat. Forgettable spots in dead-air slots moved few minds, and the spend bought little more than name recognition.'
   end || ' Popularity +' || trim(to_char(v_delta, 'FM990.0')) || '%.';
 
-  update public.parties set popularity = v_newpop, pop_ceiling = v_newceil, funds = funds - v_cost, actions_remaining = actions_remaining - public._standing_cost() where id = v_p.id;
+  update public.parties set popularity = v_newpop, pop_ceiling = v_newceil, funds = funds - v_cost, influence = influence - public._standing_cost() where id = v_p.id;
   insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'adblitz', v_body, public.current_game_date());
 
-  return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'ceiling_gain', v_ceilgain, 'popularity', v_newpop, 'ceiling', v_newceil, 'actions', v_p.actions_remaining - public._standing_cost(), 'body', v_body);
+  return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'ceiling_gain', v_ceilgain, 'popularity', v_newpop, 'ceiling', v_newceil, 'actions', v_p.influence - public._standing_cost(), 'body', v_body);
 end $$;
 
 grant execute on function public.party_ad_blitz() to authenticated;
@@ -383,10 +383,10 @@ begin
   select candidates into v_existing from public.recruit_drives where party_id = v_p.id;
   if found then
     return jsonb_build_object('newcomer', v_existing -> 'newcomer', 'seasoned', v_existing -> 'seasoned',
-      'existing', true, 'funds', v_p.funds, 'actions', v_p.actions_remaining);
+      'existing', true, 'funds', v_p.funds, 'actions', v_p.influence);
   end if;
 
-  if v_p.actions_remaining < 1 then raise exception 'No actions left this turn.'; end if;
+  if v_p.influence < 1 then raise exception 'No actions left this turn.'; end if;
   if v_p.funds < v_cost then raise exception 'Not enough funds (need $%K).', (v_cost / 1000); end if;
 
   v_exp := floor(random() * 3)::int + 1;   -- 1d3 years of experience (no stat roll)
@@ -399,7 +399,7 @@ begin
   update public.parties set funds = funds - v_cost where id = v_p.id;
 
   return jsonb_build_object('newcomer', v_new, 'seasoned', v_seas,
-    'funds', v_p.funds - v_cost, 'actions', v_p.actions_remaining);
+    'funds', v_p.funds - v_cost, 'actions', v_p.influence);
 end $$;
 
 grant execute on function public.party_recruit_scout() to authenticated;
@@ -424,14 +424,14 @@ begin
   if not found then raise exception 'No recruitment drive open — scout first.'; end if;
   v_c := v_cands -> p_choice;
   v_need := case p_choice when 'seasoned' then 2 else 1 end;
-  if v_p.actions_remaining < v_need then raise exception 'Not enough actions (need %).', v_need; end if;
+  if v_p.influence < v_need then raise exception 'Not enough actions (need %).', v_need; end if;
 
   insert into public.politicians (party_id, first_name, last_name, age, experience, status, cha, acu, gui, res, com)
   values (v_p.id, v_c ->> 'first_name', v_c ->> 'last_name', (v_c ->> 'age')::int, (v_c ->> 'experience')::int,
           'Party Member', (v_c ->> 'cha')::int, (v_c ->> 'acu')::int, (v_c ->> 'gui')::int, (v_c ->> 'res')::int, (v_c ->> 'com')::int)
   returning id into v_id;
 
-  update public.parties set actions_remaining = actions_remaining - v_need where id = v_p.id;
+  update public.parties set influence = influence - v_need where id = v_p.id;
   delete from public.recruit_drives where party_id = v_p.id;
 
   v_name := (v_c ->> 'first_name') || ' ' || (v_c ->> 'last_name');
@@ -443,7 +443,7 @@ begin
   insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'recruit', v_body, public.current_game_date());
 
   return jsonb_build_object('choice', p_choice, 'name', v_name, 'politician_id', v_id,
-    'actions', v_p.actions_remaining - v_need, 'body', v_body);
+    'actions', v_p.influence - v_need, 'body', v_body);
 end $$;
 
 grant execute on function public.party_recruit_hire(text) to authenticated;

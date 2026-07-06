@@ -338,7 +338,7 @@
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, actions_remaining').eq('user_id', user.id).single();
+      const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy, policies, population, stats').eq('id', party.nation_id).single();
       // archetype + color drive the roll-call party dots (partyColor falls back to the archetype
@@ -375,7 +375,7 @@
       ST.tick = await currentTick();
       ST.session = tickToDate(ST.tick); // assembly summary; the topbar owns its own date
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
-      setTopbarActions(party.actions_remaining);
+      setTopbarActions(party.influence);
       await loadProposals();
     } catch (e) {
       fail('Couldn’t load the Legislature right now. Refresh to try again.');

@@ -147,7 +147,7 @@ function mountNextTick(el){   // internal: only mountTopbar uses it
 
 // Live-value setters — no-ops if the topbar isn't mounted on this page.
 export function setTopbarActions(n){
-  const el = document.getElementById('tbInf');            // the Influence chip (server field: actions_remaining)
+  const el = document.getElementById('tbInf');            // the Influence chip (server field: influence)
   if (el) el.textContent = (n != null ? n : 12);          // 12 = the default budget, matching the static markup
 }
 // The nation's budget, shown ±-coloured. (economy.budget is the treasury figure
@@ -210,10 +210,10 @@ async function loadChrome(){
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     const { data: p } = await supabase.from('parties')
-      .select('color, archetype, actions_remaining, nation_id').eq('user_id', session.user.id).maybeSingle();
+      .select('color, archetype, influence, nation_id').eq('user_id', session.user.id).maybeSingle();
     if (!p) return;
     setAccent(partyColor(p));               // chosen colour, else archetype default (one source: archetypes.js)
-    setTopbarActions(p.actions_remaining);
+    setTopbarActions(p.influence);
     const { data: n } = await supabase.from('nations').select('economy').eq('id', p.nation_id).maybeSingle();
     const ec = (n && n.economy) || {};
     setTopbarBudget(ec.currency || '$', ec.budget != null ? ec.budget : null);

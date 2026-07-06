@@ -318,8 +318,8 @@
     const me = await currentParty();
     var amPM = false, myName = '', currency = (nation && nation.economy && nation.economy.currency) || '$';
     if (me && me.id) {
-      const { data: myParty } = await supabase.from('parties').select('name, actions_remaining').eq('id', me.id).maybeSingle();
-      if (myParty) { myName = myParty.name || ''; setTopbarActions(myParty.actions_remaining); }
+      const { data: myParty } = await supabase.from('parties').select('name, influence').eq('id', me.id).maybeSingle();
+      if (myParty) { myName = myParty.name || ''; setTopbarActions(myParty.influence); }
       const { data: govt } = await supabase.from('governments')
         .select('formateur_party_id').eq('nation_id', nc.nation_id).eq('status', 'active').maybeSingle();
       amPM = !!(govt && govt.formateur_party_id === me.id);

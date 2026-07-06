@@ -1479,7 +1479,7 @@
       // "Loading…" if the nation row failed to load (e.g. a column drift).
       if (nation) renderGlance(nation);
       else document.getElementById('snap').innerHTML = '<p class="empty">Couldn’t load the nation’s figures right now. Refresh to try again.</p>';
-      setActions(party.actions_remaining != null ? party.actions_remaining : 12);
+      setActions(party.influence != null ? party.influence : 12);
       feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };
       myPartyId = party.id;  // used to exclude self from the attack target list
       loadApproval(party, curTick).catch(function(){});   // Party Approval card — non-blocking (schema/147 trend + factors)

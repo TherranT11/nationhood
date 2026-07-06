@@ -113,7 +113,7 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_p public.parties%rowtype; v_gov public.governments%rowtype; v_n public.nations%rowtype; v_tick int; v_prod jsonb; v_add jsonb;
 begin
   v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
-  if v_p.actions_remaining < 5 then raise exception 'Not enough actions left this turn (need 5).'; end if;
+  if v_p.influence < 5 then raise exception 'Not enough actions left this turn (need 5).'; end if;
   select * into v_gov from public.governments where nation_id = v_p.nation_id and status = 'active';
   if not found then raise exception 'There is no sitting government.'; end if;
   if v_gov.formateur_party_id is distinct from v_p.id then
@@ -137,14 +137,14 @@ begin
     'diplomacy', coalesce((v_n.on_hand->>'diplomacy')::numeric, 0) + round(coalesce((v_prod->>'diplomacy')::numeric, 0) * public._mod_rate_multiplier(v_n.id, 'diplomacy'))
   );
   update public.nations set on_hand = coalesce(on_hand, '{}'::jsonb) || v_add, produce_until_tick = v_tick + 12 where id = v_p.nation_id;
-  update public.parties set actions_remaining = actions_remaining - 5 where id = v_p.id;
+  update public.parties set influence = influence - 5 where id = v_p.id;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_p.nation_id, v_p.id, 'economy',
             'The government ran a production cycle — the national stockpiles were topped up.',
             public.current_game_date());
 
-  return jsonb_build_object('on_hand', v_add, 'actions', v_p.actions_remaining - 5, 'until', v_tick + 12);
+  return jsonb_build_object('on_hand', v_add, 'actions', v_p.influence - 5, 'until', v_tick + 12);
 end $$;
 grant execute on function public.economy_produce() to authenticated;
 
