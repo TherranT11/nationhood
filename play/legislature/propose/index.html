@@ -118,8 +118,8 @@
   import { esc, declaredValue } from '/util.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, effectText, optMoney, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity } from '/policies.js';
+  import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals, fetchProposalCostBase } from '/proposals.js';
+  import { policyOptions, policyOptionIdx, effectText, optMoney, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity, proposalInfluenceCost } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
   import { isMonarchy, regimeText } from '/ladders.js';
 
@@ -147,6 +147,7 @@
     document.querySelector('.phead h1').textContent = 'Propose a Law';
     document.querySelector('.phead p').textContent = 'Pick a policy and climb the ladder to the rung you want to put to the chamber. If it passes, the nation switches to that rung and its effects land.';
     var grid = document.getElementById('proposeGrid');
+    var costBase = await fetchProposalCostBase();   // admin base cost; scaled by rungs below
     var policies;
     try { policies = await fetchPolicies(); }
     catch (e) { grid.innerHTML = '<section class="mod"><p class="muted">Couldn’t load the policy catalogue. Refresh to try again.</p></section>'; return; }
@@ -170,13 +171,12 @@
             '<div class="ac" style="margin-top:14px">One-time cost to change <span class="hint">on enactment</span></div><div id="l-trans"><p class="none">—</p></div>' +
             '<div class="ac" style="margin-top:14px">Implementation time <span class="hint">time to take effect</span></div><div id="l-impl"><p class="none">—</p></div></div></div>' +
         '<div class="proj"><div class="actions">' +
-          '<button class="btn" id="l-floor" type="button" disabled>Bring to the Floor Now <span class="ac">2 Influence</span></button>' +
-          '<button class="btn" id="l-agenda" type="button" disabled>Add to Upcoming Agenda <span class="ac">Free</span></button>' +
+          '<button class="btn" id="l-send" type="button" disabled>Send to Committee <span class="ac" id="l-cost">—</span></button>' +
           '<div class="proposed-note" id="l-note">Pick a rung to propose it.</div>' +
         '</div></div></div>';
 
     var polSel = document.getElementById('l-policy'), titleInp = document.getElementById('l-title'), introInp = document.getElementById('l-intro');
-    var floorBtn = document.getElementById('l-floor'), agendaBtn = document.getElementById('l-agenda'), note = document.getElementById('l-note');
+    var sendBtn = document.getElementById('l-send'), note = document.getElementById('l-note');
     polSel.innerHTML = policies.map(function (p, i) { return '<option value="' + i + '">' + esc((p.definition && p.definition.name) || 'Policy') + '</option>'; }).join('');
 
     var sel = { proposed: null };          // chosen rung index, or null
@@ -324,14 +324,17 @@
       pv.textContent = o ? ((def.name || 'Policy') + ' → ' + (o.name || ('Option ' + (sel.proposed + 1)))) : 'Choose a change';
       pv.classList.toggle('empty', !o);
       renderLadder(); renderFiscal(); renderEffects(); renderTransitionCost(); renderImpl();
-      // One pending bill per policy: if this policy already has one on the floor/agenda, the
+      // One live bill per policy: if this policy already has one in committee/on the floor, the
       // chamber won't take another until it resolves (the server enforces this too).
       var blocked = !!pendingPolicies[curPolicy().id];
       var ok = !noSeats && !blocked && sel.proposed != null && sel.proposed !== inForceIdx() && !lawBusy;
-      floorBtn.disabled = !ok; agendaBtn.disabled = !ok;
+      // Cost scales with the number of rungs moved (one source: policies.js, mirrors the server).
+      var cost = ok ? proposalInfluenceCost(costBase, inForceIdx(), sel.proposed) : null;
+      document.getElementById('l-cost').textContent = cost == null ? '—' : (cost + ' Influence');
+      sendBtn.disabled = !ok;
       if (!lawBusy) note.textContent = noSeats ? 'Your party holds no legislature seats — win seats at an election before you can propose a bill.'
         : blocked ? 'A bill to change this policy is already before the chamber — it must resolve first.'
-        : ok ? 'Ready to propose — choose how.' : 'Pick a rung to propose it.';
+        : ok ? 'Sends the bill to committee, where parties debate and endorse before it reaches the floor.' : 'Pick a rung to propose it.';
     }
 
     polSel.onchange = function () { sel.proposed = null; touched = { title: false, intro: false }; titleInp.value = ''; introInp.value = ''; paint(); };
@@ -339,17 +342,16 @@
     introInp.oninput = function () { touched.intro = true; };
     paint();
 
-    function submit(toFloor) {
+    function submit() {
       var p = curPolicy(), idx = sel.proposed;
       if (lawBusy || idx == null || idx === inForceIdx()) return;  // guard mirrors paint()
-      lawBusy = true; floorBtn.disabled = true; agendaBtn.disabled = true;
-      note.textContent = toFloor ? 'Bringing it to the floor…' : 'Adding to the agenda…';
-      proposeLaw(p.id, idx, toFloor, titleInp.value.trim(), introInp.value.trim())
-        .then(function () { location.href = '/play/legislature/'; })
+      lawBusy = true; sendBtn.disabled = true;
+      note.textContent = 'Sending to committee…';
+      proposeLaw(p.id, idx, titleInp.value.trim(), introInp.value.trim())
+        .then(function (r) { location.href = '/play/legislature/committee/?id=' + (r && r.id); })
         .catch(function (e) { lawBusy = false; paint(); note.textContent = e.message || 'Couldn’t propose that.'; });
     }
-    floorBtn.onclick = function () { submit(true); };
-    agendaBtn.onclick = function () { submit(false); };
+    sendBtn.onclick = function () { submit(); };
   }
 
   // ---- Declaration mode: pick a slot + name, then queue it or send to the floor ----
@@ -581,12 +583,12 @@
     else if (isThreshold) renderThresholdMode(nation || {});
     else if (isDecl) renderDeclMode((nation && nation.declarations) || {}, regime);
     else {
-      // Policies that already have a bill on the floor/agenda — the ladder greys out proposing
-      // for them (the server enforces one pending bill per policy regardless). Non-fatal.
+      // Policies that already have a live bill (in committee, on the agenda, or on the floor) — the
+      // ladder greys out proposing for them (the server enforces one live bill per policy). Non-fatal.
       var pendingPolicies = {};
       try {
         (await fetchProposals(party.nation_id)).forEach(function (p) {
-          if (p.kind === 'law' && (p.status === 'voting' || p.status === 'agenda') && p.payload && p.payload.policy_id) pendingPolicies[p.payload.policy_id] = true;
+          if (p.kind === 'law' && (p.status === 'committee' || p.status === 'voting' || p.status === 'agenda') && p.payload && p.payload.policy_id) pendingPolicies[p.payload.policy_id] = true;
         });
       } catch (e) { /* leave empty → server still blocks a duplicate */ }
       renderLawMode((nation && nation.policies) || {}, nation || {}, pendingPolicies, (party && party.seats) || 0);

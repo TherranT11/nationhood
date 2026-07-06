@@ -596,6 +596,9 @@ begin
     begin perform public._resolve_proposal(v_rec.id, true, v_rec.window_closed);
     exception when others then raise warning 'tick %: proposal % failed — %', v_tick, v_rec.id, sqlerrm; end;
   end loop;
+  -- Committee bills (schema/154) that have sat 6 ticks without being pushed to the floor expire.
+  begin perform public._expire_committee(v_tick);
+  exception when others then raise warning 'tick %: committee expiry failed — %', v_tick, sqlerrm; end;
   -- Crises (schema/99): fire any whose triggers are now all true, then climb each active
   -- crisis's meter and escalate stages. Runs last, on this tick's settled stats; its own
   -- per-nation / per-crisis isolation lives inside _apply_crisis_tick.
