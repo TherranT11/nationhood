@@ -1625,7 +1625,7 @@
             'Take any action to reactivate. It will be deleted, with its politicians, in ' + leftToDelete + ' day' + (leftToDelete === 1 ? '' : 's') + '.';
         } else {
           ban.textContent = '⚠ Your party has been idle for ' + idleDays + ' day' + (idleDays === 1 ? '' : 's') +
-            '. Take any action — a rally, a vote, adopting a conviction — to stay active. At ' + INACTIVE_DAYS +
+            '. Take any action — a rally, a vote, a proposal — to stay active. At ' + INACTIVE_DAYS +
             ' days it goes inactive and stops contesting elections.';
         }
       }
@@ -1694,7 +1694,8 @@
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));
       // National Initiatives panel: what's available + the one under way. The Minister of Economic
-      // Development enacts through initiative_enact (2 Influence) via performAction (Influence + feed refresh),
+      // Development enacts through initiative_enact (1 Influence per $10B of cost) via performAction
+      // (Influence + feed refresh),
       // then the panel reloads.
       function loadInitiatives(){
         fetchNationInitiatives(party.nation_id).then(function(data){

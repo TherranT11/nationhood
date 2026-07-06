@@ -7,8 +7,8 @@
 // The stat vocabulary a policy EFFECT can target — the game's ministry stats (the same
 // set the Government page groups as STAT_GROUPS). Policies author against these ahead of
 // the stat backend, so effects are stored but not yet applied live. ONE source for the
-// policy builder's stat picker. (Distinct from the live conviction/world-event target
-// list, which still uses the current backend stat names until the models converge.)
+// policy builder's stat picker. (Distinct from the live world-event target list, which
+// still uses the current backend stat names until the models converge.)
 export const POLICY_STATS = [
   'Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Interest Rates',
   'Crime', 'Immigration', 'Extremism', 'Unemployment', 'Poverty', 'Wages',
@@ -153,8 +153,7 @@ export function optOneTimeMoney(o, pop, pros) {
 // not all parties in the nation — so label them with that scope wherever a policy's effects are
 // shown (the admin authoring tool and the player policy/propose views all read this one source).
 // Display-only: the stored target value stays the canonical string, so existing policies keep
-// matching. (Convictions reuse the same target list but scope to the adopting party, so they
-// keep the plain names.)
+// matching.
 var POL_TGT_LABEL = { 'Party Popularity': 'Party Popularity (parties in govt)',
                       'Popularity Ceiling': 'Popularity Ceiling (parties in govt)' };
 export function polTgtLabel(t) { return POL_TGT_LABEL[t] || t; }

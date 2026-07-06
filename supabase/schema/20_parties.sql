@@ -26,7 +26,6 @@ create table if not exists public.parties (
   funds         bigint  not null default 0,      -- party treasury, in the nation's currency
   in_government boolean not null default false, -- governing vs in opposition
   influence int not null default 12,    -- Influence: the party's action budget. Banks up to 100, accruing +3/tick (+1 for the largest party in the nation) in advance_tick (schema/60); spent on actions and campaigning. Formerly Action Points (reset to 12/tick).
-  conviction    int     not null default 1,     -- Manifesto currency: earned over time, spent on planks. Every new party starts with 1.
   description   text,                            -- founding identity statement (≤360 chars); replaces the archetype picker at creation
   created_at   timestamptz not null default now(),
   unique (user_id)
@@ -61,7 +60,6 @@ alter table public.parties add column if not exists influence int not null defau
 -- an existing DB (it never updates the default), so set it explicitly — otherwise a freshly founded
 -- party falls back to the stale legacy default the column was first created with.
 alter table public.parties alter column influence set default 12;
-alter table public.parties add column if not exists conviction int not null default 0;
 -- Engagement heartbeat for the inactivity metric: wall-clock of the player's last
 -- meaningful action. Stamped by _lock_party() (schema/40) on every action/vote/adoption.
 -- Defaults to now() so existing + new parties start active. Read by the admin inactivity
@@ -84,8 +82,6 @@ alter table public.parties drop constraint if exists parties_description_len;
 alter table public.parties add constraint parties_description_len check (char_length(coalesce(description, '')) <= 360);
 -- Archetype is no longer chosen at creation; relax the NOT NULL for new parties.
 alter table public.parties alter column archetype drop not null;
--- New parties begin with one conviction point (existing rows keep what they have).
-alter table public.parties alter column conviction set default 1;
 
 -- No two parties in the same nation may share a name (case-insensitive) or an
 -- abbreviation — enforced server-side, not just in the client.
@@ -112,7 +108,7 @@ create policy "parties_delete_own" on public.parties for delete using (auth.uid(
 
 -- Write-scope lock (column-level). RLS gates WHICH row a player can touch; these
 -- grants gate WHICH columns. The standings — seats, popularity, pop_floor,
--- pop_ceiling, funds, in_government, conviction — are GAME-CONTROLLED, so they
+-- pop_ceiling, funds, in_government — are GAME-CONTROLLED, so they
 -- are left out of the client's insert/update privileges entirely: a crafted request can no
 -- longer set e.g. popularity = 100. Only the identity fields the founding flow
 -- writes are granted (user_id is included so the upsert's DO UPDATE works; the

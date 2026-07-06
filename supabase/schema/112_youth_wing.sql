@@ -1,7 +1,7 @@
 -- ===========================================================================
 -- 112 · Youth Wing — the deferred Direct action, now built.
 -- Depends on: 20 (parties), 30 (politicians), 40 (_begin_action, _bare_party, events),
--- 60 (_advance_tick), 94 (_apply_conviction_effect — the Popularity Ceiling raise),
+-- 60 (_advance_tick), 153 (_apply_party_effect — the Popularity Ceiling raise),
 -- 111 (_politician_busy). Run after 111.
 --
 -- Expand the Youth Wing: $25K + 1 action. It rolls 1D12 + 3 → the drive lands that many ticks
@@ -65,7 +65,7 @@ begin
     v_gain := round(v_pts * 0.1, 1);
     select public._bare_party(name), nation_id into v_bare, v_nation from public.parties where id = v_w.party_id;
     if found then
-      perform public._apply_conviction_effect(v_w.party_id, v_nation, jsonb_build_object('t', 'Popularity Ceiling', 'v', v_gain));
+      perform public._apply_party_effect(v_w.party_id, v_nation, jsonb_build_object('t', 'Popularity Ceiling', 'v', v_gain));
       insert into public.events (nation_id, party_id, kind, body, game_date)
         values (v_nation, v_w.party_id, 'party',
                 'The ' || v_bare || '''s youth wing has come of age — popularity ceiling +' || trim(to_char(v_gain, 'FM990.0')) || '% (organised by ' || v_w.organiser_name || ').',

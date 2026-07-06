@@ -15,52 +15,17 @@
 -- later per-tick pass.
 -- ===========================================================================
 
--- The "level" of a structured effect target for one option: the sum of that option's
--- STANDING (non-'once') effects on that target. Comparing it between the old and new
--- option gives the DIRECTION a law moves an axis (e.g. Tax Burden falling = a tax cut),
--- which directional convictions react to — see _apply_law. Only the SIGN matters here,
--- so raw authored amounts are summed (money scaling is a positive factor that can never
--- flip the sign). ONE source: reads the same effects that drive the nation's economy.
-create or replace function public._option_axis_level(p_def jsonb, p_option int, p_axis text)
-returns numeric language sql immutable set search_path = public as $$
-  select case
-    -- Tax Burden % is a LEVEL the option carries (its 'taxBurden' contribution), not a
-    -- deltable effect — so the axis level for it is that contribution directly.
-    when p_axis = 'Tax Burden %'
-      then coalesce((public._policy_options(p_def) -> p_option ->> 'taxBurden')::numeric, 0)
-    else coalesce((
-      select sum((e->>'v')::numeric)
-      from jsonb_array_elements(coalesce(public._policy_options(p_def) -> p_option -> 'effects', '[]'::jsonb)) e
-      where e->>'t' = p_axis and coalesce(e->>'cad', 'tick') <> 'once'
-    ), 0)
-  end;
-$$;
-
--- The signed amount a directional rule applies: the authored magnitude, ×|Δ| when scaled,
--- signed + when the axis moved the favoured way (dir 'up'/'down') and − on the opposite.
--- ONE place the directional formula lives — used by the conviction onLaw directional rules
--- (policies moved to per-option transitions; see the transition block in _apply_law).
-create or replace function public._directional_amount(p_v numeric, p_scaled boolean, p_delta numeric, p_dir text)
-returns numeric language sql immutable set search_path = public as $$
-  select coalesce(p_v, 0)
-       * case when coalesce(p_scaled, false) then abs(p_delta) else 1 end
-       * case when (p_delta > 0) = (coalesce(p_dir, 'up') = 'up') then 1 else -1 end;
-$$;
-
 -- A passed law sets the nation's chosen option for the policy AND applies that
 -- option's one-time (cadence='once') effects — the "costs money from the treasury"
 -- moment. Per-tick effects are applied each month by the per-tick pass (later).
 -- ONE place the per-nation option flip lives (called from _resolve_proposal on pass).
 create or replace function public._apply_law(p_nation text, p_policy uuid, p_option int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_tick int; v_had_override boolean; v_old int; v_tags jsonb; v_old_tags jsonb; v_def jsonb; v_oldname text; v_newname text; v_opts jsonb; r record;
+declare v_tick int; v_old int; v_def jsonb; v_oldname text; v_newname text; v_opts jsonb; r record;
 begin
   select current_tick into v_tick from public.game_state where id;
   select definition into v_def from public.policies where id = p_policy;
-  -- The option in force BEFORE this law, and whether it was an actual prior enactment
-  -- (a stored override) rather than the untouched default — only a law that was passed
-  -- can later be "repealed". Read both before the flip.
-  select (policies ? (p_policy::text)) into v_had_override from public.nations where id = p_nation;
+  -- The option in force BEFORE this law, read before the flip.
   v_old := public._nation_policy_option(p_nation, p_policy);
   -- Flip the option AND stamp the enactment tick (policy_since) so finite-duration
   -- tick effects can age from here; an active enactment starts/resets that clock.
@@ -69,73 +34,6 @@ begin
          policy_since = jsonb_set(coalesce(policy_since, '{}'::jsonb), array[p_policy::text], to_jsonb(v_tick),   true)
    where id = p_nation;
   perform public._apply_policy_option_effects(p_nation, p_policy, p_option, 'once');
-
-  -- Identity-tagged law (gain): fire every adopted conviction's onLaw effect whose tag
-  -- matches a tag on the enacted option, for each party in the nation that holds it.
-  -- Reactive to a passed law (like onAdopt). _apply_conviction_effect lives in schema/94
-  -- (loaded after this file) — plpgsql resolves it at runtime, so the forward ref is fine.
-  select public._policy_options(definition) -> p_option -> 'tags' into v_tags
-    from public.policies where id = p_policy;
-  if jsonb_typeof(v_tags) = 'array' and jsonb_array_length(v_tags) > 0 then
-    for r in
-      select pc.party_id, e.value as eff
-      from public.party_convictions pc
-      join public.parties p2     on p2.id = pc.party_id and p2.nation_id = p_nation
-      join public.convictions c  on c.id = pc.conviction_id
-      cross join lateral jsonb_array_elements(coalesce(c.definition -> 'onLaw', '[]'::jsonb)) e
-      where (e.value ->> 'tag') in (select t from jsonb_array_elements_text(v_tags) t)
-    loop
-      perform public._apply_conviction_effect(r.party_id, p_nation, r.eff);
-    end loop;
-  end if;
-
-  -- Reverse (mirror): the previously-passed option is now repealed. Fire the INVERSE of
-  -- any onLaw effect flagged 'sym' whose tag was on that old option, so a party gives
-  -- back the standing it gained while that law was in force. Skips the never-enacted
-  -- default (it was never passed, so it can't be repealed).
-  if v_had_override and v_old is not null and v_old <> p_option then
-    select public._policy_options(definition) -> v_old -> 'tags' into v_old_tags
-      from public.policies where id = p_policy;
-    if jsonb_typeof(v_old_tags) = 'array' and jsonb_array_length(v_old_tags) > 0 then
-      for r in
-        select pc.party_id, e.value as eff
-        from public.party_convictions pc
-        join public.parties p2     on p2.id = pc.party_id and p2.nation_id = p_nation
-        join public.convictions c  on c.id = pc.conviction_id
-        cross join lateral jsonb_array_elements(coalesce(c.definition -> 'onLaw', '[]'::jsonb)) e
-        where coalesce((e.value ->> 'sym')::boolean, false)
-          and (e.value ->> 'tag') in (select t from jsonb_array_elements_text(v_old_tags) t)
-      loop
-        perform public._apply_conviction_effect(r.party_id, p_nation,
-          jsonb_build_object('t', r.eff ->> 't', 'v', to_jsonb(- coalesce((r.eff ->> 'v')::numeric, 0))));
-      end loop;
-    end if;
-  end if;
-
-  -- Directional law: a conviction can react to the DIRECTION a structured effect target
-  -- moves between the old and new option, instead of a static tag — the principled way to
-  -- model "tax cut vs tax rise", which a destination tag can't capture (None→Low is a rise,
-  -- High→Low a cut). For each held conviction onLaw rule that names an axis, compare the new
-  -- vs old option's level on that axis: a move in the rule's favoured dir ('up'/'down')
-  -- applies +v, the opposite move −v. The default in-force option is the 'from' position, so
-  -- a first enactment off the default counts as a real move.
-  if v_def is not null and v_old is not null and v_old <> p_option then
-    for r in
-      select pc.party_id, e.value as eff,
-             public._option_axis_level(v_def, p_option, e.value->>'axis')
-               - public._option_axis_level(v_def, v_old, e.value->>'axis') as delta
-      from public.party_convictions pc
-      join public.parties p2     on p2.id = pc.party_id and p2.nation_id = p_nation
-      join public.convictions c  on c.id = pc.conviction_id
-      cross join lateral jsonb_array_elements(coalesce(c.definition -> 'onLaw', '[]'::jsonb)) e
-      where nullif(e.value->>'axis', '') is not null
-    loop
-      if r.delta = 0 then continue; end if;   -- the law didn't move this axis
-      perform public._apply_conviction_effect(r.party_id, p_nation,
-        jsonb_build_object('t', r.eff->>'t', 'v', to_jsonb(public._directional_amount(
-          (r.eff->>'v')::numeric, (r.eff->>'scaled')::boolean, r.delta, r.eff->>'dir'))));
-    end loop;
-  end if;
 
   -- Transition effects on a move OLD→NEW. DOORWAY model: each option owns doorUp (effects when
   -- stepping UP into it from below) and doorDown (stepping DOWN into it from above); a multi-rung

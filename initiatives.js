@@ -47,6 +47,11 @@ export function effectiveInitiativeCost(d, nation, ownership){
   var c=baseInitiativeCost(d, nation);
   return Math.round(c * (ownership==='private'?0.8:ownership==='state'?1.25:1));
 }
+// The Influence an initiative costs to enact: 1 per $10B of its effective cost, rounded up, min 1.
+// ONE source (mirrors _initiative_influence / _initiative_cost in schema/141 — the server charges this).
+export function initiativeInfluenceCost(d, nation, ownership){
+  return Math.max(1, Math.ceil(effectiveInitiativeCost(d, nation, ownership)/10));
+}
 
 // A nation's initiative state: the one under way (if any) and what it can enact next. Available =
 // eligible + (recurring, or one-time never carried out here) + nothing already running (one at a
@@ -112,17 +117,18 @@ export function renderNationInitiatives(el, data, ctx){
         // The Minister picks the execution model. State needs one of the nation's own SO firms in an
         // authorised sector; private lets firms bid (no executor picked).
         var priv=effectiveInitiativeCost(d, data.nation, 'private'), state=effectiveInitiativeCost(d, data.nation, 'state');
+        var privInf=initiativeInfluenceCost(d, data.nation, 'private'), stateInf=initiativeInfluenceCost(d, data.nation, 'state');
         var so=(data.corps||[]).filter(function(c){ return c.type==='so' && secs.indexOf(c.category)>=0; });
         html += '<div class="nini__opts">'+
-          '<button class="nini__opt" data-own="private" type="button"><b>Private Enterprise</b><span>$'+priv+'B · +1 Growth · firms bid</span></button>'+
+          '<button class="nini__opt" data-own="private" type="button"><b>Private Enterprise</b><span>$'+priv+'B · '+privInf+' Inf · +1 Growth · firms bid</span></button>'+
           (so.length
-            ? '<button class="nini__opt" data-own="state" type="button"><b>State Sanctioned</b><span>$'+state+'B · −1–2 Unemployment &amp; Inflation</span></button>'
+            ? '<button class="nini__opt" data-own="state" type="button"><b>State Sanctioned</b><span>$'+state+'B · '+stateInf+' Inf · −1–2 Unemployment &amp; Inflation</span></button>'
             : '<div class="nini__opt is-off"><b>State Sanctioned</b><span>Needs a state-owned '+esc(secs.join(' / ')||'sector')+' firm — you have none</span></div>')+
           '</div>';
         if(so.length){
           html += '<div class="nini__pick" hidden><select class="nini__corp">'+
             so.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join('')+
-            '</select><button class="nini__go" type="button">Enact (2 AP)</button></div>';
+            '</select><button class="nini__go" type="button">Enact ('+stateInf+' Inf)</button></div>';
         }
       }
     }

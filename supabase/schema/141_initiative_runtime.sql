@@ -60,12 +60,47 @@ create policy "nation_initiatives_select_all" on public.nation_initiatives for s
 -- with the caller). partner/share carry the joint split (null/0 for a solo). Returns { id, months,
 -- complete_tick }.
 -- ---------------------------------------------------------------------------
+-- The effective $B an initiative costs a nation to carry out under a given ownership: the authored
+-- cost basis (flat → $B; production → $B per current unit, min one; gdp → % of GDP) after the
+-- ownership adjustment (private −20% / state +25%). ONE source — _initiative_start charges it, and
+-- the Influence gate below (and the client, effectiveInitiativeCost in initiatives.js) reads it so
+-- the money price and the Influence price always agree.
+create or replace function public._initiative_cost(p_nation text, p_def jsonb, p_ownership text)
+returns numeric language plpgsql stable security definer set search_path = public as $$
+declare v_cost numeric; v_model text; v_cur numeric; v_own text;
+begin
+  v_model := coalesce(p_def->>'costModel', 'flat');
+  v_cost  := coalesce((p_def->>'cost')::numeric, 0);
+  if v_model = 'production' then
+    select coalesce((n.production->>lower(p_def->>'resource'))::numeric, 0) into v_cur
+      from public.nations n where n.id = p_nation;
+    v_cost := greatest(coalesce(v_cur, 0), 1) * v_cost;
+  elsif v_model = 'gdp' then
+    select coalesce(n.gdp, 0) into v_cur from public.nations n where n.id = p_nation;
+    v_cost := round(coalesce(v_cur, 0) * v_cost / 100.0);
+  end if;
+  v_own := lower(coalesce(p_ownership, ''));
+  if     v_own = 'private' then v_cost := round(v_cost * 0.80);
+  elsif  v_own = 'state'   then v_cost := round(v_cost * 1.25);
+  end if;
+  return v_cost;
+end $$;
+
+-- The Influence an initiative costs to enact: 1 per $10B of its effective cost, rounded up, min 1.
+-- ONE source (mirrors initiativeInfluenceCost in initiatives.js).
+create or replace function public._initiative_influence(p_cost numeric)
+returns int language sql immutable as $$
+  select greatest(1, ceil(coalesce(p_cost, 0) / 10.0))::int;
+$$;
+revoke all on function public._initiative_cost(text, jsonb, text) from public, anon, authenticated;
+revoke all on function public._initiative_influence(numeric) from public, anon, authenticated;
+
 create or replace function public._initiative_start(p_nation text, p_initiative uuid, p_ownership text,
                                                     p_corp uuid, p_partner text default null, p_share int default 0)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_def jsonb; v_tick int; v_elig jsonb; v_dur int; v_minm int; v_maxm int; v_cost numeric;
-  v_own text; v_cadence text; v_id uuid; v_roll int; v_corp uuid; v_model text; v_cur numeric;
+  v_own text; v_cadence text; v_id uuid; v_roll int; v_corp uuid;
 begin
   select definition into v_def from public.national_initiatives where id = p_initiative;
   if v_def is null then raise exception 'That initiative no longer exists.'; end if;
@@ -96,23 +131,8 @@ begin
   v_maxm := greatest(v_minm, coalesce((v_def->'lengthMonths'->>1)::int, v_minm));
   v_dur  := v_minm + floor(random() * (v_maxm - v_minm + 1))::int;   -- roll [min, max] months
 
-  -- Base cost from the authored cost basis (schema/140): flat → $B; production → $B per current unit
-  -- (min one); gdp → % of GDP. Scaled models snapshot this nation's live figures (the one source).
-  v_model := coalesce(v_def->>'costModel', 'flat');
-  v_cost  := coalesce((v_def->>'cost')::numeric, 0);
-  if v_model = 'production' then
-    select coalesce((n.production->>lower(v_def->>'resource'))::numeric, 0) into v_cur
-      from public.nations n where n.id = p_nation;
-    v_cost := greatest(coalesce(v_cur, 0), 1) * v_cost;
-  elsif v_model = 'gdp' then
-    select coalesce(n.gdp, 0) into v_cur from public.nations n where n.id = p_nation;
-    v_cost := round(coalesce(v_cur, 0) * v_cost / 100.0);
-  end if;
-
-  -- Ownership adjustment (private −20%, state +25%).
-  if     v_own = 'private' then v_cost := round(v_cost * 0.80);
-  elsif  v_own = 'state'   then v_cost := round(v_cost * 1.25);
-  end if;
+  -- Effective $B cost (basis + ownership adjustment) — ONE source (_initiative_cost).
+  v_cost := public._initiative_cost(p_nation, v_def, v_own);
 
   -- STATE: carried out by one of the nation's OWN state-owned firms in an authorised sector.
   -- PRIVATE: firms bid — no executor bound, p_corp ignored.
@@ -151,22 +171,22 @@ begin
                      'The government launched ' || coalesce(v_def->>'name', 'a national initiative') || '.'),
             public.current_game_date());
 
-  return jsonb_build_object('id', v_id, 'months', v_dur, 'complete_tick', v_tick + v_dur);
+  return jsonb_build_object('id', v_id, 'months', v_dur, 'complete_tick', v_tick + v_dur, 'cost', v_cost);
 end $$;
 revoke all on function public._initiative_start(text, uuid, text, uuid, text, int) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- initiative_enact(initiative, ownership, corp): the Minister of Economic Development starts a SOLO
--- national initiative. Gated to that portfolio; costs 2 party actions. A joint initiative (its
--- definition carries a partner) must instead go through joint_propose (schema/142).
+-- national initiative. Gated to that portfolio; costs 1 Influence per $10B of the initiative's
+-- effective cost (rounded up, min 1 — _initiative_influence). A joint initiative (its definition
+-- carries a partner) must instead go through joint_propose (schema/142).
 -- ---------------------------------------------------------------------------
 drop function if exists public.initiative_enact(uuid, uuid);
 create or replace function public.initiative_enact(p_initiative uuid, p_ownership text, p_corp uuid default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_p public.parties%rowtype; v_def jsonb; v_res jsonb;
+declare v_p public.parties%rowtype; v_def jsonb; v_res jsonb; v_cost numeric; v_need int;
 begin
-  v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
-  if v_p.influence < 2 then raise exception 'Not enough Influence (need 2).'; end if;
+  v_p := public._begin_action(0);   -- lock caller's party, require >= 1 Influence
   if not exists (select 1 from public.governments where nation_id = v_p.nation_id and status = 'active') then
     raise exception 'There is no sitting government to enact an initiative.';
   end if;
@@ -180,10 +200,15 @@ begin
     raise exception 'This is a joint project — propose it to the partner nation instead.';
   end if;
 
-  v_res := public._initiative_start(v_p.nation_id, p_initiative, p_ownership, p_corp, null, 0);
-  update public.parties set influence = influence - 2 where id = v_p.id;
+  -- Influence price = 1 per $10B of the effective cost (same figure the client shows) — gate first.
+  v_cost := public._initiative_cost(v_p.nation_id, v_def, p_ownership);
+  v_need := public._initiative_influence(v_cost);
+  if v_p.influence < v_need then raise exception 'Not enough Influence (need %).', v_need; end if;
 
-  return v_res || jsonb_build_object('actions', v_p.influence - 2);
+  v_res := public._initiative_start(v_p.nation_id, p_initiative, p_ownership, p_corp, null, 0);
+  update public.parties set influence = influence - v_need where id = v_p.id;
+
+  return v_res || jsonb_build_object('actions', v_p.influence - v_need, 'influence_cost', v_need);
 end $$;
 grant execute on function public.initiative_enact(uuid, text, uuid) to authenticated;
 
