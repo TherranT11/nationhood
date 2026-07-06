@@ -129,8 +129,8 @@ returns int language sql stable security definer set search_path = public as $$
 $$;
 
 -- Propose a policy change → the bill goes to COMMITTEE (schema/154), not straight to the floor.
--- Charges the scaled proposal cost in Influence (_proposal_cost — the admin base scaled by how many
--- rungs the change moves). From committee the proposer later pushes it to the floor (committee_push).
+-- Charges the scaled proposal cost in Influence (_proposal_cost — the policy's own authored influence
+-- scaled by how many rungs the change moves). From committee the proposer pushes it to the floor.
 -- p_title / p_intro are the optional heading + introductory article; blank → the title falls back
 -- to "Policy → Option" and there's no intro. Returns { id, status:'committee', cost, actions }.
 drop function if exists public.propose_law(uuid, int, boolean);
@@ -139,11 +139,12 @@ create or replace function public.propose_law(p_policy uuid, p_option int,
   p_title text default null, p_intro text default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
-  v_party public.parties%rowtype; v_name text; v_opt text;
-  v_tick int; v_curopt int; v_levels int; v_base int; v_cost int; v_pid uuid;
+  v_party public.parties%rowtype; v_name text; v_opt text; v_def jsonb;
+  v_tick int; v_curopt int; v_levels int; v_cost int; v_pid uuid;
   v_title text; v_intro text;
 begin
   select policy_name, option_name into v_name, v_opt from public._check_law(p_policy, p_option);
+  select definition into v_def from public.policies where id = p_policy;
   select current_tick into v_tick from public.game_state where id;
   -- Bill heading: the authored title, else the canonical "Policy → Option" label. Both length-capped
   -- server-side (the client also caps) so a crafted call can't store a huge string.
@@ -159,10 +160,10 @@ begin
   v_curopt := public._nation_policy_option(v_party.nation_id, p_policy);
   if v_curopt = p_option then raise exception 'That policy is already set to that option.'; end if;
 
-  -- Cost = the admin base (game_state) scaled by the number of rungs the change moves (_proposal_cost).
+  -- Cost = the policy's own authored Influence (definition.influence) scaled by the number of rungs
+  -- the change moves (_proposal_cost). Each policy sets its own base — there's no game-wide setting.
   v_levels := abs(p_option - v_curopt);
-  select coalesce(proposal_cost_base, 2) into v_base from public.game_state where id;
-  v_cost := public._proposal_cost(v_base, v_levels);
+  v_cost := public._proposal_cost(coalesce((v_def->>'influence')::int, 0), v_levels);
   if v_party.influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
 
   -- One live bill per policy. Lock the nation row (the no-confidence idiom) so two parties can't both

@@ -11,26 +11,18 @@
 -- endorsement is free; pushing UNENDORSED costs 5 Influence AND −2 Party Popularity.
 
 -- Admin-set base Influence cost of proposing a bill (scaled by the rungs it moves, below).
-alter table public.game_state add column if not exists proposal_cost_base int not null default 2;
-
--- The Influence a bill costs to propose: the admin base scaled by how many rungs the change moves —
--- N × (base + N − 1), the same escalation the policy ladder uses (N=1 → base). ONE source (mirrors
--- proposalInfluenceCost in policies.js); read by propose_law + the propose page's cost preview.
+-- The Influence a bill costs to propose: the policy's own authored base (definition.influence, set in
+-- the policy builder) scaled by how many rungs the change moves — N × (base + N − 1), the same
+-- escalation the policy ladder uses (N=1 → base). ONE source (mirrors proposalInfluenceCost in
+-- policies.js); read by propose_law + the propose page's cost preview.
 create or replace function public._proposal_cost(p_base int, p_levels int)
 returns int language sql immutable as $$
   select (greatest(1, coalesce(p_levels, 1))
           * (greatest(0, coalesce(p_base, 0)) + greatest(1, coalesce(p_levels, 1)) - 1))::int;
 $$;
-
--- Admin: set the base proposal cost (game-wide). is_admin-gated like every admin write.
-create or replace function public.set_proposal_cost_base(p_cost int)
-returns jsonb language plpgsql security definer set search_path = public as $$
-begin
-  if not public.is_admin() then raise exception 'Admin only.'; end if;
-  update public.game_state set proposal_cost_base = greatest(0, coalesce(p_cost, 0)) where id;
-  return jsonb_build_object('ok', true, 'proposal_cost_base', (select proposal_cost_base from public.game_state where id));
-end $$;
-grant execute on function public.set_proposal_cost_base(int) to authenticated;
+-- The game-wide base cost was replaced by each policy's own influence — drop it (idempotent).
+drop function if exists public.set_proposal_cost_base(int);
+alter table public.game_state drop column if exists proposal_cost_base;
 
 -- ── Committee state ─────────────────────────────────────────────────────────────
 -- One row per party that has endorsed a committee bill (co-signs it, and clears the push penalty).

@@ -573,16 +573,6 @@
     </div>
 
     <div class="panel">
-      <h2>Legislation</h2>
-      <p class="sub" style="margin:0 0 12px">Base Influence cost to propose a bill — the bill goes to committee, and the cost scales with the number of policy rungs it moves: N × (base + N − 1).</p>
-      <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
-        <div><div class="sub" style="margin:0 0 5px">Proposal base cost (Influence)</div><input id="billCost" type="number" min="0" step="1" style="width:130px"></div>
-        <button class="btn btn-solid" id="billCostSave" type="button">Save</button>
-      </div>
-      <div class="note" id="billCostNote" role="status" aria-live="polite"></div>
-    </div>
-
-    <div class="panel">
       <h2>Existing Nations</h2>
       <div id="nationList"><p class="empty">Loading…</p></div>
     </div>
@@ -896,7 +886,9 @@
           <div class="card">
             <div class="sec-h">Cost &amp; Timeframe</div>
             <div class="two">
-              <div><div class="flabel">Budget Balance cost <span class="hint">($B/yr while it runs)</span></div><input id="i-byear" type="number" step="any" value="5"></div>
+              <div><div class="flabel">Budget Balance cost <span class="hint">while it runs</span></div>
+                <div style="display:flex;gap:8px"><input id="i-byear" type="number" step="any" value="5" style="flex:1;min-width:0">
+                  <select id="i-byear-unit" style="flex:0 0 118px"><option value="flat">$B / yr</option><option value="gdp">% of GDP</option></select></div></div>
               <div><div class="flabel">Influence <span class="hint">(upfront to enact)</span></div><input id="i-influence" type="number" step="1" value="5"></div>
             </div>
             <div class="flabel" style="margin-top:14px">Build-up length <span class="hint">(months, min–max — before the production increase lands)</span></div>
@@ -1196,24 +1188,6 @@
         document.getElementById('clockDate').textContent = tickToDate(t);
       } catch (e) { document.getElementById('clockDate').textContent = '—'; }
     }
-    // Legislation: the base Influence cost of proposing a bill (game-wide; scales by rungs client-side).
-    async function renderBillCost() {
-      try {
-        const { data } = await supabase.from('game_state').select('proposal_cost_base').maybeSingle();
-        document.getElementById('billCost').value = (data && data.proposal_cost_base != null) ? data.proposal_cost_base : 2;
-      } catch (e) { /* leave blank */ }
-    }
-    document.getElementById('billCostSave').addEventListener('click', async function () {
-      var btn = this, note = document.getElementById('billCostNote');
-      if (btn.disabled) return;
-      btn.disabled = true; note.textContent = 'Saving…'; note.className = 'note';
-      try {
-        const { data, error } = await supabase.rpc('set_proposal_cost_base', { p_cost: parseInt(document.getElementById('billCost').value, 10) || 0 });
-        if (error) throw error;
-        note.textContent = 'Saved — bills now cost ' + data.proposal_cost_base + ' Influence at the base.'; note.className = 'note ok';
-      } catch (e) { note.textContent = /(admin|permission|row-level)/i.test(e.message || '') ? 'Only the admin can do that.' : (e.message || 'Could not save.'); note.className = 'note error'; }
-      finally { btn.disabled = false; }
-    });
     document.getElementById('advanceBtn').addEventListener('click', async function () {
       var btn = this, note = document.getElementById('advanceNote');
       if (btn.disabled) return;             // single-fire: this writes (advances the clock)
@@ -1248,7 +1222,6 @@
           document.getElementById('who').textContent = 'Signed in as ' + session.user.email;
           show('admin');
           renderClock();
-          renderBillCost();
           await loadNations();
           await loadIdentityTags();
           loadDeclFields();
@@ -3605,7 +3578,7 @@
 
       function iBlank() {
         return { name: '', description: '', resource: 'Energy', quantity: 1, cadence: 'one_time',
-          sectors: iSectorSet('Energy'), budgetPerYear: 5, influence: 5, minM: 16, maxM: 36, global: false, nations: {},
+          sectors: iSectorSet('Energy'), budgetPerYear: 5, budgetUnit: 'flat', influence: 5, minM: 16, maxM: 36, global: false, nations: {},
           joint: { on: false, partner: '', quantity: 1, target: 'Energy' },
           startEvent: '', finishEvent: '' };
       }
@@ -3617,6 +3590,7 @@
         s.quantity = Math.max(1, parseInt(d.quantity, 10) || 1);
         s.cadence = d.cadence === 'recurring' ? 'recurring' : 'one_time';
         s.budgetPerYear = parseFloat(d.budgetPerYear) || 0;
+        s.budgetUnit = (d.budgetUnit === 'gdp') ? 'gdp' : 'flat';
         s.influence = Math.max(1, parseInt(d.influence, 10) || 1);
         var lm = Array.isArray(d.lengthMonths) ? d.lengthMonths : [16, 36];
         s.minM = parseInt(lm[0], 10) || 0; s.maxM = parseInt(lm[1], 10) || 0;
@@ -3636,7 +3610,10 @@
       function iR1(n) { return String(Math.round(n * 10) / 10); }
       // The standing cost line: $B/yr against Budget Balance the whole time it runs + the upfront
       // Influence the Minister spends to enact it.
-      function iCostExpr() { return '−$' + iR1(IN.budgetPerYear) + 'B/yr · ' + IN.influence + ' Influence'; }
+      function iCostExpr() {
+        var c = IN.budgetUnit === 'gdp' ? ('−' + iR1(IN.budgetPerYear) + '% of GDP/yr') : ('−$' + iR1(IN.budgetPerYear) + 'B/yr');
+        return c + ' · ' + IN.influence + ' Influence';
+      }
       // The ticked sectors — ONE source for the preview line and the saved definition.
       function iChosenSectors() { return CATEGORIES.filter(function (c) { return IN.sectors[c]; }); }
       function iNatName(id) { var n = INAT.filter(function (x) { return x.id === id; })[0]; return n ? (n.name || id) : id; }
@@ -3700,6 +3677,7 @@
         document.getElementById('i-desc').value = IN.description;
         document.getElementById('i-qty').textContent = IN.quantity;
         document.getElementById('i-byear').value = IN.budgetPerYear;
+        document.getElementById('i-byear-unit').value = IN.budgetUnit;
         document.getElementById('i-influence').value = IN.influence;
         document.getElementById('i-minM').value = IN.minM;
         document.getElementById('i-maxM').value = IN.maxM;
@@ -3739,7 +3717,7 @@
         var def = {
           name: IN.name.trim(), description: IN.description.trim(),
           resource: IN.resource, quantity: IN.quantity, cadence: IN.cadence,
-          budgetPerYear: IN.budgetPerYear, influence: IN.influence, lengthMonths: [IN.minM, IN.maxM],
+          budgetPerYear: IN.budgetPerYear, budgetUnit: IN.budgetUnit, influence: IN.influence, lengthMonths: [IN.minM, IN.maxM],
           sectors: iChosenSectors(),
           joint: (IN.joint.on && IN.joint.partner) ? { partner: IN.joint.partner, quantity: IN.joint.quantity, target: IN.joint.target } : null,
           eligibleNations: IN.global ? '*' : Object.keys(IN.nations).filter(function (k) { return IN.nations[k]; }),
@@ -3779,6 +3757,7 @@
       document.getElementById('i-qplus').onclick = function () { IN.quantity++; document.getElementById('i-qty').textContent = IN.quantity; iRenderPreview(); };
       document.querySelectorAll('#i-cadence [data-cad]').forEach(function (b) { b.onclick = function () { IN.cadence = b.dataset.cad; iRenderCadence(); iRenderPreview(); }; });
       document.getElementById('i-byear').oninput = function () { IN.budgetPerYear = parseFloat(this.value) || 0; iRenderPreview(); };
+      document.getElementById('i-byear-unit').onchange = function () { IN.budgetUnit = this.value; iRenderPreview(); };
       document.getElementById('i-influence').oninput = function () { IN.influence = Math.max(1, parseInt(this.value, 10) || 1); iRenderPreview(); };
       document.getElementById('i-jpartner').onchange = function () { IN.joint.partner = this.value; iRenderPreview(); };
       document.getElementById('i-jtarget').onchange = function () { IN.joint.target = this.value; iRenderPreview(); };

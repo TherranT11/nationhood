@@ -31,24 +31,38 @@ const CSS = `
 `;
 function injectCss(){ if(document.getElementById('nini-css'))return; var s=document.createElement('style'); s.id='nini-css'; s.textContent=CSS; document.head.appendChild(s); }
 
-// An initiative's authored costs (MIRROR schema/140/141): a standing $bn/yr against Budget Balance
-// the whole time it runs, and the upfront Influence to enact it. Both are flat authored figures now —
-// the Minister's execution choice (private → +1 Growth, firms bid; state → −1D2 Unemployment &
-// Inflation, own SO firm) only changes the on-enact effects, not the price.
-export function initiativeYearlyCost(d){ return Number(d && d.budgetPerYear) || 0; }
+// An initiative's authored costs (MIRROR schema/140/141): a standing Budget Balance cost the whole
+// time it runs — a flat $bn/yr OR a % of the enacting nation's GDP (budgetUnit) — and the upfront
+// Influence to enact it. The Minister's execution choice (private → +1 Growth, firms bid; state →
+// −1D2 Unemployment & Inflation, own SO firm) only changes the on-enact effects, not the price.
 export function initiativeInfluence(d){ return Math.max(1, parseInt(d && d.influence, 10) || 1); }
+// The display label for the running cost: "$X B/yr" (flat) or "X% of GDP/yr". Nation-agnostic (a %
+// resolves to real $bn against each nation's GDP where the Budget Balance is computed).
+export function initiativeCostLabel(d){
+  var v = Number(d && d.budgetPerYear) || 0;
+  return (d && d.budgetUnit === 'gdp') ? (v + '% of GDP/yr') : ('$' + v + 'B/yr');
+}
 
 // Active initiatives that hit a nation's Budget Balance — its own running ones plus any joint project
-// it partners — shaped for initiativeBudgetItems / nationBudgetBalance (policies.js). Best-effort → [].
+// it partners — shaped for initiativeBudgetItems / nationBudgetBalance (policies.js). ownerGdp (the
+// enacting nation's GDP) resolves a %-of-GDP cost. Best-effort → [].
 export async function fetchBudgetInitiatives(nationId){
   try {
     const { data } = await supabase.from('nation_initiatives')
       .select('nation_id, partner_share, national_initiatives(definition)')
       .eq('status', 'active').or('nation_id.eq.' + nationId + ',partner_nation.eq.' + nationId);
-    return (data || []).map(function(r){
+    var rows = (data || []).map(function(r){
       return { def: (r.national_initiatives && r.national_initiatives.definition) || {},
-               partnerShare: r.partner_share, isPartner: r.nation_id !== nationId };
+               partnerShare: r.partner_share, isPartner: r.nation_id !== nationId, ownerNation: r.nation_id };
     });
+    // Resolve each enacting nation's GDP (a %-of-GDP cost scales to it). One query for the distinct set.
+    if (rows.some(function(r){ return r.def.budgetUnit === 'gdp'; })) {
+      var ids = rows.map(function(r){ return r.ownerNation; }).filter(function(v, i, a){ return a.indexOf(v) === i; });
+      const { data: nats } = await supabase.from('nations').select('id, gdp').in('id', ids);
+      var gdpBy = {}; (nats || []).forEach(function(n){ gdpBy[n.id] = n.gdp; });
+      rows.forEach(function(r){ r.ownerGdp = gdpBy[r.ownerNation]; });
+    }
+    return rows;
   } catch(e){ return []; }
 }
 
@@ -87,7 +101,7 @@ export function renderNationInitiatives(el, data, ctx){
   var html='';
   if(data.active && data.active.def){
     var a=data.active, d=a.def, built=!!a.row.built;
-    var yr=initiativeYearlyCost(d), costTxt = yr ? ' · −$'+yr+'B/yr' : '';
+    var costTxt = (Number(d.budgetPerYear) || 0) ? ' · −'+initiativeCostLabel(d) : '';
     var meta, bar='';
     if(built){
       meta = 'Operational' + costTxt;
@@ -122,10 +136,10 @@ export function renderNationInitiatives(el, data, ctx){
           html += '<button class="nini__go nini__go--solo" data-propose="1" type="button">Propose to partner ▸</button>';
         }
       } else {
-        // Cost is the same either way (standing $B/yr + upfront Influence); the Minister's choice only
+        // Cost is the same either way (standing Budget Balance cost + upfront Influence); the choice only
         // changes the on-enact effect. State needs one of the nation's own SO firms in an authorised
         // sector; private lets firms bid (no executor picked).
-        var cost = '−$'+initiativeYearlyCost(d)+'B/yr · '+initiativeInfluence(d)+' Inf';
+        var cost = '−'+initiativeCostLabel(d)+' · '+initiativeInfluence(d)+' Inf';
         var so=(data.corps||[]).filter(function(c){ return c.type==='so' && secs.indexOf(c.category)>=0; });
         html += '<div class="nini__opts">'+
           '<button class="nini__opt" data-own="private" type="button"><b>Private Enterprise</b><span>'+cost+' · +1 Growth · firms bid</span></button>'+

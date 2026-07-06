@@ -21,12 +21,6 @@ export async function fetchVotes(proposalIds) {
 export async function fetchPolicies() {
   return unwrap(await supabase.from('policies').select('id, definition').order('created_at')) || [];
 }
-// The admin base Influence cost of proposing a bill (game-wide; scaled by rungs on the client via
-// proposalInfluenceCost). Defaults to 2 if unset/unreadable.
-export async function fetchProposalCostBase() {
-  try { var gs = unwrap(await supabase.from('game_state').select('proposal_cost_base').maybeSingle()); return (gs && gs.proposal_cost_base != null) ? gs.proposal_cost_base : 2; }
-  catch (e) { return 2; }
-}
 // Does this party have a floor measure (status 'voting') it hasn't cast a vote on? ONE source
 // for "is there something to vote on" — drives the Legislature nav dot.
 export async function hasUnvotedFloorMeasure(nationId, partyId) {

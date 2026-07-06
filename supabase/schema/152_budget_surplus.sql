@@ -21,7 +21,7 @@ create or replace function public._nation_budget_balance(p_nation text)
 returns numeric language plpgsql stable security definer set search_path = public as $$
 declare
   v_gdp numeric; v_sum numeric := 0; r record; v_def jsonb; v_type text; v_opts jsonb;
-  v_idx int; v_from int; i int; v_eff jsonb; v_v numeric;
+  v_idx int; v_from int; i int; v_eff jsonb; v_v numeric; v_yc numeric;
 begin
   select gdp into v_gdp from public.nations where id = p_nation;
   for r in select id, definition from public.policies
@@ -42,16 +42,20 @@ begin
     end loop;
   end loop;
   -- Running initiatives: this nation's standing share of each active programme's $bn/yr (as the
-  -- enacting nation, (100 − share)%; as a joint partner, share%).
+  -- enacting nation, (100 − share)%; as a joint partner, share%). The cost is a flat $bn or a % of the
+  -- ENACTING nation's GDP (definition.budgetUnit), so resolve it against that nation's gdp (nn.gdp).
   for r in
     select coalesce((i.definition->>'budgetPerYear')::numeric, 0) as byear,
+           i.definition->>'budgetUnit' as bunit, coalesce(nn.gdp, 0) as owner_gdp,
            coalesce(ni.partner_share, 0) as share, (ni.nation_id = p_nation) as is_owner
       from public.nation_initiatives ni
-      join public.national_initiatives i on i.id = ni.initiative_id
+      join public.national_initiatives i  on i.id  = ni.initiative_id
+      join public.nations             nn on nn.id = ni.nation_id
      where ni.status = 'active' and (ni.nation_id = p_nation or ni.partner_nation = p_nation)
   loop
-    v_sum := v_sum - case when r.is_owner then r.byear * (100 - r.share) / 100.0
-                          else r.byear * r.share / 100.0 end;
+    v_yc := case when r.bunit = 'gdp' then r.byear / 100.0 * r.owner_gdp else r.byear end;
+    v_sum := v_sum - case when r.is_owner then v_yc * (100 - r.share) / 100.0
+                          else v_yc * r.share / 100.0 end;
   end loop;
   return v_sum;
 end $$;
