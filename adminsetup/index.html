@@ -207,8 +207,6 @@
   .poltab .add.sm:hover{border-color:var(--ink)}
   .poltab .addopt{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:var(--surface);border:1px dashed var(--line2);border-radius:9px;padding:9px 14px;cursor:pointer}
   .poltab .addopt:hover{border-color:var(--ink)}
-  .poltab .bindefault{display:flex;align-items:center;gap:9px;margin-bottom:13px;font-size:12.5px;color:var(--muted)}
-  .poltab .bindefault select{width:auto;min-width:140px}
   /* Trade Policy tab */
   .tpcard{border:1px solid var(--line);border-radius:13px;padding:14px 16px;margin-bottom:11px;background:var(--surface)}
   .tphd{display:flex;align-items:center;gap:10px;margin-bottom:8px}
@@ -2762,7 +2760,9 @@
       // base implementation time the level-change engine will scale (deferred).
       var cc=document.createElement('div'); cc.className='card';
       if (P.type==='binary'){
-        cc.innerHTML='<div class="f" style="margin-bottom:0"><label>Influence cost to switch</label><input type="number" id="pol-inf" min="0" step="1" value="'+(P.influence!=null?P.influence:0)+'" style="max-width:160px"></div>';
+        cc.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
+          '<div class="f" style="margin-bottom:0"><label>Influence cost to switch</label><input type="number" id="pol-inf" min="0" step="1" value="'+(P.influence!=null?P.influence:0)+'"></div>'+
+          '<div class="f" style="margin-bottom:0"><label>Implementation time (months)</label><input type="number" id="pol-impl" min="0" step="1" value="'+(P.impl!=null?P.impl:0)+'"></div></div>';
       } else {
         cc.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
           '<div class="f" style="margin-bottom:0"><label>Base influence to change</label><input type="number" id="pol-inf" min="0" step="1" value="'+(P.influence!=null?P.influence:0)+'"></div>'+
@@ -2772,12 +2772,9 @@
       box.appendChild(cc);
 
       var oc=document.createElement('div'); oc.className='card';
+      // No global "every nation starts" default — a policy's starting state is set per nation in
+      // the Edit Nation form, since it can differ nation to nation.
       oc.innerHTML='<div class="opthd"><span class="t">'+(P.type==='spectrum'?'Levels':'States')+'</span>'+(P.type==='spectrum'?'<button class="addopt" id="pol-addOpt" type="button">+ add level</button>':'')+'</div>';
-      if (P.type==='binary'){
-        var bd=document.createElement('div'); bd.className='bindefault';
-        bd.innerHTML='<span>Every nation starts:</span><select id="pol-binDef"><option value="0"'+(P.binDefault===0?' selected':'')+'>Off</option><option value="1"'+(P.binDefault===1?' selected':'')+'>On</option></select>';
-        oc.appendChild(bd);
-      }
       polOpts().forEach(function(o,i){ oc.appendChild(buildPolOpt(o,i)); });
       box.appendChild(oc);
 
@@ -2792,20 +2789,19 @@
       var inf=box.querySelector('#pol-inf'); if(inf)inf.oninput=function(e){ P.influence=parseInt(e.target.value,10)||0; renderPolPrev(); };
       var impl=box.querySelector('#pol-impl'); if(impl)impl.oninput=function(e){ P.impl=parseInt(e.target.value,10)||0; };
       var ao=box.querySelector('#pol-addOpt'); if(ao)ao.onclick=function(){ P.spectrum.push({name:'Level '+String.fromCharCode(65+P.spectrum.length),desc:'',effects:[]}); renderPolEditor(); renderPolPrev(); };
-      var bdf=box.querySelector('#pol-binDef'); if(bdf)bdf.onchange=function(e){ P.binDefault=+e.target.value; renderPolEditor(); renderPolPrev(); };
     }
     function buildPolOpt(o,i){
       o.effects = o.effects || [];
       var card=document.createElement('div');
       card.className='opt'+(P.type==='binary'?(i===1?' binyes':' binno'):'');   // On (i=1) green, Off (i=0) red
-      var isStart = P.type==='spectrum' ? i===P.defaultIdx : i===P.binDefault;
+      var isStart = P.type==='spectrum' && i===P.defaultIdx;   // only spectrum has a starting level
       var head='<div class="oh">';
       if (P.type==='spectrum'){
         head+='<span class="ord">'+String.fromCharCode(65+i)+'</span><input type="text" class="onm" value="'+esc(o.name).replace(/"/g,'&quot;')+'">'+
           '<button class="star'+(isStart?' on':'')+'" type="button" title="Starting level">'+(isStart?'★':'☆')+'</button>'+
           (P.spectrum.length>2?'<button class="xb" type="button">×</button>':'');
       } else {
-        head+='<input type="text" class="onm" value="'+esc(o.name).replace(/"/g,'&quot;')+'">'+(isStart?'<span class="startpill">Default</span>':'');
+        head+='<input type="text" class="onm" value="'+esc(o.name).replace(/"/g,'&quot;')+'">';
       }
       head+='</div>';
       // The BASE spectrum level (index 0) carries no effects: nothing steps up into it, so every
@@ -2852,7 +2848,7 @@
         : ('On/Off · '+(P.influence||0)+' Inf');
       var html='<div class="pvname">'+esc(P.name||'Untitled policy')+'</div><span class="pvtype">'+typeLabel+'</span>';
       polOpts().forEach(function(o,i){
-        var isStart=P.type==='spectrum'? i===P.defaultIdx : i===P.binDefault;
+        var isStart=P.type==='spectrum' && i===P.defaultIdx;   // only spectrum has a starting level
         var isBase=P.type==='spectrum'&&i===0;   // base level carries no transition effects
         var effs=isBase ? '<div class="pvnone">Baseline</div>'
           : (o.effects&&o.effects.length)?'<div class="pveff">'+o.effects.map(polEffLine).join('')+'</div>':'<div class="pvnone">No effects</div>';

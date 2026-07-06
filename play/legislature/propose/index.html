@@ -165,7 +165,8 @@
         '<div class="pvcard"><h3 id="l-pv" class="empty">Choose a change</h3>' +
           '<div class="pvarts"><div class="ac">Fiscal impact <span class="hint">vs the rung in force</span></div><div id="l-fiscal"><p class="none">—</p></div>' +
             '<div class="ac" style="margin-top:14px">Standing effects if enacted</div><div id="l-effs"><p class="none">—</p></div><div id="l-tags" class="tagrow"></div>' +
-            '<div class="ac" style="margin-top:14px">One-time cost to change <span class="hint">on enactment</span></div><div id="l-trans"><p class="none">—</p></div></div></div>' +
+            '<div class="ac" style="margin-top:14px">One-time cost to change <span class="hint">on enactment</span></div><div id="l-trans"><p class="none">—</p></div>' +
+            '<div class="ac" style="margin-top:14px">Implementation time <span class="hint">time to take effect</span></div><div id="l-impl"><p class="none">—</p></div></div></div>' +
         '<div class="proj"><div class="actions">' +
           '<button class="btn" id="l-floor" type="button" disabled>Bring to the Floor Now <span class="ac">1 Action</span></button>' +
           '<button class="btn" id="l-agenda" type="button" disabled>Add to Upcoming Agenda <span class="ac">Free</span></button>' +
@@ -253,6 +254,16 @@
       effBox.innerHTML = html || '<p class="none">No standing effects beyond the budget.</p>';
       tagBox.innerHTML = (o.tags || []).map(function (t) { return '<span class="ltag">' + esc(t) + '</span>'; }).join('');
     }
+    // The policy's implementation time — how long the change takes to take effect (def.impl
+    // months; the runtime scales it by Bureaucracy later). A policy property, shown per choice.
+    function renderImpl() {
+      var box = document.getElementById('l-impl');
+      if (sel.proposed == null) { box.innerHTML = '<p class="none">—</p>'; return; }
+      var m = Number(curDef().impl);
+      box.innerHTML = (isFinite(m) && m > 0)
+        ? effRow({ text: m + ' month' + (m === 1 ? '' : 's'), cls: 'flat' }, 'to take effect')
+        : '<p class="none">Takes effect immediately.</p>';
+    }
     var transSeq = 0;
     // The one-time transition (doorway) cost of the move cur→to, from the server (ONE source:
     // _doorway_effects via the law_transition_preview RPC). Each doorway carries its own scale
@@ -299,7 +310,7 @@
       var pv = document.getElementById('l-pv');
       pv.textContent = o ? ((def.name || 'Policy') + ' → ' + (o.name || ('Option ' + (sel.proposed + 1)))) : 'Choose a change';
       pv.classList.toggle('empty', !o);
-      renderLadder(); renderFiscal(); renderEffects(); renderTransitionCost();
+      renderLadder(); renderFiscal(); renderEffects(); renderTransitionCost(); renderImpl();
       // One pending bill per policy: if this policy already has one on the floor/agenda, the
       // chamber won't take another until it resolves (the server enforces this too).
       var blocked = !!pendingPolicies[curPolicy().id];
