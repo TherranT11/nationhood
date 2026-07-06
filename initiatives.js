@@ -57,11 +57,10 @@ export async function fetchBudgetInitiatives(nationId){
 // time). Also returns the nation's placed corps for the executor picker.
 export async function fetchNationInitiatives(nationId){
   try {
-    const [defsR, mineR, corpsR, natR, jpR] = await Promise.all([
+    const [defsR, mineR, corpsR, jpR] = await Promise.all([
       supabase.from('national_initiatives').select('id, definition').order('created_at'),
       supabase.from('nation_initiatives').select('id, initiative_id, corp_id, status, started_tick, complete_tick, built').eq('nation_id', nationId),
       supabase.from('corporations').select('id, name, category, type').eq('nation_id', nationId).eq('status', 'placed'),
-      supabase.from('nations').select('gdp, production').eq('id', nationId).maybeSingle(),
       supabase.from('joint_proposals').select('initiative_id').eq('proposer_nation', nationId).eq('status', 'pending')
     ]);
     var pendingJoint = {}; (jpR.data || []).forEach(function(r){ pendingJoint[r.initiative_id] = true; });
@@ -75,8 +74,8 @@ export async function fetchNationInitiatives(nationId){
     });
     var active = null;
     if(activeRow){ var ad=defs.filter(function(x){ return x.id===activeRow.initiative_id; })[0]; active={ row:activeRow, def: ad?ad.definition:null }; }
-    return { active: active, available: available, corps: corpsR.data || [], nation: natR.data || {}, pendingJoint: pendingJoint };
-  } catch(e){ return { active:null, available:[], corps:[], nation:{}, pendingJoint:{} }; }
+    return { active: active, available: available, corps: corpsR.data || [], pendingJoint: pendingJoint };
+  } catch(e){ return { active:null, available:[], corps:[], pendingJoint:{} }; }
 }
 
 // Render into `el`. ctx = { canEnact, currentTick, onEnact(initiativeId, ownership, corpId|null),

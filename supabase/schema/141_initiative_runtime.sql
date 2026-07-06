@@ -29,10 +29,12 @@ create table if not exists public.nation_initiatives (
   status        text not null default 'active',   -- 'active' (running — costs $B/yr) | 'ended' (deactivated)
   started_tick  int  not null,
   complete_tick int  not null,                     -- started_tick + rolled build-up; the production increase lands when the clock reaches it
-  cost_per_tick numeric not null default 0,        -- deprecated (the money cost is now a standing Budget Balance line, schema/152); always 0
   created_at    timestamptz not null default now()
 );
 create index if not exists nation_initiatives_nation_idx on public.nation_initiatives (nation_id);
+-- The money cost is now a standing Budget Balance line (schema/152), not a per-tick treasury drain,
+-- so the old per-tick column is gone (idempotent drop for databases created before this change).
+alter table public.nation_initiatives drop column if exists cost_per_tick;
 
 -- Has the build-up finished and the production increase landed? While false the initiative still
 -- costs its $B/yr but hasn't raised production yet; deactivating a built initiative reverses it.
