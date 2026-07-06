@@ -261,24 +261,19 @@
   // slug→href map keeps that special-case out of the generic cell loop.
   var STAT_LINKS = { 'Budget Balance': '/play/budget/', 'Bureaucracy': '/play/bureaucracy/' };
   // Ministry stat values come from the nation's admin-authored ministry_stats map (schema/150,
-  // keyed by the same stat names) — the ONE source — EXCEPT the two money figures, which come
-  // from the economy: Budget Balance = income (economy.budget, shared with the Budget page) and
-  // Public Debt = economy.debt (the "Starting Debt" field). A stat with no value shows "--".
+  // keyed by the same stat names) — the ONE source. Public Debt is the one money figure sourced
+  // from the economy (economy.debt, the "Starting Debt" field). Budget Balance is NOT stored: it's
+  // the computed sum of active policy effects, so it shows "--" until the policy engine lands.
   function ministryStats(nation){
     var MS = (nation && nation.ministry_stats) || {};
     var ec = (nation && nation.economy) || {};
     var cur = ec.currency || '$';
-    function money(v){ var n = Number(v); return (v == null || v === '' || !isFinite(n)) ? null : n; }
     function cellVal(s){
-      if (s === 'Budget Balance'){
-        var inc = money(ec.budget);
-        return inc == null ? '--' : (inc < 0 ? '−' : '') + esc(cur) + Math.abs(inc) + 'bn';
-      }
       if (s === 'Public Debt'){
-        var d = money(ec.debt);
-        return d == null ? '--' : esc(cur) + Math.abs(d) + 'bn';
+        var n = Number(ec.debt);
+        return (ec.debt == null || ec.debt === '' || !isFinite(n)) ? '--' : esc(cur) + Math.abs(n) + 'bn';
       }
-      return MS[s] != null ? esc(String(MS[s])) : '--';
+      return MS[s] != null ? esc(String(MS[s])) : '--';   // Budget Balance falls here → "--" (computed later)
     }
     return STAT_GROUPS.map(function (g) {
       var cells = g.stats.map(function (s) {

@@ -641,7 +641,6 @@
           <div><label for="f-tax">Base Tax Burden <span class="hint">tax policies add on top</span></label><input id="f-tax" type="number" step="0.1"></div>
           <div><label for="f-budget">Starting Budget</label><input id="f-budget" type="number" step="0.1"></div>
           <div><label for="f-debt">Starting Debt</label><input id="f-debt" type="number" step="0.1"></div>
-          <div><label for="f-income">Starting Income <span class="hint">collected each January</span></label><input id="f-income" type="number" step="0.1"></div>
           <div><label for="f-regime">Regime</label><select id="f-regime"></select></div>
           <div><label for="f-ceiling">Max Party Ceiling <span class="hint">the regime's cap on any party's reach %</span></label><input id="f-ceiling" type="number" min="0" max="100" step="1" placeholder="50"></div>
           <div><label for="f-seats">Legislature Seats</label><input id="f-seats" type="number" min="0" step="1" placeholder="seats"></div>
@@ -1380,7 +1379,7 @@
       setVal('f-image', s.image); setVal('f-order', s.order);
       setVal('f-unemployment', e.unemployment); setVal('f-inflation', e.inflation);
       setVal('f-tax', e.tax);
-      setVal('f-budget', e.budget); setVal('f-debt', e.debt); setVal('f-income', e.income);
+      setVal('f-budget', e.budget); setVal('f-debt', e.debt);
       setVal('f-ceiling', e.party_ceiling);
       document.getElementById('f-regime').value = (typeof e.regime === 'number') ? String(e.regime) : '17';
       setVal('f-seats', n.legislature_seats); setVal('f-elecfreq', n.election_frequency_months);
@@ -1705,7 +1704,7 @@
           regime: parseInt(document.getElementById('f-regime').value, 10),
           unemployment: num('f-unemployment', true), inflation: num('f-inflation', true),
           tax: num('f-tax', true),
-          budget: num('f-budget', true), debt: num('f-debt', true), income: num('f-income', true),
+          budget: num('f-budget', true), debt: num('f-debt', true),
           party_ceiling: document.getElementById('f-ceiling').value.trim() === '' ? 50 : Math.max(0, Math.min(100, num('f-ceiling'))),
           currency: (editing && editing.economy && editing.economy.currency) || '$'
         },

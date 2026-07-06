@@ -178,17 +178,14 @@
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
       setTopbarActions(party.influence);
 
-      // Budget Balance = Income (economy.budget, the same field the topbar renders as income),
-      // and Revenue mirrors it. Both show the real value — including $0 — falling back to "$--"
-      // only when the nation has no income figure at all.
+      // Revenue = the nation's income (economy.budget, the field the topbar renders as income).
+      // Budget Balance is NOT this: it's the computed net of active policy effects, so its headline
+      // stays "$--" until the policy engine sums them. Spending stays "$--" for the same reason.
       var ec = (nation && nation.economy) || {};
       var cur = ec.currency || '$';
       var n = Number(ec.budget);
       if (ec.budget != null && ec.budget !== '' && isFinite(n)) {   // isFinite guards a corrupt/non-numeric value
-        var sign = n < 0 ? '−' : '';
-        document.getElementById('balVal').innerHTML = sign + esc(cur) + Math.abs(n) + 'bn<span class="bhero__u"> /yr</span>';
-        document.getElementById('balVal').style.color = n < 0 ? 'var(--red)' : 'var(--green)';
-        document.getElementById('revVal').textContent = sign + cur + Math.abs(n) + 'bn';
+        document.getElementById('revVal').textContent = (n < 0 ? '−' : '') + cur + Math.abs(n) + 'bn';
       }
       // Public Debt = economy.debt (the "Starting Debt" field), the same source as the
       // Government page's Public Debt cell. Shown as a stock; "$--" when unset.
