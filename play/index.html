@@ -1499,7 +1499,7 @@
     } catch (e) { if (none) { none.style.display = ''; none.textContent = 'Map unavailable'; } cv.style.display = 'none'; }
   }
 
-  function renderSnapshotAndMap(nation, parties, govt, decl, nationId) {
+  function renderSnapshotAndMap(nation, parties, govt, decl, nationId, hogName) {
     var box = document.getElementById('terrRow'); if (!box) return;
     var byId = {}; parties.forEach(function (p) { byId[p.id] = p; });
     var formateur = govt ? byId[govt.formateur_party_id] : null;
@@ -1508,14 +1508,19 @@
     var govType = (govt ? capFirst(govt.type) + ' government' : (nation.ruling_party ? 'One-party state' : 'No government')) + (regimeTxt && regimeTxt !== '—' ? ' · ' + regimeTxt : '');
     function row(k, v) { return v ? '<div class="snap__row"><dt>' + k + '</dt><dd>' + v + '</dd></div>' : ''; }
     function ptag(p) { return p ? ' <span class="ptag" style="background:' + partyColor(p) + '">' + esc((p.abbreviation || p.name.slice(0, 2)).toUpperCase()) + '</span>' : ''; }
-    var pmName = formateur ? esc(formateur.name) : (nation.ruling_party ? esc(nation.ruling_party) : '');
+    var partyName = formateur ? esc(formateur.name) : (nation.ruling_party ? esc(nation.ruling_party) : '');
+    // Head of Government — the person: "{declared title} {name} (year elected --)". Year is a
+    // placeholder until the backend tracks it. Hidden when there's no HoG person to name.
+    var hogTitle = decl('head_of_government_title');
+    var hogRow = hogName ? row('Head of Government', (hogTitle ? esc(hogTitle) + ' ' : '') + esc(hogName) + ' (year elected --)') : '';
     var snapHtml =
+      hogRow +
       row('Capital', esc(decl('capital_name'))) +
       row('Official Name', esc(decl('formal_state_name'))) +
       row('Official Language', esc(decl('official_language'))) +
       row('Demonym', esc(decl('demonym'))) +
       row('Government', esc(govType)) +
-      row('Head of Government', pmName ? (pmName + ptag(formateur)) : '') +
+      row('Governing Party', partyName ? (partyName + ptag(formateur)) : '') +
       row('Legislature', esc(decl('legislature_name') || 'National Assembly')) +
       row('Population', nation.population != null ? fmtPop(nation.population) : '') +
       row('GDP', nation.gdp != null ? ((eco.currency || '$') + fmtGdp(nation.gdp)) : '');
@@ -1585,6 +1590,16 @@
     } catch (e) { /* assembly hides on failure */ }
     var govt = null;
     try { const { data } = await supabase.from('governments').select('type, formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle(); govt = data; } catch (e) {}
+    // The Head of Government is a person — the formateur party's leader — for the snapshot's HoG row.
+    var hogName = '';
+    try {
+      var fpid = govt && govt.formateur_party_id;
+      if (fpid) {
+        const { data } = await supabase.from('politicians').select('first_name, last_name')
+          .eq('party_id', fpid).eq('status', 'Party Leader').order('created_at').limit(1).maybeSingle();
+        if (data) hogName = ((data.first_name || '') + ' ' + (data.last_name || '')).trim();
+      }
+    } catch (e) { /* no HoG name → the row is hidden */ }
     var slots = [];
     try { const { data } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed, grp, sort_order').order('sort_order'); slots = data || []; } catch (e) {}
 
@@ -1593,7 +1608,7 @@
     function decl(slug) { var v = slotBySlug[slug] ? declaredValue(slotBySlug[slug], vals) : ''; return (v && v !== '—') ? v : ''; }
 
     renderStatCards(party, myLeader);
-    renderSnapshotAndMap(nation, parties, govt, decl, party.nation_id);
+    renderSnapshotAndMap(nation, parties, govt, decl, party.nation_id, hogName);
     renderElections(nation, curTick);
     renderAssembly(parties, nation, govt);
     var formal = decl('formal_state_name');
