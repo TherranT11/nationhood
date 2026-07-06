@@ -1341,7 +1341,8 @@
     var W = Math.max(200, Math.round(svg.clientWidth || 320)), H = 150;
     var x0 = 40, x1 = W - 14, y0 = 10, y1 = H - 26;                 // plot rect (gutters for labels)
     var dMin = Math.min.apply(null, d), dMax = Math.max.apply(null, d);
-    var yMin = Math.max(0, Math.floor((dMin - 3) / 5) * 5), yMax = Math.max(yMin + 5, Math.ceil((dMax + 2) / 5) * 5);
+    // Y bounds snap to 5% steps with a little headroom, clamped to the real [0,100] popularity range.
+    var yMin = Math.max(0, Math.floor((dMin - 3) / 5) * 5), yMax = Math.min(100, Math.max(yMin + 5, Math.ceil((dMax + 2) / 5) * 5));
     var xi = function(i){ return n === 1 ? (x0 + x1) / 2 : x0 + (i / (n - 1)) * (x1 - x0); };
     var yv = function(v){ return y1 - ((v - yMin) / (yMax - yMin)) * (y1 - y0); };
     var g = '';
@@ -1481,7 +1482,7 @@
       setActions(party.actions_remaining != null ? party.actions_remaining : 12);
       feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };
       myPartyId = party.id;  // used to exclude self from the attack target list
-      loadApproval(party, curTick);   // Party Approval card — non-blocking (schema/147 trend + factors)
+      loadApproval(party, curTick).catch(function(){});   // Party Approval card — non-blocking (schema/147 trend + factors)
 
       // Prime Minister actions appear only for the party that holds the premiership.
       try {

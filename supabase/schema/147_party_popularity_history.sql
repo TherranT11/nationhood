@@ -5,13 +5,14 @@
 -- Depends on: 05 (game_state clock), 20 (parties). Run after 20.
 
 -- One row per party per tick. PK (party_id, tick) makes the snapshot idempotent, so a manual
--- advance_tick re-run over the same tick updates in place rather than duplicating or erroring.
--- Rows cascade away with their party.
+-- advance_tick re-run over the same tick updates in place rather than duplicating or erroring,
+-- and it's the index the dashboard's per-party, tick-ordered read rides on. Rows cascade away
+-- with their party. No timestamp column: tick IS the time axis, so a wall-clock stamp would be
+-- an orphaned write nothing reads.
 create table if not exists public.party_popularity_history (
   party_id   uuid    not null references public.parties (id) on delete cascade,
   tick       integer not null,
   popularity numeric not null,
-  created_at timestamptz not null default now(),
   primary key (party_id, tick)
 );
 
@@ -32,8 +33,7 @@ set search_path = public
 as $$
   insert into public.party_popularity_history (party_id, tick, popularity)
   select id, p_tick, round(coalesce(popularity, 0)::numeric, 2) from public.parties
-  on conflict (party_id, tick) do update
-    set popularity = excluded.popularity, created_at = now();
+  on conflict (party_id, tick) do update set popularity = excluded.popularity;
 $$;
 revoke all on function public._snapshot_party_popularity(integer) from public, anon, authenticated;
 
