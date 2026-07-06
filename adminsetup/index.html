@@ -192,15 +192,9 @@
   .poltab .xb:hover{color:var(--red,#C42B2B);border-color:var(--red,#C42B2B)}
   .poltab .startpill{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--amber,#E0820E);background:color-mix(in srgb,var(--amber,#E0820E) 14%,var(--surface));border-radius:20px;padding:4px 8px;flex:none}
   .poltab .sublab{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin:12px 0 7px}
-  .poltab .archrow{display:flex;flex-wrap:wrap;gap:6px}
-  .poltab .achip{display:flex;align-items:center;gap:6px;padding:6px 9px;border:1.5px solid var(--line);border-radius:18px;cursor:pointer;font-size:11px;font-weight:600;background:var(--surface);user-select:none}
-  .poltab .achip .ad{width:7px;height:7px;border-radius:50%}
-  .poltab .archrow.tag .achip.on{border-color:var(--indigo,#5546E8);background:color-mix(in srgb,var(--indigo,#5546E8) 12%,var(--surface));color:var(--indigo,#5546E8)}
   .poltab .tagadd{font-family:inherit;font-size:11px;font-weight:700;padding:6px 11px;border:1.5px dashed var(--line2,#D9D6D0);border-radius:18px;background:var(--surface);color:var(--soft);cursor:pointer}
   .poltab .tagadd:hover{border-color:var(--indigo,#5546E8);color:var(--indigo,#5546E8)}
   .subhd .tagadd{padding:3px 9px;font-size:10px}
-  .poltab .pvtagrow{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 2px}
-  .poltab .pvltag{font-size:9.5px;font-weight:700;letter-spacing:.02em;padding:3px 8px;border-radius:14px;background:var(--indigo-soft,#ECE9FD);color:var(--indigo,#5546E8)}
   .poltab .sublab .hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--soft)}
   .poltab .effrow{display:grid;grid-template-columns:1.6fr .9fr .8fr 30px;gap:7px;margin-bottom:8px;align-items:center}
   @media(max-width:560px){.poltab .effrow{grid-template-columns:1fr 1fr}}
@@ -211,10 +205,6 @@
   .poltab .addopt:hover{border-color:var(--ink)}
   .poltab .bindefault{display:flex;align-items:center;gap:9px;margin-bottom:13px;font-size:12.5px;color:var(--muted)}
   .poltab .bindefault select{width:auto;min-width:140px}
-  .poltab .scalerow{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:7px;padding:8px 11px;background:var(--field,#FCFBF9);border:1px solid var(--line);border-radius:9px}
-  .poltab .scalerow .lbl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
-  .poltab .scalerow .es{width:auto;min-width:172px;padding:7px 9px;font-size:12.5px}
-  .poltab .scalerow .worked{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);flex:1;min-width:210px}
   /* Trade Policy tab */
   .tpcard{border:1px solid var(--line);border-radius:13px;padding:14px 16px;margin-bottom:11px;background:var(--surface)}
   .tphd{display:flex;align-items:center;gap:10px;margin-bottom:8px}
@@ -229,11 +219,6 @@
   .tp-effrow{display:grid;grid-template-columns:1.4fr .6fr 96px 30px;gap:7px;align-items:center;margin-bottom:6px}
   .tp-effrow select,.tp-effrow input{padding:7px 8px;font-size:12px}
   @media(max-width:560px){.tp-effrow{grid-template-columns:1fr 1fr}.tp-effrow .tp-escph{display:none}}
-  /* Plain-language echoes (doorway editor + preview). */
-  .poltab .echo{display:block;font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft);margin-top:8px;line-height:1.5}
-  .poltab .echo b{color:var(--ink)}
-  .poltab .echo .up{color:var(--green,#16915a);font-weight:700}
-  .poltab .echo .dn{color:var(--red,#C42B2B);font-weight:700}
   .poltab .rail{position:sticky;top:20px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
   .poltab .rail .rh{background:var(--field,#FCFBF9);border-bottom:1px solid var(--line);padding:12px 16px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
   .poltab .rail .rb{padding:14px 16px;max-height:78vh;overflow:auto}
@@ -245,15 +230,6 @@
   .poltab .pveff{margin-top:9px;display:flex;flex-direction:column;gap:4px}
   .poltab .pveff .e{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted)}
   .poltab .pveff .e b{color:var(--ink)} .poltab .pveff .e.pos b{color:var(--green,#16915a)} .poltab .pveff .e.neg b{color:var(--red,#C42B2B)}
-  .poltab .pveff .cad{color:var(--soft)}
-  /* Doorway transition editor */
-  .door{border:1px dashed var(--line,#E7E5E0);border-radius:9px;padding:9px 11px;margin-top:8px}
-  .doorlbl{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft,#8d8d95);margin-bottom:7px}
-  .doorlbl .up{color:var(--green,#16915a)} .doorlbl .dn{color:var(--red,#C42B2B)} .doorlbl b{color:var(--muted,#5b5b63)}
-  .dchips{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-  .dchip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line,#E7E5E0);border-radius:8px;padding:3px 4px 3px 6px}
-  .door .echo{display:block;font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft,#8d8d95);margin-top:8px;line-height:1.5}
-  .door .echo b{color:var(--ink)} .door .echo .up{color:var(--green,#16915a);font-weight:700} .door .echo .dn{color:var(--red,#C42B2B);font-weight:700}
   .poltab .pvnone{font-size:11px;color:var(--soft);font-style:italic;margin-top:6px}
   .poltab .plcard{border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px}
   .poltab .plcard:last-child{margin-bottom:0}
@@ -678,6 +654,11 @@
           <div><label for="f-ceil-energy">Energy Ceiling <span class="hint">max production rate</span></label><input id="f-ceil-energy" type="number" min="0" step="any" value="10"></div>
           <div><label for="f-ceil-food">Food Ceiling <span class="hint">max production rate</span></label><input id="f-ceil-food" type="number" min="0" step="any" value="10"></div>
           <div><label for="f-ceil-minerals">Minerals Ceiling <span class="hint">max production rate</span></label><input id="f-ceil-minerals" type="number" min="0" step="any" value="10"></div>
+        </div>
+        <div class="declsec">
+          <h3 class="declsec__h">Ministry Stats</h3>
+          <p class="declsec__sub">The government dashboard stats (the same set policy effects target). Leave a field blank to keep it unset — the Government page shows “--” until a value is entered.</p>
+          <div id="ministryFields" class="grid"></div>
         </div>
         <div class="declsec">
           <h3 class="declsec__h">National Identity &amp; Declarations</h3>
@@ -1358,6 +1339,33 @@
       var i = byName.findIndex(function (x) { return x.id === (n && n.id); });
       return HM.paletteAt(i < 0 ? 0 : i);
     }
+    // Ministry stats (schema/150): the Government-dashboard stat set (POLICY_STATS, one source
+    // in policies.js). Rendered once as a labelled number grid; stored on the nation as a
+    // { "<Stat>": <number> } jsonb map. A blank field is omitted, so the map only holds the
+    // values an admin has actually entered (an absent stat stays "--" on the Government page).
+    function renderMinistryFields() {
+      document.getElementById('ministryFields').innerHTML = POLICY_STATS.map(function (s) {
+        return '<div><label>' + esc(s) + '</label><input type="number" step="any" data-mstat="' + esc(s) + '"></div>';
+      }).join('');
+    }
+    function fillMinistryFields(n) {
+      var m = (n && n.ministry_stats) || {};
+      document.querySelectorAll('#ministryFields input[data-mstat]').forEach(function (inp) {
+        var v = m[inp.dataset.mstat]; inp.value = (v != null && v !== '') ? v : '';
+      });
+    }
+    function resetMinistryFields() {
+      document.querySelectorAll('#ministryFields input[data-mstat]').forEach(function (inp) { inp.value = ''; });
+    }
+    function collectMinistryStats() {
+      var m = {};
+      document.querySelectorAll('#ministryFields input[data-mstat]').forEach(function (inp) {
+        if (inp.value !== '') m[inp.dataset.mstat] = Number(inp.value);
+      });
+      return m;
+    }
+    renderMinistryFields();
+
     function fillForm(n) {
       var s = n.stats || {}, e = n.economy || {}, pr = n.production || {};
       setVal('f-name', n.name); setVal('f-desc', n.description); setVal('f-analog', n.analogous);
@@ -1383,6 +1391,7 @@
       setVal('f-ceil-minerals', pc.minerals != null ? pc.minerals : 10);
       fillDeclFields(n);
       fillPolFields(n);
+      fillMinistryFields(n);
     }
     function startEdit(n) {
       editing = n;
@@ -1399,6 +1408,7 @@
       document.getElementById('addForm').reset();
       resetDeclFields();
       resetPolFields();
+      resetMinistryFields();
       loadRelFields(null);
       document.getElementById('f-regime').value = '17';
       document.getElementById('f-ceiling').value = '';
@@ -1713,7 +1723,8 @@
         // clamps energy/food/minerals output to these (schema/113 _apply_production_ceilings).
         production_ceiling: { energy: numCeil('f-ceil-energy'), food: numCeil('f-ceil-food'), minerals: numCeil('f-ceil-minerals') },
         declarations: collectDeclarations(),
-        policies: collectNationPolicies()
+        policies: collectNationPolicies(),
+        ministry_stats: collectMinistryStats()
       };
 
       btn.disabled = true;

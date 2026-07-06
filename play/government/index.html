@@ -282,22 +282,26 @@
     { name: 'Finance', stats: ['Tax Burden', 'Debt', 'Interest Rates'] },
     { name: 'Interior', stats: ['Crime', 'Immigration', 'Extremism'] },
     { name: 'Economy', stats: ['Unemployment', 'Poverty', 'Wages'] },
-    { name: 'Labor, Health and Social Affairs', stats: ['Prosperity', 'Press Freedoms', 'Social Integration'] },
+    { name: 'Labor, Health and Social Affairs', stats: ['Prosperity', 'Press Freedom', 'Social Integration'] },
     { name: 'Defense', stats: ['Armed Forces Funding', 'Military Research', 'Cybersecurity'] },
     { name: 'Environment', stats: ['CO₂ Emissions', 'Global Warming', 'Energy Availability'] }
   ];
   // Budget Balance is the one ministry stat with its own screen (/play/budget/) — a
   // slug→href map keeps that special-case out of the generic cell loop.
   var STAT_LINKS = { 'Budget Balance': '/play/budget/' };
-  function ministryStats(){
+  // Ministry stat values come from the nation's admin-authored ministry_stats map (schema/150,
+  // keyed by the same stat names) — the ONE source. A stat with no entered value shows "--".
+  function ministryStats(nation){
+    var MS = (nation && nation.ministry_stats) || {};
     return STAT_GROUPS.map(function (g) {
       var cells = g.stats.map(function (s) {
+        var val = MS[s] != null ? esc(String(MS[s])) : '--';
         var href = STAT_LINKS[s];
         if (href) {
           return '<a class="mstat mstat--link" href="' + href + '"><div class="mstat__k">' + esc(s) +
-            '<span class="mstat__chev">&rsaquo;</span></div><div class="mstat__v">--</div></a>';
+            '<span class="mstat__chev">&rsaquo;</span></div><div class="mstat__v">' + val + '</div></a>';
         }
-        return '<div class="mstat"><div class="mstat__k">' + esc(s) + '</div><div class="mstat__v">--</div></div>';
+        return '<div class="mstat"><div class="mstat__k">' + esc(s) + '</div><div class="mstat__v">' + val + '</div></div>';
       }).join('');
       return '<section class="mgroup"><button class="mgroup__hd" type="button"><span>' + esc(g.name) + '</span>' +
         '<svg class="mgroup__chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button>' +
@@ -320,7 +324,7 @@
           ? esc(nation.name || 'This nation') + ' is a one-party state — power isn’t shared through a coalition, so there’s no Government Confidence to track here.'
           : 'A government is seated when the nation holds its first general election.') +
         '</span></div></div>' +
-        ministryStats() + stateOfNation(nation);   // stats + economy/identity/cities still apply without a government
+        ministryStats(nation) + stateOfNation(nation);   // stats + economy/identity/cities still apply without a government
       wireStatGroups(box);
       return;
     }
@@ -367,7 +371,7 @@
       '</div>' +
       // 3 — State-of-the-Nation ministry stats (placeholder values until the backend lands),
       // sitting above the folded-in economy / identity / cities.
-      ministryStats() +
+      ministryStats(nation) +
       stateOfNation(nation) +
       // 4 — the collapsible Administration History (past + current governments and their events).
       '<div id="adminHistory"></div>';
@@ -426,7 +430,9 @@
     try {
       const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations, population, gdp, production, on_hand').eq('id', party.nation_id).single();
+      var nRes = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations, population, gdp, production, on_hand, ministry_stats').eq('id', party.nation_id).single();
+      if (nRes.error) nRes = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations, population, gdp, production, on_hand').eq('id', party.nation_id).single();   // ministry_stats not migrated yet
+      const nation = nRes.data;
       MY_PARTY_ID = party.id; NATION_ID = party.nation_id; NATION = nation || {};
       // The declared Head of Government title (e.g. "Prime Minister"), via the
       // shared slot loader + declaredValue — one source (see util.js). Keeps the
