@@ -14,8 +14,22 @@ export const POLICY_STATS = [
   'Crime', 'Immigration', 'Extremism', 'Unemployment', 'Poverty', 'Wages',
   'Prosperity', 'Press Freedom', 'Social Integration', 'Armed Forces Funding',
   'Military Research', 'Cybersecurity', 'Energy Availability', 'CO₂ Emissions', 'Global Warming',
-  'Rule of Law', 'Standard of Living', 'Housing Affordability'
+  'Rule of Law', 'Standard of Living', 'Housing Affordability',
+  'Pension Quality', 'Equity Between Generations', 'Demographic Pressure', 'Birth Rate',
+  'Education', 'Health', 'Innovation'
 ];
+
+// The valid input range for a ministry stat, where one is defined — used to bound the admin
+// Edit-Nation inputs. Stats not listed here are left open. ONE source for the ranges.
+export const STAT_RANGES = {
+  'Pension Quality': { min: 1, max: 100 },
+  'Equity Between Generations': { min: 1, max: 100 },
+  'Demographic Pressure': { min: 1, max: 100 },
+  'Birth Rate': { min: -50, max: 50 },
+  'Education': { min: 1, max: 100 },
+  'Health': { min: 1, max: 100 },
+  'Innovation': { min: 1, max: 100 }
+};
 
 // The admin-typed ministry stats (the Edit Nation "Ministry Stats" grid). Derived from
 // POLICY_STATS — one source — minus the stats that are COMPUTED from policy effects rather than

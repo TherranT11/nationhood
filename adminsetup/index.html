@@ -608,14 +608,8 @@
           <div class="full"><label style="display:flex;align-items:center;gap:9px;cursor:pointer"><input type="checkbox" id="f-dormant" style="width:auto"> <span>Dormant — fully authored but hidden &amp; inert until activated (e.g. a breakaway state a crisis spawns on its terminal stage)</span></label></div>
           <div><label for="f-pop">Starting Population</label><input id="f-pop" type="number" min="0" step="0.1" placeholder="in millions (e.g. 24.5)"></div>
           <div><label for="f-gdp">Starting GDP</label><input id="f-gdp" type="number" min="0" step="1" placeholder="in billions"></div>
-          <div><label for="f-prosperity">Starting Prosperity</label><input id="f-prosperity" type="number" step="1"></div>
-          <div><label for="f-welfare">Starting Welfare</label><input id="f-welfare" type="number" step="1"></div>
-          <div><label for="f-growth">Starting Growth</label><input id="f-growth" type="number" step="1"></div>
-          <div><label for="f-image">Starting Global Image</label><input id="f-image" type="number" step="1"></div>
-          <div><label for="f-order">Starting Order</label><input id="f-order" type="number" step="1"></div>
-          <div><label for="f-unemployment">Starting Unemployment</label><input id="f-unemployment" type="number" step="0.1"></div>
-          <div><label for="f-inflation">Starting Inflation</label><input id="f-inflation" type="number" step="0.1"></div>
-          <div><label for="f-tax">Base Tax Burden <span class="hint">tax policies add on top</span></label><input id="f-tax" type="number" step="0.1"></div>
+          <!-- Prosperity / Growth / Order / Unemployment / Tax Burden are set once in the Ministry Stats
+               grid below (they fed both places before). Welfare, Global Image and Inflation are retired. -->
           <div><label for="f-debt">Starting Debt</label><input id="f-debt" type="number" step="0.1"></div>
           <div><label for="f-regime">Regime</label><select id="f-regime"></select></div>
           <div><label for="f-ceiling">Max Party Ceiling <span class="hint">the regime's cap on any party's reach %</span></label><input id="f-ceiling" type="number" min="0" max="100" step="1" placeholder="50"></div>
@@ -1165,7 +1159,7 @@
     import { regimeLabel, statName } from '/ladders.js';
     import { SIZES, CATEGORIES, CATEGORY_BONUS, corpMoney } from '/corporations.js';
     import { ARCHETYPES } from '/archetypes.js';
-    import { policyOptions, policyDefaultIdx, isMoneyTarget, POLICY_STATS, MINISTRY_STATS } from '/policies.js';
+    import { policyOptions, policyDefaultIdx, isMoneyTarget, POLICY_STATS, MINISTRY_STATS, STAT_RANGES } from '/policies.js';
     import { MINISTRIES } from '/ministries.js';
     import { condText as objCondText, rewardText as objRewardText } from '/objectives.js';
 
@@ -1313,15 +1307,33 @@
     // in policies.js). Rendered once as a labelled number grid; stored on the nation as a
     // { "<Stat>": <number> } jsonb map. A blank field is omitted, so the map only holds the
     // values an admin has actually entered (an absent stat stays "--" on the Government page).
+    // The five ministry stats that were consolidated out of the "Starting X" fields — each maps to the
+    // legacy stats/economy field the backend still reads. ONE source for both directions: the grid's
+    // migration fallback (below) reads from here, and the nation save feeds these fields from here.
+    var CONSOLIDATED_STATS = [
+      { m: 'Prosperity',   col: 'stats',   key: 'prosperity' },
+      { m: 'Growth',       col: 'stats',   key: 'growth' },
+      { m: 'Rule of Law',  col: 'stats',   key: 'order' },
+      { m: 'Unemployment', col: 'economy', key: 'unemployment' },
+      { m: 'Tax Burden',   col: 'economy', key: 'tax' }
+    ];
     function renderMinistryFields() {
       document.getElementById('ministryFields').innerHTML = MINISTRY_STATS.map(function (s) {
-        return '<div><label>' + esc(s) + '</label><input type="number" step="any" data-mstat="' + esc(s) + '"></div>';
+        var r = STAT_RANGES[s], rng = r ? (' min="' + r.min + '" max="' + r.max + '"') : '';
+        var hint = r ? ' <span class="hint">' + r.min + '–' + r.max + '</span>' : '';
+        return '<div><label>' + esc(s) + hint + '</label><input type="number" step="any"' + rng + ' data-mstat="' + esc(s) + '"></div>';
       }).join('');
     }
     function fillMinistryFields(n) {
-      var m = (n && n.ministry_stats) || {};
+      var m = (n && n.ministry_stats) || {}, src = { stats: (n && n.stats) || {}, economy: (n && n.economy) || {} };
+      // Migration fallback: for a consolidated stat, show the legacy value when ministry_stats doesn't
+      // carry it yet, so an existing nation's value survives its first edit.
+      var legacy = {};
+      CONSOLIDATED_STATS.forEach(function (c) { legacy[c.m] = src[c.col][c.key]; });
       document.querySelectorAll('#ministryFields input[data-mstat]').forEach(function (inp) {
-        var v = m[inp.dataset.mstat]; inp.value = (v != null && v !== '') ? v : '';
+        var k = inp.dataset.mstat, v = m[k];
+        if (v == null || v === '') v = (legacy[k] != null ? legacy[k] : '');
+        inp.value = v;
       });
     }
     function resetMinistryFields() {
@@ -1337,17 +1349,15 @@
     renderMinistryFields();
 
     function fillForm(n) {
-      var s = n.stats || {}, e = n.economy || {}, pr = n.production || {};
+      var e = n.economy || {}, pr = n.production || {};
       setVal('f-name', n.name); setVal('f-desc', n.description); setVal('f-analog', n.analogous);
       setVal('f-ruling', n.ruling_party);
       document.getElementById('f-color').value = natMapColor(n);
       setFlag(n.flag || '');
       document.getElementById('f-dormant').checked = !!n.dormant;
       setVal('f-pop', n.population); setVal('f-gdp', n.gdp);
-      setVal('f-prosperity', s.prosperity); setVal('f-welfare', s.welfare); setVal('f-growth', s.growth);
-      setVal('f-image', s.image); setVal('f-order', s.order);
-      setVal('f-unemployment', e.unemployment); setVal('f-inflation', e.inflation);
-      setVal('f-tax', e.tax);
+      // Prosperity/Growth/Order/Unemployment/Tax Burden are shown in the Ministry Stats grid now
+      // (fillMinistryFields, with a fallback to these legacy values). Welfare/Image/Inflation retired.
       setVal('f-debt', e.debt);
       setVal('f-ceiling', e.party_ceiling);
       document.getElementById('f-regime').value = (typeof e.regime === 'number') ? String(e.regime) : '17';
@@ -1649,9 +1659,31 @@
       if (!name) { addNote.textContent = 'Enter a nation name.'; addNote.className = 'note error'; return; }
 
       var elecfreq = num('f-elecfreq');
+      var ms = collectMinistryStats();
+      // The five consolidated stats are entered in the Ministry Stats grid; feed them into the legacy
+      // stats/economy fields the backend reads (CONSOLIDATED_STATS is the one mapping; blank in the
+      // grid → keep the nation's existing value).
+      function _mergeCol(col) {
+        var base = Object.assign({}, (editing && editing[col]) || {});   // preserves budget, currency, inflation_pending, …
+        CONSOLIDATED_STATS.forEach(function (c) { if (c.col === col && ms[c.m] != null) base[c.key] = ms[c.m]; });
+        return base;
+      }
+      function _mergeStats() {
+        var base = _mergeCol('stats');
+        if (base.welfare == null) base.welfare = 10;   // retired field — neutral default on add, preserved on edit
+        if (base.image == null) base.image = 10;
+        return base;
+      }
+      function _mergeEconomy() {
+        var base = _mergeCol('economy');
+        base.regime = parseInt(document.getElementById('f-regime').value, 10);
+        base.debt = num('f-debt', true);
+        base.party_ceiling = document.getElementById('f-ceiling').value.trim() === '' ? 50 : Math.max(0, Math.min(100, num('f-ceiling')));
+        base.currency = (editing && editing.economy && editing.economy.currency) || '$';
+        if (base.inflation == null) base.inflation = 10;   // retired field — neutral default on add
+        return base;
+      }
       // Fields the form captures. Population may be fractional millions (e.g. 24.5).
-      // On edit, currency is preserved from the existing row (the form has no
-      // currency field); on add it defaults to '$'.
       var data = {
         name: name,
         description: document.getElementById('f-desc').value.trim() || null,
@@ -1663,22 +1695,14 @@
         population: num('f-pop', true), gdp: num('f-gdp'),
         legislature_seats: num('f-seats'),
         election_frequency_months: elecfreq > 0 ? elecfreq : 60,
-        stats: {
-          prosperity: num('f-prosperity'), welfare: num('f-welfare'), growth: num('f-growth'),
-          image: num('f-image'), order: num('f-order')
-        },
-        economy: {
-          regime: parseInt(document.getElementById('f-regime').value, 10),
-          unemployment: num('f-unemployment', true), inflation: num('f-inflation', true),
-          tax: num('f-tax', true),
-          // Budget Balance is computed from policies, not admin-set, so there's no "Starting
-          // Budget" input — but economy.budget is still a live backend field (fiscal engine /
-          // crises), so preserve whatever the nation already has rather than wiping it.
-          budget: (editing && editing.economy) ? editing.economy.budget : undefined,
-          debt: num('f-debt', true),
-          party_ceiling: document.getElementById('f-ceiling').value.trim() === '' ? 50 : Math.max(0, Math.min(100, num('f-ceiling'))),
-          currency: (editing && editing.economy && editing.economy.currency) || '$'
-        },
+        // Prosperity / Growth / Order / Unemployment / Tax Burden are entered ONCE in the Ministry
+        // Stats grid and fed through to the live stats/economy fields here (the mechanics still read
+        // these). Blank in the grid → keep whatever the nation already has (no data loss on edit).
+        // Welfare / Global Image / Inflation were retired from the form; they stay live backend
+        // fields (malaise, corporations, the tick), so preserve them on edit and seed a neutral 10 on
+        // add so a new nation isn't born into malaise / mispriced.
+        stats: _mergeStats(),
+        economy: _mergeEconomy(),
         production: {
           energy: num('f-energy', true), food: num('f-food', true), minerals: num('f-minerals', true),
           goods: num('f-goods', true), services: num('f-services', true), diplomacy: num('f-diplomacy', true),
@@ -1696,7 +1720,7 @@
         production_ceiling: { energy: numCeil('f-ceil-energy'), food: numCeil('f-ceil-food'), minerals: numCeil('f-ceil-minerals') },
         declarations: collectDeclarations(),
         policies: collectNationPolicies(),
-        ministry_stats: collectMinistryStats()
+        ministry_stats: ms
       };
 
       // Write the row, tolerating a DB that's behind on migrations: PostgREST rejects an
