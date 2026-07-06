@@ -242,38 +242,6 @@
   .poltab .plcard .ed{background:var(--indigo-soft,#ECE9FD);color:var(--indigo);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent)}
   .poltab .plcard .rm{background:color-mix(in srgb,var(--red,#C42B2B) 12%,var(--surface));color:var(--red,#C42B2B);border:1px solid color-mix(in srgb,var(--red,#C42B2B) 30%,transparent)}
 
-  /* Convictions tab — reuses the .poltab shell (.card/.f/.seg/.xb/.rail/.plcard/.subhd/.pvname/.pvnone) */
-  .poltab .grid3{display:grid;grid-template-columns:1.4fr .8fr .8fr;gap:12px}
-  @media(max-width:560px){.poltab .grid3{grid-template-columns:1fr}}
-  .poltab .costwrap{display:flex;align-items:center;gap:8px}
-  .poltab .costwrap .dia{font-size:16px;color:var(--indigo)}
-  .poltab .ceff{display:grid;grid-template-columns:1.6fr .8fr 30px;gap:8px;align-items:center;margin-bottom:8px}
-  .poltab .ceff.law{grid-template-columns:1.1fr 1.3fr .7fr 30px}
-  .poltab .ceff select,.poltab .ceff input{padding:8px 9px;font-size:12.5px}
-  .poltab .add{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:var(--surface);border:1px dashed var(--line2);border-radius:8px;padding:8px 12px;cursor:pointer}
-  .poltab .add:hover{border-color:var(--ink)}
-  .poltab .addrow{display:flex;gap:8px;margin-top:2px}
-  .poltab .trig{border:1px solid var(--line);border-left:3px solid var(--indigo);border-radius:11px;padding:13px;margin-bottom:10px;background:var(--field,#FCFBF9)}
-  .poltab .trig .th{display:flex;align-items:center;gap:8px;margin-bottom:11px}
-  .poltab .trig .th .xb{margin-left:auto}
-  .poltab .clause{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin:2px 0 7px}
-  .poltab .whenrow{display:grid;grid-template-columns:1.4fr 1fr .7fr;gap:7px;margin-bottom:10px}
-  .poltab .thenrow{display:grid;grid-template-columns:1.4fr .8fr;gap:7px;align-items:center;margin-bottom:9px}
-  .poltab .whenrow select,.poltab .whenrow input,.poltab .thenrow select,.poltab .thenrow input{padding:8px 9px;font-size:12.5px}
-  .poltab .cond{margin-top:10px}
-  .poltab .cond select{padding:8px 9px;font-size:12.5px}
-  .poltab .mirror{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
-  .poltab .mirror input{width:17px;height:17px;accent-color:var(--indigo);cursor:pointer}
-  .poltab .pvcard{border:1px solid var(--line);border-top:3px solid var(--acc,#5546E8);border-radius:13px;padding:15px 16px}
-  .poltab .pvtags{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}
-  .poltab .pvtag{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:4px 8px;border-radius:20px;background:var(--chip);color:var(--muted)}
-  .poltab .pvtag.arch{color:#fff}
-  .poltab .pvdesc{color:var(--muted);font-size:12.5px;margin-top:5px;line-height:1.45}
-  .poltab .pvsec{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin:13px 0 6px}
-  .poltab .pvline{font-size:12px;margin-bottom:5px;line-height:1.4}
-  .poltab .pvline b.g{color:var(--green,#16915a);font-weight:800} .poltab .pvline b.r{color:var(--red,#C42B2B);font-weight:800}
-  .poltab .pvline .mute{color:var(--soft)}
-
   /* Crises tab — the Crisis Builder. Scoped under .cbuild so its generic class
      names (.card/.f/.seg/.effrow/.add/.clause/.rail…) don't collide with the
      other tabs, same approach as .poltab above. Placed after .poltab so it wins
@@ -582,7 +550,6 @@
         <button class="vtab" data-tab="policies" type="button">Policies</button>
         <button class="vtab" data-tab="trade-policy" type="button">Trade Policy</button>
         <button class="vtab" data-tab="pacts" type="button">Defence Pacts</button>
-        <button class="vtab" data-tab="convictions" type="button">Convictions</button>
         <button class="vtab" data-tab="inactivity" type="button">Inactivity</button>
         <button class="vtab" data-tab="crises" type="button">Crises</button>
         <button class="vtab" data-tab="objectives" type="button">Objectives</button>
@@ -603,6 +570,16 @@
         <button class="btn btn-solid" id="advanceBtn" type="button">Advance Tick</button>
       </div>
       <div class="note" id="advanceNote" role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Legislation</h2>
+      <p class="sub" style="margin:0 0 12px">Base Influence cost to propose a bill — the bill goes to committee, and the cost scales with the number of policy rungs it moves: N × (base + N − 1).</p>
+      <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+        <div><div class="sub" style="margin:0 0 5px">Proposal base cost (Influence)</div><input id="billCost" type="number" min="0" step="1" style="width:130px"></div>
+        <button class="btn btn-solid" id="billCostSave" type="button">Save</button>
+      </div>
+      <div class="note" id="billCostNote" role="status" aria-live="polite"></div>
     </div>
 
     <div class="panel">
@@ -771,29 +748,10 @@
           </div>
         </div>
       </div>
-      <div class="tabpane" data-tab="convictions" hidden>
-        <div class="poltab">
-          <div class="panel">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-              <h2 style="margin:0">Convictions</h2>
-              <button class="btn btn-solid" id="convNew" type="button">+ New conviction</button>
-            </div>
-            <p class="sub" style="margin:8px 0 14px">A conviction attaches to an archetype at a Level and surfaces in that archetype's manifesto. <b>Effect when adopted</b> is a one-time bump; <b>Effect while active</b> is an ongoing trigger or a standing modifier held while the conviction is.</p>
-            <div id="convList"><p class="empty">Loading…</p></div>
-          </div>
-          <div class="panel" id="convEditorPanel" hidden>
-            <div class="polcols">
-              <div id="convEditor"></div>
-              <aside><div class="rail"><div class="rh">Preview · how it reads</div><div class="rb" id="convPrev"></div></div></aside>
-            </div>
-            <div class="note" id="convNote" role="status" aria-live="polite" style="margin-top:14px"></div>
-          </div>
-        </div>
-      </div>
       <div class="tabpane" data-tab="inactivity" hidden>
         <div class="poltab">
           <div class="panel"><h2>Party Inactivity</h2>
-            <p class="sub" style="margin:8px 0 14px">Wall-clock since each party's last action (any action, vote, conviction adoption, or proposal). Players are warned in-game at 6 days; the party goes <b>inactive at 7</b> (it sits out elections) and is <b>auto-deleted at 21</b> — the 8-hour tick removes it and its politicians and frees its seats. Any action revives it. You can also delete a party manually here at any time.</p>
+            <p class="sub" style="margin:8px 0 14px">Wall-clock since each party's last action (any action, vote, or proposal). Players are warned in-game at 6 days; the party goes <b>inactive at 7</b> (it sits out elections) and is <b>auto-deleted at 21</b> — the 8-hour tick removes it and its politicians and frees its seats. Any action revives it. You can also delete a party manually here at any time.</p>
             <div id="inactList"><p class="empty">Loading…</p></div>
           </div>
         </div>
@@ -943,18 +901,12 @@
 
           <div class="card">
             <div class="sec-h">Cost &amp; Timeframe</div>
-            <div class="flabel">Cost basis <span class="hint">— how each nation's price is worked out at enact</span></div>
-            <select id="i-costmodel">
-              <option value="flat">Flat amount ($B)</option>
-              <option value="production">× current production of the resource</option>
-              <option value="gdp">% of the nation's GDP</option>
-            </select>
-            <div class="two" style="margin-top:14px">
-              <div><div class="flabel" id="i-costlabel">Cost <span class="hint">($B)</span></div><input id="i-cost" type="number" step="any" value="120"></div>
-              <div><div class="flabel">Length <span class="hint">(months, min–max)</span></div>
-                <div class="two"><input id="i-minM" type="number" value="16"><input id="i-maxM" type="number" value="36"></div>
-              </div>
+            <div class="two">
+              <div><div class="flabel">Budget Balance cost <span class="hint">($B/yr while it runs)</span></div><input id="i-byear" type="number" step="any" value="5"></div>
+              <div><div class="flabel">Influence <span class="hint">(upfront to enact)</span></div><input id="i-influence" type="number" step="1" value="5"></div>
             </div>
+            <div class="flabel" style="margin-top:14px">Build-up length <span class="hint">(months, min–max — before the production increase lands)</span></div>
+            <div class="two"><input id="i-minM" type="number" value="16"><input id="i-maxM" type="number" value="36"></div>
           </div>
 
           <div class="card">
@@ -1214,7 +1166,6 @@
     import { SIZES, CATEGORIES, CATEGORY_BONUS, corpMoney } from '/corporations.js';
     import { ARCHETYPES } from '/archetypes.js';
     import { policyOptions, policyDefaultIdx, isMoneyTarget, POLICY_STATS, MINISTRY_STATS } from '/policies.js';
-    import { CONV_ROMAN, convRoman, adoptLines, activeLines, lawLines } from '/convictions.js';
     import { MINISTRIES } from '/ministries.js';
     import { condText as objCondText, rewardText as objRewardText } from '/objectives.js';
 
@@ -1251,6 +1202,24 @@
         document.getElementById('clockDate').textContent = tickToDate(t);
       } catch (e) { document.getElementById('clockDate').textContent = '—'; }
     }
+    // Legislation: the base Influence cost of proposing a bill (game-wide; scales by rungs client-side).
+    async function renderBillCost() {
+      try {
+        const { data } = await supabase.from('game_state').select('proposal_cost_base').maybeSingle();
+        document.getElementById('billCost').value = (data && data.proposal_cost_base != null) ? data.proposal_cost_base : 2;
+      } catch (e) { /* leave blank */ }
+    }
+    document.getElementById('billCostSave').addEventListener('click', async function () {
+      var btn = this, note = document.getElementById('billCostNote');
+      if (btn.disabled) return;
+      btn.disabled = true; note.textContent = 'Saving…'; note.className = 'note';
+      try {
+        const { data, error } = await supabase.rpc('set_proposal_cost_base', { p_cost: parseInt(document.getElementById('billCost').value, 10) || 0 });
+        if (error) throw error;
+        note.textContent = 'Saved — bills now cost ' + data.proposal_cost_base + ' Influence at the base.'; note.className = 'note ok';
+      } catch (e) { note.textContent = /(admin|permission|row-level)/i.test(e.message || '') ? 'Only the admin can do that.' : (e.message || 'Could not save.'); note.className = 'note error'; }
+      finally { btn.disabled = false; }
+    });
     document.getElementById('advanceBtn').addEventListener('click', async function () {
       var btn = this, note = document.getElementById('advanceNote');
       if (btn.disabled) return;             // single-fire: this writes (advances the clock)
@@ -1285,6 +1254,7 @@
           document.getElementById('who').textContent = 'Signed in as ' + session.user.email;
           show('admin');
           renderClock();
+          renderBillCost();
           await loadNations();
           await loadIdentityTags();
           loadDeclFields();
@@ -2020,7 +1990,6 @@
         if (tab === 'policies') loadPolicies();
         if (tab === 'trade-policy') loadTradePolicy();
         if (tab === 'pacts') loadPacts();
-        if (tab === 'convictions') loadConvictions();
         if (tab === 'inactivity') loadInactivity();
         if (tab === 'crises') loadCrises();
         if (tab === 'objectives') loadObjectives();
@@ -2507,7 +2476,7 @@
       }catch(e){ box.innerHTML = '<p class="empty">Couldn’t load inactivity: '+esc(e.message||e)+'</p>'; }
     }
     async function deleteInactiveParty(id, name){
-      if (!confirm('Delete the party “'+(name||id)+'”? This removes it entirely — politicians, convictions, events — and frees its seats. This cannot be undone.')) return;
+      if (!confirm('Delete the party “'+(name||id)+'”? This removes it entirely — politicians, events — and frees its seats. This cannot be undone.')) return;
       try{
         const { error } = await supabase.rpc('admin_delete_party', { p_party: id });
         if (error) throw error;
@@ -2515,21 +2484,15 @@
       }catch(e){ alert('Could not delete: '+(e.message||e)); }
     }
 
-    // ---- Live effect-target vocabulary (the CURRENT backend stats). Shared by the Convictions
-    // and World Events authoring tabs, which DO apply live. Policies now author against the
-    // separate ministry-stat set (POLICY_STATS, imported) ahead of the stat backend, so they
-    // no longer read POL_TGT. Keep POL_TGT here — the conviction/world-event editors depend on it.
+    // ---- Live effect-target vocabulary (the CURRENT backend stats). Used by the World Events
+    // authoring tab, which DOES apply live. Policies now author against the separate ministry-stat
+    // set (POLICY_STATS, imported) ahead of the stat backend, so they no longer read POL_TGT.
     var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Budget','Debt','Income','Regime'],
                     Government: ['Government Confidence','Party Popularity','Popularity Ceiling'],
                     Resource: ['Energy','Food','Minerals','Goods','Services','Diplomacy'] };
-    // Figures a conviction's DIRECTIONAL onLaw rule can WATCH (its axis) — what a live effect
-    // moves. Used by the conviction directional rules.
-    var AXIS_TGT =['Tax Burden %','Income','Budget','Debt','Unemployment %','Inflation %','Prosperity','Welfare','Growth','Order','Image','Regime'];
-    function axisSelect(cls, sel){ return '<select class="'+cls+'">'+AXIS_TGT.map(function(t){ return '<option'+(t===sel?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>'; }
-    // Identity tags — metadata describing what a law IS (not a popularity score). A
-    // policy option carries any of these; a conviction's "when a tagged law passes"
-    // effect keys off them. Loaded from public.identity_tags (the ONE source — an admin
-    // can add more from the policy/conviction UI), feeding the tag chips + the picker.
+    // Identity tags — metadata describing what a law IS (not a popularity score). A policy option
+    // carries any of these. Loaded from public.identity_tags (the ONE source — an admin can add
+    // more from the policy UI), feeding the tag chips + the picker.
     var IDENTITY_TAGS = [];
     async function loadIdentityTags(){
       try{
@@ -2869,228 +2832,6 @@
       box.innerHTML=html;
     }
     document.getElementById('polNew').onclick=function(){ openPolicy(blankPolicy(), null); };
-
-    // ---- Convictions (admin authoring; one JSONB definition per conviction, is_admin RLS) ----
-    // Stage 1: author + persist. Per-party adoption + the effects/trigger engine come later.
-    // Reuses POL_TGT (effect targets) and ARCHETYPES (one source); a conviction's
-    // archetype is stored as the NAME, matching parties.archetype.
-    function convArch(name){ return ARCHETYPES.filter(function(a){ return a.name===name; })[0] || ARCHETYPES[0]; }
-    function cvTrig(stat,dir,per,rt,rv,sym){ return { kind:'trigger', stat:stat, dir:dir, per:per, rt:rt, rv:rv, sym:sym }; }
-    function cvStanding(t,v){ return { kind:'standing', t:t, v:v }; }
-    function cvOnce(t,v){ return { t:t, v:v }; }
-    function cvLaw(tag,t,v){ return { tag:tag, t:t, v:v }; }
-    // Directional onLaw rule: react to the DIRECTION an effect target moves on enactment
-    // (axis), not a tag. dir = the favoured move ('down'=a cut, 'up'=a rise) → +v; opposite → −v.
-    // scaled = multiply by how far the figure moved (×|Δ|), else a fixed amount per direction.
-    function cvDir(axis,dir,t,v){ return { axis:axis, dir:dir, t:t, v:v, scaled:false }; }
-    function blankConviction(){ return { name:'New Conviction', archetype:'Conservative', level:1, cost:1, desc:'',
-      onAdopt:[cvOnce('Party Popularity',3)], whileActive:[cvTrig('Order','rise',1,'Party Popularity',2,true)], onLaw:[] }; }
-    function cvTgt(cls,sel){ var h='<select class="'+cls+'">'; Object.keys(POL_TGT).forEach(function(g){ h+='<optgroup label="'+esc(g)+'">'+POL_TGT[g].map(function(t){ return '<option'+(t===sel?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</optgroup>'; }); return h+'</select>'; }
-
-    var convCache=[], CV=null, convEditingId=null, convSaving=false;
-    function setConvNote(msg,kind){ var n=document.getElementById('convNote'); if(n){ n.textContent=msg||''; n.className='note'+(kind?' '+kind:''); } }
-
-    async function loadConvictions(){
-      var box=document.getElementById('convList');
-      try{
-        const { data, error } = await supabase.from('convictions').select('id, definition').order('created_at', { ascending: true });
-        if (error) throw error;
-        convCache = data || [];
-        renderConvList();
-      }catch(e){ box.innerHTML='<p class="empty">Could not load convictions.</p>'; }
-    }
-    function renderConvList(){
-      var box=document.getElementById('convList');
-      if (!convCache.length){ box.innerHTML='<p class="empty">No convictions yet. Click “New conviction” to create one.</p>'; return; }
-      box.innerHTML = convCache.map(function(row){
-        var d=row.definition||{}, a=convArch(d.archetype);
-        return '<div class="plcard"><div><div class="plcard__name">'+esc(d.name||'Untitled conviction')+'</div>'+
-          '<div class="plcard__meta">'+esc(a.name)+' · Level '+convRoman(d.level)+' · ◆ '+(d.cost!=null?d.cost:0)+'</div></div>'+
-          '<div class="plcard__btns"><button class="ed" data-id="'+row.id+'" type="button">Edit</button>'+
-          '<button class="rm" data-id="'+row.id+'" type="button">Remove</button></div></div>';
-      }).join('');
-      box.querySelectorAll('.ed').forEach(function(b){ b.onclick=function(){ var r=convCache.filter(function(x){ return x.id===b.dataset.id; })[0]; if(r) openConviction(JSON.parse(JSON.stringify(r.definition)), r.id); }; });
-      box.querySelectorAll('.rm').forEach(function(b){ b.onclick=function(){ removeConviction(b.dataset.id); }; });
-    }
-    function openConviction(def, id){
-      CV = Object.assign(blankConviction(), def || {});
-      CV.onAdopt = Array.isArray(CV.onAdopt) ? CV.onAdopt : [];
-      CV.whileActive = Array.isArray(CV.whileActive) ? CV.whileActive : [];
-      CV.onLaw = Array.isArray(CV.onLaw) ? CV.onLaw : [];
-      convEditingId = id || null;
-      document.getElementById('convEditorPanel').hidden = false;
-      setConvNote('');
-      renderConvEditor(); renderConvPrev();
-      document.getElementById('convEditorPanel').scrollIntoView({ behavior:'smooth', block:'start' });
-    }
-    async function saveConviction(){
-      if (convSaving) return; convSaving = true;                 // double-fire lock
-      try{
-        if (convEditingId){ const { error } = await supabase.from('convictions').update({ definition: CV }).eq('id', convEditingId); if (error) throw error; }
-        else { const { data, error } = await supabase.from('convictions').insert({ definition: CV }).select('id').single(); if (error) throw error; convEditingId = data.id; }
-        setConvNote('Saved “'+(CV.name||'conviction')+'”.', 'ok');
-        loadConvictions();
-      }catch(e){ setConvNote('Save failed: '+(e.message||e), 'error'); }
-      finally { convSaving = false; }
-    }
-    async function removeConviction(id){
-      if (!confirm('Delete this conviction?')) return;
-      try{
-        const { error } = await supabase.from('convictions').delete().eq('id', id);
-        if (error) throw error;
-        if (convEditingId===id){ convEditingId=null; document.getElementById('convEditorPanel').hidden=true; }
-        loadConvictions();
-      }catch(e){ alert('Could not remove: '+(e.message||e)); }
-    }
-
-    function renderConvEditor(){
-      var c=CV, box=document.getElementById('convEditor'); box.innerHTML='';
-      var idc=document.createElement('div'); idc.className='card';
-      idc.innerHTML=
-        '<div class="f"><label>Conviction name</label><input type="text" id="cvname" value="'+esc(c.name||'')+'"></div>'+
-        '<div class="f grid3">'+
-          '<div><label>Archetype</label><select id="cvarch">'+ARCHETYPES.map(function(a){ return '<option value="'+esc(a.name)+'"'+(a.name===c.archetype?' selected':'')+'>'+esc(a.name)+'</option>'; }).join('')+'</select></div>'+
-          '<div><label>Level</label><select id="cvlevel">'+[1,2,3,4,5].map(function(l){ return '<option value="'+l+'"'+(l===c.level?' selected':'')+'>Level '+CONV_ROMAN[l-1]+'</option>'; }).join('')+'</select></div>'+
-          '<div><label>Cost <span class="hint">conviction points</span></label><div class="costwrap"><span class="dia">◆</span><input type="number" id="cvcost" min="0" value="'+(c.cost!=null?c.cost:1)+'"></div></div>'+
-        '</div>'+
-        '<div class="f" style="margin-bottom:0"><label>Description</label><textarea id="cvdesc">'+esc(c.desc||'')+'</textarea></div>';
-      box.appendChild(idc);
-
-      var ac=document.createElement('div'); ac.className='card';
-      ac.innerHTML='<div class="subhd"><span>Effect when adopted <span class="hint" style="text-transform:none;letter-spacing:0">· one-time, on taking the conviction</span></span></div>';
-      c.onAdopt.forEach(function(e,j){
-        var row=document.createElement('div'); row.className='ceff';
-        row.innerHTML=cvTgt('at',e.t)+'<input type="number" class="av" step="any" value="'+(e.v!=null?e.v:0)+'"><button class="xb" type="button">×</button>';
-        row.querySelector('.at').onchange=function(ev){ e.t=ev.target.value; renderConvPrev(); };
-        row.querySelector('.av').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; renderConvPrev(); };
-        row.querySelector('.xb').onclick=function(){ c.onAdopt.splice(j,1); renderConvEditor(); renderConvPrev(); };
-        ac.appendChild(row);
-      });
-      var aAdd=document.createElement('button'); aAdd.className='add'; aAdd.type='button'; aAdd.textContent='+ effect';
-      aAdd.onclick=function(){ c.onAdopt.push(cvOnce('Party Popularity',3)); renderConvEditor(); renderConvPrev(); };
-      ac.appendChild(aAdd); box.appendChild(ac);
-
-      var wc=document.createElement('div'); wc.className='card';
-      wc.innerHTML='<div class="subhd"><span>Effect while active <span class="hint" style="text-transform:none;letter-spacing:0">· ongoing triggers while the conviction is held</span></span></div>';
-      c.whileActive.forEach(function(e,j){ wc.appendChild(cvBuildWhile(e,j)); });
-      var wrow=document.createElement('div'); wrow.className='addrow';
-      var t1=document.createElement('button'); t1.className='add'; t1.type='button'; t1.textContent='+ trigger';
-      t1.onclick=function(){ c.whileActive.push(cvTrig('Order','rise',1,'Party Popularity',2,true)); renderConvEditor(); renderConvPrev(); };
-      var t2=document.createElement('button'); t2.className='add'; t2.type='button'; t2.textContent='+ standing modifier';
-      t2.onclick=function(){ c.whileActive.push(cvStanding('Order',1)); renderConvEditor(); renderConvPrev(); };
-      wrow.appendChild(t1); wrow.appendChild(t2); wc.appendChild(wrow); box.appendChild(wc);
-
-      var lc=document.createElement('div'); lc.className='card';
-      lc.innerHTML='<div class="subhd"><span>Effect when a law passes <span class="hint" style="text-transform:none;letter-spacing:0">· a tag rule fires on a law with that identity tag; a directional rule fires by which way a figure moved (a cut vs a rise)</span></span><button type="button" class="tagadd">+ new tag</button></div>';
-      c.onLaw.forEach(function(e,j){
-        var wrap=document.createElement('div');
-        if (e.axis != null || (e.tag == null && e.dir != null)) {
-          // Directional rule: react to the DIRECTION an effect target moves on enactment.
-          wrap.innerHTML='<div class="ceff law"><span class="clause" style="align-self:center">When</span>'+axisSelect('lax',e.axis)+
-            '<select class="ldir"><option value="down"'+(e.dir!=='up'?' selected':'')+'>falls (a cut)</option><option value="up"'+(e.dir==='up'?' selected':'')+'>rises (a rise)</option></select>'+
-            cvTgt('lg',e.t)+'<input type="number" class="lv" step="any" value="'+(e.v!=null?e.v:0)+'"><button class="xb" type="button">×</button></div>'+
-            '<div class="mirror" style="margin:-2px 0 10px"><input type="checkbox" class="lsc" '+(e.scaled?'checked':'')+'><span>Scale by size of move (×how far the figure moved) — the opposite move applies the inverse automatically</span></div>';
-          wrap.querySelector('.lax').onchange=function(ev){ e.axis=ev.target.value; renderConvPrev(); };
-          wrap.querySelector('.ldir').onchange=function(ev){ e.dir=ev.target.value; renderConvPrev(); };
-          wrap.querySelector('.lg').onchange=function(ev){ e.t=ev.target.value; renderConvPrev(); };
-          wrap.querySelector('.lv').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; renderConvPrev(); };
-          wrap.querySelector('.lsc').onchange=function(ev){ e.scaled=ev.target.checked; renderConvPrev(); };
-          wrap.querySelector('.xb').onclick=function(){ c.onLaw.splice(j,1); renderConvEditor(); renderConvPrev(); };
-        } else {
-          wrap.innerHTML='<div class="ceff law"><select class="lt">'+IDENTITY_TAGS.map(function(t){ return '<option'+(t===e.tag?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>'+
-            cvTgt('lg',e.t)+'<input type="number" class="lv" step="any" value="'+(e.v!=null?e.v:0)+'"><button class="xb" type="button">×</button></div>'+
-            '<div class="mirror" style="margin:-2px 0 10px"><input type="checkbox" class="lsym" '+(e.sym?'checked':'')+'><span>Reverse it when the law is repealed (give the gain back)</span></div>';
-          wrap.querySelector('.lt').onchange=function(ev){ e.tag=ev.target.value; renderConvPrev(); };
-          wrap.querySelector('.lg').onchange=function(ev){ e.t=ev.target.value; renderConvPrev(); };
-          wrap.querySelector('.lv').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; renderConvPrev(); };
-          wrap.querySelector('.xb').onclick=function(){ c.onLaw.splice(j,1); renderConvEditor(); renderConvPrev(); };
-          wrap.querySelector('.lsym').onchange=function(ev){ e.sym=ev.target.checked; renderConvPrev(); };
-        }
-        lc.appendChild(wrap);
-      });
-      var lrow=document.createElement('div'); lrow.className='addrow';
-      var lAdd=document.createElement('button'); lAdd.className='add'; lAdd.type='button'; lAdd.textContent='+ tag effect';
-      lAdd.onclick=function(){ c.onLaw.push(cvLaw(IDENTITY_TAGS[0]||'','Party Popularity',2)); renderConvEditor(); renderConvPrev(); };
-      var dAdd=document.createElement('button'); dAdd.className='add'; dAdd.type='button'; dAdd.textContent='+ directional effect';
-      dAdd.onclick=function(){ c.onLaw.push(cvDir('Tax Burden %','down','Party Popularity',2)); renderConvEditor(); renderConvPrev(); };
-      lrow.appendChild(lAdd); lrow.appendChild(dAdd); lc.appendChild(lrow); box.appendChild(lc);
-      lc.querySelector('.subhd .tagadd').onclick=function(){ addIdentityTag(function(){ renderConvEditor(); renderConvPrev(); }); };
-
-      var sv=document.createElement('button'); sv.className='save'; sv.type='button'; sv.textContent=convEditingId?'Save changes':'Create conviction';
-      sv.onclick=saveConviction; box.appendChild(sv);
-
-      idc.querySelector('#cvname').oninput=function(e){ c.name=e.target.value; renderConvPrev(); };
-      idc.querySelector('#cvarch').onchange=function(e){ c.archetype=e.target.value; renderConvPrev(); };
-      idc.querySelector('#cvlevel').onchange=function(e){ c.level=+e.target.value; renderConvPrev(); };
-      idc.querySelector('#cvcost').oninput=function(e){ c.cost=+e.target.value||0; renderConvPrev(); };
-      idc.querySelector('#cvdesc').oninput=function(e){ c.desc=e.target.value; renderConvPrev(); };
-    }
-
-    function cvBuildWhile(e,j){
-      var c=CV;
-      var card=document.createElement('div'); card.className='trig';
-      card.innerHTML='<div class="th"><div class="seg"><span data-k="trigger" class="'+(e.kind==='trigger'?'on':'')+'">Trigger</span><span data-k="standing" class="'+(e.kind==='standing'?'on':'')+'">Standing</span></div><button class="xb" type="button">×</button></div>';
-      if(e.kind==='trigger'){
-        var when=document.createElement('div');
-        when.innerHTML='<div class="clause">When — a stat moves</div>'+
-          '<div class="whenrow">'+cvTgt('ws',e.stat)+
-            '<select class="wd"><option value="rise"'+(e.dir==='rise'?' selected':'')+'>rises</option><option value="fall"'+(e.dir==='fall'?' selected':'')+'>falls</option><option value="either"'+(e.dir==='either'?' selected':'')+'>changes (either way)</option></select>'+
-            '<input type="number" class="wp" min="1" step="any" value="'+(e.per!=null?e.per:1)+'" title="per N units"></div>'+
-          '<div class="clause">Then — the reward</div>'+
-          '<div class="thenrow">'+cvTgt('rt',e.rt)+'<input type="number" class="rv" step="any" value="'+(e.rv!=null?e.rv:0)+'"></div>'+
-          '<div class="mirror"><input type="checkbox" class="sym" '+(e.sym?'checked':'')+(e.dir==='either'?' disabled':'')+'><span>Mirror the inverse reward on the opposite move'+(e.dir==='either'?' (n/a)':'')+'</span></div>';
-        card.appendChild(when);
-        card.querySelector('.ws').onchange=function(ev){ e.stat=ev.target.value; renderConvPrev(); };
-        card.querySelector('.wd').onchange=function(ev){ e.dir=ev.target.value; renderConvEditor(); renderConvPrev(); };
-        card.querySelector('.wp').oninput=function(ev){ e.per=parseFloat(ev.target.value)||1; renderConvPrev(); };
-        card.querySelector('.rt').onchange=function(ev){ e.rt=ev.target.value; renderConvPrev(); };
-        card.querySelector('.rv').oninput=function(ev){ e.rv=parseFloat(ev.target.value)||0; renderConvPrev(); };
-        card.querySelector('.sym').onchange=function(ev){ e.sym=ev.target.checked; renderConvPrev(); };
-      }else{
-        var st=document.createElement('div');
-        st.innerHTML='<div class="clause">While held — a constant modifier</div>'+
-          '<div class="thenrow">'+cvTgt('st',e.t)+'<input type="number" class="sv2" step="any" value="'+(e.v!=null?e.v:0)+'"></div>';
-        card.appendChild(st);
-        card.querySelector('.st').onchange=function(ev){ e.t=ev.target.value; renderConvPrev(); };
-        card.querySelector('.sv2').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; renderConvPrev(); };
-      }
-      // Role gate (shared by trigger + standing): apply always, or only while the party
-      // is in government / opposition. Stored as e.when ('gov'|'opp'); omitted = always.
-      var cond=document.createElement('div'); cond.className='cond';
-      cond.innerHTML='<div class="clause">Applies</div><select class="wgov">'+
-        '<option value="always"'+(!e.when?' selected':'')+'>always</option>'+
-        '<option value="gov"'+(e.when==='gov'?' selected':'')+'>only while this party is in government</option>'+
-        '<option value="opp"'+(e.when==='opp'?' selected':'')+'>only while this party is in opposition</option></select>';
-      card.appendChild(cond);
-      card.querySelector('.wgov').onchange=function(ev){ e.when=ev.target.value==='always'?undefined:ev.target.value; renderConvPrev(); };
-      card.querySelectorAll('.seg span').forEach(function(s){ s.onclick=function(){
-        var k=s.dataset.k;
-        if(k==='trigger'&&e.kind!=='trigger'){ c.whileActive[j]=cvTrig('Order','rise',1,'Party Popularity',2,true); }
-        if(k==='standing'&&e.kind!=='standing'){ c.whileActive[j]=cvStanding('Order',1); }
-        renderConvEditor(); renderConvPrev();
-      }; });
-      card.querySelector('.th .xb').onclick=function(){ c.whileActive.splice(j,1); renderConvEditor(); renderConvPrev(); };
-      return card;
-    }
-
-    function cvLineHtml(L){ return '<div class="pvline"><b class="'+(L.cls==='pos'?'g':'r')+'">'+esc(L.reward)+'</b> <span class="mute">'+esc(L.cond)+'</span></div>'; }
-    function renderConvPrev(){
-      var c=CV, a=convArch(c.archetype), box=document.getElementById('convPrev');
-      document.documentElement.style.setProperty('--acc', a.color);
-      var aL=adoptLines(c), wL=activeLines(c), lL=lawLines(c);
-      var adopt = aL.length ? aL.map(cvLineHtml).join('') : '<div class="pvnone">—</div>';
-      var act   = wL.length ? wL.map(cvLineHtml).join('') : '<div class="pvnone">—</div>';
-      box.innerHTML='<div class="pvcard">'+
-        '<div class="pvtags"><span class="pvtag arch" style="background:'+a.color+'">'+esc(a.name)+'</span><span class="pvtag">Level '+convRoman(c.level)+'</span><span class="pvtag">◆ '+(c.cost!=null?c.cost:0)+'</span></div>'+
-        '<div class="pvname">'+esc(c.name||'Untitled conviction')+'</div>'+
-        '<div class="pvdesc">'+esc(c.desc||'')+'</div>'+
-        '<div class="pvsec">On adopt</div>'+adopt+
-        '<div class="pvsec">While active</div>'+act+
-        (lL.length ? '<div class="pvsec">On a law</div>'+lL.map(cvLineHtml).join('') : '')+
-      '</div>';
-    }
-
-    document.getElementById('convNew').onclick=function(){ openConviction(blankConviction(), null); };
 
     // ---- Crises (admin authoring; one JSONB definition per crisis, is_admin RLS) ----
     // The Crisis Builder. Its UI lives under .cbuild (scoped CSS); everything is kept
@@ -3840,7 +3581,7 @@
 
       function iBlank() {
         return { name: '', description: '', resource: 'Energy', quantity: 1, cadence: 'one_time',
-          sectors: iSectorSet('Energy'), costModel: 'flat', cost: 120, minM: 16, maxM: 36, global: false, nations: {},
+          sectors: iSectorSet('Energy'), budgetPerYear: 5, influence: 5, minM: 16, maxM: 36, global: false, nations: {},
           joint: { on: false, partner: '', quantity: 1, target: 'Energy' },
           startEvent: '', finishEvent: '' };
       }
@@ -3851,17 +3592,16 @@
         s.resource = RESOURCES.indexOf(d.resource) >= 0 ? d.resource : 'Energy';
         s.quantity = Math.max(1, parseInt(d.quantity, 10) || 1);
         s.cadence = d.cadence === 'recurring' ? 'recurring' : 'one_time';
-        s.costModel = (d.costModel === 'production' || d.costModel === 'gdp') ? d.costModel : 'flat';
-        s.cost = parseFloat(d.cost) || 0;
+        s.budgetPerYear = parseFloat(d.budgetPerYear) || 0;
+        s.influence = Math.max(1, parseInt(d.influence, 10) || 1);
         var lm = Array.isArray(d.lengthMonths) ? d.lengthMonths : [16, 36];
         s.minM = parseInt(lm[0], 10) || 0; s.maxM = parseInt(lm[1], 10) || 0;
         s.global = d.eligibleNations === '*';
         if (!s.global && Array.isArray(d.eligibleNations)) d.eligibleNations.forEach(function (id) { s.nations[id] = true; });
-        // Ticked sectors, kept within the resource's producing set. Legacy defs (no sectors) default
-        // to all of them so an old initiative still qualifies for its whole resource.
-        var valid = iSectorSet(s.resource);
-        if (Array.isArray(d.sectors)) { s.sectors = {}; d.sectors.forEach(function (x) { if (valid[x]) s.sectors[x] = true; }); }
-        else s.sectors = valid;
+        // Ticked sectors — any corporate sector is allowed. Legacy defs (no sectors) default to the
+        // resource's producing set so an old initiative still qualifies for its whole resource.
+        if (Array.isArray(d.sectors)) { s.sectors = {}; d.sectors.forEach(function (x) { if (CATEGORIES.indexOf(x) >= 0) s.sectors[x] = true; }); }
+        else s.sectors = iSectorSet(s.resource);
         if (d.joint && d.joint.partner) {
           s.joint = { on: true, partner: d.joint.partner, quantity: Math.max(1, parseInt(d.joint.quantity, 10) || 1),
             target: JTARGETS.indexOf(d.joint.target) >= 0 ? d.joint.target : 'Energy' };
@@ -3870,34 +3610,21 @@
         return s;
       }
       function iR1(n) { return String(Math.round(n * 10) / 10); }
-      // Model-aware base cost expression. Nation-agnostic (the builder can't know a nation's live
-      // production/GDP) — flat shows the $ amount, the scaled models show their rate. The ±20/25%
-      // private/state adjustment is applied at enact, when the Minister picks the execution model.
-      function iCostExpr() {
-        if (IN.costModel === 'production') return '×$' + iR1(IN.cost) + 'B per current unit';
-        if (IN.costModel === 'gdp')        return iR1(IN.cost) + '% of GDP';
-        return '$' + Math.round(IN.cost) + 'B';
-      }
+      // The standing cost line: $B/yr against Budget Balance the whole time it runs + the upfront
+      // Influence the Minister spends to enact it.
+      function iCostExpr() { return '−$' + iR1(IN.budgetPerYear) + 'B/yr · ' + IN.influence + ' Influence'; }
       // The ticked sectors — ONE source for the preview line and the saved definition.
-      function iChosenSectors() { return resourceCategories(IN.resource).filter(function (c) { return IN.sectors[c]; }); }
+      function iChosenSectors() { return CATEGORIES.filter(function (c) { return IN.sectors[c]; }); }
       function iNatName(id) { var n = INAT.filter(function (x) { return x.id === id; })[0]; return n ? (n.name || id) : id; }
 
       function iRenderResource() { document.getElementById('i-resource').innerHTML = RESOURCES.map(function (r) { return '<option' + (r === IN.resource ? ' selected' : '') + '>' + r + '</option>'; }).join(''); }
-      // Reflect the cost basis: set the dropdown and relabel the amount input for the chosen model.
-      function iRenderCostModel() {
-        document.getElementById('i-costmodel').value = IN.costModel;
-        var lab = document.getElementById('i-costlabel');
-        lab.innerHTML = IN.costModel === 'production' ? 'Rate <span class="hint">($B per current unit)</span>'
-                      : IN.costModel === 'gdp'        ? 'Rate <span class="hint">(% of GDP)</span>'
-                      :                                 'Cost <span class="hint">($B)</span>';
-      }
       function iRenderCadence() { document.querySelectorAll('#i-cadence [data-cad]').forEach(function (b) { b.classList.toggle('on', IN.cadence === b.dataset.cad); }); }
-      // The sectors whose corporations can carry the initiative out. Constrained to the ones that
-      // actually produce the chosen resource (Energy → Energy/Nuclear) — the runtime matches a
-      // nation's corps against these (private bids from any; state needs its own SO firm in one).
+      // The sectors whose corporations can carry the initiative out — ALL corporate sectors are
+      // available (an admin can authorise any); the resource's own producing sectors are ticked by
+      // default. The runtime matches a nation's corps against these (private bids from any; state
+      // needs its own SO firm in one).
       function iRenderSectors() {
-        var cats = resourceCategories(IN.resource), box = document.getElementById('i-sectors');
-        if (!cats.length) { box.innerHTML = '<div class="corphint">No corporate sector produces ' + esc(IN.resource) + ' — this runs as a direct government programme.</div>'; return; }
+        var cats = CATEGORIES, box = document.getElementById('i-sectors');
         box.innerHTML = cats.map(function (c) {
           var on = !!IN.sectors[c];
           return '<div class="tile' + (on ? ' on' : '') + '" data-sec="' + esc(c) + '"><span class="cb">' + (on ? '✓' : '') + '</span><span class="tlabel">' + esc(c) + '</span></div>';
@@ -3939,7 +3666,7 @@
         document.getElementById('i-preview').innerHTML =
           '<div class="pl">Preview</div><h3>' + esc(IN.name || 'Untitled Initiative') + '</h3>' +
           '<span class="chipeff" style="background:rgba(127,127,127,.08);border:1px solid ' + col + ';color:' + col + '"><span class="d" style="background:' + col + '"></span>+' + IN.quantity + ' ' + esc(IN.resource) + '</span>' +
-          '<div class="meta"><b>' + esc(iCostExpr()) + '</b> · <b>' + IN.minM + '–' + IN.maxM + ' mo</b> · ' + (IN.cadence === 'recurring' ? 'Recurring' : 'One-time') + '<br>' +
+          '<div class="meta"><b>' + esc(iCostExpr()) + '</b> · <b>' + IN.minM + '–' + IN.maxM + ' mo build</b> · ' + (IN.cadence === 'recurring' ? 'Recurring' : 'One-time') + '<br>' +
           'Sectors: <b>' + esc(secTxt) + '</b><br>Eligible: <b>' + esc(elig) + '</b>' +
           (jointTxt ? '<br>Joint: <b>' + esc(jointTxt) + '</b>' : '') + '</div>';
       }
@@ -3948,12 +3675,13 @@
         document.getElementById('i-name').value = IN.name;
         document.getElementById('i-desc').value = IN.description;
         document.getElementById('i-qty').textContent = IN.quantity;
-        document.getElementById('i-cost').value = IN.cost;
+        document.getElementById('i-byear').value = IN.budgetPerYear;
+        document.getElementById('i-influence').value = IN.influence;
         document.getElementById('i-minM').value = IN.minM;
         document.getElementById('i-maxM').value = IN.maxM;
         document.getElementById('i-startEvent').value = IN.startEvent;
         document.getElementById('i-finishEvent').value = IN.finishEvent;
-        iRenderResource(); iRenderCadence(); iRenderCostModel(); iRenderSectors(); iRenderNations(); iRenderJoint(); iRenderPreview();
+        iRenderResource(); iRenderCadence(); iRenderSectors(); iRenderNations(); iRenderJoint(); iRenderPreview();
         document.getElementById('i-cancel').hidden = !iEditId;
         document.getElementById('i-save').textContent = iEditId ? 'Save changes' : 'Save Initiative';
       }
@@ -3987,7 +3715,7 @@
         var def = {
           name: IN.name.trim(), description: IN.description.trim(),
           resource: IN.resource, quantity: IN.quantity, cadence: IN.cadence,
-          costModel: IN.costModel, cost: IN.cost, lengthMonths: [IN.minM, IN.maxM],
+          budgetPerYear: IN.budgetPerYear, influence: IN.influence, lengthMonths: [IN.minM, IN.maxM],
           sectors: iChosenSectors(),
           joint: (IN.joint.on && IN.joint.partner) ? { partner: IN.joint.partner, quantity: IN.joint.quantity, target: IN.joint.target } : null,
           eligibleNations: IN.global ? '*' : Object.keys(IN.nations).filter(function (k) { return IN.nations[k]; }),
@@ -4026,8 +3754,8 @@
       document.getElementById('i-qminus').onclick = function () { if (IN.quantity > 1) { IN.quantity--; document.getElementById('i-qty').textContent = IN.quantity; iRenderPreview(); } };
       document.getElementById('i-qplus').onclick = function () { IN.quantity++; document.getElementById('i-qty').textContent = IN.quantity; iRenderPreview(); };
       document.querySelectorAll('#i-cadence [data-cad]').forEach(function (b) { b.onclick = function () { IN.cadence = b.dataset.cad; iRenderCadence(); iRenderPreview(); }; });
-      document.getElementById('i-costmodel').onchange = function () { IN.costModel = this.value; iRenderCostModel(); iRenderPreview(); };
-      document.getElementById('i-cost').oninput = function () { IN.cost = parseFloat(this.value) || 0; iRenderPreview(); };
+      document.getElementById('i-byear').oninput = function () { IN.budgetPerYear = parseFloat(this.value) || 0; iRenderPreview(); };
+      document.getElementById('i-influence').oninput = function () { IN.influence = Math.max(1, parseInt(this.value, 10) || 1); iRenderPreview(); };
       document.getElementById('i-jpartner').onchange = function () { IN.joint.partner = this.value; iRenderPreview(); };
       document.getElementById('i-jtarget').onchange = function () { IN.joint.target = this.value; iRenderPreview(); };
       document.getElementById('i-jqminus').onclick = function () { if (IN.joint.quantity > 1) { IN.joint.quantity--; document.getElementById('i-jqty').textContent = IN.joint.quantity; iRenderPreview(); } };

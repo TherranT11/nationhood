@@ -7,8 +7,8 @@
 // The stat vocabulary a policy EFFECT can target — the game's ministry stats (the same
 // set the Government page groups as STAT_GROUPS). Policies author against these ahead of
 // the stat backend, so effects are stored but not yet applied live. ONE source for the
-// policy builder's stat picker. (Distinct from the live conviction/world-event target
-// list, which still uses the current backend stat names until the models converge.)
+// policy builder's stat picker. (Distinct from the live world-event target list, which
+// still uses the current backend stat names until the models converge.)
 export const POLICY_STATS = [
   'Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Interest Rates',
   'Crime', 'Immigration', 'Extremism', 'Unemployment', 'Poverty', 'Wages',
@@ -30,6 +30,14 @@ export const MINISTRY_STATS = POLICY_STATS.filter(function (s) { return COMPUTED
 export function policyVotePopularity(def, fromIdx, toIdx) {
   var forVote = (Number(def && def.popRaise) || 0) * ((Number(toIdx) || 0) - (Number(fromIdx) || 0));
   return { forVote: forVote, againstVote: -forVote };
+}
+
+// The Influence a bill costs to propose: the admin base (game_state.proposal_cost_base) scaled by how
+// many rungs the change moves — N × (base + N − 1), N=|to−from| (min 1). ONE source (mirrors
+// _proposal_cost in schema/154); read by the propose page's cost preview and the committee bill.
+export function proposalInfluenceCost(base, fromIdx, toIdx) {
+  var n = Math.max(1, Math.abs((Number(toIdx) || 0) - (Number(fromIdx) || 0)));
+  return n * (Math.max(0, Number(base) || 0) + n - 1);
 }
 
 // A policy's option array: the 'spectrum' or 'binary' list, keyed by its own type.
@@ -85,8 +93,37 @@ export function nationStatContributions(policyRows, overrides, gdp, stat) {
   });
   return { total: total, items: items };
 }
-export function nationBudgetBalance(policyRows, overrides, gdp) {
-  return nationStatContributions(policyRows, overrides, gdp, 'Budget Balance').total;
+// A running national initiative is a STANDING Budget Balance cost (schema/141/152): while active it
+// subtracts its authored budgetPerYear ($bn/yr). A joint project splits that — the enacting nation
+// bears (100 − partnerShare)%, the partner covers partnerShare%. This returns THIS nation's yearly
+// cost as a positive number. ONE source (mirrors the initiative block in _nation_budget_balance).
+export function initiativeBudgetAmount(def, partnerShare, isPartner) {
+  var y = Number(def && def.budgetPerYear) || 0;
+  var s = Math.max(0, Math.min(100, Number(partnerShare) || 0));
+  return isPartner ? y * s / 100 : y * (100 - s) / 100;
+}
+// Active-initiative Budget Balance line items for a nation, each a COST (negative amount). rows =
+// [{ def, partnerShare, isPartner }] — the nation's own running initiatives plus any joint project it
+// partners. Filters ~zero. ONE source for the Budget page list and the balance total below.
+export function initiativeBudgetItems(rows) {
+  var items = [];
+  (rows || []).forEach(function (r) {
+    var amt = initiativeBudgetAmount(r.def, r.partnerShare, r.isPartner);
+    if (Math.abs(amt) >= 0.0001) items.push({ name: (r.def && r.def.name) || 'Initiative', amount: -amt });
+  });
+  return items;
+}
+// The nation's full Budget Balance breakdown: every policy's contribution PLUS every running
+// initiative's standing cost. ONE source for the top bar, Budget page and Government cell.
+export function nationBudgetContributions(policyRows, overrides, gdp, initiativeRows) {
+  var pol = nationStatContributions(policyRows, overrides, gdp, 'Budget Balance');
+  var ini = initiativeBudgetItems(initiativeRows);
+  var total = pol.total;
+  ini.forEach(function (i) { total += i.amount; });
+  return { total: total, items: pol.items.concat(ini) };
+}
+export function nationBudgetBalance(policyRows, overrides, gdp, initiativeRows) {
+  return nationBudgetContributions(policyRows, overrides, gdp, initiativeRows).total;
 }
 
 // Budget/Debt/Income are money targets — their value scales by the nation's size/wealth.
@@ -153,8 +190,7 @@ export function optOneTimeMoney(o, pop, pros) {
 // not all parties in the nation — so label them with that scope wherever a policy's effects are
 // shown (the admin authoring tool and the player policy/propose views all read this one source).
 // Display-only: the stored target value stays the canonical string, so existing policies keep
-// matching. (Convictions reuse the same target list but scope to the adopting party, so they
-// keep the plain names.)
+// matching.
 var POL_TGT_LABEL = { 'Party Popularity': 'Party Popularity (parties in govt)',
                       'Popularity Ceiling': 'Popularity Ceiling (parties in govt)' };
 export function polTgtLabel(t) { return POL_TGT_LABEL[t] || t; }

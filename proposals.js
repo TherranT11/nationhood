@@ -21,6 +21,12 @@ export async function fetchVotes(proposalIds) {
 export async function fetchPolicies() {
   return unwrap(await supabase.from('policies').select('id, definition').order('created_at')) || [];
 }
+// The admin base Influence cost of proposing a bill (game-wide; scaled by rungs on the client via
+// proposalInfluenceCost). Defaults to 2 if unset/unreadable.
+export async function fetchProposalCostBase() {
+  try { var gs = unwrap(await supabase.from('game_state').select('proposal_cost_base').maybeSingle()); return (gs && gs.proposal_cost_base != null) ? gs.proposal_cost_base : 2; }
+  catch (e) { return 2; }
+}
 // Does this party have a floor measure (status 'voting') it hasn't cast a vote on? ONE source
 // for "is there something to vote on" — drives the Legislature nav dot.
 export async function hasUnvotedFloorMeasure(nationId, partyId) {
@@ -37,10 +43,16 @@ export async function hasUnvotedFloorMeasure(nationId, partyId) {
 export async function proposeDeclaration(slug, value, toFloor) {
   return unwrap(await supabase.rpc('propose_declaration', { p_slug: slug, p_value: value, p_to_floor: toFloor }));
 }
-export async function proposeLaw(policyId, optionIdx, toFloor, title, intro) {
-  return unwrap(await supabase.rpc('propose_law', { p_policy: policyId, p_option: optionIdx, p_to_floor: toFloor,
+// A policy bill goes to committee (schema/154), not straight to the floor. Returns { id, cost, … }
+// so the caller can route to the committee page /play/legislature/committee/?id=<id>.
+export async function proposeLaw(policyId, optionIdx, title, intro) {
+  return unwrap(await supabase.rpc('propose_law', { p_policy: policyId, p_option: optionIdx,
     p_title: title || null, p_intro: intro || null }));
 }
+// Committee actions (schema/154).
+export async function committeeEndorse(proposalId) { return unwrap(await supabase.rpc('committee_endorse', { p_proposal: proposalId })); }
+export async function committeePush(proposalId)    { return unwrap(await supabase.rpc('committee_push',    { p_proposal: proposalId })); }
+export async function committeePost(proposalId, body) { return unwrap(await supabase.rpc('committee_post', { p_proposal: proposalId, p_body: body })); }
 // The monarchy special law: target 21 (proclaim a Constitutional Monarchy) or 20 (abolish it).
 export async function proposeRegimeChange(target, toFloor) {
   return unwrap(await supabase.rpc('propose_regime_change', { p_target: target, p_to_floor: toFloor }));

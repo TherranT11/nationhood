@@ -483,10 +483,10 @@ begin
   -- close — a fed nation grows +1M, each unmet demand drops its stat, then the flags reset.
   begin perform public._resolve_economy_demands(v_tick);
   exception when others then raise warning 'tick %: economy demands failed — %', v_tick, sqlerrm; end;
-  -- Every tick: a positive Budget Balance (net of in-force policy effects) pays down Public Debt
-  -- by the annual balance / 12, floored to one decimal — _apply_budget_surplus (schema/152).
-  begin perform public._apply_budget_surplus(v_tick);
-  exception when others then raise warning 'tick %: budget surplus paydown failed — %', v_tick, sqlerrm; end;
+  -- Every tick: the nation's Budget Balance moves Public Debt by the annual balance / 12 — a surplus
+  -- pays it down, a deficit adds to it (symmetric) — _apply_budget_balance (schema/152).
+  begin perform public._apply_budget_balance(v_tick);
+  exception when others then raise warning 'tick %: budget balance debt move failed — %', v_tick, sqlerrm; end;
   -- Every January: Public Debt accrues 3% interest — _apply_debt_interest (schema/152).
   begin perform public._apply_debt_interest(v_tick);
   exception when others then raise warning 'tick %: debt interest failed — %', v_tick, sqlerrm; end;
@@ -596,15 +596,9 @@ begin
     begin perform public._resolve_proposal(v_rec.id, true, v_rec.window_closed);
     exception when others then raise warning 'tick %: proposal % failed — %', v_tick, v_rec.id, sqlerrm; end;
   end loop;
-  -- Adopted convictions' "while active" effects: standing modifiers + movement-based
-  -- triggers, measured against last tick's snapshot (schema/94). Runs last, after this
-  -- tick's stat changes, so it rewards the month's net movement.
-  begin perform public._apply_conviction_triggers(v_tick);
-  exception when others then raise warning 'tick %: conviction triggers failed — %', v_tick, sqlerrm; end;
-  -- Yearly Conviction accrual (schema/94): +1 a year to every party, +2 to each Head of
-  -- Government. Self-filters to January, so it's a no-op the other eleven months.
-  begin perform public._accrue_conviction(v_tick);
-  exception when others then raise warning 'tick %: conviction accrual failed — %', v_tick, sqlerrm; end;
+  -- Committee bills (schema/154) that have sat 6 ticks without being pushed to the floor expire.
+  begin perform public._expire_committee(v_tick);
+  exception when others then raise warning 'tick %: committee expiry failed — %', v_tick, sqlerrm; end;
   -- Crises (schema/99): fire any whose triggers are now all true, then climb each active
   -- crisis's meter and escalate stages. Runs last, on this tick's settled stats; its own
   -- per-nation / per-crisis isolation lives inside _apply_crisis_tick.

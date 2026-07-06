@@ -1,7 +1,7 @@
 -- 102 · Party name change (penalised + cooldowned).
 -- Renaming a party is a real decision: it costs standing and can't be done often. Routed
 -- through an RPC (not a direct client write) so the penalty + cooldown are server-enforced.
--- Run after 94 (uses _apply_conviction_effect for the standing penalties).
+-- Run after 153 (uses _apply_party_effect for the standing penalties).
 --
 -- KNOWN LIMITATION: parties.name is still in the client UPDATE grant (20_parties) because the
 -- founding/relaunch upsert sets it, so a crafted client could rename directly and skip the
@@ -25,10 +25,10 @@ begin
   if v_party.name_change_until_tick is not null and v_tick < v_party.name_change_until_tick then
     raise exception 'Your party changed its name recently — it can rename again later.';
   end if;
-  -- Rebranding penalty: reuse the conviction-effect engine (one source for the target → field
+  -- Rebranding penalty: reuse the shared party-effect engine (one source for the target → field
   -- mapping, floor and clamps).
-  perform public._apply_conviction_effect(v_party.id, v_party.nation_id, jsonb_build_object('t', 'Party Popularity', 'v', -10));
-  perform public._apply_conviction_effect(v_party.id, v_party.nation_id, jsonb_build_object('t', 'Popularity Ceiling', 'v', -5));
+  perform public._apply_party_effect(v_party.id, v_party.nation_id, jsonb_build_object('t', 'Party Popularity', 'v', -10));
+  perform public._apply_party_effect(v_party.id, v_party.nation_id, jsonb_build_object('t', 'Popularity Ceiling', 'v', -5));
   update public.parties set name = v_name, name_change_until_tick = v_tick + 60 where id = v_party.id;
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_party.nation_id, v_party.id, 'party', v_party.name || ' has rebranded as ' || v_name || '.', public.current_game_date());

@@ -118,6 +118,7 @@
   import { fetchAdministrations, renderAdministrations } from '/administrations.js';
   import { partyColor, ideologyLabel } from '/archetypes.js';
   import { nationBudgetBalance, nationStatContributions } from '/policies.js';
+  import { fetchBudgetInitiatives } from '/initiatives.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
@@ -444,7 +445,8 @@
       try {
         const { data: pols } = await supabase.from('policies').select('id, definition');
         var _ov = (nation && nation.policies) || {}, _gdp = nation && nation.gdp;
-        BUDGET_BAL = nationBudgetBalance(pols || [], _ov, _gdp);
+        var _inits = await fetchBudgetInitiatives(party.nation_id);
+        BUDGET_BAL = nationBudgetBalance(pols || [], _ov, _gdp, _inits);
         BUREAUCRACY = nationStatContributions(pols || [], _ov, _gdp, 'Bureaucracy').total;
       } catch (e) {}
 

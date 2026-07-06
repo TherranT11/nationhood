@@ -274,10 +274,19 @@
       '<div class="agwhen">Reaches the floor · <b>' + esc(when) + '</b></div>' +
       '<div class="mrow">' + (mine ? '<button class="sendfloor" data-send="' + esc(p.id) + '" type="button">Send to the floor now (1 action)</button>' : '<span class="youvote">Awaiting its scheduled month</span>') + '</div></div>';
   }
+  // A law bill sitting in committee (schema/154) — links to its own page (chat + endorse + push).
+  function committeeCard(p){
+    var left = Math.max(0, FLOOR_WINDOW - (ST.tick - (p.opened_tick || ST.tick)));
+    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + introLine(p) + lawChange(p) +
+      '<div class="agwhen">In committee · <b>' + left + ' tick' + (left === 1 ? '' : 's') + ' left</b></div>' +
+      '<div class="mrow"><a class="sendfloor" href="/play/legislature/committee/?id=' + encodeURIComponent(p.id) + '" style="text-decoration:none">Open committee ▸</a></div></div>';
+  }
   function emptyPanel(b, s){ return '<div class="panel"><div class="empty"><b>' + b + '</b><span>' + s + '</span></div></div>'; }
 
   function renderBody(){
     var floor = ST.proposals.filter(function(p){ return p.status === 'voting'; });
+    var committee = ST.proposals.filter(function(p){ return p.status === 'committee'; })
+      .sort(function(a, b){ return (a.opened_tick || 0) - (b.opened_tick || 0); });  // longest-sitting first
     var agenda = ST.proposals.filter(function(p){ return p.status === 'agenda'; })
       .sort(function(a, b){ return (a.scheduled_tick || 0) - (b.scheduled_tick || 0); });  // earliest month first
     var hist = ST.proposals.filter(function(p){ return p.status === 'passed' || p.status === 'failed'; }).slice(0, 12);
@@ -292,6 +301,8 @@
       '<div class="legcols"><div class="legmain">' +
         '<div class="secthd">On the Floor <span class="ct">' + floor.length + '</span><button class="propose" id="proposeBtn" type="button">Propose New Law</button></div>' +
         (floor.length ? floor.map(measureCard).join('') : emptyPanel('No measures on the floor', 'Propose one, or wait for another party to bring a measure.')) +
+        '<div class="secthd">In Committee <span class="ct">' + committee.length + '</span></div>' +
+        (committee.length ? committee.map(committeeCard).join('') : emptyPanel('Nothing in committee', 'Propose a law — it goes to committee first for debate and endorsement.')) +
         '<div class="secthd">Upcoming Agenda <span class="ct">' + agenda.length + '</span></div>' +
         (agenda.length ? agenda.map(agendaCard).join('') : emptyPanel('Nothing on the agenda', 'Queued measures reach the floor automatically on their scheduled month — one per month.')) +
       '</div><aside class="legrail"><section class="panel"><h2>Legislative History</h2>' +

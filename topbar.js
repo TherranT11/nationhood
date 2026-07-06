@@ -6,6 +6,7 @@ import { supabase, wireDeletePartyMenu, logout } from '/supabase.js';
 import { partyColor } from '/archetypes.js';
 import { liveGameDate, mountGameDate } from '/gamedate.js';
 import { nationBudgetBalance } from '/policies.js';
+import { fetchBudgetInitiatives } from '/initiatives.js';
 
 const CSS = `
 /* Compact chip row, matching the tutorial's .nhbar: Influence (star) · Budget ·
@@ -215,11 +216,13 @@ async function loadChrome(){
     if (!p) return;
     setAccent(partyColor(p));               // chosen colour, else archetype default (one source: archetypes.js)
     setTopbarActions(p.influence);
-    // Budget Balance = the net of the nation's in-force policy effects (one source: policies.js).
+    // Budget Balance = the net of the nation's in-force policy effects minus its running initiatives'
+    // standing $bn/yr (one source: policies.js).
     try {
       const { data: n } = await supabase.from('nations').select('economy, policies, gdp').eq('id', p.nation_id).maybeSingle();
       const { data: pols } = await supabase.from('policies').select('id, definition');
-      setTopbarBudget((n && n.economy && n.economy.currency) || '$', nationBudgetBalance(pols || [], (n && n.policies) || {}, n && n.gdp));
+      const inits = await fetchBudgetInitiatives(p.nation_id);
+      setTopbarBudget((n && n.economy && n.economy.currency) || '$', nationBudgetBalance(pols || [], (n && n.policies) || {}, n && n.gdp, inits));
     } catch (e) { /* leave the chip hidden if policies/nation can't be read */ }
   } catch (e) { /* leave the defaults if the party can't be read */ }
 }

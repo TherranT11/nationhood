@@ -1,9 +1,9 @@
 -- 104 · Minority-government confidence decay + snap election.
 -- A minority government is inherently unstable: each tick it bleeds −0.3 Government Confidence.
 -- When that erosion drops it below 20%, the head-of-government party is punished (−5 Party
--- Popularity, −3 Popularity Ceiling) and a snap election is called — reusing the conviction-effect
--- engine (94) for the penalties and resolve_election (60) for the reseat, so each has ONE source.
--- Invoked once per tick from _advance_tick (60). Run after 60 and 94.
+-- Popularity, −3 Popularity Ceiling) and a snap election is called — reusing the shared party-effect
+-- engine (153) for the penalties and resolve_election (60) for the reseat, so each has ONE source.
+-- Invoked once per tick from _advance_tick (60). Run after 60 and 153.
 --
 -- The election fires only on the DOWNWARD crossing (was ≥20, now <20) so a government can't be
 -- dissolved twice for the same collapse and the tick can't loop — resolve_election reseats a fresh
@@ -34,11 +34,11 @@ begin
 
       if v_new < 20 and coalesce(v_gov.confidence, 0) >= 20 then
         -- Head of government = the formateur of a minority government. Punish its standing
-        -- through the shared conviction-effect engine (floor- and ceiling-aware), then call
+        -- through the shared party-effect engine (floor- and ceiling-aware), then call
         -- the snap election (which also reseats and reschedules — ONE source for that).
-        perform public._apply_conviction_effect(v_gov.formateur_party_id, v_gov.nation_id,
+        perform public._apply_party_effect(v_gov.formateur_party_id, v_gov.nation_id,
                   jsonb_build_object('t', 'Party Popularity', 'v', -5));
-        perform public._apply_conviction_effect(v_gov.formateur_party_id, v_gov.nation_id,
+        perform public._apply_party_effect(v_gov.formateur_party_id, v_gov.nation_id,
                   jsonb_build_object('t', 'Popularity Ceiling', 'v', -3));
 
         -- Premier named via the shared helper (60) — ONE source for this label.
