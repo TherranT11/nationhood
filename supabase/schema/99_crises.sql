@@ -489,7 +489,7 @@ declare
   v_c jsonb; v_res text; v_amt numeric;
 begin
   v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
-  if v_p.influence < 2 then raise exception 'Not enough actions left this turn (need 2).'; end if;
+  if v_p.influence < 2 then raise exception 'Not enough Influence (need 2).'; end if;
 
   select * into v_nc from public.nation_crises where id = p_id and status = 'active';
   if not found then raise exception 'That crisis is no longer active.'; end if;

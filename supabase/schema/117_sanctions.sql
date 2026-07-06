@@ -48,7 +48,7 @@ declare
   v_cooldown constant int := 24;   -- ticks before a lifted sanction can reward this target again
 begin
   v_p := public._begin_action(0);
-  if v_p.influence < 3 then raise exception 'Not enough actions left this turn (need 3).'; end if;
+  if v_p.influence < 3 then raise exception 'Not enough Influence (need 3).'; end if;
   if not public._party_holds_ministry(v_p.id, 'Trade') then
     raise exception 'Only the Minister of Trade can impose sanctions.'; end if;
   v_buyer := v_p.nation_id;

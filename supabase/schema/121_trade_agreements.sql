@@ -160,7 +160,7 @@ begin
   v_p := public._begin_action(0);   -- requires >= 1 action; 3 checked below
   if not public._party_holds_ministry(v_p.id, 'Trade') then
     raise exception 'Only the Minister of Trade can commit a trade agreement.'; end if;
-  if v_p.influence < 3 then raise exception 'Not enough actions left this turn (need 3).'; end if;
+  if v_p.influence < 3 then raise exception 'Not enough Influence (need 3).'; end if;
   select * into v_a from public.trade_agreements where id = p_id for update;
   if not found then raise exception 'No such trade agreement.'; end if;
   if v_a.buyer_party_id <> v_p.id then raise exception 'Only the proposing nation commits the agreement.'; end if;

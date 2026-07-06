@@ -113,7 +113,7 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_p public.parties%rowtype; v_gov public.governments%rowtype; v_n public.nations%rowtype; v_tick int; v_prod jsonb; v_add jsonb;
 begin
   v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
-  if v_p.influence < 5 then raise exception 'Not enough actions left this turn (need 5).'; end if;
+  if v_p.influence < 5 then raise exception 'Not enough Influence (need 5).'; end if;
   select * into v_gov from public.governments where nation_id = v_p.nation_id and status = 'active';
   if not found then raise exception 'There is no sitting government.'; end if;
   if v_gov.formateur_party_id is distinct from v_p.id then

@@ -93,7 +93,7 @@ begin
   if not public._party_holds_ministry(v_p.id, 'Defence') then
     raise exception 'Only the Minister of Defence can build a military base.'; end if;
   if v_p.influence < 2 then
-    raise exception 'Not enough actions left this turn (need 2).'; end if;
+    raise exception 'Not enough Influence (need 2).'; end if;
 
   v_host := coalesce(nullif(p_host, ''), v_nation);   -- default / empty / own → home
   v_abroad := v_host <> v_nation;

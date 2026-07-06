@@ -1,6 +1,13 @@
 -- 45 · Coalition negotiations (cross-player deal-making) + RPCs
 -- Depends on: 10 (nations), 20 (parties), 40 (action helpers + current_game_date).
 -- Run after 40.
+--
+-- DORMANT BUT LOAD-BEARING (post-teardown). The player-facing coalition actions that WROTE to
+-- these tables were removed (schema/146), so in normal play the tables stay empty and government
+-- formation falls through to the single-party path. Do NOT drop these tables or _majority() /
+-- is_negotiation_participant(): _seat_government() and resolve_election() (schema/60) still read
+-- negotiations / negotiation_parties / negotiation_terms, and governments.source_negotiation_id is
+-- a live FK. Removing them means rewriting the seating + election resolver — deliberately deferred.
 
 -- ---------------------------------------------------------------------------
 -- A negotiation is opened by a HOST party and brings one or more other parties

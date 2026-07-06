@@ -108,7 +108,7 @@ declare
   v_p public.parties%rowtype;
 begin
   v_p := public._lock_party();
-  if v_p.influence < 1 then raise exception 'No actions left this turn.'; end if;
+  if v_p.influence < 1 then raise exception 'You have no Influence left.'; end if;
   if v_p.funds < p_cost then raise exception 'Not enough funds (need $%K).', (p_cost / 1000); end if;
   return v_p;
 end $$;
@@ -136,7 +136,7 @@ declare
   v_cost bigint := 25000;
 begin
   v_p := public._begin_action(v_cost);
-  if v_p.influence < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
+  if v_p.influence < public._standing_cost() then raise exception 'Not enough Influence (need %).', public._standing_cost(); end if;
   select coalesce(cha, 0) into v_cha from public.politicians
     where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
   v_cha := coalesce(v_cha, 0);
@@ -186,7 +186,7 @@ declare
   v_haul bigint; v_tier text; v_body text;
 begin
   v_p := public._begin_action(0);  -- fundraising is free; only the action is spent
-  if v_p.influence < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
+  if v_p.influence < public._standing_cost() then raise exception 'Not enough Influence (need %).', public._standing_cost(); end if;
   select coalesce(cha, 0) into v_cha from public.politicians
     where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
   v_cha := coalesce(v_cha, 0);
@@ -231,7 +231,7 @@ declare
   v_tname text; v_tnation text; v_tarch text; v_toldpop numeric; v_tnewpop numeric;
 begin
   v_p := public._begin_action(v_cost);  -- attacker locked + checked
-  if v_p.influence < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
+  if v_p.influence < public._standing_cost() then raise exception 'Not enough Influence (need %).', public._standing_cost(); end if;
   select name, nation_id, archetype, popularity into v_tname, v_tnation, v_tarch, v_toldpop from public.parties where id = p_target;
   if not found then raise exception 'No such party.'; end if;
   if p_target = v_p.id then raise exception 'You can''t attack your own party.'; end if;
@@ -297,7 +297,7 @@ declare
   v_cost bigint := 100000; v_tier text; v_body text;
 begin
   v_p := public._begin_action(v_cost);
-  if v_p.influence < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
+  if v_p.influence < public._standing_cost() then raise exception 'Not enough Influence (need %).', public._standing_cost(); end if;
   select coalesce(gui, 0) into v_gui from public.politicians
     where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
   v_gui := coalesce(v_gui, 0);
@@ -386,7 +386,7 @@ begin
       'existing', true, 'funds', v_p.funds, 'actions', v_p.influence);
   end if;
 
-  if v_p.influence < 1 then raise exception 'No actions left this turn.'; end if;
+  if v_p.influence < 1 then raise exception 'You have no Influence left.'; end if;
   if v_p.funds < v_cost then raise exception 'Not enough funds (need $%K).', (v_cost / 1000); end if;
 
   v_exp := floor(random() * 3)::int + 1;   -- 1d3 years of experience (no stat roll)

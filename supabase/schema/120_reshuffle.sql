@@ -22,7 +22,7 @@ declare
   c_prestige constant text[] := array['Economic Development', 'Interior', 'Foreign Affairs', 'Trade'];
 begin
   v_party := public._begin_action(0);   -- requires >= 1 action; needs 2, checked next
-  if v_party.influence < 2 then raise exception 'Not enough actions left this turn (need 2).'; end if;
+  if v_party.influence < 2 then raise exception 'Not enough Influence (need 2).'; end if;
   select * into v_gov from public.governments where nation_id = v_party.nation_id and status = 'active' for update;
   if not found then raise exception 'There is no sitting government.'; end if;
   if v_gov.formateur_party_id is distinct from v_party.id then

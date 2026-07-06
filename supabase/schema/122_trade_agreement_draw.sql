@@ -20,7 +20,7 @@ declare
 begin
   if coalesce(p_qty, 0) < 1 then raise exception 'Choose how much to draw.'; end if;
   v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
-  if v_p.influence < 2 then raise exception 'Not enough actions left this turn (need 2).'; end if;
+  if v_p.influence < 2 then raise exception 'Not enough Influence (need 2).'; end if;
   if not public._party_holds_ministry(v_p.id, 'Trade') then
     raise exception 'Only the Minister of Trade can draw on a trade agreement.'; end if;
 
