@@ -1509,10 +1509,12 @@
     function row(k, v) { return v ? '<div class="snap__row"><dt>' + k + '</dt><dd>' + v + '</dd></div>' : ''; }
     function ptag(p) { return p ? ' <span class="ptag" style="background:' + partyColor(p) + '">' + esc((p.abbreviation || p.name.slice(0, 2)).toUpperCase()) + '</span>' : ''; }
     var partyName = formateur ? esc(formateur.name) : (nation.ruling_party ? esc(nation.ruling_party) : '');
-    // Head of Government — the person: "{declared title} {name} (year elected --)". Year is a
-    // placeholder until the backend tracks it. Hidden when there's no HoG person to name.
+    // Head of Government — the person: "{declared title} {name} (year elected {year})".
+    // The year is when the government was seated (governments.formed_tick → its calendar
+    // year, via tickToDate — one source). Hidden when there's no HoG person to name.
     var hogTitle = decl('head_of_government_title');
-    var hogRow = hogName ? row('Head of Government', (hogTitle ? esc(hogTitle) + ' ' : '') + esc(hogName) + ' (year elected --)') : '';
+    var hogYear = (govt && govt.formed_tick != null) ? tickToDate(govt.formed_tick).split(', ')[1] : '--';
+    var hogRow = hogName ? row('Head of Government', (hogTitle ? esc(hogTitle) + ' ' : '') + esc(hogName) + ' (year elected ' + esc(hogYear) + ')') : '';
     var snapHtml =
       hogRow +
       row('Capital', esc(decl('capital_name'))) +
@@ -1589,7 +1591,7 @@
       parties = pr.data || [];
     } catch (e) { /* assembly hides on failure */ }
     var govt = null;
-    try { const { data } = await supabase.from('governments').select('type, formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle(); govt = data; } catch (e) {}
+    try { const { data } = await supabase.from('governments').select('type, formateur_party_id, formed_tick').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle(); govt = data; } catch (e) {}
     // The Head of Government is a person — the formateur party's leader — for the snapshot's HoG row.
     var hogName = '';
     try {
