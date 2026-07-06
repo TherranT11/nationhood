@@ -271,19 +271,6 @@
   .snap__row dt{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);flex:none;padding-top:2px}
   .snap__row dd{font-size:14px;font-weight:600;color:var(--ink);text-align:right}
   .ptag{display:inline-block;margin-left:6px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;line-height:1.6;padding:1px 7px;border-radius:6px;color:#fff;vertical-align:middle}
-  .asm__sub{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin:-6px 0 14px}
-  .asm__bar{display:flex;height:12px;border-radius:6px;overflow:hidden;margin-bottom:18px;background:var(--chip)}
-  .asm__bar span{display:block;height:100%}
-  .asm__row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
-  .asm__row:last-child{border-bottom:none}
-  .asm__tag{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:20px;flex:none}
-  .asm__tag--gov{background:var(--green-soft);color:var(--green)}
-  .asm__tag--opp{background:var(--chip);color:var(--soft)}
-  .asm__dot{width:10px;height:10px;border-radius:3px;flex:none}
-  .asm__pname{flex:1;font-size:14px;font-weight:600;color:var(--ink)}
-  .asm__abbr{color:var(--soft);font-weight:600}
-  .asm__pct{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--ink)}
-
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -324,11 +311,6 @@
         <div class="appr__factors-k">Last Factors Affecting Popularity</div>
         <div id="apprFactors"><p class="empty">Loading&hellip;</p></div>
       </div>
-    </section>
-
-    <section class="panel" id="asmPanel" hidden>
-      <div class="glance-hd"><span>National Assembly</span></div>
-      <div id="asmBody"></div>
     </section>
 
     <!-- National stat ladders (kept below the overview). -->
@@ -438,7 +420,7 @@
   import { fetchNationInitiatives, renderNationInitiatives } from '/initiatives.js';
   import { openJointProposer, fetchJointNegotiations, renderJointNegotiations } from '/joint.js';
   import { statLabel, statBand, regimeLabel, statName, regimeText } from '/ladders.js';
-  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, PRODUCE_COST, PRODUCE_COOLDOWN, declaredValue, fmtPop, fmtGdp, majority } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, PRODUCE_COST, PRODUCE_COOLDOWN, declaredValue, fmtPop, fmtGdp } from '/util.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { MINISTRIES } from '/ministries.js';
   import { nationColors, drawNationMiniMap } from '/hexmap.js';
@@ -1519,33 +1501,6 @@
     drawTerritory(nationId);
   }
 
-  function renderAssembly(parties, nation) {
-    var panel = document.getElementById('asmPanel'), box = document.getElementById('asmBody');
-    if (!panel || !box) return;
-    var total = nation.legislature_seats || parties.reduce(function (s, p) { return s + (p.seats || 0); }, 0);
-    if (!total) { panel.hidden = true; return; }
-    var maj = majority(total);
-    var seated = parties.filter(function (p) { return (p.seats || 0) > 0; }).sort(function (a, b) { return (b.seats || 0) - (a.seats || 0); });
-    var gov = seated.filter(function (p) { return p.in_government; });
-    var opp = seated.filter(function (p) { return !p.in_government; });
-    var pct = function (n) { return (n / total * 100).toFixed(1); };
-    function bar(list) { return list.map(function (p) { return '<span style="width:' + pct(p.seats) + '%;background:' + partyColor(p) + '"></span>'; }).join(''); }
-    // One flat list, governing parties first — each row carries its own [Governing] /
-    // [Opposition] tag instead of the old grouped sub-headers.
-    function rows(list) { return list.map(function (p) {
-      var gv = !!p.in_government;
-      return '<div class="asm__row"><span class="asm__dot" style="background:' + partyColor(p) + '"></span>' +
-        '<span class="asm__pname">' + esc(p.name) + (p.abbreviation ? ' <span class="asm__abbr">(' + esc(p.abbreviation) + ')</span>' : '') + '</span>' +
-        '<span class="asm__tag asm__tag--' + (gv ? 'gov' : 'opp') + '">' + (gv ? 'Governing' : 'Opposition') + '</span>' +
-        '<span class="asm__pct"><b>' + (p.seats || 0) + '</b> seats · ' + pct(p.seats) + '%</span></div>';
-    }).join(''); }
-    box.innerHTML =
-      '<div class="asm__sub">' + total + ' Seats · ' + maj + ' for a majority</div>' +
-      '<div class="asm__bar">' + bar(gov) + bar(opp) + '</div>' +
-      rows(gov.concat(opp));
-    panel.hidden = false;
-  }
-
   async function loadOverview(party, nation) {
     nation = nation || {};
     var myLeader = null;
@@ -1559,7 +1514,7 @@
       var pr = await supabase.from('parties').select('id, name, abbreviation, seats, archetype, color, in_government').eq('nation_id', party.nation_id);
       if (pr.error) pr = await supabase.from('parties').select('id, name, abbreviation, seats, archetype, in_government').eq('nation_id', party.nation_id);   // color not migrated
       parties = pr.data || [];
-    } catch (e) { /* assembly hides on failure */ }
+    } catch (e) { /* snapshot falls back on failure */ }
     var govt = null;
     try { const { data } = await supabase.from('governments').select('type, formateur_party_id, formed_tick').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle(); govt = data; } catch (e) {}
     // The Head of Government is a person — the formateur party's leader — for the snapshot's HoG row.
@@ -1581,7 +1536,6 @@
 
     renderStatCards(party, myLeader);
     renderSnapshotAndMap(nation, parties, govt, decl, party.nation_id, hogName);
-    renderAssembly(parties, nation);
     var formal = decl('formal_state_name');
     if (formal) document.getElementById('kicker').textContent = formal;   // eyebrow → declared formal state name
   }
