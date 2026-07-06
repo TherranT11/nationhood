@@ -1727,6 +1727,21 @@
         ministry_stats: collectMinistryStats()
       };
 
+      // Write the row, tolerating a DB that hasn't had schema/150 applied yet: if the
+      // ministry_stats column is missing, drop it and retry so the rest of the edit still
+      // saves (the admin is told below to run the migration to persist ministry stats).
+      var droppedMinistry = false;
+      async function writeNation(row, id) {
+        var op = function (r) { return id ? supabase.from('nations').update(r).eq('id', id) : supabase.from('nations').insert(r); };
+        var res = await op(row);
+        if (res.error && /ministry_stats/.test(res.error.message || '')) {
+          var r2 = Object.assign({}, row); delete r2.ministry_stats;
+          res = await op(r2);
+          if (!res.error) droppedMinistry = true;
+        }
+        return res.error;
+      }
+
       btn.disabled = true;
       try {
         var error;
@@ -1738,7 +1753,7 @@
           if (!data.dormant && editing.next_election_tick == null) {
             data.next_election_tick = (await currentTick()) + 1 + Math.floor(Math.random() * 6);
           }
-          ({ error } = await supabase.from('nations').update(data).eq('id', editing.id));
+          error = await writeNation(data, editing.id);
         } else {
           var id = slugify(name);
           if (!id) { addNote.textContent = 'Enter a valid nation name.'; addNote.className = 'note error'; return; }
@@ -1746,7 +1761,7 @@
           // First election 1d6 ticks (months) out (tick falls back to 1 if unavailable).
           // A dormant nation isn't scheduled — it gets its first election when activated.
           if (!data.dormant) data.next_election_tick = (await currentTick()) + 1 + Math.floor(Math.random() * 6);
-          ({ error } = await supabase.from('nations').insert(data));
+          error = await writeNation(data, null);
         }
         if (error) {
           addNote.textContent = /duplicate|already exists|unique/i.test(error.message)
@@ -1768,9 +1783,10 @@
           loadNations();
           return;
         }
-        addNote.textContent = editing ? ('Saved changes to “' + name + '”.') : ('Added “' + name + '”. It’s now joinable on the nation-select screen.');
-        addNote.className = 'note ok';
-        if (editing) cancelEdit(); else { e.target.reset(); resetDeclFields(); resetPolFields(); }
+        addNote.textContent = (editing ? ('Saved changes to “' + name + '”.') : ('Added “' + name + '”. It’s now joinable on the nation-select screen.')) +
+          (droppedMinistry ? ' Ministry stats were NOT saved — apply supabase/schema/150 (the ministry_stats column is missing).' : '');
+        addNote.className = droppedMinistry ? 'note error' : 'note ok';
+        if (editing) cancelEdit(); else { e.target.reset(); resetDeclFields(); resetPolFields(); resetMinistryFields(); }
         loadNations();
       } catch (e) { addNote.textContent = 'Couldn’t save the nation. Try again.'; addNote.className = 'note error'; }
       finally { btn.disabled = false; }
