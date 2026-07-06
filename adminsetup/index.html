@@ -1307,6 +1307,16 @@
     // in policies.js). Rendered once as a labelled number grid; stored on the nation as a
     // { "<Stat>": <number> } jsonb map. A blank field is omitted, so the map only holds the
     // values an admin has actually entered (an absent stat stays "--" on the Government page).
+    // The five ministry stats that were consolidated out of the "Starting X" fields — each maps to the
+    // legacy stats/economy field the backend still reads. ONE source for both directions: the grid's
+    // migration fallback (below) reads from here, and the nation save feeds these fields from here.
+    var CONSOLIDATED_STATS = [
+      { m: 'Prosperity',   col: 'stats',   key: 'prosperity' },
+      { m: 'Growth',       col: 'stats',   key: 'growth' },
+      { m: 'Rule of Law',  col: 'stats',   key: 'order' },
+      { m: 'Unemployment', col: 'economy', key: 'unemployment' },
+      { m: 'Tax Burden',   col: 'economy', key: 'tax' }
+    ];
     function renderMinistryFields() {
       document.getElementById('ministryFields').innerHTML = MINISTRY_STATS.map(function (s) {
         var r = STAT_RANGES[s], rng = r ? (' min="' + r.min + '" max="' + r.max + '"') : '';
@@ -1315,11 +1325,11 @@
       }).join('');
     }
     function fillMinistryFields(n) {
-      var m = (n && n.ministry_stats) || {}, s = (n && n.stats) || {}, e = (n && n.economy) || {};
-      // Migration fallback: for the five stats consolidated out of the "Starting X" fields, show the
-      // legacy value when ministry_stats doesn't carry it yet, so an existing nation's value survives.
-      var legacy = { 'Prosperity': s.prosperity, 'Growth': s.growth, 'Rule of Law': s.order,
-                     'Unemployment': e.unemployment, 'Tax Burden': e.tax };
+      var m = (n && n.ministry_stats) || {}, src = { stats: (n && n.stats) || {}, economy: (n && n.economy) || {} };
+      // Migration fallback: for a consolidated stat, show the legacy value when ministry_stats doesn't
+      // carry it yet, so an existing nation's value survives its first edit.
+      var legacy = {};
+      CONSOLIDATED_STATS.forEach(function (c) { legacy[c.m] = src[c.col][c.key]; });
       document.querySelectorAll('#ministryFields input[data-mstat]').forEach(function (inp) {
         var k = inp.dataset.mstat, v = m[k];
         if (v == null || v === '') v = (legacy[k] != null ? legacy[k] : '');
@@ -1651,21 +1661,22 @@
       var elecfreq = num('f-elecfreq');
       var ms = collectMinistryStats();
       // The five consolidated stats are entered in the Ministry Stats grid; feed them into the legacy
-      // stats/economy fields the backend reads (blank in the grid → keep the nation's existing value).
+      // stats/economy fields the backend reads (CONSOLIDATED_STATS is the one mapping; blank in the
+      // grid → keep the nation's existing value).
+      function _mergeCol(col) {
+        var base = Object.assign({}, (editing && editing[col]) || {});   // preserves budget, currency, inflation_pending, …
+        CONSOLIDATED_STATS.forEach(function (c) { if (c.col === col && ms[c.m] != null) base[c.key] = ms[c.m]; });
+        return base;
+      }
       function _mergeStats() {
-        var base = Object.assign({}, (editing && editing.stats) || {});
-        if (ms['Prosperity'] != null) base.prosperity = ms['Prosperity'];
-        if (ms['Growth'] != null) base.growth = ms['Growth'];
-        if (ms['Rule of Law'] != null) base.order = ms['Rule of Law'];
+        var base = _mergeCol('stats');
         if (base.welfare == null) base.welfare = 10;   // retired field — neutral default on add, preserved on edit
         if (base.image == null) base.image = 10;
         return base;
       }
       function _mergeEconomy() {
-        var base = Object.assign({}, (editing && editing.economy) || {});   // preserves budget, currency, inflation_pending, …
+        var base = _mergeCol('economy');
         base.regime = parseInt(document.getElementById('f-regime').value, 10);
-        if (ms['Unemployment'] != null) base.unemployment = ms['Unemployment'];
-        if (ms['Tax Burden'] != null) base.tax = ms['Tax Burden'];
         base.debt = num('f-debt', true);
         base.party_ceiling = document.getElementById('f-ceiling').value.trim() === '' ? 50 : Math.max(0, Math.min(100, num('f-ceiling')));
         base.currency = (editing && editing.economy && editing.economy.currency) || '$';
