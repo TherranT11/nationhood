@@ -117,6 +117,7 @@
   import { esc, majority, declaredValue, loadHogTitleSlot, fmtGdp, fmtPop, tickToDate } from '/util.js';
   import { fetchAdministrations, renderAdministrations } from '/administrations.js';
   import { partyColor, ideologyLabel } from '/archetypes.js';
+  import { nationBudgetBalance } from '/policies.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
@@ -261,19 +262,25 @@
   // slug→href map keeps that special-case out of the generic cell loop.
   var STAT_LINKS = { 'Budget Balance': '/play/budget/', 'Bureaucracy': '/play/bureaucracy/' };
   // Ministry stat values come from the nation's admin-authored ministry_stats map (schema/150,
-  // keyed by the same stat names) — the ONE source. Public Debt is the one money figure sourced
-  // from the economy (economy.debt, the "Starting Debt" field). Budget Balance is NOT stored: it's
-  // the computed sum of active policy effects, so it shows "--" until the policy engine lands.
+  // keyed by the same stat names) — the ONE source. Two money figures are computed instead:
+  // Budget Balance = the net of in-force policy effects (nationBudgetBalance, the same figure the
+  // Budget page + top bar show), and Public Debt = economy.debt (the "Starting Debt" field).
   function ministryStats(nation){
     var MS = (nation && nation.ministry_stats) || {};
     var ec = (nation && nation.economy) || {};
     var cur = ec.currency || '$';
     function cellVal(s){
+      if (s === 'Budget Balance'){
+        if (BUDGET_BAL == null || !isFinite(BUDGET_BAL)) return '--';
+        var b = Math.round(BUDGET_BAL * 10) / 10;
+        return '<span style="color:var(--' + (b < 0 ? 'red' : 'green') + ')">' + (b < 0 ? '−' : '') + esc(cur) + Math.abs(b) +
+          'bn<span style="font-size:13px;font-weight:700;color:var(--soft)"> /yr</span></span>';
+      }
       if (s === 'Public Debt'){
         var n = Number(ec.debt);
         return (ec.debt == null || ec.debt === '' || !isFinite(n)) ? '--' : esc(cur) + Math.abs(n) + 'bn';
       }
-      return MS[s] != null ? esc(String(MS[s])) : '--';   // Budget Balance falls here → "--" (computed later)
+      return MS[s] != null ? esc(String(MS[s])) : '--';
     }
     return STAT_GROUPS.map(function (g) {
       var cells = g.stats.map(function (s) {
@@ -358,6 +365,7 @@
 
   // --- state shared across renders ---
   var MY_PARTY_ID = null, NATION = null, NATION_ID = null, HOG_TITLE = 'Head of Government';
+  var BUDGET_BAL = null;   // computed Budget Balance ($bn/yr) — Σ in-force policy effects (policies.js); null until loaded
   // State-of-the-Nation data, folded in from the retired Nation page (declaration slots +
   // cities + mayor party tags). Loaded once at boot; the panels read straight from these.
   var DECL_SLOTS = [], CITIES = [], MAYOR_ABBR = {};
@@ -407,8 +415,8 @@
     try {
       const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      var nRes = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations, population, gdp, production, on_hand, ministry_stats').eq('id', party.nation_id).single();
-      if (nRes.error) nRes = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations, population, gdp, production, on_hand').eq('id', party.nation_id).single();   // ministry_stats not migrated yet
+      var nRes = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations, population, gdp, production, on_hand, policies, ministry_stats').eq('id', party.nation_id).single();
+      if (nRes.error) nRes = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations, population, gdp, production, on_hand, policies').eq('id', party.nation_id).single();   // ministry_stats not migrated yet
       const nation = nRes.data;
       MY_PARTY_ID = party.id; NATION_ID = party.nation_id; NATION = nation || {};
       // The declared Head of Government title (e.g. "Prime Minister"), via the
@@ -425,6 +433,10 @@
 
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
       setTopbarActions(party.influence);
+
+      // Budget Balance = the net of the nation's in-force policy effects (one source: policies.js),
+      // the same figure the Budget page and top bar show. Non-fatal — the cell falls back to "--".
+      try { const { data: pols } = await supabase.from('policies').select('id, definition'); BUDGET_BAL = nationBudgetBalance(pols || [], (nation && nation.policies) || {}, nation && nation.gdp); } catch (e) {}
 
       await loadNationState();   // declaration slots + cities for the State-of-the-Nation panels
       await load();
