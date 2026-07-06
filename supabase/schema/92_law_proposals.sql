@@ -5,7 +5,7 @@
 --
 -- A party proposes changing one of the nation's policies to a different option.
 -- It rides the EXISTING proposal/vote machinery (schema/81): queued on the agenda
--- (free) or sent straight to the floor (1 action), every party votes with its
+-- (free) or sent straight to the floor (2 Influence), every party votes with its
 -- seats, and it passes the instant Aye-seats reach a chamber majority — the one
 -- pass authority, _resolve_proposal, which dispatches kind='law' to _apply_law.
 -- advance_tick (schema/60) already promotes/expires proposals kind-agnostically.
@@ -252,7 +252,8 @@ begin
   v_intro := left(nullif(btrim(p_intro), ''), 400);
 
   if p_to_floor then
-    v_party := public._begin_action(0);          -- requires >= 1 action
+    v_party := public._begin_action(0);          -- locks the party, requires Influence
+    if v_party.influence < 2 then raise exception 'Bringing a bill to the floor costs 2 Influence.'; end if;
   else
     v_party := public._lock_party();
     select greatest(v_cur + 1, coalesce(max(scheduled_tick), v_cur) + 1)
@@ -265,7 +266,7 @@ begin
   -- client also greys the propose buttons out; this is the server-authoritative gate.
   if v_party.seats < 1 then raise exception 'A party with no legislature seats cannot propose a bill.'; end if;
 
-  -- No-op guard: don't let a party spend an action to propose the option already in force.
+  -- No-op guard: don't let a party spend Influence to propose the option already in force.
   if public._nation_policy_option(v_party.nation_id, p_policy) = p_option then
     raise exception 'That policy is already set to that option.';
   end if;
@@ -295,10 +296,10 @@ begin
     return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_party.influence);
   end if;
 
-  update public.parties set influence = influence - 1 where id = v_party.id;
+  update public.parties set influence = influence - 2 where id = v_party.id;   -- bringing a bill to the floor costs 2 Influence
   insert into public.proposal_votes (proposal_id, party_id, aye) values (v_pid, v_party.id, true);
   v_res := public._resolve_proposal(v_pid);
-  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_party.influence - 1);
+  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_party.influence - 2);
 end $$;
 grant execute on function public.propose_law(uuid, int, boolean, text, text) to authenticated;
 
