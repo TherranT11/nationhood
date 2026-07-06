@@ -72,10 +72,7 @@ begin
     on conflict (party_lo, party_hi) do update set party_lo = excluded.party_lo   -- no-op so RETURNING yields the existing id
     returning id into v_thread;
   insert into public.dm_messages (thread_id, sender_id, body) values (v_thread, v_me, v_body);
-  update public.dm_threads
-     set read_lo = case when v_me = party_lo then now() else read_lo end,
-         read_hi = case when v_me = party_hi then now() else read_hi end
-   where id = v_thread;
+  perform public.dm_mark_read(v_thread);   -- the sender has read their own message (one source for the read stamp)
   return v_thread;
 end $$;
 grant execute on function public.dm_send(uuid, text) to authenticated;
