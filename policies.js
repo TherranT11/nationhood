@@ -13,7 +13,8 @@ export const POLICY_STATS = [
   'Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Interest Rates',
   'Crime', 'Immigration', 'Extremism', 'Unemployment', 'Poverty', 'Wages',
   'Prosperity', 'Press Freedom', 'Social Integration', 'Armed Forces Funding',
-  'Military Research', 'Cybersecurity', 'Energy Availability', 'CO₂ Emissions', 'Global Warming'
+  'Military Research', 'Cybersecurity', 'Energy Availability', 'CO₂ Emissions', 'Global Warming',
+  'Rule of Law', 'Standard of Living', 'Housing Affordability'
 ];
 
 // The admin-typed ministry stats (the Edit Nation "Ministry Stats" grid). Derived from
