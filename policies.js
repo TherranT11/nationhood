@@ -116,9 +116,12 @@ export function polTgtLabel(t) { return POL_TGT_LABEL[t] || t; }
 // the same coalesce(pop,0)/coalesce(pros,10) the server applies). Returns
 // { text, cad, cls } where cls is 'pos' | 'neg' | '' by direction.
 export function effectText(e, pop, pros) {
-  // 'once' on enactment; 'year' every January while in force; otherwise per tick —
-  // finite (dur>0) for that many months after enactment, else while in force.
-  var cad = e.cad === 'once' ? 'once'
+  // New-model effects (no cadence) are one-time transition changes — applied when the policy
+  // changes state/level, NOT per tick — so a missing cad reads "on change". Legacy cadenced
+  // effects keep their timing: 'once' on enactment; 'year' every January; else per tick
+  // (finite for dur months after enactment, else while in force).
+  var cad = e.cad == null ? 'on change'
+          : e.cad === 'once' ? 'once'
           : e.cad === 'year' ? 'per year'
           : (Number(e.dur) > 0 ? 'per tick · ' + Number(e.dur) + ' mo' : 'per tick');
   if (isMoneyTarget(e.t)) {

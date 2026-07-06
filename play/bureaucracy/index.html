@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Bureaucracy · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
+<style>
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+
+  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
+
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
+  .page{max-width:900px}
+  .back{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-decoration:none;margin-bottom:14px}
+  .back:hover{color:var(--ink)}
+  .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
+  .phead h1{font-weight:900;font-size:clamp(26px,4vw,36px);letter-spacing:-.025em;margin:6px 0 22px}
+
+  /* Bureaucracy headline + threshold chart. The value is placeholder ("--") until a value
+     is entered for the nation (nations.ministry_stats). */
+  .bhero{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:14px}
+  .bhero__hd{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+  .bhero__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .bhero__v{font-size:34px;font-weight:900;letter-spacing:-.03em;color:var(--ink)}
+  .bhero__u{font-size:16px;font-weight:700;color:var(--soft);margin-left:2px}
+  .bhero__desc{color:var(--muted);font-size:13.5px;line-height:1.55;margin-top:10px;max-width:640px}
+  .bhero__chart{width:100%;height:120px;display:block;margin-top:14px}
+
+  /* Head of Government discount notice — green when the player controls the HoG. */
+  .hog{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:18px}
+  .hog--mine{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 40%,var(--surface))}
+  .hog__ico{width:28px;height:28px;flex:none;stroke:var(--soft);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
+  .hog--mine .hog__ico{stroke:var(--green)}
+  .hog__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:3px}
+  .hog--mine .hog__k{color:var(--green)}
+  .hog__t{font-size:14px;font-weight:600;color:var(--ink);line-height:1.5}
+
+  .lawshd{font-size:17px;font-weight:900;letter-spacing:-.01em;margin-bottom:10px}
+  .lawlist{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px 16px}
+  .law{display:flex;align-items:center;gap:11px;padding:14px 0;border-top:1px solid var(--line)}
+  .law:first-child{border-top:none}
+  .law__name{flex:1;min-width:0;font-size:15px;font-weight:700;color:var(--ink)}
+  .law__val{font-family:'Space Mono',monospace;font-size:14px;font-weight:700;white-space:nowrap}
+  .law__val--up{color:var(--red)} .law__val--down{color:var(--green)}
+  .lawempty{padding:26px 0;text-align:center;color:var(--soft);font-size:13.5px}
+
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
+
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <div class="page">
+      <a class="back" href="/play/government/">&lsaquo; Government</a>
+      <div class="phead">
+        <span class="eye" id="bnation">The Nation</span>
+        <h1>Bureaucracy</h1>
+      </div>
+
+      <!-- Bureaucracy value + threshold chart. Value from nations.ministry_stats (schema/150). -->
+      <div class="bhero">
+        <div class="bhero__hd">
+          <div class="bhero__k">Bureaucracy</div>
+          <div class="bhero__v" id="bureauVal">--</div>
+        </div>
+        <p class="bhero__desc">Administrative overhead of the state apparatus. Each active law adds 1% bureaucracy. In the critical range, laws take longer to implement.</p>
+        <svg class="bhero__chart" viewBox="0 0 300 120" preserveAspectRatio="none" aria-hidden="true">
+          <!-- 80% (critical) red line near the top, 30% green line near the bottom -->
+          <line x1="0" y1="24" x2="300" y2="24" stroke="var(--red)" stroke-width="1.5" stroke-dasharray="4 5" vector-effect="non-scaling-stroke"/>
+          <line x1="0" y1="96" x2="300" y2="96" stroke="var(--green)" stroke-width="1.5" stroke-dasharray="4 5" vector-effect="non-scaling-stroke"/>
+          <line id="bureauLine" x1="0" y1="60" x2="300" y2="60" stroke="var(--soft)" stroke-width="2" vector-effect="non-scaling-stroke" hidden/>
+        </svg>
+      </div>
+
+      <!-- Head of Government discount — highlighted green when the player controls the HoG. -->
+      <div class="hog" id="hogCard">
+        <svg class="hog__ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        <div>
+          <div class="hog__k">Head of Government</div>
+          <div class="hog__t" id="hogText">Laws affecting Bureaucracy cost 20% less Influence if your party controls the Head of Government.</div>
+        </div>
+      </div>
+
+      <div class="lawshd">Laws Affecting Bureaucracy</div>
+      <div class="lawlist" id="lawList"><div class="lawempty">No active laws affecting Bureaucracy.</div></div>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { esc, declaredValue } from '/util.js';
+  import { ideologyLabel } from '/archetypes.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+
+  mountTopbar();   // shared top bar (Discord/Influence/budget/date/gear) into #topbar
+  mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
+
+  (async () => {
+    if (!isConfigured) return;
+    const user = await requireUser();
+    if (!user) return; // redirected to login
+    try {
+      const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
+      if (error || !party) { window.location.replace('/nation-select/'); return; }
+      // ministry_stats holds Bureaucracy; fall back gracefully if schema/150 isn't applied yet.
+      var nRes = await supabase.from('nations').select('name, flag, declarations, ministry_stats').eq('id', party.nation_id).single();
+      if (nRes.error) nRes = await supabase.from('nations').select('name, flag, declarations').eq('id', party.nation_id).single();
+      var nation = nRes.data || {};
+
+      var nationName = nation.name || party.nation_id;
+      try {
+        const { data: slots } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed').eq('slug', 'formal_state_name').limit(1);
+        var formal = (slots && slots[0]) ? declaredValue(slots[0], nation.declarations) : '';
+        if (formal && formal !== '—') nationName = formal;
+      } catch (e) {}
+      document.getElementById('bnation').textContent = nationName;
+      document.getElementById('pname').textContent = party.name;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + (nation.name || party.nation_id);
+      if (nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
+      setTopbarActions(party.influence);
+
+      // Bureaucracy value (a percentage, 0–100) from the ministry stats; "--" when unset.
+      var b = (nation.ministry_stats || {})['Bureaucracy'];
+      var bn = Number(b);
+      if (b != null && b !== '' && isFinite(bn)) {
+        document.getElementById('bureauVal').innerHTML = Math.round(bn) + '<span class="bhero__u">%</span>';
+        // Plot the value on the chart between the 30% (y=96) and 80% (y=24) guide lines,
+        // linearly across 0–100% (y=108 at 0, y=12 at 100). Red in the critical range (>=80).
+        var y = 108 - (Math.max(0, Math.min(100, bn)) / 100) * 96;
+        var line = document.getElementById('bureauLine');
+        line.setAttribute('y1', y.toFixed(1)); line.setAttribute('y2', y.toFixed(1));
+        line.setAttribute('stroke', bn >= 80 ? 'var(--red)' : 'var(--ink)');
+        line.hidden = false;
+      }
+
+      // Does the player's party control the Head of Government (the formateur of the active
+      // government)? If so, its law changes here are discounted — surface that in green.
+      try {
+        const { data: govt } = await supabase.from('governments').select('formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
+        if (govt && govt.formateur_party_id === party.id) {
+          document.getElementById('hogCard').classList.add('hog--mine');
+          document.getElementById('hogText').textContent = 'Your party controls the Head of Government — laws affecting Bureaucracy cost 20% less Influence.';
+        }
+      } catch (e) { /* leave the default (neutral) notice */ }
+    } catch (e) { /* placeholders already shown; topbar still renders */ }
+  })();
+</script>
+</body>
+</html>
