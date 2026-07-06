@@ -107,6 +107,14 @@ export function nationStatContributions(policyRows, overrides, gdp, stat) {
   });
   return { total: total, items: items };
 }
+// Display label for an initiative's running Budget Balance cost: "$X B/yr" (flat) or "X% of GDP/yr" (a
+// % of the enacting nation's GDP). ONE source for the wording — the builder preview, the home panel,
+// and the joint composer all read this. `value` is the authored figure (flat $bn or the %); isPct is
+// definition.budgetUnit === 'gdp'.
+export function fmtInitiativeCost(value, isPct) {
+  var v = Math.round((Number(value) || 0) * 10) / 10;
+  return isPct ? (v + '% of GDP/yr') : ('$' + v + 'B/yr');
+}
 // The $bn/yr a running initiative costs its ENACTING nation — a flat figure, or a % of that nation's
 // GDP (definition.budgetUnit === 'gdp'). ownerGdp is the enacting nation's GDP. ONE source (mirrors the
 // gdp resolution in _nation_budget_balance).

@@ -1151,7 +1151,7 @@
     import { regimeLabel, statName } from '/ladders.js';
     import { SIZES, CATEGORIES, CATEGORY_BONUS, corpMoney } from '/corporations.js';
     import { ARCHETYPES } from '/archetypes.js';
-    import { policyOptions, policyDefaultIdx, isMoneyTarget, POLICY_STATS, MINISTRY_STATS, STAT_RANGES } from '/policies.js';
+    import { policyOptions, policyDefaultIdx, isMoneyTarget, POLICY_STATS, MINISTRY_STATS, STAT_RANGES, fmtInitiativeCost } from '/policies.js';
     import { MINISTRIES } from '/ministries.js';
     import { condText as objCondText, rewardText as objRewardText } from '/objectives.js';
 
@@ -3607,13 +3607,9 @@
         s.startEvent = d.startEvent || ''; s.finishEvent = d.finishEvent || '';
         return s;
       }
-      function iR1(n) { return String(Math.round(n * 10) / 10); }
-      // The standing cost line: $B/yr against Budget Balance the whole time it runs + the upfront
-      // Influence the Minister spends to enact it.
-      function iCostExpr() {
-        var c = IN.budgetUnit === 'gdp' ? ('−' + iR1(IN.budgetPerYear) + '% of GDP/yr') : ('−$' + iR1(IN.budgetPerYear) + 'B/yr');
-        return c + ' · ' + IN.influence + ' Influence';
-      }
+      // The standing cost line: the Budget Balance cost (flat $bn/yr or % of GDP) the whole time it
+      // runs + the upfront Influence the Minister spends to enact it.
+      function iCostExpr() { return '−' + fmtInitiativeCost(IN.budgetPerYear, IN.budgetUnit === 'gdp') + ' · ' + IN.influence + ' Influence'; }
       // The ticked sectors — ONE source for the preview line and the saved definition.
       function iChosenSectors() { return CATEGORIES.filter(function (c) { return IN.sectors[c]; }); }
       function iNatName(id) { var n = INAT.filter(function (x) { return x.id === id; })[0]; return n ? (n.name || id) : id; }
