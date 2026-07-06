@@ -261,15 +261,24 @@
   // slug→href map keeps that special-case out of the generic cell loop.
   var STAT_LINKS = { 'Budget Balance': '/play/budget/' };
   // Ministry stat values come from the nation's admin-authored ministry_stats map (schema/150,
-  // keyed by the same stat names) — the ONE source. A stat with no entered value shows "--".
-  // KNOWN ISSUE (one-source): "Budget Balance" here reads ministry_stats, but the Budget page
-  // headline reads economy.budget (income) per "Budget Balance = Income". These can diverge —
-  // pending a decision to source this cell from income too (and drop it from the stat grid).
+  // keyed by the same stat names) — the ONE source — EXCEPT Budget Balance, which is the nation's
+  // income (economy.budget), the same source the Budget page reads ("Budget Balance = Income").
+  // A stat with no value shows "--".
   function ministryStats(nation){
     var MS = (nation && nation.ministry_stats) || {};
+    var ec = (nation && nation.economy) || {};
+    var cur = ec.currency || '$';
+    function cellVal(s){
+      if (s === 'Budget Balance'){
+        var inc = Number(ec.budget);
+        if (ec.budget == null || ec.budget === '' || !isFinite(inc)) return '--';
+        return (inc < 0 ? '−' : '') + esc(cur) + Math.abs(inc) + 'bn';
+      }
+      return MS[s] != null ? esc(String(MS[s])) : '--';
+    }
     return STAT_GROUPS.map(function (g) {
       var cells = g.stats.map(function (s) {
-        var val = MS[s] != null ? esc(String(MS[s])) : '--';
+        var val = cellVal(s);
         var href = STAT_LINKS[s];
         if (href) {
           return '<a class="mstat mstat--link" href="' + href + '"><div class="mstat__k">' + esc(s) +
