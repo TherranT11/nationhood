@@ -4,6 +4,18 @@
 // server: policyOptions ↔ _policy_options (schema/90), policyDefaultIdx ↔ the default
 // in _nation_policy_option (schema/92), policyMoney ↔ _policy_money (schema/91).
 
+// The stat vocabulary a policy EFFECT can target — the game's ministry stats (the same
+// set the Government page groups as STAT_GROUPS). Policies author against these ahead of
+// the stat backend, so effects are stored but not yet applied live. ONE source for the
+// policy builder's stat picker. (Distinct from the live conviction/world-event target
+// list, which still uses the current backend stat names until the models converge.)
+export const POLICY_STATS = [
+  'Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Interest Rates',
+  'Crime', 'Immigration', 'Extremism', 'Unemployment', 'Poverty', 'Wages',
+  'Prosperity', 'Press Freedom', 'Social Integration', 'Armed Forces Funding',
+  'Military Research', 'Cybersecurity', 'Energy Availability', 'CO₂ Emissions', 'Global Warming'
+];
+
 // A policy's option array: the 'spectrum' or 'binary' list, keyed by its own type.
 export function policyOptions(def) {
   return (def && def.type === 'spectrum') ? (def.spectrum || []) : ((def && def.binary) || []);
