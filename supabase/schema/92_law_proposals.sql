@@ -122,8 +122,13 @@ begin
     while i <= hi loop
       for e in select value from jsonb_array_elements(coalesce(v_opts->i->'effects', '[]'::jsonb)) loop
         t := e->>'t';
+        -- Only the plain per-step increments (no explicit cadence) are one-time rung shifts. An effect
+        -- with an explicit cad is handled elsewhere and must NOT be double-applied: cad='once' by
+        -- _apply_law's once-pass, cad='tick'/'year' by the monthly sweep (schema/91). Money is standing
+        -- (tick sweep); Tax Burden is derived; Party Popularity is vote-driven (policyVotePopularity).
         continue when t is null
-          or t in ('Budget','Debt','Income','Tax Burden','Party Popularity','Popularity Ceiling','Popularity Floor');
+          or (e->>'cad') is not null
+          or t in ('Budget','Debt','Income','Tax Burden','Party Popularity');
         val := coalesce((e->>'v')::numeric, 0) * side.sgn;
         v_totals := jsonb_set(v_totals, array[t], to_jsonb(coalesce((v_totals->>t)::numeric, 0) + val));
       end loop;
