@@ -237,22 +237,13 @@
     .amodal__list{padding-bottom:max(18px,env(safe-area-inset-bottom))}   /* clear the home indicator */
   }
 
-  /* Party Approval card — the real per-tick popularity trend (schema/147) + labelled factors. */
-  .appr__now{display:flex;align-items:baseline;gap:10px;margin:2px 0 10px}
-  .appr__val{font-size:28px;font-weight:900;letter-spacing:-.02em;color:var(--ink)}
-  .appr__delta{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft)}
-  .appr__delta.pos{color:var(--green)} .appr__delta.neg{color:var(--red)}
-  .appr__chart{width:100%;height:150px;display:block;color:var(--indigo)}
-  .appr__grid{stroke:var(--line);stroke-width:1}
-  .appr__axis-x{stroke:var(--soft);stroke-width:1}
-  .appr__lbl{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;fill:var(--soft)}
-  .appr__factors{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
-  .appr__factors-k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:8px}
-  .factor{display:flex;align-items:baseline;gap:10px;padding:5px 0}
-  .factor__amt{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;min-width:52px;flex:none}
-  .factor__amt--neg{color:var(--red)} .factor__amt--pos{color:var(--green)}
-  .factor__what{font-size:13px;color:var(--ink);line-height:1.45}
-  .factor--none{font-size:13px;color:var(--soft);line-height:1.45}
+  /* Cabinet Ministries card — every portfolio with its sitting minister and party. */
+  .cab__list{display:flex;flex-direction:column}
+  .cab__row{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .cab__row:last-child{border-bottom:none}
+  .cab__min{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);flex:none;padding-top:2px}
+  .cab__who{font-size:14px;font-weight:600;color:var(--ink);text-align:right}
+  .cab__who--vacant{color:var(--soft);font-style:italic}
 
   /* ---- Tutorial-style Nation overview: stat cards · territory + snapshot · elections · assembly ---- */
   .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:6px}
@@ -307,14 +298,9 @@
     <div class="stats" id="statCards"></div>
     <div class="terr" id="terrRow"></div>
 
-    <section class="panel" id="apprPanel">
-      <div class="glance-hd"><span>Party Approval</span></div>
-      <div class="appr__now"><span class="appr__val" id="apprVal">&mdash;</span><span class="appr__delta" id="apprDelta"></span></div>
-      <svg class="appr__chart" id="apprSpark" role="img" aria-label="Party approval trend"></svg>
-      <div class="appr__factors">
-        <div class="appr__factors-k">Last Factors Affecting Popularity</div>
-        <div id="apprFactors"><p class="empty">Loading&hellip;</p></div>
-      </div>
+    <section class="panel" id="cabPanel">
+      <div class="glance-hd"><span>Cabinet Ministries</span></div>
+      <div class="cab__list" id="cabList"><p class="empty">Loading the cabinet&hellip;</p></div>
     </section>
 
     <!-- National stat ladders (kept below the overview). -->
@@ -1362,81 +1348,48 @@
     if (dp) { actionBtns.push(dp); dp.addEventListener('click', function () { if (!dp.disabled) openDeploy(); }); }
   }
 
-  // ---- Party Approval card (Phase C): the real popularity trend from party_popularity_history
-  // (schema/147), plus the labelled factors from the structured events feed. ----
-  var APPR_PTS = null;   // last-drawn points, so a resize can redraw without refetching
-  function drawApprChart(svg, pts){
-    var d = pts.map(function(p){ return p.pop; }), n = d.length;
-    if (!n){ svg.innerHTML = ''; return; }
-    var W = Math.max(200, Math.round(svg.clientWidth || 320)), H = 150;
-    var x0 = 40, x1 = W - 14, y0 = 10, y1 = H - 26;                 // plot rect (gutters for labels)
-    var dMin = Math.min.apply(null, d), dMax = Math.max.apply(null, d);
-    // Y bounds snap to 5% steps with a little headroom, clamped to the real [0,100] popularity range.
-    var yMin = Math.max(0, Math.floor((dMin - 3) / 5) * 5), yMax = Math.min(100, Math.max(yMin + 5, Math.ceil((dMax + 2) / 5) * 5));
-    var xi = function(i){ return n === 1 ? (x0 + x1) / 2 : x0 + (i / (n - 1)) * (x1 - x0); };
-    var yv = function(v){ return y1 - ((v - yMin) / (yMax - yMin)) * (y1 - y0); };
-    var g = '';
-    for (var t = yMin; t <= yMax; t += 5){
-      var gy = yv(t).toFixed(1);
-      g += '<line class="appr__grid" x1="' + x0 + '" y1="' + gy + '" x2="' + x1 + '" y2="' + gy + '"/>';
-      g += '<text class="appr__lbl" x="' + (x0 - 8) + '" y="' + gy + '" text-anchor="end" dominant-baseline="middle">' + t + '%</text>';
-    }
-    // X tick labels (in-game dates): every point when few, else 5 evenly spaced.
-    var idxs = n <= 6 ? d.map(function(_, i){ return i; }) : [0, Math.round((n - 1) / 4), Math.round((n - 1) / 2), Math.round(3 * (n - 1) / 4), n - 1];
-    var xl = '';
-    idxs.forEach(function(i){
-      var anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
-      xl += '<text class="appr__lbl" x="' + xi(i).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="' + anchor + '">' + esc(tickToDate(pts[i].tick)) + '</text>';
-    });
-    var line = d.map(function(v, i){ return (i ? 'L' : 'M') + xi(i).toFixed(1) + ' ' + yv(v).toFixed(1); }).join(' ');
-    var area = 'M' + xi(0).toFixed(1) + ' ' + y1 + ' ' + d.map(function(v, i){ return 'L' + xi(i).toFixed(1) + ' ' + yv(v).toFixed(1); }).join(' ') + ' L' + xi(n - 1).toFixed(1) + ' ' + y1 + ' Z';
-    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-    svg.innerHTML = g +
-      '<line class="appr__axis-x" x1="' + x0 + '" y1="' + y1 + '" x2="' + x1 + '" y2="' + y1 + '"/>' +
-      '<path d="' + area + '" fill="rgba(85,70,232,.12)"/>' +
-      '<path d="' + line + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '<circle cx="' + xi(n - 1).toFixed(1) + '" cy="' + yv(d[n - 1]).toFixed(1) + '" r="3.2" fill="currentColor"/>' +
-      xl;
-  }
-  window.addEventListener('resize', function(){ var s = document.getElementById('apprSpark'); if (s && APPR_PTS) drawApprChart(s, APPR_PTS); });
-
-  async function loadApproval(party, curTick){
-    var valEl = document.getElementById('apprVal'), deltaEl = document.getElementById('apprDelta');
-    var svg = document.getElementById('apprSpark'), factorsEl = document.getElementById('apprFactors');
-    if (!valEl || !svg) return;
-    var live = Math.max(0, Math.min(100, Number(party.popularity) || 0));
-    var hist = [];
+  // ---- Cabinet Ministries card: every portfolio with its sitting minister and party. A ministry is
+  // FILLED by an explicit cabinet appointment (cabinet_appointments) or, failing that, a fulfilled
+  // coalition promise (a DONE government_agenda 'ministry' row) — the same either-source rule the
+  // server uses (schema/151). Explicit appointment wins; an unstaffed portfolio shows "Vacant". ----
+  async function loadCabinet(nationId){
+    var el = document.getElementById('cabList');
+    if (!el) return;
     try {
-      var hr = await supabase.from('party_popularity_history').select('tick, popularity').eq('party_id', party.id).order('tick', { ascending: true });
-      if (!hr.error) hist = (hr.data || []).map(function(r){ return { tick: Number(r.tick), pop: Math.max(0, Math.min(100, Number(r.popularity) || 0)) }; });
-    } catch (e) { /* history table not migrated yet → card shows the live point only */ }
-    // "Now" is authoritative: the live popularity at the current tick wins over any stored snapshot
-    // for this tick (which may predate a same-tick change or not exist yet).
-    var byTick = {}; hist.forEach(function(p){ byTick[p.tick] = p.pop; });
-    byTick[curTick] = live;
-    APPR_PTS = Object.keys(byTick).map(Number).sort(function(a, b){ return a - b; }).map(function(t){ return { tick: t, pop: byTick[t] }; });
-
-    valEl.textContent = (Math.round(live * 10) / 10) + '%';
-    if (APPR_PTS.length >= 2) {
-      var dr = Math.round((APPR_PTS[APPR_PTS.length - 1].pop - APPR_PTS[APPR_PTS.length - 2].pop) * 10) / 10;
-      deltaEl.className = 'appr__delta' + (dr > 0 ? ' pos' : dr < 0 ? ' neg' : '');
-      deltaEl.textContent = dr > 0 ? '▲ +' + dr + ' pts since last tick' : dr < 0 ? '▼ ' + Math.abs(dr) + ' pts since last tick' : 'Flat since last tick';
-    } else { deltaEl.className = 'appr__delta'; deltaEl.textContent = 'No prior history yet — the trend builds each tick'; }
-    drawApprChart(svg, APPR_PTS);
-
-    // Factors: recent labelled popularity events for this party — the structured, forge-proof
-    // source (admin_fire_event stamps effect_target/effect_value/tone). We never parse body text.
-    if (factorsEl) {
-      var factors = [];
-      try {
-        var er = await supabase.from('events').select('body, effect_target, effect_value, tone, created_at')
-          .eq('party_id', party.id).not('effect_value', 'is', null).order('created_at', { ascending: false }).limit(25);
-        if (!er.error) factors = (er.data || []).filter(function(e){ return /party popularity/i.test(e.effect_target || ''); }).slice(0, 5);   // not 'Popularity Ceiling'
-      } catch (e) { /* feed unavailable → the none-state below */ }
-      factorsEl.innerHTML = factors.length
-        ? factors.map(function(f){ var a = Math.round((Number(f.effect_value) || 0) * 10) / 10;
-            return '<div class="factor"><span class="factor__amt factor__amt--' + (a < 0 ? 'neg' : 'pos') + '">' + (a < 0 ? '−' : '+') + Math.abs(a) + '%</span><span class="factor__what">' + esc(f.body) + '</span></div>'; }).join('')
-        : '<div class="factor--none">No labelled popularity changes recently — the chart above tracks the net movement each tick.</div>';
+      var gr = await supabase.from('governments').select('id').eq('nation_id', nationId).eq('status', 'active').maybeSingle();
+      var gov = gr.data;
+      var byMin = {};   // ministry → politician_id (explicit appointment wins over a promise)
+      if (gov) {
+        var ar = await supabase.from('cabinet_appointments').select('ministry, politician_id').eq('government_id', gov.id);
+        (ar.data || []).forEach(function(c){ if (c.politician_id) byMin[c.ministry] = c.politician_id; });
+        // Fulfilled ministry promises fill any portfolio that has no explicit appointment.
+        var pr = await supabase.from('government_agenda').select('params').eq('government_id', gov.id).eq('type', 'ministry').eq('status', 'done');
+        (pr.data || []).forEach(function(r){ var p = r.params || {};
+          if (p.ministry && p.minister_id && !byMin[p.ministry]) byMin[p.ministry] = p.minister_id; });
+      }
+      // Resolve every appointed politician to a name + party in two batched reads.
+      var pids = MINISTRIES.map(function(m){ return byMin[m]; }).filter(Boolean);
+      var polById = {}, partyById = {};
+      if (pids.length) {
+        var pl = await supabase.from('politicians').select('id, first_name, last_name, party_id').in('id', pids);
+        (pl.data || []).forEach(function(p){ polById[p.id] = p; });
+        var partyIds = (pl.data || []).map(function(p){ return p.party_id; }).filter(Boolean);
+        if (partyIds.length) {
+          var pa = await supabase.from('parties').select('id, name, abbreviation, archetype, color').in('id', partyIds);
+          if (pa.error) pa = await supabase.from('parties').select('id, name, abbreviation, archetype').in('id', partyIds);   // color not migrated
+          (pa.data || []).forEach(function(p){ partyById[p.id] = p; });
+        }
+      }
+      el.innerHTML = MINISTRIES.map(function(m){
+        var pol = polById[byMin[m]];
+        if (!pol) return '<div class="cab__row"><span class="cab__min">' + esc(m) + '</span><span class="cab__who cab__who--vacant">Vacant</span></div>';
+        var name = ((pol.first_name || '') + ' ' + (pol.last_name || '')).trim() || 'Minister';
+        var party = partyById[pol.party_id];
+        var tag = party ? ' <span class="ptag" style="background:' + partyColor(party) + '">' + esc((party.abbreviation || (party.name || '?').slice(0, 2)).toUpperCase()) + '</span>' : '';
+        return '<div class="cab__row"><span class="cab__min">' + esc(m) + '</span><span class="cab__who">' + esc(name) + tag + '</span></div>';
+      }).join('');
+    } catch (e) {
+      el.innerHTML = '<p class="empty">Couldn’t load the cabinet right now.</p>';
     }
   }
 
@@ -1620,7 +1573,7 @@
       setActions(party.influence != null ? party.influence : 12);
       feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };
       myPartyId = party.id;  // used to exclude self from the attack target list
-      loadApproval(party, curTick).catch(function(){});   // Party Approval card — non-blocking (schema/147 trend + factors)
+      loadCabinet(party.nation_id).catch(function(){});   // Cabinet Ministries card — non-blocking (portfolios + ministers)
       loadOverview(party, nation).catch(function(){});   // stat cards · territory + snapshot · assembly — non-blocking
 
       // Prime Minister actions appear only for the party that holds the premiership.
