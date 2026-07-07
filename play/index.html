@@ -1357,7 +1357,8 @@
     if (!el) return;
     try {
       var gr = await supabase.from('governments').select('id').eq('nation_id', nationId).eq('status', 'active').maybeSingle();
-      var gov = gr.data;
+      if (gr.error) throw gr.error;   // a real read failure → the catch below, not a falsely-empty cabinet
+      var gov = gr.data;              // null (no active government yet) is legitimate → every portfolio reads Vacant
       var byMin = {};   // ministry → politician_id (explicit appointment wins over a promise)
       if (gov) {
         var ar = await supabase.from('cabinet_appointments').select('ministry, politician_id').eq('government_id', gov.id);
