@@ -61,6 +61,11 @@
   .vtab:hover{background:var(--chip,#F4F3EF);color:var(--ink)}
   .vtab.active{background:var(--indigo-soft,#ECE9FD);color:var(--indigo,#5546E8)}
   .tabwrap{flex:1;min-width:0}
+  /* Sub-tabs inside the News pane (Outlets / Headline Rules). */
+  .newsub{display:flex;gap:7px;margin-bottom:14px}
+  .newsub-b{padding:8px 15px;border:1px solid var(--line);background:var(--surface);font-family:inherit;font-size:13px;font-weight:700;color:var(--muted);border-radius:9px;cursor:pointer}
+  .newsub-b:hover{color:var(--ink);border-color:var(--soft)}
+  .newsub-b.active{background:var(--indigo-soft,#ECE9FD);color:var(--indigo,#5546E8);border-color:color-mix(in srgb,var(--indigo,#5546E8) 30%,transparent)}
 
   /* ---- World Map editor ---- */
   .wm-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
@@ -562,7 +567,12 @@
       </nav>
       <div class="tabwrap">
       <div class="tabpane" data-tab="news">
-        <iframe src="/adminsetup/news.html" title="News Editor" style="width:100%;height:82vh;border:1px solid var(--line);border-radius:14px;background:#0e0e13"></iframe>
+        <div class="newsub">
+          <button class="newsub-b active" data-news="outlets" type="button">Outlets</button>
+          <button class="newsub-b" data-news="headlines" type="button">Headline Rules</button>
+        </div>
+        <iframe class="newsframe" data-news="outlets" src="/adminsetup/news.html" title="News Editor" style="width:100%;height:82vh;border:1px solid var(--line);border-radius:14px;background:#0e0e13"></iframe>
+        <iframe class="newsframe" data-news="headlines" src="/adminsetup/headline-rule.html" title="Headline Rule Editor" style="width:100%;height:82vh;border:1px solid var(--line);border-radius:14px;background:#0e0e13" hidden></iframe>
       </div>
       <div class="tabpane" data-tab="nations" hidden>
 
@@ -1999,6 +2009,15 @@
         if (tab === 'corporations') loadCorporations();
         if (tab === 'world-events') loadWorldEvents();
         if (tab === 'world-map') initWorldMap();
+      });
+    });
+
+    // ---- News sub-tabs (Outlets / Headline Rules) — swap which embedded editor shows ----
+    document.querySelectorAll('.newsub-b').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var view = b.dataset.news;
+        document.querySelectorAll('.newsub-b').forEach(function (x) { x.classList.toggle('active', x === b); });
+        document.querySelectorAll('.newsframe').forEach(function (f) { f.hidden = f.dataset.news !== view; });
       });
     });
 

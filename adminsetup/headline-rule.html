@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Headline Rule — Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0e0e13;--panel:#1a1a23;--field:#13131a;--sub:#20202b;--line:#2a2a37;--line2:#343443;
+    --ink:#e2e2ea;--muted:#9595a3;--soft:#6c6c7a;
+    --indigo:#6b5cff;--indigo-soft:rgba(107,92,255,.12);--green:#3fbf87;--red:#e0494c;--amber:#E0820E;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;padding:26px 16px 80px}
+  .page{max-width:640px;margin:0 auto}
+  .eyebrow{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin-bottom:6px}
+  h1{font-size:21px;font-weight:800;letter-spacing:-.02em}
+  .sub{font-size:12.5px;color:var(--muted);margin:5px 0 18px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px}
+  .sec-h{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:14px}
+  .flabel{font-size:12.5px;font-weight:600;margin:14px 0 8px}
+  .flabel:first-of-type{margin-top:0}
+  .flabel .hint{font-weight:400;color:var(--soft);font-size:11.5px}
+
+  .inp,textarea{width:100%;background:var(--field);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 12px;font-size:14px;outline:none;font-family:'Archivo',sans-serif}
+  .inp:focus,textarea:focus{border-color:var(--indigo)}
+  textarea{min-height:46px;resize:vertical;line-height:1.4}
+  .num{width:110px}
+  .row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+  .row>*{flex:none}
+
+  .selw{position:relative;flex:1;min-width:130px}
+  .selw select{width:100%;appearance:none;background:var(--field);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 30px 11px 12px;font-size:13.5px;font-weight:600;cursor:pointer;outline:none}
+  .selw select:focus{border-color:var(--indigo)}
+  .selw::after{content:'▾';position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--soft);pointer-events:none;font-size:11px}
+
+  .seg{display:flex;gap:7px;flex-wrap:wrap}
+  .seg button{background:var(--field);border:1px solid var(--line);color:var(--muted);border-radius:9px;padding:9px 13px;font-size:12.5px;font-weight:600;cursor:pointer}
+  .seg button.on{border-color:var(--indigo);background:var(--indigo-soft);color:#c9c2ff}
+
+  .cond{background:var(--field);border:1px solid var(--line);border-radius:11px;padding:13px;margin-top:4px}
+  .condline{font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);margin-top:11px;line-height:1.5}
+  .condline b{color:var(--ink)}
+
+  .hl{display:flex;gap:10px;align-items:flex-start;margin-bottom:9px}
+  .hl .slantpill{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:6px;padding:5px 8px;flex:none;width:74px;text-align:center;margin-top:11px}
+  .toggle{display:flex;gap:7px;margin-bottom:12px}
+
+  .tokens{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+  .tok{font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;color:#a99dff;background:var(--indigo-soft);border:1px solid #33305a;border-radius:6px;padding:3px 7px;cursor:pointer}
+  .tok:hover{filter:brightness(1.2)}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:560px){.grid2{grid-template-columns:1fr}}
+  .chkrow{display:flex;align-items:center;gap:9px;background:var(--field);border:1px solid var(--line);border-radius:10px;padding:11px 12px;cursor:pointer;user-select:none}
+  .chkrow.on{border-color:var(--indigo);background:var(--indigo-soft)}
+  .cb{width:17px;height:17px;border-radius:5px;border:1.5px solid var(--soft);flex:none;display:grid;place-items:center;color:#fff;font-size:10px}
+  .chkrow.on .cb{background:var(--indigo);border-color:var(--indigo)}
+  .chkrow span.t{font-size:12.5px;font-weight:600}
+
+  .preview{background:var(--field);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .preview .pl{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:11px}
+  .pvline{display:flex;gap:11px;align-items:baseline;padding:8px 0;border-top:1px solid var(--line)}
+  .pvline:first-of-type{border-top:none}
+  .pvline .ps{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;width:74px;flex:none}
+  .pvline .ph{font-size:15px;font-weight:700;letter-spacing:-.01em;line-height:1.3}
+  .pvtrig{font-family:'Space Mono',monospace;font-size:11px;color:var(--amber);margin-bottom:12px;line-height:1.5}
+
+  .save{width:100%;background:var(--indigo);color:#fff;border:none;border-radius:12px;padding:14px;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.05em;cursor:pointer;margin-top:14px}
+  .save:hover{filter:brightness(1.1)}
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(16px);background:#000;border:1px solid var(--line);color:#fff;font-family:'Space Mono',monospace;font-size:12px;padding:11px 17px;border-radius:11px;opacity:0;pointer-events:none;transition:all .3s;z-index:40}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)} .toast b{color:#a99dff}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="eyebrow">Backend · Media · Headline Rules</div>
+  <h1>Headline Rule</h1>
+  <div class="sub">Author a trigger and three headline variants. When the trigger fires, each outlet prints the variant matching its slant.</div>
+
+  <!-- IDENTITY -->
+  <div class="card">
+    <div class="sec-h">Rule</div>
+    <div class="flabel">Rule name <span class="hint">(admin label)</span></div>
+    <input class="inp" id="name" placeholder="e.g. Inflation crisis">
+    <div class="flabel">Scope</div>
+    <div class="seg" id="scope">
+      <button data-scope="nation" class="on">This nation</button>
+      <button data-scope="global">Any nation (global)</button>
+    </div>
+  </div>
+
+  <!-- TRIGGER -->
+  <div class="card">
+    <div class="sec-h">Trigger — when does this fire?</div>
+    <div class="seg" id="ttype">
+      <button data-tt="threshold" class="on">Threshold crossing</button>
+      <button data-tt="event">Game event</button>
+    </div>
+    <div id="trigFields"></div>
+  </div>
+
+  <!-- HEADLINES -->
+  <div class="card">
+    <div class="sec-h">Headlines</div>
+    <div class="toggle" id="hmode">
+      <button data-hm="slant" class="on">One per slant</button>
+      <button data-hm="neutral">Three neutral variants</button>
+    </div>
+    <div id="headlines"></div>
+    <div class="flabel">Tokens <span class="hint">— click to insert; auto-filled at runtime</span></div>
+    <div class="tokens" id="tokens"></div>
+  </div>
+
+  <!-- FIRING RULES -->
+  <div class="card">
+    <div class="sec-h">Firing rules</div>
+    <div class="grid2">
+      <div><div class="flabel">Cooldown <span class="hint">(ticks)</span></div><input class="inp num" id="cooldown" type="number" value="12" style="width:100%"></div>
+      <div><div class="flabel">Priority <span class="hint">(higher wins)</span></div><input class="inp num" id="priority" type="number" value="5" style="width:100%"></div>
+    </div>
+    <div class="chkrow" id="once" style="margin-top:12px"><span class="cb"></span><span class="t">Fire once only (never repeat)</span></div>
+  </div>
+
+  <div class="preview" id="preview"></div>
+  <button class="save" id="save">Save Headline Rule</button>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  var STATS=['Prosperity','Welfare','Growth','Order','Global Image','Inflation','Unemployment','Tax Burden','Budget','Income','Debt','Regime'];
+  var RESOURCES=['Energy','Food','Minerals','Goods','Services','Military','Diplomacy'];
+  var EVENTS=[
+    {id:'bill_pass',label:'A bill passes'},{id:'bill_fail',label:'A bill fails'},
+    {id:'war',label:'War is declared'},{id:'crisis_start',label:'A crisis begins'},{id:'crisis_end',label:'A crisis is resolved'},
+    {id:'resign',label:'A minister resigns'},{id:'appoint',label:'A minister is appointed'},
+    {id:'election',label:'An election is held'},{id:'initiative_done',label:'An initiative completes'},
+    {id:'coup',label:'A coup is attempted'},{id:'treaty',label:'A treaty is signed'}
+  ];
+  var SLANTS=[
+    {id:'record',  label:'Record',   color:'#c9c9d4'},
+    {id:'left',    label:'Left',     color:'#e0575a'},
+    {id:'centre',  label:'Centrist', color:'#6b5cff'},
+    {id:'right',   label:'Right',    color:'#3f9fe0'},
+    {id:'farright',label:'Far Right',color:'#c99a3a'}
+  ];
+
+  var state={
+    name:'', scope:'nation',
+    ttype:'threshold',
+    // threshold fields
+    subjectType:'stat', subject:'Inflation', direction:'above', value:15, held:0,
+    // event fields
+    event:'bill_pass', eventFilter:'',
+    hmode:'slant',
+    headlines:{ record:'', left:'', centre:'', right:'', farright:'', n1:'', n2:'', n3:'' },
+    cooldown:12, priority:5, once:false
+  };
+
+  /* ---- trigger fields ---- */
+  function subjectOptions(){
+    var arr = state.subjectType==='stat' ? STATS
+            : (state.subjectType==='rate' ? STATS.concat(RESOURCES) : RESOURCES);
+    return arr.map(function(x){return '<option'+(state.subject===x?' selected':'')+'>'+x+'</option>';}).join('');
+  }
+  function trigFields(){
+    if(state.ttype==='threshold'){
+      var subjTypeOpts=[['stat','A ministry / national stat'],['onhand','Resource on-hand'],['production','Resource production'],['rate','Rate of change (per year)']]
+        .map(function(p){return '<option value="'+p[0]+'"'+(state.subjectType===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('');
+      var unit = state.subjectType==='rate' ? ' pts/yr' : (state.subjectType==='stat'?'':' units');
+      return '<div class="cond">'+
+        '<div class="flabel">Subject</div>'+
+        '<div class="row"><div class="selw"><select id="subjType">'+subjTypeOpts+'</select></div>'+
+          '<div class="selw"><select id="subj">'+subjectOptions()+'</select></div></div>'+
+        '<div class="flabel">Condition</div>'+
+        '<div class="row"><div class="seg"><button data-dir="above"'+(state.direction==='above'?' class="on"':'')+'>Rises above</button>'+
+          '<button data-dir="below"'+(state.direction==='below'?' class="on"':'')+'>Falls below</button></div>'+
+          '<input class="inp num" id="val" type="number" value="'+state.value+'"></div>'+
+        '<div class="flabel">Sustained for <span class="hint">— ticks it must hold before firing (0 = instant)</span></div>'+
+        '<input class="inp num" id="held" type="number" value="'+state.held+'">'+
+        '<div class="condline">Fires when <b>'+state.subject+'</b> '+(state.subjectType==='onhand'?'(on-hand) ':state.subjectType==='production'?'(production) ':state.subjectType==='rate'?'(rate) ':'')+
+          (state.direction==='above'?'rises above':'falls below')+' <b>'+state.value+unit+'</b>'+(state.held>0?', held '+state.held+' ticks':'')+'.</div>'+
+      '</div>';
+    }
+    var evOpts=EVENTS.map(function(e){return '<option value="'+e.id+'"'+(state.event===e.id?' selected':'')+'>'+e.label+'</option>';}).join('');
+    var ev=EVENTS.filter(function(e){return e.id===state.event;})[0];
+    return '<div class="cond">'+
+      '<div class="flabel">Event</div><div class="selw"><select id="ev">'+evOpts+'</select></div>'+
+      '<div class="flabel">Filter <span class="hint">— optional, e.g. margin&lt;20 or seats&gt;150</span></div>'+
+      '<input class="inp" id="evFilter" value="'+esc(state.eventFilter)+'" placeholder="leave blank for any '+ev.label.toLowerCase()+'">'+
+      '<div class="condline">Fires when <b>'+ev.label.toLowerCase()+'</b>'+(state.eventFilter?' where <b>'+esc(state.eventFilter)+'</b>':'')+'.</div>'+
+    '</div>';
+  }
+  function bindTrig(){
+    if(state.ttype==='threshold'){
+      document.getElementById('subjType').onchange=function(){state.subjectType=this.value; var a=state.subjectType==='stat'?STATS:(state.subjectType==='rate'?STATS.concat(RESOURCES):RESOURCES); if(a.indexOf(state.subject)<0)state.subject=a[0]; renderTrig();};
+      document.getElementById('subj').onchange=function(){state.subject=this.value;renderTrig();};
+      document.querySelectorAll('[data-dir]').forEach(function(b){b.onclick=function(){state.direction=b.dataset.dir;renderTrig();};});
+      document.getElementById('val').oninput=function(){state.value=parseFloat(this.value)||0;renderCondline();renderPreview();};
+      document.getElementById('held').oninput=function(){state.held=parseInt(this.value,10)||0;renderCondline();};
+    } else {
+      document.getElementById('ev').onchange=function(){state.event=this.value;renderTrig();};
+      document.getElementById('evFilter').oninput=function(){state.eventFilter=this.value;renderTrig();};
+    }
+  }
+  function renderTrig(){document.getElementById('trigFields').innerHTML=trigFields();bindTrig();renderPreview();}
+  function renderCondline(){ /* cheap re-render of trig to refresh the summary line */ renderTrig(); }
+
+  /* ---- headlines ---- */
+  function headlineEditors(){
+    if(state.hmode==='slant'){
+      return SLANTS.map(function(s){
+        return '<div class="hl"><span class="slantpill" style="color:'+s.color+';background:'+hexA(s.color,.12)+';border:1px solid '+hexA(s.color,.4)+'">'+s.label+'</span>'+
+          '<textarea data-hl="'+s.id+'" placeholder="How '+s.label+' frames it…">'+esc(state.headlines[s.id])+'</textarea></div>';
+      }).join('');
+    }
+    return ['n1','n2','n3'].map(function(k,i){
+      return '<div class="hl"><span class="slantpill" style="color:var(--muted);background:var(--field);border:1px solid var(--line)">Var '+(i+1)+'</span>'+
+        '<textarea data-hl="'+k+'" placeholder="Headline option '+(i+1)+'…">'+esc(state.headlines[k])+'</textarea></div>';
+    }).join('');
+  }
+  function bindHeadlines(){
+    document.querySelectorAll('[data-hl]').forEach(function(t){t.oninput=function(){state.headlines[t.dataset.hl]=t.value;renderPreview();};});
+  }
+  function renderHeadlines(){document.getElementById('headlines').innerHTML=headlineEditors();bindHeadlines();}
+
+  /* ---- tokens ---- */
+  var TOKENS=['{value}','{subject}','{nation}','{resource}','{delta}','{seats}'];
+  function renderTokens(){
+    document.getElementById('tokens').innerHTML=TOKENS.map(function(t){return '<span class="tok" data-tok="'+t+'">'+t+'</span>';}).join('');
+    document.querySelectorAll('[data-tok]').forEach(function(b){b.onclick=function(){
+      // insert into the last-focused textarea, else the first
+      var ta=lastHL||document.querySelector('[data-hl]'); if(!ta)return;
+      var k=ta.dataset.hl; state.headlines[k]=(state.headlines[k]||'')+b.dataset.tok; ta.value=state.headlines[k]; ta.focus(); renderPreview();
+    };});
+  }
+  var lastHL=null;
+  document.addEventListener('focusin',function(e){ if(e.target && e.target.dataset && e.target.dataset.hl!==undefined) lastHL=e.target; });
+
+  /* ---- preview ---- */
+  function fillTokens(txt){
+    return (txt||'')
+      .replace(/\{value\}/g,state.value)
+      .replace(/\{subject\}/g,state.subject)
+      .replace(/\{nation\}/g, state.scope==='global'?'the nation':'Sessau')
+      .replace(/\{resource\}/g, RESOURCES.indexOf(state.subject)>=0?state.subject:'the resource')
+      .replace(/\{delta\}/g,'+3').replace(/\{seats\}/g,'137');
+  }
+  function trigSummary(){
+    if(state.ttype==='threshold'){
+      var unit=state.subjectType==='rate'?' pts/yr':(state.subjectType==='stat'?'':' units');
+      return 'TRIGGER · '+state.subject+' '+(state.direction==='above'?'>':'<')+' '+state.value+unit+(state.held>0?' (held '+state.held+')':'');
+    }
+    var ev=EVENTS.filter(function(e){return e.id===state.event;})[0];
+    return 'TRIGGER · '+ev.label+(state.eventFilter?' · '+state.eventFilter:'');
+  }
+  function renderPreview(){
+    var lines;
+    if(state.hmode==='slant'){
+      lines=SLANTS.map(function(s){
+        var h=fillTokens(state.headlines[s.id])||'—';
+        return '<div class="pvline"><span class="ps" style="color:'+s.color+'">'+s.label+'</span><span class="ph">'+h+'</span></div>';
+      }).join('');
+    } else {
+      lines=['n1','n2','n3'].map(function(k,i){
+        return '<div class="pvline"><span class="ps" style="color:var(--muted)">Var '+(i+1)+'</span><span class="ph">'+(fillTokens(state.headlines[k])||'—')+'</span></div>';
+      }).join('');
+    }
+    document.getElementById('preview').innerHTML='<div class="pl">Preview</div><div class="pvtrig">'+trigSummary()+'</div>'+lines;
+  }
+
+  /* ---- top-level binds ---- */
+  document.getElementById('name').oninput=function(){state.name=this.value;};
+  document.querySelectorAll('#scope [data-scope]').forEach(function(b){b.onclick=function(){state.scope=b.dataset.scope;document.querySelectorAll('#scope [data-scope]').forEach(function(x){x.className=(x.dataset.scope===state.scope?'on':'');});renderPreview();};});
+  document.querySelectorAll('#ttype [data-tt]').forEach(function(b){b.onclick=function(){state.ttype=b.dataset.tt;document.querySelectorAll('#ttype [data-tt]').forEach(function(x){x.className=(x.dataset.tt===state.ttype?'on':'');});renderTrig();};});
+  document.querySelectorAll('#hmode [data-hm]').forEach(function(b){b.onclick=function(){state.hmode=b.dataset.hm;document.querySelectorAll('#hmode [data-hm]').forEach(function(x){x.className=(x.dataset.hm===state.hmode?'on':'');});renderHeadlines();renderPreview();};});
+  document.getElementById('cooldown').oninput=function(){state.cooldown=parseInt(this.value,10)||0;};
+  document.getElementById('priority').oninput=function(){state.priority=parseInt(this.value,10)||0;};
+  document.getElementById('once').onclick=function(){state.once=!state.once;this.className='chkrow'+(state.once?' on':'');this.querySelector('.cb').textContent=state.once?'✓':'';};
+  document.getElementById('save').onclick=function(){
+    if(!state.name.trim()){ping('<b class="red">Rule name required</b>');return;}
+    console.log('HEADLINE_RULE',state);
+    ping('Saved <b>'+state.name+'</b>');
+  };
+
+  function esc(s){return (s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+  function hexA(hex,a){var h=hex.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
+  var toast=document.getElementById('toast'),tt;
+  function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show');},2400);}
+
+  renderTrig(); renderHeadlines(); renderTokens(); renderPreview();
+</script>
+</body>
+</html>
