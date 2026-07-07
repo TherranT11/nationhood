@@ -3,7 +3,7 @@
 -- Every tick, a nation's Budget Balance moves its Public Debt by the annual balance / 12 (magnitude
 -- floored to one decimal): a POSITIVE balance (surplus) pays the debt down (never below 0); a
 -- NEGATIVE balance (deficit) adds to it — symmetric, so a running deficit grows the debt from 0.
--- Every JANUARY, the remaining Public Debt accrues 3% interest. Both called from _advance_tick (60).
+-- Every JANUARY, the remaining Public Debt accrues 5% interest. Both called from _advance_tick (60).
 --
 -- Budget Balance is the net of every policy's in-force Budget Balance effect MINUS every running
 -- national initiative's standing $bn/yr cost. _nation_budget_balance MIRRORS nationBudgetContributions
@@ -104,14 +104,14 @@ revoke all on function public._apply_budget_balance(int) from public, anon, auth
 drop function if exists public._apply_budget_surplus(int);   -- renamed (now moves debt both ways)
 
 -- Annual interest: every January (tick 1 = Jan 1980, so (tick−1) mod 12 = 0), Public Debt grows
--- 3% — a $20bn debt gains $0.6bn. Result rounded to one decimal; zero-debt / dormant nations skip.
+-- 5% — a $100bn debt gains $5bn. Result rounded to one decimal; zero-debt / dormant nations skip.
 create or replace function public._apply_debt_interest(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
 begin
   if (p_tick - 1) % 12 <> 0 then return; end if;   -- January only
   update public.nations
      set economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{debt}',
-           to_jsonb(round(coalesce((economy->>'debt')::numeric, 0) * 1.03, 1)))
+           to_jsonb(round(coalesce((economy->>'debt')::numeric, 0) * 1.05, 1)))
    where coalesce((economy->>'debt')::numeric, 0) > 0
      and coalesce(dormant, false) = false;
 end $$;
