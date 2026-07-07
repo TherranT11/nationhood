@@ -17,30 +17,43 @@
 --     the enacting nation bears (100 − partner_share)%, the partner covers partner_share%
 -- Depends on: 10 (nations.gdp/economy), 90 (policies), 92 (_nation_policy_option), 141 (nation_initiatives).
 
-create or replace function public._nation_budget_balance(p_nation text)
+-- The cumulative in-force contribution of every policy to one stat — the SQL mirror of
+-- policyInForceEffects/policyStatContribution (policies.js): a spectrum accumulates its crossed levels
+-- 1..idx (base level 0 has none), a binary uses its in-force state, a 'gdp'-unit effect is amount% of
+-- GDP, and trade policy is skipped. ONE server source for a nation's policy-driven stat total — read by
+-- _nation_budget_balance, the bureaucracy/implementation maths (schema/155), and every ministry stat.
+create or replace function public._nation_policy_stat(p_nation text, p_stat text)
 returns numeric language plpgsql stable security definer set search_path = public as $$
 declare
-  v_gdp numeric; v_sum numeric := 0; r record; v_def jsonb; v_type text; v_opts jsonb;
-  v_idx int; v_from int; i int; v_eff jsonb; v_v numeric; v_yc numeric;
+  v_gdp numeric; v_sum numeric := 0; r record; v_type text; v_opts jsonb;
+  v_idx int; v_from int; i int; v_eff jsonb; v_v numeric;
 begin
   select gdp into v_gdp from public.nations where id = p_nation;
   for r in select id, definition from public.policies
              where coalesce(definition->>'special', '') <> 'trade' loop
-    v_def  := r.definition;
-    v_type := coalesce(v_def->>'type', 'spectrum');
-    v_opts := v_def->v_type;                                   -- the 'spectrum' or 'binary' array
+    v_type := coalesce(r.definition->>'type', 'spectrum');
+    v_opts := r.definition->v_type;                            -- the 'spectrum' or 'binary' array
     if v_opts is null or jsonb_typeof(v_opts) <> 'array' then continue; end if;
     v_idx  := public._nation_policy_option(p_nation, r.id);    -- the in-force option index
     v_from := case when v_type = 'spectrum' then 1 else v_idx end;   -- spectrum accumulates 1..idx
     for i in v_from .. v_idx loop                             -- no iterations when idx < from (e.g. base level)
       if v_opts->i is null then continue; end if;
       for v_eff in select value from jsonb_array_elements(coalesce(v_opts->i->'effects', '[]'::jsonb)) loop
-        if v_eff->>'t' <> 'Budget Balance' then continue; end if;
+        if v_eff->>'t' <> p_stat then continue; end if;
         v_v := coalesce((v_eff->>'v')::numeric, 0);
         v_sum := v_sum + case when v_eff->>'unit' = 'gdp' then v_v / 100.0 * coalesce(v_gdp, 0) else v_v end;
       end loop;
     end loop;
   end loop;
+  return v_sum;
+end $$;
+revoke all on function public._nation_policy_stat(text, text) from public, anon, authenticated;
+
+create or replace function public._nation_budget_balance(p_nation text)
+returns numeric language plpgsql stable security definer set search_path = public as $$
+declare v_sum numeric; r record; v_yc numeric;
+begin
+  v_sum := public._nation_policy_stat(p_nation, 'Budget Balance');   -- Σ every policy's Budget Balance effect
   -- Running initiatives: this nation's standing share of each active programme's $bn/yr (as the
   -- enacting nation, (100 − share)%; as a joint partner, share%). The cost is a flat $bn or a % of the
   -- ENACTING nation's GDP (definition.budgetUnit), so resolve it against that nation's gdp (nn.gdp).

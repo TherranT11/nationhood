@@ -119,7 +119,7 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, effectText, optMoney, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity, proposalInfluenceCost } from '/policies.js';
+  import { policyOptions, policyOptionIdx, policyInForceEffects, effectText, optMoney, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity, proposalInfluenceCost } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
   import { isMonarchy, regimeText } from '/ladders.js';
 
@@ -250,12 +250,19 @@
         html += effRow({ text: 'In force now · ' + tradeEffectText(curOpt), cls: '' }, 'now');
         html += effRow({ text: 'If enacted · ' + tradeEffectText(o), cls: '' }, 'while in force');
       }
-      // Non-money standing effects only — ALL money (recurring, one-time and finite) is summarised
-      // in the fiscal block above, so it reads as one figure instead of being split across sections.
-      // Standing stat effects of the proposed rung (money is in the fiscal block; the two vote
-      // popularity targets are now computed directionally below, not authored per level).
-      var effs = (o.effects || []).filter(function (e) { return !isMoneyTarget(e.t) && (e.t || '').indexOf('Party Popularity') !== 0; });
-      html += effs.map(function (e) { var t = effectText(e, pop, pros); return effRow(t, t.cad); }).join('');
+      // Standing stat effects are CUMULATIVE across the crossed levels (one source: policyInForceEffects)
+      // — being at rung C is the sum of every level up to C, so "−2 Crime" at B and "−2 Crime" at C read
+      // as one "−4 Crime while in force" line. Money is in the fiscal block; the two vote-popularity
+      // targets are computed directionally below, not authored per level.
+      var effs = policyInForceEffects(def, sel.proposed).filter(function (e) { return !isMoneyTarget(e.t) && (e.t || '').indexOf('Party Popularity') !== 0; });
+      var agg = [], apos = {};
+      effs.forEach(function (e) {
+        var key = e.t + '|' + (e.unit || '');
+        if (apos[key] == null) { apos[key] = agg.length; agg.push({ t: e.t, v: 0, unit: e.unit }); }
+        agg[apos[key]].v += (Number(e.v) || 0);
+      });
+      html += agg.filter(function (e) { return Math.abs(e.v) >= 0.0001; })
+        .map(function (e) { return effRow(effectText({ t: e.t, v: e.v, unit: e.unit }, pop, pros), 'while in force'); }).join('');
       // Vote-popularity: computed from the direction + size of the proposed move (one source:
       // policies.js). Voting against is the mirror of voting for.
       var vp = policyVotePopularity(def, inForceIdx(), sel.proposed);
@@ -583,13 +590,15 @@
     else if (isThreshold) renderThresholdMode(nation || {});
     else if (isDecl) renderDeclMode((nation && nation.declarations) || {}, regime);
     else {
-      // Policies that already have a live bill (in committee, on the agenda, or on the floor) — the
-      // ladder greys out proposing for them (the server enforces one live bill per policy). Non-fatal.
+      // Policies with a live bill (in committee, on the agenda, or on the floor) OR a change still being
+      // implemented — the ladder greys out proposing for them (the server enforces this too). Non-fatal.
       var pendingPolicies = {};
       try {
         (await fetchProposals(party.nation_id)).forEach(function (p) {
           if (p.kind === 'law' && (p.status === 'committee' || p.status === 'voting' || p.status === 'agenda') && p.payload && p.payload.policy_id) pendingPolicies[p.payload.policy_id] = true;
         });
+        const { data: impl } = await supabase.from('nation_law_implementations').select('policy_id').eq('nation_id', party.nation_id);
+        (impl || []).forEach(function (r) { pendingPolicies[r.policy_id] = true; });
       } catch (e) { /* leave empty → server still blocks a duplicate */ }
       renderLawMode((nation && nation.policies) || {}, nation || {}, pendingPolicies, (party && party.seats) || 0);
     }
