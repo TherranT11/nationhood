@@ -43,6 +43,18 @@
   .chip__t{font-weight:700;font-size:13.5px;letter-spacing:-.005em;line-height:1.25}
   .chip__t.good{color:var(--green)} .chip__t.warn{color:#c0860a} .chip__t.bad{color:var(--red)}
 
+  /* Regime graph: 25 cells left→right, one per point on the 1–25 scale (ladders.js
+     REGIME_TIERS). The number is the source; each cell takes its tier's colour and the
+     nation's current point is raised + ringed, with a "N — Tier" caption below. */
+  .regime__scale{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:2px}
+  .regime__track{display:grid;grid-template-columns:repeat(25,1fr);gap:3px;align-items:end;padding-top:24px}
+  .regime__cell{position:relative;height:26px;border-radius:4px;background:color-mix(in srgb,var(--rc) 30%,transparent)}
+  .regime__cell.is-cur{height:42px;background:var(--rc);box-shadow:0 0 0 2px var(--surface),0 0 0 3px var(--rc)}
+  .regime__pin{position:absolute;top:-24px;left:50%;transform:translateX(-50%);font-family:'Space Mono',monospace;font-weight:700;font-size:12px;color:var(--ink)}
+  .regime__cap{margin-top:18px;font-size:15px;font-weight:700;color:var(--ink)}
+  .regime__cap b{font-size:20px;font-weight:900;letter-spacing:-.02em}
+  @media(max-width:680px){.regime__track{gap:2px}.regime__cell{border-radius:3px}}
+
   /* National Modifiers + Events row — placeholders for now (no live data yet). */
   .cols{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;margin-top:16px;align-items:start}
   .modstack{display:flex;flex-direction:column;gap:16px;min-width:0}  /* National Modifiers + National Initiatives stacked in one column */
@@ -303,10 +315,10 @@
       <div class="cab__list" id="cabList"><p class="empty">Loading the cabinet&hellip;</p></div>
     </section>
 
-    <!-- National stat ladders (kept below the overview). -->
-    <section class="panel" id="glance">
-      <div class="glance-hd"><span>The Nation at a Glance</span><a class="glance-link">Nation &#9656;</a></div>
-      <div class="snap" id="snap"><p class="empty">Loading the nation&rsquo;s figures&hellip;</p></div>
+    <!-- Regime — the nation's place on the 1–25 autocracy↔democracy↔monarchy scale. -->
+    <section class="panel" id="regimePanel">
+      <div class="glance-hd"><span>Regime</span><a class="glance-link">Nation &#9656;</a></div>
+      <div id="regimeGraph"><p class="empty">Loading the nation&rsquo;s regime&hellip;</p></div>
     </section>
 
     <div class="cols">
@@ -413,7 +425,7 @@
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { fetchNationInitiatives, renderNationInitiatives } from '/initiatives.js';
   import { openJointProposer, fetchJointNegotiations, renderJointNegotiations } from '/joint.js';
-  import { statLabel, statBand, regimeLabel, statName, regimeText } from '/ladders.js';
+  import { statLabel, statBand, regimeLabel, statName, regimeText, REGIME_TIERS } from '/ladders.js';
   import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, PRODUCE_COST, PRODUCE_COOLDOWN, declaredValue, fmtPop, fmtGdp } from '/util.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { MINISTRIES } from '/ministries.js';
@@ -424,36 +436,44 @@
 
   var flag = document.getElementById('flag');
 
-  // Nation at a Glance — same ladder stats + colour bands as /nation-select, so
-  // the number is the one source and the word/colour are derived the same way.
-  var GLANCE_STATS = ['prosperity', 'welfare', 'growth', 'order', 'image'];
-  var GLANCE_TAX = 0;   // the nation's DERIVED Tax Burden %, from the nation_tax_burden RPC (one source: schema/47)
-  function renderGlance(nation) {
-    var snap = document.getElementById('snap');
-    var stats = nation.stats || {};
+  // Regime graph — the nation's place on the single 1–25 autocracy↔democracy↔monarchy
+  // scale (ladders.js REGIME_TIERS). The stored number is the source; each of the 25
+  // cells takes its tier's colour and the current point is highlighted with a caption.
+  var REGIME_MIN = 1, REGIME_MAX = 25;
+  // One colour per tier threshold, walking the scale: red autocracy → green democracy → violet crown.
+  var REGIME_TIER_COLOR = {
+    1: '#b4231f', 5: '#d1521c', 9: '#dd8613', 11: '#c9a30a', 14: '#8faa1b',
+    17: '#4f9d3a', 20: '#2f8f4e', 21: '#4f5bd5', 24: '#7b3fc4'
+  };
+  // The threshold value of the tier a regime point falls in (REGIME_TIERS is high→low).
+  function regimeTierValue(n) {
+    for (var i = 0; i < REGIME_TIERS.length; i++) if (n >= REGIME_TIERS[i].value) return REGIME_TIERS[i].value;
+    return REGIME_TIERS[REGIME_TIERS.length - 1].value;
+  }
+  function renderRegime(nation) {
+    var box = document.getElementById('regimeGraph');
+    if (!box) return;
     var eco = nation.economy || {};
-    var chips = [];
-    GLANCE_STATS.forEach(function (k) {
-      var v = stats[k];
-      if (typeof v !== 'number') return;
-      var name = statName(k);
-      var label = statLabel(k, v) || '—';
-      chips.push(chip(name, '<span class="chip__t ' + statBand(k, v) + '">' + v + ' &mdash; ' + esc(label) + '</span>'));
-    });
-    if (eco.regime != null) {
-      // Regime is stored numeric (1–20) for new nations → show its tier label;
-      // a legacy free-text regime is shown as-is.
-      var regimeTxt = typeof eco.regime === 'number' ? (regimeLabel(eco.regime) || String(eco.regime)) : eco.regime;
-      chips.push(chip('Regime', '<span class="chip__t">' + esc(regimeTxt) + '</span>'));
+    // Only numeric regimes plot on the 1–25 scale; a legacy free-text regime shows as text.
+    if (typeof eco.regime !== 'number') {
+      box.innerHTML = eco.regime ? '<p class="regime__cap">' + esc(String(eco.regime)) + '</p>'
+                                 : '<p class="empty">No regime set for this nation yet.</p>';
+      return;
     }
-    if (eco.inflation != null) chips.push(chip('Inflation', val(eco.inflation + '%')));
-    if (eco.unemployment != null) chips.push(chip('Unemployment', val(eco.unemployment + '%')));
-    chips.push(chip('Tax Burden', val(GLANCE_TAX + '%')));
-    var cur = esc(eco.currency || '$');
-    if (eco.budget != null) chips.push(chip('Budget', val(cur + eco.budget + 'B')));
-    if (eco.income != null) chips.push(chip('Income', val((eco.income < 0 ? '−' : '') + cur + Math.abs(eco.income) + 'B/yr')));
-    if (eco.debt != null) chips.push(chip('Debt', val(cur + eco.debt + 'B')));
-    snap.innerHTML = chips.join('') || '<p class="empty">No figures for this nation yet.</p>';
+    var cur = Math.max(REGIME_MIN, Math.min(REGIME_MAX, Math.round(eco.regime)));
+    var cells = '';
+    for (var i = REGIME_MIN; i <= REGIME_MAX; i++) {
+      var color = REGIME_TIER_COLOR[regimeTierValue(i)];
+      var isCur = i === cur;
+      cells += '<div class="regime__cell' + (isCur ? ' is-cur' : '') + '" style="--rc:' + color + '"' +
+               ' title="' + i + ' — ' + esc(regimeLabel(i)) + '">' +
+               (isCur ? '<span class="regime__pin">' + i + '</span>' : '') + '</div>';
+    }
+    var label = regimeLabel(cur) || String(cur);
+    box.innerHTML =
+      '<div class="regime__scale"><span>Autocracy</span><span>Democracy</span><span>Monarchy</span></div>' +
+      '<div class="regime__track">' + cells + '</div>' +
+      '<p class="regime__cap"><b>' + cur + '</b> &mdash; ' + esc(label) + '</p>';
   }
   // Events split into filterable buckets by their stored `kind`: Parties (a party's own
   // actions + founding), Legislative (bills on the floor, passing/failing, no-confidence),
@@ -1521,8 +1541,6 @@
       var nation = nsel.data;
       if (nsel.error) nation = (await supabase.from('nations').select('name, flag, stats, economy, policies').eq('id', party.nation_id).single()).data;
       const nationName = (nation && nation.name) || party.nation_id;
-      // Policy definitions for the DERIVED Tax Burden (base + each in-force option's contribution).
-      try { var tbr = await supabase.rpc('nation_tax_burden', { p_nation: party.nation_id }); GLANCE_TAX = (tbr && !tbr.error) ? (Number(tbr.data) || 0) : 0; } catch (e) { GLANCE_TAX = 0; }
 
       // Party funds in the topbar, just right of the Discord logo.
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
@@ -1567,10 +1585,10 @@
       document.getElementById('lede').style.display = 'none';         // eyebrow + party name is the whole header now
       document.title = party.name + ' · Nationhood';
 
-      // Render the glance, or show a clear fallback — never leave it stuck on
+      // Render the regime graph, or show a clear fallback — never leave it stuck on
       // "Loading…" if the nation row failed to load (e.g. a column drift).
-      if (nation) renderGlance(nation);
-      else document.getElementById('snap').innerHTML = '<p class="empty">Couldn’t load the nation’s figures right now. Refresh to try again.</p>';
+      if (nation) renderRegime(nation);
+      else document.getElementById('regimeGraph').innerHTML = '<p class="empty">Couldn’t load the nation’s regime right now. Refresh to try again.</p>';
       setActions(party.influence != null ? party.influence : 12);
       feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };
       myPartyId = party.id;  // used to exclude self from the attack target list
@@ -1673,7 +1691,7 @@
       var ledeEl = document.getElementById('lede');
       ledeEl.style.display = '';   // un-hide (the header normally hides it) so the error is visible
       ledeEl.textContent = 'Could not load your party right now. Refresh to try again.';
-      document.getElementById('snap').innerHTML = '<p class="empty">Couldn’t load the nation’s figures.</p>';
+      document.getElementById('regimeGraph').innerHTML = '<p class="empty">Couldn’t load the nation’s regime.</p>';
     }
   })();
 </script>
