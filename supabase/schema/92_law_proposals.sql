@@ -53,7 +53,9 @@ begin
       for r in select value as t from jsonb_array_elements(public._doorway_effects(v_def, v_old, p_option)) loop
         perform public._apply_policy_effect(p_nation, r.t);
       end loop;
-    else
+    elsif jsonb_typeof(v_opts) = 'array'
+       and exists (select 1 from jsonb_array_elements(v_opts) o where o.value ? 'transitions') then
+      -- LEGACY explicit `transitions` (pre-doorway) — kept for any policy still authored that way.
       v_oldname := v_opts -> v_old    ->> 'name';
       v_newname := v_opts -> p_option ->> 'name';
       for r in
@@ -67,6 +69,14 @@ begin
         where e.value->>'dir' = 'to' and e.value->>'rung' = v_newname
       loop
         perform public._apply_policy_effect(p_nation, jsonb_build_object('t', r.t->>'t', 'v', r.t->'v'));
+      end loop;
+    else
+      -- Plain per-level `effects` (the adminsetup shape): apply the NET directional stat shift ONCE —
+      -- cumulative(to) − cumulative(from). So leaving a −3 rung (D) for a −1 rung (B) nets +2, and the
+      -- reverse move nets −2. These per-level stat effects are one-time rung-change shifts, NOT a
+      -- recurring drain — the monthly sweep (schema/91) skips them; money stays standing there.
+      for r in select value as t from jsonb_array_elements(public._policy_transition_effects(v_def, v_old, p_option)) loop
+        perform public._apply_policy_effect(p_nation, r.t);
       end loop;
     end if;
   end if;
@@ -88,6 +98,41 @@ returns jsonb language sql immutable as $$
              -> (case when p_to > p_from then 'doorUp' else 'doorDown' end), '[]'::jsonb)
   ) e;
 $$;
+
+-- The NET, directional stat shift of a rung move for a plain per-level `effects` policy (the
+-- adminsetup authoring shape — no doorUp/doorDown, no `transitions`). Model: each level's effect is
+-- the per-step increment, being at rung N is the sum of levels 1..N (spectrum) or that state (binary),
+-- and a MOVE applies cumulative(to) − cumulative(from). So D(−3)→B(−1) nets +2, B→D nets −2. MIRRORS
+-- policyEffectChange in policies.js (the propose/bill preview). Excludes money (Budget/Debt/Income —
+-- standing per-year fiscal, applied by the tick sweep), the derived Tax Burden, and the vote/government
+-- popularity targets (driven by votes, not rung crossings). Returns aggregated {t, v} with v the signed
+-- net, so _apply_law applies each stat once (no intermediate clamping across the crossed levels).
+create or replace function public._policy_transition_effects(p_def jsonb, p_from int, p_to int)
+returns jsonb language plpgsql immutable as $$
+declare
+  v_opts jsonb := public._policy_options(p_def);
+  v_spectrum boolean := (p_def->>'type') = 'spectrum';
+  v_totals jsonb := '{}'::jsonb; side record; i int; lo int; hi int; e jsonb; t text; val numeric;
+begin
+  if v_opts is null or jsonb_typeof(v_opts) <> 'array' then return '[]'::jsonb; end if;
+  -- cumulative(to) [+] minus cumulative(from) [−]: sum each side's in-force levels, signed.
+  for side in select * from (values (p_to, 1), (p_from, -1)) as s(idx, sgn) loop
+    if v_spectrum then lo := 1; hi := side.idx; else lo := side.idx; hi := side.idx; end if;
+    i := lo;
+    while i <= hi loop
+      for e in select value from jsonb_array_elements(coalesce(v_opts->i->'effects', '[]'::jsonb)) loop
+        t := e->>'t';
+        continue when t is null
+          or t in ('Budget','Debt','Income','Tax Burden','Party Popularity','Popularity Ceiling','Popularity Floor');
+        val := coalesce((e->>'v')::numeric, 0) * side.sgn;
+        v_totals := jsonb_set(v_totals, array[t], to_jsonb(coalesce((v_totals->>t)::numeric, 0) + val));
+      end loop;
+      i := i + 1;
+    end loop;
+  end loop;
+  return (select coalesce(jsonb_agg(jsonb_build_object('t', key, 'v', (value)::numeric)), '[]'::jsonb)
+          from jsonb_each_text(v_totals) where (value)::numeric <> 0);
+end $$;
 
 -- RPC: the one-time transition (doorway) cost of a proposed move, for the proposal preview.
 -- Returns the raw {t, v, scale?} effects; the client renders each with its own scale (flat when absent).
