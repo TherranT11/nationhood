@@ -543,7 +543,8 @@
     </div>
     <div class="adminbody">
       <nav class="vtabs">
-        <button class="vtab active" data-tab="nations" type="button">Nations</button>
+        <button class="vtab active" data-tab="news" type="button">Home</button>
+        <button class="vtab" data-tab="nations" type="button">Nations</button>
         <button class="vtab" data-tab="cities" type="button">Cities</button>
         <button class="vtab" data-tab="modifiers" type="button">Modifiers</button>
         <button class="vtab" data-tab="declarations" type="button">Declarations</button>
@@ -560,7 +561,10 @@
         <button class="vtab" data-tab="world-map" type="button">World Map</button>
       </nav>
       <div class="tabwrap">
-      <div class="tabpane" data-tab="nations">
+      <div class="tabpane" data-tab="news">
+        <iframe src="/adminsetup/news.html" title="News Editor" style="width:100%;height:82vh;border:1px solid var(--line);border-radius:14px;background:#0e0e13"></iframe>
+      </div>
+      <div class="tabpane" data-tab="nations" hidden>
 
     <div class="panel">
       <h2>Game Clock</h2>
