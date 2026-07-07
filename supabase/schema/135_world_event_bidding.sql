@@ -200,7 +200,7 @@ revoke all on function public._we_bidding_maybe_resolve(uuid) from public, anon,
 -- nation's HoG, and that the nation hasn't already responded. Returns the locked party. ONE
 -- source for the "may this HoG act on this contest?" checks — shared by place_bid and decline.
 create or replace function public._we_bidding_guard(p_instance uuid)
-returns public.parties%rowtype language plpgsql security definer set search_path = public as $$
+returns public.parties language plpgsql security definer set search_path = public as $$
 declare v_party public.parties%rowtype; v_st text; v_def jsonb;
 begin
   v_party := public._lock_party();   -- caller's party + nation (no action cost)

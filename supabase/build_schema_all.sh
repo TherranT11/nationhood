@@ -12,7 +12,7 @@ out=schema_all.sql
   printf -- '-- Nationhood — full schema, all files concatenated in dependency order.\n'
   printf -- '-- GENERATED from supabase/schema/*.sql by build_schema_all.sh — do not edit by hand. Idempotent.\n'
   printf -- '-- ============================================================================\n'
-  for f in schema/*.sql; do
+  for f in $(printf '%s\n' schema/*.sql | sort -V); do
     printf '\n\n'
     printf -- '-- ============================================================================\n'
     printf -- '-- FILE: %s\n' "$(basename "$f")"

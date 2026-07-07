@@ -85,6 +85,30 @@ export function policyInForceEffects(def, optionIdx) {
   inForce.forEach(function (o) { ((o && o.effects) || []).forEach(function (e) { out.push(e); }); });
   return out;
 }
+// Aggregate a list of {t,v,unit} effects into one signed total per {t,unit}. Helper for the delta below.
+function aggregateEffects(list) {
+  var agg = [], pos = {};
+  (list || []).forEach(function (e) {
+    var key = e.t + '|' + (e.unit || '');
+    if (pos[key] == null) { pos[key] = agg.length; agg.push({ t: e.t, v: 0, unit: e.unit }); }
+    agg[pos[key]].v += (Number(e.v) || 0);
+  });
+  return agg;
+}
+// The NET change to each standing stat for a proposed rung move fromIdx → toIdx: the difference of
+// cumulative in-force effects (policyInForceEffects(to) − policyInForceEffects(from)). Because each
+// level's effect is the per-step increment, this reads a move DOWN as the reverse of the move UP —
+// e.g. leaving a −3 rung (D) for a −1 rung (B) nets +2, not the target rung's absolute −1. ONE source
+// for the propose + bill-view "standing effects" previews, mirroring the fiscal line's "vs the rung
+// in force". Returns [{t, unit, v}] with v the signed net change (zero entries filtered by the caller).
+export function policyEffectChange(def, fromIdx, toIdx) {
+  var to = aggregateEffects(policyInForceEffects(def, toIdx));
+  var from = aggregateEffects(policyInForceEffects(def, fromIdx));
+  var pos = {}, out = [];
+  to.forEach(function (e) { var k = e.t + '|' + (e.unit || ''); pos[k] = out.length; out.push({ t: e.t, unit: e.unit, v: e.v }); });
+  from.forEach(function (e) { var k = e.t + '|' + (e.unit || ''); if (pos[k] == null) { pos[k] = out.length; out.push({ t: e.t, unit: e.unit, v: 0 }); } out[pos[k]].v -= e.v; });
+  return out;
+}
 // One policy's in-force contribution to a given stat: the sum of that stat's cumulative in-force
 // effects (policyInForceEffects). A 'gdp'-unit effect is amount% of GDP; a flat effect is as-is.
 export function policyStatContribution(def, overrides, id, gdp, stat) {

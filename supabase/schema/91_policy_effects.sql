@@ -214,6 +214,11 @@ begin
      or p_option < 0 or p_option >= jsonb_array_length(v_opts) then return; end if;
   for v_eff in select value from jsonb_array_elements(coalesce(v_opts->p_option->'effects', '[]'::jsonb)) loop
     if coalesce(v_eff->>'cad', 'tick') <> p_cadence then continue; end if;
+    -- A plain per-level stat effect (no explicit cadence) is a ONE-TIME rung-change shift, applied by
+    -- _apply_law's transition walk (schema/92) — so the recurring sweep must NOT also drain it. Only
+    -- money targets (standing per-year fiscal) and effects with an explicit cadence recur here.
+    if p_cadence in ('tick', 'year') and (v_eff->>'cad') is null
+       and (v_eff->>'t') not in ('Budget', 'Debt', 'Income') then continue; end if;
     -- Once-effects ignore duration. A per-tick effect applies every month while
     -- enacted (dur 0/blank — the authoring default); a finite one (dur > 0) applies
     -- only for its first dur months after an active enactment (p_age in 1..dur). A

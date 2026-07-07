@@ -119,7 +119,7 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, policyInForceEffects, effectText, optMoney, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity, proposalInfluenceCost } from '/policies.js';
+  import { policyOptions, policyOptionIdx, policyEffectChange, effectText, optMoney, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity, proposalInfluenceCost } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
   import { isMonarchy, regimeText } from '/ladders.js';
 
@@ -166,7 +166,7 @@
       '<div class="preview"><div class="pvlabel">Live Preview</div>' +
         '<div class="pvcard"><h3 id="l-pv" class="empty">Choose a change</h3>' +
           '<div class="pvarts"><div class="ac">Fiscal impact <span class="hint">vs the rung in force</span></div><div id="l-fiscal"><p class="none">—</p></div>' +
-            '<div class="ac" style="margin-top:14px">Standing effects if enacted</div><div id="l-effs"><p class="none">—</p></div><div id="l-tags" class="tagrow"></div>' +
+            '<div class="ac" style="margin-top:14px">Standing effects if enacted <span class="hint">vs the rung in force</span></div><div id="l-effs"><p class="none">—</p></div><div id="l-tags" class="tagrow"></div>' +
             '<div class="ac" style="margin-top:14px">One-time cost to change <span class="hint">on enactment</span></div><div id="l-trans"><p class="none">—</p></div>' +
             '<div class="ac" style="margin-top:14px">Implementation time <span class="hint">time to take effect</span></div><div id="l-impl"><p class="none">—</p></div></div></div>' +
         '<div class="proj"><div class="actions">' +
@@ -250,18 +250,13 @@
         html += effRow({ text: 'In force now · ' + tradeEffectText(curOpt), cls: '' }, 'now');
         html += effRow({ text: 'If enacted · ' + tradeEffectText(o), cls: '' }, 'while in force');
       }
-      // Standing stat effects are CUMULATIVE across the crossed levels (one source: policyInForceEffects)
-      // — being at rung C is the sum of every level up to C, so "−2 Crime" at B and "−2 Crime" at C read
-      // as one "−4 Crime while in force" line. Money is in the fiscal block; the two vote-popularity
-      // targets are computed directionally below, not authored per level.
-      var effs = policyInForceEffects(def, sel.proposed).filter(function (e) { return !isMoneyTarget(e.t) && (e.t || '').indexOf('Party Popularity') !== 0; });
-      var agg = [], apos = {};
-      effs.forEach(function (e) {
-        var key = e.t + '|' + (e.unit || '');
-        if (apos[key] == null) { apos[key] = agg.length; agg.push({ t: e.t, v: 0, unit: e.unit }); }
-        agg[apos[key]].v += (Number(e.v) || 0);
-      });
-      html += agg.filter(function (e) { return Math.abs(e.v) >= 0.0001; })
+      // Standing stat effects show the NET CHANGE vs the rung in force (one source: policyEffectChange),
+      // mirroring the fiscal line above. Each level's effect is the per-step increment, so being at rung
+      // C is the sum of every level up to C — and a move reads as the difference: leaving a −3 rung (D)
+      // for a −1 rung (B) nets +2, not the target's absolute −1. Money is in the fiscal block; the two
+      // vote-popularity targets are computed directionally below, not authored per level.
+      var effs = policyEffectChange(def, inForceIdx(), sel.proposed).filter(function (e) { return !isMoneyTarget(e.t) && (e.t || '').indexOf('Party Popularity') !== 0; });
+      html += effs.filter(function (e) { return Math.abs(e.v) >= 0.0001; })
         .map(function (e) { return effRow(effectText({ t: e.t, v: e.v, unit: e.unit }, pop, pros), 'while in force'); }).join('');
       // Vote-popularity: computed from the direction + size of the proposed move (one source:
       // policies.js). Voting against is the mirror of voting for.
