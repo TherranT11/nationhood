@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>News — Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0e0e13;--panel:#181820;--field:#13131a;--sub:#20202b;--line:#2a2a37;--line2:#343443;
+    --ink:#e9e9f0;--muted:#9595a3;--soft:#6c6c7a;
+    --indigo:#6b5cff;--indigo-soft:rgba(107,92,255,.12);--green:#3fbf87;--red:#e0494c;--amber:#E0820E;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;padding:28px 16px 70px}
+  .page{max-width:680px;margin:0 auto}
+  .eyebrow{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin-bottom:6px}
+  h1{font-size:22px;font-weight:800;letter-spacing:-.02em}
+  .sub{font-size:12.5px;color:var(--muted);margin:5px 0 20px}
+
+  .bar{display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;margin-bottom:18px}
+  .field label{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);display:block;margin-bottom:7px}
+  .selw{position:relative;min-width:230px}
+  .selw select{width:100%;appearance:none;background:var(--field);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:12px 32px 12px 13px;font-size:14px;font-weight:600;cursor:pointer;outline:none}
+  .selw select:focus{border-color:var(--indigo)}
+  .selw::after{content:'▾';position:absolute;right:13px;top:calc(50% + 2px);transform:translateY(-50%);color:var(--soft);pointer-events:none}
+  .add{background:var(--indigo);color:#fff;border:none;border-radius:10px;padding:12px 16px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.03em;cursor:pointer;white-space:nowrap}
+  .add:hover{filter:brightness(1.1)}
+
+  .count{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-bottom:10px;letter-spacing:.05em;text-transform:uppercase}
+
+  .site{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:13px 15px;margin-bottom:10px}
+  .logo{width:46px;height:46px;border-radius:11px;flex:none;display:grid;place-items:center;font-family:'Space Mono',monospace;font-weight:700;font-size:15px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5);overflow:hidden;background-size:cover;background-position:center}
+  .siteinfo{flex:1;min-width:0}
+  .sitename{font-size:15px;font-weight:700;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .slantchip{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:5px;padding:3px 7px}
+  .slogan{font-size:12.5px;color:var(--muted);font-style:italic;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .siteactions{display:flex;gap:7px;flex:none}
+  .btn{border:1px solid var(--line2);background:var(--field);color:var(--muted);border-radius:8px;padding:8px 12px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;cursor:pointer}
+  .btn:hover{color:var(--ink);border-color:var(--soft)}
+  .btn.del:hover{color:#f0a0a0;border-color:#4a2020}
+  .btn.arm{background:rgba(224,73,76,.14);border-color:#4a2020;color:#f0a0a0}
+
+  .empty{border:1px dashed var(--line2);border-radius:13px;padding:34px;text-align:center;color:var(--soft);font-family:'Space Mono',monospace;font-size:12px}
+
+  /* editor modal */
+  .scrim{position:fixed;inset:0;background:rgba(6,6,10,.66);backdrop-filter:blur(2px);display:grid;place-items:start center;padding:26px 16px;z-index:20;overflow:auto}
+  .scrim.hidden{display:none}
+  .modal{width:100%;max-width:480px;background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .m-h{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  .m-h h2{font-size:16px;font-weight:800}
+  .m-x{width:28px;height:28px;border:none;background:transparent;color:var(--soft);font-size:16px;cursor:pointer;border-radius:7px}
+  .m-x:hover{background:var(--field);color:var(--ink)}
+  .m-b{padding:18px}
+
+  .logorow{display:flex;gap:15px;align-items:center;margin-bottom:16px}
+  .logoprev{width:64px;height:64px;border-radius:14px;flex:none;display:grid;place-items:center;font-family:'Space Mono',monospace;font-weight:700;font-size:22px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5);overflow:hidden;background-size:cover;background-position:center}
+  .logoctl{flex:1}
+  .swatches{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}
+  .sw{width:22px;height:22px;border-radius:7px;cursor:pointer;border:2px solid transparent}
+  .sw.on{border-color:#fff}
+  .logobtns{display:flex;gap:7px}
+  .minibtn{border:1px solid var(--line2);background:var(--field);color:var(--muted);border-radius:7px;padding:6px 10px;font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;cursor:pointer}
+  .minibtn:hover{color:var(--ink)}
+
+  .flabel{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);display:block;margin:14px 0 7px}
+  .flabel:first-child{margin-top:0}
+  .inp{width:100%;background:var(--field);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 12px;font-size:14px;outline:none;font-family:'Archivo',sans-serif}
+  .inp:focus{border-color:var(--indigo)}
+  .inp.mono{width:88px;text-align:center;font-family:'Space Mono',monospace;font-weight:700}
+
+  .m-f{display:flex;gap:9px;padding:14px 18px;border-top:1px solid var(--line)}
+  .save{flex:1;background:var(--indigo);color:#fff;border:none;border-radius:10px;padding:12px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer}
+  .save:hover{filter:brightness(1.1)}
+  .cancel{background:var(--field);border:1px solid var(--line2);color:var(--muted);border-radius:10px;padding:12px 18px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;cursor:pointer}
+  .cancel:hover{color:var(--ink)}
+
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(16px);background:#000;border:1px solid var(--line);color:#fff;font-family:'Space Mono',monospace;font-size:12px;padding:11px 17px;border-radius:11px;opacity:0;pointer-events:none;transition:all .3s;z-index:40}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)} .toast b{color:#a99dff}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="eyebrow">Backend · Media</div>
+  <h1>News Editor</h1>
+  <div class="sub">Manage the news sites that publish in each nation. Select a nation, then add, edit, or remove its outlets.</div>
+
+  <div class="bar">
+    <div class="field"><label>Nation</label><div class="selw"><select id="nation"></select></div></div>
+    <button class="add" id="add">+ Add News Site</button>
+  </div>
+
+  <div class="count" id="count"></div>
+  <div id="list"></div>
+</div>
+
+<div class="scrim hidden" id="scrim">
+  <div class="modal">
+    <div class="m-h"><h2 id="mTitle">New News Site</h2><button class="m-x" id="mClose">✕</button></div>
+    <div class="m-b" id="mBody"></div>
+    <div class="m-f"><button class="save" id="mSave">Save</button><button class="cancel" id="mCancel">Cancel</button></div>
+  </div>
+</div>
+<input type="file" id="fileInput" accept="image/*" style="display:none">
+<div class="toast" id="toast"></div>
+
+<script>
+  var NATIONS=[
+    {id:'sessau',name:'Sessau'},{id:'wesmore',name:'Wesmore and Calcordia'},{id:'al-qadir',name:'Al-Qadir'},
+    {id:'montequilla',name:'Montequilla'},{id:'vesperia',name:'Federated States of Vesperia'},{id:'severia',name:'Severia'}
+  ];
+  var SLANTS=[
+    {id:'record',  label:'Paper of Record', color:'#c9c9d4'},
+    {id:'state',   label:'State Media',      color:'#E0820E'},
+    {id:'left',    label:'Left Wing',        color:'#e0575a'},
+    {id:'radleft', label:'Radical Left',     color:'#d64b8a'},
+    {id:'centre',  label:'Centrist',         color:'#6b5cff'},
+    {id:'right',   label:'Right Wing',       color:'#3f9fe0'},
+    {id:'farright',label:'Far Right',        color:'#c99a3a'},
+    {id:'tabloid', label:'Tabloid',          color:'#3fbf87'}
+  ];
+  var PALETTE=['#c9c9d4','#e0575a','#d64b8a','#6b5cff','#3f9fe0','#c99a3a','#3fbf87','#E0820E','#17b0b8','#e0494c'];
+
+  var OUTLETS=[
+    {id:1, nation:'sessau', name:'Sessau Today',            slogan:'The Paper of Record · Seyonne', slant:'record',  color:'#c9c9d4', mono:'ST', img:null},
+    {id:2, nation:'sessau', name:'La Voix du Peuple',       slogan:'The Voice of the People',       slant:'left',    color:'#e0575a', mono:'LV', img:null},
+    {id:3, nation:'sessau', name:'Le Quotidien de Seyonne', slogan:'Seyonne’s Daily · Independent', slant:'centre', color:'#6b5cff', mono:'LQ', img:null},
+    {id:4, nation:'sessau', name:'Le Rempart',              slogan:'The Rampart · For the Nation',  slant:'farright',color:'#c99a3a', mono:'LR', img:null},
+    {id:5, nation:'sessau', name:'L’Étincelle',   slogan:'Organ of the Workers’ Front', slant:'radleft', color:'#d64b8a', mono:'É', img:null},
+    {id:6, nation:'wesmore', name:'The Loxbridge Times',    slogan:'Record of the Realm',           slant:'record',  color:'#c9c9d4', mono:'LT', img:null},
+    {id:7, nation:'wesmore', name:'The Clarion',            slogan:'The People’s Paper',        slant:'tabloid', color:'#3fbf87', mono:'TC', img:null},
+    {id:8, nation:'al-qadir', name:'Qadira Herald',         slogan:'Voice of the Republic',         slant:'state',   color:'#E0820E', mono:'QH', img:null},
+    {id:9, nation:'montequilla', name:'El Faro',            slogan:'La verdad del pueblo',          slant:'left',    color:'#e0575a', mono:'EF', img:null}
+  ];
+  var seq=10;
+  var curNation='sessau', editing=null, deleteArm=null, delTimer=null;
+
+  function slant(id){return SLANTS.filter(function(s){return s.id===id;})[0]||SLANTS[0];}
+  function autoMono(name){
+    var w=(name||'').split(/\s+/).filter(Boolean).map(function(x){return x.charAt(0);}).join('');
+    return (w||'?').substring(0,2).toUpperCase();
+  }
+  function logoStyle(o){
+    if(o.img) return 'background-image:url('+o.img+')';
+    return 'background:'+o.color;
+  }
+  function logoInner(o){ return o.img?'':(o.mono||autoMono(o.name)); }
+
+  function renderNations(){
+    document.getElementById('nation').innerHTML=NATIONS.map(function(n){
+      var c=OUTLETS.filter(function(o){return o.nation===n.id;}).length;
+      return '<option value="'+n.id+'"'+(n.id===curNation?' selected':'')+'>'+n.name+' ('+c+')</option>';
+    }).join('');
+  }
+  function renderList(){
+    var list=OUTLETS.filter(function(o){return o.nation===curNation;});
+    var natName=NATIONS.filter(function(n){return n.id===curNation;})[0].name;
+    document.getElementById('count').textContent=list.length+' news site'+(list.length===1?'':'s')+' in '+natName;
+    if(!list.length){ document.getElementById('list').innerHTML='<div class="empty">No news sites in '+natName+' yet.<br>Click “Add News Site” to create one.</div>'; return; }
+    document.getElementById('list').innerHTML=list.map(function(o){
+      var s=slant(o.slant);
+      var arm=(deleteArm===o.id);
+      return '<div class="site">'+
+        '<div class="logo" style="'+logoStyle(o)+'">'+logoInner(o)+'</div>'+
+        '<div class="siteinfo"><div class="sitename">'+o.name+
+          '<span class="slantchip" style="color:'+s.color+';background:'+hexA(s.color,.12)+';border:1px solid '+hexA(s.color,.4)+'">'+s.label+'</span></div>'+
+          '<div class="slogan">“'+(o.slogan||'—')+'”</div></div>'+
+        '<div class="siteactions"><button class="btn" data-edit="'+o.id+'">Edit</button>'+
+          '<button class="btn del'+(arm?' arm':'')+'" data-del="'+o.id+'">'+(arm?'Confirm?':'Delete')+'</button></div>'+
+      '</div>';
+    }).join('');
+    document.querySelectorAll('[data-edit]').forEach(function(b){b.onclick=function(){openEditor(parseInt(b.dataset.edit,10));};});
+    document.querySelectorAll('[data-del]').forEach(function(b){b.onclick=function(){del(parseInt(b.dataset.del,10));};});
+  }
+  function render(){renderNations();renderList();}
+
+  function del(id){
+    if(deleteArm!==id){ deleteArm=id; renderList(); clearTimeout(delTimer); delTimer=setTimeout(function(){deleteArm=null;renderList();},3000); return; }
+    var o=OUTLETS.filter(function(x){return x.id===id;})[0];
+    OUTLETS=OUTLETS.filter(function(x){return x.id!==id;});
+    deleteArm=null; render(); ping('Deleted <b>'+(o?o.name:'site')+'</b>');
+  }
+
+  /* ---- editor ---- */
+  function openEditor(id){
+    if(id){ var o=OUTLETS.filter(function(x){return x.id===id;})[0]; editing=JSON.parse(JSON.stringify(o)); }
+    else { editing={ id:null, nation:curNation, name:'', slogan:'', slant:'centre', color:'#6b5cff', mono:'', img:null }; }
+    document.getElementById('mTitle').textContent=id?'Edit News Site':'New News Site';
+    document.getElementById('mBody').innerHTML=editorBody();
+    bindEditor();
+    updatePreview();
+    document.getElementById('scrim').className='scrim';
+  }
+  function editorBody(){
+    var swatches=PALETTE.map(function(c){return '<span class="sw'+(editing.color===c?' on':'')+'" data-color="'+c+'" style="background:'+c+'"></span>';}).join('');
+    var slantOpts=SLANTS.map(function(s){return '<option value="'+s.id+'"'+(editing.slant===s.id?' selected':'')+'>'+s.label+'</option>';}).join('');
+    return '<div class="logorow">'+
+        '<div class="logoprev" id="prev"></div>'+
+        '<div class="logoctl"><div class="swatches">'+swatches+'</div>'+
+          '<div class="logobtns"><input class="inp mono" id="fMono" maxlength="3" placeholder="'+autoMono(editing.name)+'" value="'+(editing.mono||'')+'">'+
+          '<button class="minibtn" id="fUpload">Upload image</button>'+
+          (editing.img?'<button class="minibtn" id="fRemove">Remove</button>':'')+'</div></div>'+
+      '</div>'+
+      '<label class="flabel">Name</label><input class="inp" id="fName" value="'+esc(editing.name)+'" placeholder="e.g. Sessau Today">'+
+      '<label class="flabel">Slogan</label><input class="inp" id="fSlogan" value="'+esc(editing.slogan)+'" placeholder="e.g. The Paper of Record">'+
+      '<label class="flabel">Political slant</label><div class="selw"><select class="inp" id="fSlant">'+slantOpts+'</select></div>';
+  }
+  function bindEditor(){
+    document.querySelectorAll('[data-color]').forEach(function(sw){sw.onclick=function(){editing.color=sw.dataset.color;document.querySelectorAll('[data-color]').forEach(function(x){x.className='sw'+(x.dataset.color===editing.color?' on':'');});updatePreview();};});
+    var nm=document.getElementById('fName'); nm.oninput=function(){editing.name=nm.value;document.getElementById('fMono').placeholder=autoMono(editing.name);updatePreview();};
+    document.getElementById('fSlogan').oninput=function(){editing.slogan=this.value;};
+    document.getElementById('fMono').oninput=function(){editing.mono=this.value.toUpperCase();this.value=editing.mono;updatePreview();};
+    document.getElementById('fSlant').onchange=function(){editing.slant=this.value;};
+    document.getElementById('fUpload').onclick=function(){var fi=document.getElementById('fileInput');fi.value='';fi.click();};
+    var rm=document.getElementById('fRemove'); if(rm)rm.onclick=function(){editing.img=null;document.getElementById('mBody').innerHTML=editorBody();bindEditor();updatePreview();};
+  }
+  function updatePreview(){
+    var p=document.getElementById('prev'); if(!p)return;
+    if(editing.img){ p.style.backgroundImage='url('+editing.img+')'; p.style.background='center/cover'; p.textContent=''; p.style.backgroundImage='url('+editing.img+')'; p.style.backgroundSize='cover'; }
+    else { p.style.backgroundImage=''; p.style.background=editing.color; p.textContent=editing.mono||autoMono(editing.name); }
+  }
+  document.getElementById('fileInput').onchange=function(e){
+    var f=e.target.files&&e.target.files[0]; if(!f)return;
+    var r=new FileReader(); r.onload=function(){ editing.img=r.result; document.getElementById('mBody').innerHTML=editorBody(); bindEditor(); updatePreview(); }; r.readAsDataURL(f);
+  };
+
+  function saveEditor(){
+    if(!editing.name.trim()){ ping('<b class="red">Name required</b>'); return; }
+    if(!editing.mono) editing.mono=autoMono(editing.name);
+    if(editing.id){ OUTLETS=OUTLETS.map(function(o){return o.id===editing.id?editing:o;}); }
+    else { editing.id=seq++; OUTLETS.push(editing); }
+    closeEditor(); render(); ping('Saved <b>'+editing.name+'</b>');
+  }
+  function closeEditor(){ document.getElementById('scrim').className='scrim hidden'; editing=null; }
+
+  document.getElementById('nation').onchange=function(){curNation=this.value;deleteArm=null;renderList();};
+  document.getElementById('add').onclick=function(){openEditor(null);};
+  document.getElementById('mSave').onclick=saveEditor;
+  document.getElementById('mCancel').onclick=closeEditor;
+  document.getElementById('mClose').onclick=closeEditor;
+
+  function esc(s){return (s||'').replace(/"/g,'&quot;');}
+  function hexA(hex,a){var h=hex.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
+  var toast=document.getElementById('toast'),tt;
+  function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show');},2400);}
+
+  render();
+</script>
+</body>
+</html>
