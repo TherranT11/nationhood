@@ -74,15 +74,10 @@
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
   import { esc } from '/util.js';
+  import { slantLabel } from '/slants.js';   // ONE source for the slant vocabulary
 
   mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
-
-  // Slant id → reader-facing label. ONE source for the wording on this page (mirrors the SLANTS
-  // authored in the admin News editor); the colour rides on each headline row from the DB.
-  var SLANTS = { record:'Paper of Record', state:'State Media', left:'Left Wing', radleft:'Radical Left',
-                 centre:'Centrist', right:'Right Wing', farright:'Far Right', tabloid:'Tabloid' };
-  function slantLabel(s){ return SLANTS[s] || 'Independent'; }
 
   // The outlet's logo: its uploaded image, else a monogram over its colour (same as the admin editor).
   function logoBox(h, c) {

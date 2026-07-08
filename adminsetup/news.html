@@ -108,19 +108,8 @@
 
 <script type="module">
   import { supabase } from '/supabase.js';
+  import { SLANTS, PALETTE } from '/slants.js';   // ONE source for the slant vocabulary + logo palette
   var NATIONS=[];   // loaded from the nations table
-  var SLANTS=[
-    {id:'record',  label:'Paper of Record', color:'#c9c9d4'},
-    {id:'state',   label:'State Media',      color:'#E0820E'},
-    {id:'left',    label:'Left Wing',        color:'#e0575a'},
-    {id:'radleft', label:'Radical Left',     color:'#d64b8a'},
-    {id:'centre',  label:'Centrist',         color:'#6b5cff'},
-    {id:'right',   label:'Right Wing',       color:'#3f9fe0'},
-    {id:'farright',label:'Far Right',        color:'#c99a3a'},
-    {id:'tabloid', label:'Tabloid',          color:'#3fbf87'}
-  ];
-  var PALETTE=['#c9c9d4','#e0575a','#d64b8a','#6b5cff','#3f9fe0','#c99a3a','#3fbf87','#E0820E','#17b0b8','#e0494c'];
-
   var OUTLETS=[];   // loaded from news_outlets (all nations; renderList filters by curNation)
   var curNation=null, editing=null, deleteArm=null, delTimer=null, busy=false;
 

@@ -161,6 +161,7 @@
 <script type="module">
   import { POLICY_STATS } from '/policies.js';
   import { supabase } from '/supabase.js';
+  import { SLANTS as ALL_SLANTS } from '/slants.js';   // ONE source for the slant vocabulary
   // Trigger Subject vocabulary. The familiar national + economy figures lead; then the full ministry
   // stat set (Crime, Environment, Infrastructure, Poverty, Press Freedom, …) from POLICY_STATS — the
   // ONE source in policies.js — appended and de-duped, so this list never drifts from the game's stats.
@@ -183,13 +184,11 @@
     {id:'world_event',    label:'A world event'},
     {id:'world_broadcast',label:'A global turning point'}
   ];
-  var SLANTS=[
-    {id:'record',  label:'Record',   color:'#c9c9d4'},
-    {id:'left',    label:'Left',     color:'#e0575a'},
-    {id:'centre',  label:'Centrist', color:'#6b5cff'},
-    {id:'right',   label:'Right',    color:'#3f9fe0'},
-    {id:'farright',label:'Far Right',color:'#c99a3a'}
-  ];
+  // A rule authors one headline per political-spectrum slant. The vocabulary is the shared ONE source
+  // (slants.js); we take the spectrum subset here and use the SHORT labels for the narrow pills. Outlets
+  // on the other slants (state/radleft/tabloid) fall back to the record/centre variant in the engine.
+  var SPECTRUM=['record','left','centre','right','farright'];
+  var SLANTS=ALL_SLANTS.filter(function(s){ return SPECTRUM.indexOf(s.id) >= 0; });
 
   var state={
     name:'', scope:'nation', nation:null,
@@ -259,8 +258,8 @@
   function headlineEditors(){
     if(state.hmode==='slant'){
       return SLANTS.map(function(s){
-        return '<div class="hl"><span class="slantpill" style="color:'+s.color+';background:'+hexA(s.color,.12)+';border:1px solid '+hexA(s.color,.4)+'">'+s.label+'</span>'+
-          '<textarea data-hl="'+s.id+'" placeholder="How '+s.label+' frames it…">'+esc(state.headlines[s.id])+'</textarea></div>';
+        return '<div class="hl"><span class="slantpill" style="color:'+s.color+';background:'+hexA(s.color,.12)+';border:1px solid '+hexA(s.color,.4)+'">'+s.short+'</span>'+
+          '<textarea data-hl="'+s.id+'" placeholder="How '+s.short+' frames it…">'+esc(state.headlines[s.id])+'</textarea></div>';
       }).join('');
     }
     return ['n1','n2','n3'].map(function(k,i){
@@ -308,7 +307,7 @@
     if(state.hmode==='slant'){
       lines=SLANTS.map(function(s){
         var h=fillTokens(state.headlines[s.id])||'—';
-        return '<div class="pvline"><span class="ps" style="color:'+s.color+'">'+s.label+'</span><span class="ph">'+h+'</span></div>';
+        return '<div class="pvline"><span class="ps" style="color:'+s.color+'">'+s.short+'</span><span class="ph">'+h+'</span></div>';
       }).join('');
     } else {
       lines=['n1','n2','n3'].map(function(k,i){
