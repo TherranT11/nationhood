@@ -56,16 +56,13 @@
   @media(max-width:680px){.regime__track{gap:2px}.regime__cell{border-radius:3px}}
 
   /* National Modifiers + Events row — placeholders for now (no live data yet). */
-  .cols{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;margin-top:16px;align-items:start}
+  .cols{display:grid;grid-template-columns:1fr;gap:16px;margin-top:16px;align-items:start}
   .modstack{display:flex;flex-direction:column;gap:16px;min-width:0}  /* National Modifiers + National Initiatives stacked in one column */
   .impl{padding:11px 0;border-top:1px solid var(--line)}
   .impl:first-child{border-top:none}
   .impl__t{font-weight:700;font-size:14px;color:var(--ink)}
   .impl__when{font-family:'Space Mono',monospace;font-size:11px;color:var(--amber,#E0820E);margin-top:3px}
   .cols .panel{margin-top:0}
-  /* Cap both columns so the feed scrolls inside its panel instead of growing the
-     page forever; align-items:start keeps National Modifiers from stretching. */
-  #events{max-height:440px;overflow-y:auto}
   @media(max-width:900px){.cols{grid-template-columns:1fr}}
 
   /* National Crises panel — each card links to the crisis's own page (/play/crisis/),
@@ -174,28 +171,6 @@
   @media(max-width:560px){.appoint__row{flex-direction:column;align-items:stretch;gap:5px}.appoint__min{flex:none}}
   a.invite{text-decoration:none;margin-bottom:14px}
 
-  /* Events feed (currently just the party-founding entry). Sized ~15% up. */
-  .evfilter{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
-  .evchip{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--soft);background:var(--chip);border:1px solid var(--line);border-radius:20px;padding:5px 12px;cursor:pointer}
-  .evchip:hover{color:var(--ink)}
-  .evchip.active{color:var(--indigo);background:var(--indigo-soft);border-color:color-mix(in srgb,var(--indigo) 30%,transparent)}
-  .feed{list-style:none;display:flex;flex-direction:column;gap:12px}
-  .feed__evt{font-size:15.5px;color:var(--muted);line-height:1.55}
-  .feed__date{font-family:'Space Mono',monospace;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--indigo);font-weight:700}
-  .feed__flag{width:21px;height:14px;object-fit:cover;border:1px solid var(--line);border-radius:2px;vertical-align:-1px;margin:0 5px 0 1px}
-  .feed__evt b{color:var(--ink);font-weight:700}
-  /* A global Turning Point broadcast in the feed — highlighted, with a globe + World Event tag. */
-  .feed__major{list-style:none;background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 22%,transparent);border-left:2px solid var(--indigo);border-radius:9px;padding:12px 14px;margin:7px 0;font-size:15.5px;line-height:1.55;color:var(--ink)}
-  .feed__globe{vertical-align:-3px;margin-right:7px}
-  .feed__wetag{display:inline-block;font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--indigo);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);background:var(--surface);border-radius:5px;padding:2px 6px;margin-right:7px;vertical-align:1px}
-  .feed__mtxt b{color:var(--ink);font-weight:700}
-  .feed__up{color:var(--green);font-weight:600} .feed__dn{color:var(--red);font-weight:600}
-  .feednat{margin-left:auto;max-width:190px;background:var(--chip);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:5px 8px;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;cursor:pointer}
-  .feed__eff{display:inline-block;margin-left:7px;border-radius:7px;padding:2px 8px;font-size:12px;font-style:italic;font-weight:600;border:1px solid;vertical-align:1px}
-  .feed__eff.pos{color:var(--green,#16915a);background:color-mix(in srgb,var(--green,#16915a) 13%,transparent);border-color:color-mix(in srgb,var(--green,#16915a) 32%,transparent)}
-  .feed__eff.neg{color:var(--red,#C42B2B);background:color-mix(in srgb,var(--red,#C42B2B) 13%,transparent);border-color:color-mix(in srgb,var(--red,#C42B2B) 32%,transparent)}
-  .feed__eff.warn{color:var(--amber,#E0820E);background:color-mix(in srgb,var(--amber,#E0820E) 14%,transparent);border-color:color-mix(in srgb,var(--amber,#E0820E) 32%,transparent)}
-  .feed__img{display:block;max-width:180px;max-height:88px;width:auto;object-fit:cover;border-radius:8px;border:1px solid var(--line);margin:9px 0 2px}
 
   /* World Events panel — a fired decision awaiting this nation's answer. */
   .wevt{border:1px solid var(--line);border-radius:12px;padding:15px 17px;margin-bottom:12px}
@@ -340,17 +315,6 @@
         <div class="glance-hd"><span>National Crises</span></div>
         <div id="homeCrises"><p class="empty">No active national crises.</p></div>
       </section>
-      <section class="panel">
-        <div class="glance-hd"><span id="eventsHd">Events</span><select id="feedNation" class="feednat" title="Whose events to view"></select></div>
-        <div class="evfilter" id="evFilter">
-          <button class="evchip active" data-cat="all" type="button">All</button>
-          <button class="evchip" data-cat="world" type="button">World</button>
-          <button class="evchip" data-cat="party" type="button">Parties</button>
-          <button class="evchip" data-cat="legislative" type="button">Legislative</button>
-          <button class="evchip" data-cat="government" type="button">Government</button>
-        </div>
-        <div id="events"><p class="empty">No events yet.</p></div>
-      </section>
     </div>
   </main>
 </div>
@@ -381,6 +345,13 @@
   <div class="amodal__panel">
     <div class="amodal__hd"><b>Expand the Military</b><button class="amodal__x" id="expandClose" type="button" aria-label="Close">&times;</button></div>
     <div class="amodal__list" id="expandBody"><p class="empty">Loading…</p></div>
+  </div>
+</div>
+
+<div class="amodal" id="industrializeModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Industrialize</b><button class="amodal__x" id="industrializeClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list" id="industrializeBody"><p class="empty">Loading…</p></div>
   </div>
 </div>
 
@@ -426,7 +397,7 @@
   import { fetchNationInitiatives, renderNationInitiatives } from '/initiatives.js';
   import { openJointProposer, fetchJointNegotiations, renderJointNegotiations } from '/joint.js';
   import { statLabel, statBand, regimeLabel, statName, regimeText, REGIME_TIERS } from '/ladders.js';
-  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, PRODUCE_COST, PRODUCE_COOLDOWN, declaredValue, fmtPop, fmtGdp } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, PRODUCE_COST, PRODUCE_COOLDOWN, declaredValue, fmtPop, fmtGdp } from '/util.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { MINISTRIES } from '/ministries.js';
   import { nationColors, drawNationMiniMap } from '/hexmap.js';
@@ -475,129 +446,6 @@
       '<div class="regime__track">' + cells + '</div>' +
       '<p class="regime__cap"><b>' + cur + '</b> &mdash; ' + esc(label) + '</p>';
   }
-  // Events split into filterable buckets by their stored `kind`: Parties (a party's own
-  // actions + founding), Legislative (bills on the floor, passing/failing, no-confidence),
-  // and Government (formation, agenda, ministries, regime, elections). Anything else
-  // (income, crises, …) shows only under "All".
-  var PARTY_KINDS = { rally: 1, fundraise: 1, attack: 1, adblitz: 1, recruit: 1, party: 1, conviction: 1 };
-  var LEG_KINDS = { declaration: 1, law: 1, no_confidence: 1 };
-  var GOV_KINDS = { government: 1, agenda: 1, ministry: 1, regime: 1, election: 1 };
-  // World events (a nation-scoped notice/action, or a global 'world_broadcast' Turning Point).
-  var WORLD_KINDS = { world_event: 1, world_broadcast: 1 };
-  function eventCat(kind) { return PARTY_KINDS[kind] ? 'party' : (LEG_KINDS[kind] ? 'legislative' : (GOV_KINDS[kind] ? 'government' : (WORLD_KINDS[kind] ? 'world' : 'other'))); }
-  // A globe marks a global Turning Point in the feed (vs the nation flag on ordinary events).
-  var FEED_GLOBE = '<svg class="feed__globe" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--indigo)" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>';
-  // Colour signed deltas in a feed line — +N green, −N red — so effects (e.g. a Turning Point's
-  // "+2% Inflation, −25 Budget") read at a glance. Runs over the already-escaped body text.
-  function colorize(t) { return String(t).replace(/([+−\-])\s?(₣?\$?\d[\d.,]*[KMB%]?)/g, function (m, s, v) { return '<span class="feed__' + (s === '+' ? 'up' : 'dn') + '">' + (s === '+' ? '+' : '−') + v + '</span>'; }); }
-  var FEED_ITEMS = [], FEED_FLAG = '', evCat = 'all';
-  function renderFeed() {
-    var box = document.getElementById('events');
-    var list = FEED_ITEMS.filter(function (it) { return evCat === 'all' || it.cat === evCat; });
-    if (!list.length) {
-      box.innerHTML = '<p class="empty">' + (evCat === 'party' ? 'No party events yet.' : evCat === 'legislative' ? 'No legislative events yet.' : evCat === 'government' ? 'No government events yet.' : evCat === 'world' ? 'No world events yet.' : 'No events yet.') + '</p>';
-      return;
-    }
-    box.innerHTML = '<ul class="feed">' + list.map(function (it) {
-      // A world event that carries an authored image shows it small, beneath the line.
-      var img = it.img ? '<img class="feed__img" src="' + esc(it.img) + '" alt="" loading="lazy">' : '';
-      // A global Turning Point (major) reads as a broadcast: globe + World Event tag, highlighted.
-      if (it.major) {
-        return '<li class="feed__major"><span class="feed__date">' + esc(it.when) + '</span> &mdash; ' + FEED_GLOBE +
-          '<span class="feed__wetag">World Event</span><span class="feed__mtxt">' + colorize(it.body) + '</span>' + img + '</li>';
-      }
-      return '<li class="feed__evt"><span class="feed__date">' + esc(it.when) + '</span> &mdash; ' + FEED_FLAG + colorize(it.body) + img + '</li>';
-    }).join('') + '</ul>';
-  }
-  document.querySelectorAll('.evchip').forEach(function (b) {
-    b.onclick = function () { evCat = b.dataset.cat; document.querySelectorAll('.evchip').forEach(function (x) { x.classList.toggle('active', x === b); }); renderFeed(); };
-  });
-
-  // The shared nation feed: party-founding events (derived from each party, one
-  // per party) + stored events (rally outcomes, etc. from the events table),
-  // merged newest-first. Founding dates use the frozen game date for now; stored
-  // events carry their own game_date.
-  // A feed row's coloured effect pill — one source, shared by the nation and Global loaders.
-  // Admin-fired / world events carry a structured effect; organic events (rallies etc.) have none.
-  function feedEff(e, currency) {
-    return (e.effect_target != null && e.effect_value != null)
-      ? ' <span class="feed__eff ' + esc(e.tone || 'warn') + '"><i>' + esc(eventEffectLabel(e.effect_target, e.effect_value, currency)) + '</i></span>' : '';
-  }
-
-  async function loadFeed(nationId, nation, gameDate) {
-    var box = document.getElementById('events');
-    try {
-      const { data: parties } = await supabase.from('parties').select('id, name, created_at').eq('nation_id', nationId);
-      // Falls back to the pre-image_url column set if that column isn't migrated yet, so a stray
-      // schema lag can't silently drop every stored event (rallies, fundraising, etc.).
-      var evsRes = await supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone, image_url').eq('nation_id', nationId);
-      if (evsRes.error) evsRes = await supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone').eq('nation_id', nationId);
-      const evs = evsRes.data;
-      // Party Leader names for the formation announcements (one per party).
-      var leaderBy = {};
-      var pids = (parties || []).map(function (p) { return p.id; });
-      if (pids.length) {
-        const { data: leaders } = await supabase.from('politicians')
-          .select('party_id, first_name, last_name').eq('status', 'Party Leader').in('party_id', pids);
-        (leaders || []).forEach(function (l) { if (!leaderBy[l.party_id]) leaderBy[l.party_id] = (l.first_name + ' ' + l.last_name).trim(); });
-      }
-      var items = [];
-      (parties || []).forEach(function (p) {
-        var leader = leaderBy[p.id];
-        items.push({ created: p.created_at, when: gameDate, cat: 'party',
-          body: 'The <b>' + esc(p.name) + '</b> has announced its formation' + (leader ? ', led by <b>' + esc(leader) + '</b>' : '') + '.' });
-      });
-      var currency = (nation && nation.economy && nation.economy.currency) || '$';
-      (evs || []).forEach(function (e) {
-        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: eventCat(e.kind), major: e.kind === 'world_broadcast', img: e.image_url || '', body: esc(e.body) + feedEff(e, currency) });
-      });
-      items.sort(function (a, b) { return a.created < b.created ? 1 : (a.created > b.created ? -1 : 0); });
-      FEED_ITEMS = items;
-      FEED_FLAG = (nation && nation.flag) ? '<img class="feed__flag" src="' + esc(nation.flag) + '" alt="">' : '';
-      renderFeed();
-    } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load events.</p>'; }
-  }
-
-  // The Global feed: every nation's stored events, the whole world at once — so the filter chips
-  // (World / Parties / Legislative / Government) all work globally. Categorised by eventCat, shown
-  // with the globe (no single flag). Turning Points (world_broadcast) fire to every nation
-  // identically, so those — and only those — are deduped by (created_at, body) to one broadcast.
-  async function loadFeedGlobal(gameDate) {
-    var box = document.getElementById('events');
-    try {
-      var evsRes = await supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone, image_url').order('created_at', { ascending: false });
-      if (evsRes.error) evsRes = await supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone').order('created_at', { ascending: false });   // image_url not migrated
-      var evs = evsRes.data;
-      var seen = {}, items = [];
-      (evs || []).forEach(function (e) {
-        if (e.kind === 'world_broadcast') { var key = (e.created_at || '') + '|' + (e.body || ''); if (seen[key]) return; seen[key] = 1; }
-        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: eventCat(e.kind), major: e.kind === 'world_broadcast', img: e.image_url || '', body: esc(e.body) + feedEff(e, '$') });
-      });
-      items.sort(function (a, b) { return a.created < b.created ? 1 : (a.created > b.created ? -1 : 0); });
-      FEED_ITEMS = items; FEED_FLAG = '';
-      renderFeed();
-    } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load events.</p>'; }
-  }
-
-  // Nation selector: 'global' or a nation id. Loads that view and titles the panel. feedView
-  // remembers the choice so a post-action refresh reloads what you're actually looking at.
-  var feedView = null, FEED_NATIONS = [];
-  async function selectFeed(view) {
-    if (!feedCtx) return;
-    feedView = view;
-    var hd = document.getElementById('eventsHd');
-    if (view === 'global') {
-      hd.textContent = 'Global Events';
-      await loadFeedGlobal(feedCtx.gameDate);
-    } else {
-      var nat = (view === feedCtx.nationId) ? feedCtx.nation : null;
-      if (!nat) { try { const { data } = await supabase.from('nations').select('name, flag, economy').eq('id', view).single(); nat = data; } catch (e) { nat = null; } }
-      hd.textContent = 'Events in ' + ((nat && nat.name) || view);
-      await loadFeed(view, nat, feedCtx.gameDate);
-    }
-  }
-  function refreshFeed() { if (feedCtx) selectFeed(feedView || feedCtx.nationId); }
-
   // topbar action budget + toast. setActions is the one place that reflects the
   // action count — it updates the label AND gates every action button (0 →
   // disabled), so the buttons are correct on load and after every action.
@@ -796,7 +644,7 @@
         : rpc === 'world_event_decline_bid' ? (data.resolved ? 'Declined — the contest resolved.' : 'Declined to bid.')
         : (rpc === 'world_event_bid' || rpc === 'world_event_place_bid') ? (data.resolved ? 'Bid in — the contest resolved.' : 'Sealed bid submitted.')
         : (data.sealed ? 'Agreement sealed.' : 'Agreed — waiting on the other side.'));
-      if (feedCtx) { await loadWorldEventsPanel(feedCtx.nationId); await refreshFeed(); }
+      if (feedCtx) await loadWorldEventsPanel(feedCtx.nationId);
     } catch (e) { ping((e && e.message) || ('Couldn’t record that ' + kind.toLowerCase() + '.')); box.querySelectorAll('.wevt__opt').forEach(function (b) { b.disabled = false; }); }
     finally { weActing = false; }
   }
@@ -823,7 +671,6 @@
       const { data, error } = await call();
       if (error) { ping(error.message || 'Action failed.'); return; }
       setActions(data.actions);
-      if (feedCtx) await refreshFeed();
       ping(okMsg(data));
     } catch (e) { ping('Action failed. Try again.'); }
     finally { acting = false; setActions(partyActions); }
@@ -1106,7 +953,6 @@
         if (r.error) { ping(r.error.message || 'Couldn’t release the statement.'); refreshStmt(); return; }
         ping('Statement released' + (STMT.scope === 'international' ? ' worldwide.' : '.'));
         closeStmt();
-        if (feedCtx) refreshFeed();   // surface it in the home feed
       }).catch(function () { STMT.busy = false; ping('Couldn’t release the statement.'); refreshStmt(); });
     });
   }
@@ -1334,13 +1180,65 @@
     if (!isEconDevMin) { el.innerHTML = ''; return; }
     el.innerHTML = '<section class="panel leadbar">' +
       '<div class="glance-hd"><span>Minister of Economic Development &middot; This Week’s Action</span></div>' +
-      '<p class="leadbar__sub">Your party holds the Economic Development portfolio. Launch a national initiative to permanently raise a production output.</p>' +
+      '<p class="leadbar__sub">Your party holds the Economic Development portfolio. Launch a national initiative to permanently raise a production output, or industrialize raw stock into finished Goods.</p>' +
       '<div class="leadbar__grid">' +
         '<button class="lead" type="button" id="econdev-initiative" data-cost="2"><b>Initiative</b><span class="lead__lane">National Initiatives</span><span class="lead__desc">Enact a national programme — a lasting boost to a resource.</span></button>' +
+        '<button class="lead" type="button" id="econdev-industrialize" data-cost="2"><b>Industrialize</b><span class="lead__lane">Production</span><span class="lead__desc">Forge Goods from raw stock — 1 Energy + 1 Mineral + 2 Influence each.</span></button>' +
       '</div></section>';
     el.querySelectorAll('.lead').forEach(stampCost);
     var b = document.getElementById('econdev-initiative');
     if (b) b.addEventListener('click', function () { var t = document.getElementById('homeInitiatives'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+    var ind = document.getElementById('econdev-industrialize');
+    if (ind) { actionBtns.push(ind); ind.addEventListener('click', function () { if (!ind.disabled) openIndustrialize(); }); }
+  }
+
+  // INDUSTRIALIZE — the Minister of Economic Development forges finished Goods from raw stock: each
+  // Good burns 1 Energy + 1 Mineral (on_hand) and costs 2 Influence. The quantity is capped by
+  // whichever runs out first — Energy, Minerals or Influence. Fires economy_industrialize (schema/114,
+  // the server is authoritative) through performAction, which spends the action budget and toasts.
+  var industrializeModal = document.getElementById('industrializeModal');
+  var closeIndustrialize = wireModalClose(industrializeModal, 'industrializeClose');
+  var IND = { energy: 0, minerals: 0, goods: 0, qty: 1 };
+  function openIndustrialize() {
+    if (acting || !feedCtx) return;
+    document.getElementById('industrializeBody').innerHTML = '<p class="empty">Loading…</p>';
+    industrializeModal.hidden = false;
+    loadIndustrialize();
+  }
+  async function loadIndustrialize() {
+    try {
+      const { data: nrow } = await supabase.from('nations').select('on_hand').eq('id', feedCtx.nationId).maybeSingle();
+      var oh = (nrow || {}).on_hand || {};
+      IND.energy = Number(oh.energy) || 0; IND.minerals = Number(oh.minerals) || 0; IND.goods = Number(oh.goods) || 0;
+      IND.qty = 1;
+      renderIndustrialize();
+    } catch (e) { document.getElementById('industrializeBody').innerHTML = '<p class="empty">Couldn’t load. Try again.</p>'; }
+  }
+  function indMax() { return Math.max(0, Math.min(IND.energy, IND.minerals, Math.floor(partyActions / 2))); }
+  function renderIndustrialize() {
+    var body = document.getElementById('industrializeBody'), max = indMax();
+    IND.qty = Math.max(max > 0 ? 1 : 0, Math.min(IND.qty, max));
+    var costInf = 2 * IND.qty;
+    var costLine = max < 1
+      ? '<p class="exp-warn">' + (partyActions < 2 ? 'Not enough Influence — each Good costs 2.'
+          : (IND.energy < 1 ? 'No Energy on hand to industrialize.' : 'No Minerals on hand to industrialize.')) + '</p>'
+      : '<div class="exp-cost">Cost: <b>' + IND.qty + ' Energy · ' + IND.qty + ' Minerals · ' + costInf + ' Influence</b> → <b>+' + IND.qty + ' Goods</b></div>';
+    body.innerHTML =
+      '<div class="u-status">On hand: <b>' + IND.energy + ' Energy</b> · <b>' + IND.minerals + ' Minerals</b> · <b>' + IND.goods + ' Goods</b> — you have <b>' + partyActions + ' Influence</b></div>' +
+      '<label class="exp-lab">How many Goods to create</label>' +
+      '<div class="exp-step"><button type="button" id="indMinus"' + (IND.qty <= 1 ? ' disabled' : '') + '>−</button><span id="indQty">' + IND.qty + '</span>' +
+        '<button type="button" id="indPlus"' + (IND.qty >= max ? ' disabled' : '') + '>+</button><span class="exp-max">max ' + max + '</span></div>' +
+      costLine +
+      '<div class="noco__btns"><button class="noco__btn noco__cancel" id="indCancel" type="button">Cancel</button>' +
+        '<button class="noco__btn noco__confirm" id="indGo" type="button"' + (max > 0 ? '' : ' disabled') + '>Create ' + IND.qty + ' Good' + (IND.qty === 1 ? '' : 's') + '</button></div>';
+    document.getElementById('indMinus').onclick = function () { if (IND.qty > 1) { IND.qty--; renderIndustrialize(); } };
+    document.getElementById('indPlus').onclick = function () { if (IND.qty < indMax()) { IND.qty++; renderIndustrialize(); } };
+    document.getElementById('indCancel').onclick = closeIndustrialize;
+    document.getElementById('indGo').onclick = function () {
+      var qty = IND.qty; if (qty < 1) return; closeIndustrialize();
+      performAction(function () { return supabase.rpc('economy_industrialize', { p_goods: qty }); },
+        function (d) { var n = d.goods || qty; return 'Industrialized — +' + n + ' Good' + (n === 1 ? '' : 's') + '.'; });
+    };
   }
 
   // The Minister of Defence container — shown only to the party holding the Defence
@@ -1580,7 +1478,6 @@
       document.getElementById('pname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
       document.getElementById('kicker').textContent = nationName;
-      document.getElementById('eventsHd').textContent = 'Events in ' + nationName;
       document.getElementById('welcome').textContent = party.name;   // h1 = your party (tutorial shape)
       document.getElementById('lede').style.display = 'none';         // eyebrow + party name is the whole header now
       document.title = party.name + ' · Nationhood';
@@ -1613,18 +1510,6 @@
         isEconDevMin = edmin === true;
         renderEconDevBar(isEconDevMin);
       } catch (e) { /* leave the PM bar hidden if the government can't be read */ }
-      // Feed nation selector: Global + every live nation; defaults to Global (the whole world's
-      // events, world events included), with each nation's own feed one selection away.
-      feedView = 'global';
-      try { const { data: nats } = await supabase.from('nations').select('id, name').eq('dormant', false).order('name'); FEED_NATIONS = nats || []; } catch (e) { FEED_NATIONS = []; }
-      var fsel = document.getElementById('feedNation');
-      if (fsel) {
-        fsel.innerHTML = '<option value="global" selected>🌐 Global</option>' + FEED_NATIONS.map(function (n) {
-          return '<option value="' + esc(n.id) + '">' + esc(n.name || n.id) + '</option>';
-        }).join('');
-        fsel.onchange = function () { selectFeed(this.value); };
-      }
-      await selectFeed('global');
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));
       // Laws Being Implemented — passed bills counting down to their effect (schema/155). The title
@@ -1675,7 +1560,7 @@
         fetchJointNegotiations(party.nation_id).then(function(jd){
           renderJointNegotiations(document.getElementById('jointInbox'), jd, {
             nationId: party.nation_id, isEconDevMin: isEconDevMin, amPM: amPM, notify: ping,
-            onChange: function(){ loadJointInbox(); loadInitiatives(); selectFeed(feedView); }
+            onChange: function(){ loadJointInbox(); loadInitiatives(); }
           });
         });
       }

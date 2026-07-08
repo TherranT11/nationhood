@@ -204,15 +204,6 @@ begin
 end $$;
 grant execute on function public.economy_import(text, text, int) to authenticated;
 
--- Does the SIGNED-IN player's party hold the Economic Development portfolio? The client gate
--- for the Industrialize action on the Economy page; the server stays authoritative in
--- economy_industrialize. Reuses _party_holds_ministry — one source.
-create or replace function public.is_econdev_minister()
-returns boolean language sql stable security definer set search_path = public as $$
-  select coalesce((select public._party_holds_ministry(id, 'Economic Development') from public.parties where user_id = auth.uid()), false);
-$$;
-grant execute on function public.is_econdev_minister() to authenticated;
-
 -- Industrialize: the MINISTER OF ECONOMIC DEVELOPMENT turns raw inputs into finished Goods —
 -- each Good forged burns 1 Energy + 1 Mineral from on-hand stock and costs 2 Influence. On-hand
 -- must cover the inputs and the party must hold the Influence; the stock swaps in place (energy
