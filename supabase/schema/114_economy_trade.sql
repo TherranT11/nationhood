@@ -142,7 +142,7 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_p public.parties%rowtype; v_buyer text; v_tp jsonb;
   v_world numeric; v_mult numeric; v_tariff numeric; v_total numeric; v_duty numeric; v_net numeric;
-  v_have numeric; v_sname text; v_cur text;
+  v_have numeric; v_sname text; v_cur text; v_debt numeric;
 begin
   if p_resource not in ('energy', 'food', 'minerals', 'goods', 'services', 'military') then
     raise exception 'Unknown resource.'; end if;
@@ -188,12 +188,16 @@ begin
   perform public._settle_import(v_buyer, p_seller, p_resource, p_qty, v_total, v_duty);           -- goods + money + ledger (one source)
   update public.parties set influence = influence - 2 where id = v_p.id;          -- 2 AP on confirm
 
-  insert into public.events (nation_id, party_id, kind, body, game_date)
+  -- Resulting Public Debt (imports are debt-financed via _nation_budget_add) — recorded on the event so
+  -- it appears in the Budget page's history + sparkline (debt_after), and noted in the line itself.
+  select coalesce((economy->>'debt')::numeric, 0) into v_debt from public.nations where id = v_buyer;
+  insert into public.events (nation_id, party_id, kind, body, game_date, tone, debt_after)
     values (v_buyer, v_p.id, 'economy',
             'The Minister of Trade imported ' || p_qty || ' ' || initcap(p_resource) || ' from ' || v_sname
               || ' for ' || v_cur || v_net || 'B'
-              || (case when v_duty > 0 then ' (incl. ' || v_cur || v_duty || 'B tariff)' else '' end) || '.',
-            public.current_game_date());
+              || (case when v_duty > 0 then ' (incl. ' || v_cur || v_duty || 'B tariff)' else '' end)
+              || ', debt now ' || v_cur || trim_scale(v_debt) || 'B.',
+            public.current_game_date(), 'neg', v_debt);
 
   return jsonb_build_object('resource', p_resource, 'qty', p_qty, 'world', v_world, 'total', v_total,
     'duty', v_duty, 'net', v_net, 'actions', v_p.influence - 2);

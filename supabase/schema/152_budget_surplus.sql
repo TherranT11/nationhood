@@ -79,25 +79,30 @@ revoke all on function public._nation_budget_balance(text) from public, anon, au
 -- deficit (<0) adds to it — growing the debt even from 0. A balance under ±1.2/yr rounds to 0 = no-op.
 create or replace function public._apply_budget_balance(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
-declare r record; v_bal numeric; v_step numeric;
+declare r record; v_bal numeric; v_step numeric; v_old numeric; v_new numeric; v_cur text;
 begin
-  for r in select id from public.nations where coalesce(dormant, false) = false loop
+  for r in select id, economy from public.nations where coalesce(dormant, false) = false loop
     v_bal := public._nation_budget_balance(r.id);
     if v_bal is null or v_bal = 0 then continue; end if;
     v_step := floor(abs(v_bal) / 12.0 * 10) / 10;            -- monthly magnitude, rounded DOWN to 0.1
     if v_step <= 0 then continue; end if;
+    v_old := coalesce((r.economy->>'debt')::numeric, 0);
+    v_cur := coalesce(r.economy->>'currency', '$');
     if v_bal > 0 then
-      update public.nations
-         set economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{debt}',
-               to_jsonb(greatest(0, round(coalesce((economy->>'debt')::numeric, 0) - v_step, 1))))
-       where id = r.id
-         and coalesce((economy->>'debt')::numeric, 0) > 0;    -- nothing to pay down at zero debt
+      if v_old <= 0 then continue; end if;                   -- nothing to pay down at zero debt
+      v_new := greatest(0, round(v_old - v_step, 1));
     else
-      update public.nations
-         set economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{debt}',
-               to_jsonb(round(coalesce((economy->>'debt')::numeric, 0) + v_step, 1)))
-       where id = r.id;                                       -- a deficit grows the debt (from 0 if need be)
+      v_new := round(v_old + v_step, 1);                     -- a deficit grows the debt (from 0 if need be)
     end if;
+    update public.nations set economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{debt}', to_jsonb(v_new)) where id = r.id;
+    -- Budget-ledger line (kind 'budget' = not newsworthy, so it shows on the Budget page but not the news).
+    insert into public.events (nation_id, kind, body, game_date, tone, debt_after)
+      values (r.id, 'budget',
+        'Budget Balance of ' || v_cur || trim_scale(round(v_bal, 1)) || 'B/yr '
+          || case when v_bal > 0 then 'paid down ' || v_cur || trim_scale(v_step) || 'B of debt'
+                  else 'added ' || v_cur || trim_scale(v_step) || 'B to the debt' end
+          || ', debt now ' || v_cur || trim_scale(v_new) || 'B.',
+        public.current_game_date(), case when v_bal > 0 then 'pos' else 'neg' end, v_new);
   end loop;
 end $$;
 revoke all on function public._apply_budget_balance(int) from public, anon, authenticated;
@@ -110,18 +115,26 @@ drop function if exists public._apply_budget_surplus(int);   -- renamed (now mov
 -- pass (schema/125). Result rounded to one decimal; zero-debt / dormant nations skip.
 create or replace function public._apply_debt_interest(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
+declare r record; v_old numeric; v_rate numeric; v_add numeric; v_new numeric; v_cur text;
 begin
   if (p_tick - 1) % 12 <> 0 then return; end if;   -- January only
-  update public.nations
-     set economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{debt}',
-           to_jsonb(round(coalesce((economy->>'debt')::numeric, 0) *
-             case
-               when gdp > 0 and (economy->>'debt')::numeric > gdp * 2 then 1.15   -- > 200% of GDP
-               when gdp > 0 and (economy->>'debt')::numeric > gdp     then 1.10   -- > 100% of GDP
-               else 1.05                                                          -- base
-             end, 1)))
-   where coalesce((economy->>'debt')::numeric, 0) > 0
-     and coalesce(dormant, false) = false;
+  for r in select id, economy, gdp from public.nations
+            where coalesce((economy->>'debt')::numeric, 0) > 0 and coalesce(dormant, false) = false loop
+    v_old  := (r.economy->>'debt')::numeric;
+    v_rate := case
+                when r.gdp > 0 and v_old > r.gdp * 2 then 0.15   -- > 200% of GDP (sovereign debt spiral)
+                when r.gdp > 0 and v_old > r.gdp     then 0.10   -- > 100% of GDP (credit downgrade)
+                else 0.05                                        -- base
+              end;
+    v_new := round(v_old * (1 + v_rate), 1);
+    v_add := round(v_new - v_old, 1);
+    v_cur := coalesce(r.economy->>'currency', '$');
+    update public.nations set economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{debt}', to_jsonb(v_new)) where id = r.id;
+    insert into public.events (nation_id, kind, body, game_date, tone, debt_after)
+      values (r.id, 'budget',
+        'Debt interest added ' || (v_rate * 100)::int || '% (' || v_cur || trim_scale(v_add) || 'B), debt now ' || v_cur || trim_scale(v_new) || 'B.',
+        public.current_game_date(), 'neg', v_new);
+  end loop;
 end $$;
 revoke all on function public._apply_debt_interest(int) from public, anon, authenticated;
 
