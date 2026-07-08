@@ -25,6 +25,7 @@ alter table public.events add column if not exists effect_target text;     -- e.
 alter table public.events add column if not exists effect_value  numeric;  -- the signed delta that was applied
 alter table public.events add column if not exists tone          text;     -- 'pos' | 'neg' | 'warn' (pill colour)
 alter table public.events add column if not exists image_url     text;     -- world-event image URL, shown small in the feed
+alter table public.events add column if not exists debt_after    numeric;  -- budget-ledger entries (debt interest, budget-balance move, trade purchase) record the resulting Public Debt — the Budget page's history + sparkline read this; null for non-ledger events
 
 alter table public.events enable row level security;
 drop policy if exists "events_select_all" on public.events;
