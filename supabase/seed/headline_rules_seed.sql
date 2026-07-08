@@ -214,6 +214,168 @@ from (values
     "centre":"{nation} health rises to {value}; protect the progress.",
     "right":"Choice and reform lift {nation} health to {value}.",
     "farright":"{nation} cares for its own, health up to {value}.",
-    "tabloid":"HEALTH BOOST! {nation} wellbeing hits {value}!"}$j$)
+    "tabloid":"HEALTH BOOST! {nation} wellbeing hits {value}!"}$j$),
+
+  -- ---- Economic extremes (outrank the base rules on the same subject via higher priority) -----------
+  ('Hyperinflation', 'Inflation', 'above', 30, 9, $j${
+    "record":"Inflation in {nation} spirals to {value}%.",
+    "state":"{nation} acts to break the price spiral now at {value}%.",
+    "left":"Wages worthless as {nation} inflation explodes to {value}%.",
+    "radleft":"Currency collapse: {nation} inflation rips to {value}% while the rich hedge.",
+    "centre":"{nation} inflation out of control at {value}%; emergency measures loom.",
+    "right":"Reckless spending detonates {nation} inflation at {value}%.",
+    "farright":"{nation} savings wiped out as inflation hits {value}%.",
+    "tabloid":"MONEY MELTDOWN! {nation} inflation insane at {value}%!"}$j$),
+
+  ('Deflation warning', 'Inflation', 'below', 0, 6, $j${
+    "record":"Prices in {nation} are falling ({value}%).",
+    "state":"{nation} keeps prices in check; inflation eases to {value}%.",
+    "left":"Demand slumps as {nation} slides into deflation at {value}%.",
+    "radleft":"Stagnation for the many: {nation} prices fall to {value}%.",
+    "centre":"{nation} tips toward deflation at {value}%; watch the spiral.",
+    "right":"Weak demand pulls {nation} into deflation at {value}%.",
+    "farright":"{nation} economy freezes as prices fall to {value}%.",
+    "tabloid":"PRICES DROP! Is {nation} heading for the freeze at {value}%?"}$j$),
+
+  ('Mass unemployment', 'Unemployment', 'above', 20, 9, $j${
+    "record":"Unemployment in {nation} surges to {value}%.",
+    "state":"{nation} launches a jobs emergency; unemployment at {value}%.",
+    "left":"A generation on the scrapheap: {nation} joblessness hits {value}%.",
+    "radleft":"The system fails {nation} entirely — {value}% cast aside.",
+    "centre":"{nation} unemployment at a crisis {value}%; act decisively.",
+    "right":"{nation}'s economy seizes up, unemployment at {value}%.",
+    "farright":"{nation} workers thrown out as unemployment reaches {value}%.",
+    "tabloid":"JOBS ARMAGEDDON! {nation} unemployment at {value}%!"}$j$),
+
+  ('Golden age', 'Prosperity', 'above', 20, 5, $j${
+    "record":"Prosperity in {nation} rises to {value}.",
+    "state":"A golden age: {nation} prosperity soars to {value}.",
+    "left":"{nation} prospers at {value} — now lock in gains for all.",
+    "radleft":"Prosperity at {value}, but who really owns {nation}'s wealth?",
+    "centre":"{nation} prosperity reaches {value}; steward it wisely.",
+    "right":"Free enterprise lifts {nation} prosperity to {value}.",
+    "farright":"{nation} flourishes at {value} by backing its own.",
+    "tabloid":"BOOM TIME! {nation} living it up at {value}!"}$j$),
+
+  ('Iron grip', 'Order', 'above', 18, 5, $j${
+    "record":"Public order in {nation} is exceptionally tight ({value}).",
+    "state":"{nation} enjoys firm stability, order strong at {value}.",
+    "left":"Order at {value} — but at what cost to {nation}'s freedoms?",
+    "radleft":"The iron fist tightens: {nation} order clamped at {value}.",
+    "centre":"{nation} order high at {value}; balance security and liberty.",
+    "right":"Firm government restores {nation} order to {value}.",
+    "farright":"Strength restored: {nation} order commands {value}.",
+    "tabloid":"CRACKDOWN! {nation} locked down tight at {value}!"}$j$),
+
+  -- ---- Further ministry stats (policy-driven contribution) -----------------------------------------
+  ('Schools failing', 'Education', 'below', -5, 6, $j${
+    "record":"Education standards in {nation} slip ({value}).",
+    "state":"{nation} reforms schools; standards steady at {value}.",
+    "left":"Class sizes swell as {nation} education falls to {value}.",
+    "radleft":"Two-tier schooling: {nation} education gutted to {value}.",
+    "centre":"{nation} education slips to {value}; invest in teachers.",
+    "right":"Falling standards drag {nation} education to {value} — raise the bar.",
+    "farright":"{nation} classrooms neglected, education at {value}.",
+    "tabloid":"SCHOOL SCANDAL! {nation} education sinks to {value}!"}$j$),
+
+  ('Schools improving', 'Education', 'above', 5, 4, $j${
+    "record":"Education in {nation} improves to {value}.",
+    "state":"{nation}'s schools plan delivers, education up to {value}.",
+    "left":"Every child gains as {nation} education reaches {value}.",
+    "radleft":"Progress at {value}, yet {nation}'s elite schools still buy advantage.",
+    "centre":"{nation} education rises to {value}; keep raising standards.",
+    "right":"Rigour and choice lift {nation} education to {value}.",
+    "farright":"{nation} teaches its own well, education up to {value}.",
+    "tabloid":"TOP MARKS! {nation} schools shine at {value}!"}$j$),
+
+  ('Crumbling infrastructure', 'Infrastructure', 'below', -5, 6, $j${
+    "record":"Infrastructure in {nation} degrades ({value}).",
+    "state":"{nation} prioritises repairs; infrastructure holding at {value}.",
+    "left":"Potholes and delays as {nation} infrastructure falls to {value}.",
+    "radleft":"Public assets left to rot: {nation} infrastructure at {value}.",
+    "centre":"{nation} infrastructure slips to {value}; fund maintenance.",
+    "right":"{nation} infrastructure at {value} — cut waste, build smart.",
+    "farright":"{nation}'s roads and rails crumble to {value}.",
+    "tabloid":"FALLING APART! {nation} infrastructure rots to {value}!"}$j$),
+
+  ('Building the future', 'Infrastructure', 'above', 5, 4, $j${
+    "record":"{nation} upgrades its infrastructure to {value}.",
+    "state":"{nation}'s build-out delivers, infrastructure up to {value}.",
+    "left":"Investment reaches every region as {nation} infrastructure hits {value}.",
+    "radleft":"New projects at {value} — will {nation}'s workers share the benefit?",
+    "centre":"{nation} infrastructure rises to {value}; maintain the momentum.",
+    "right":"Enterprise builds {nation}: infrastructure up to {value}.",
+    "farright":"{nation} builds for its own, infrastructure at {value}.",
+    "tabloid":"ON THE MOVE! {nation} infrastructure booms to {value}!"}$j$),
+
+  ('Wage squeeze', 'Wages', 'below', -5, 6, $j${
+    "record":"Wages in {nation} fall behind ({value}).",
+    "state":"{nation} steadies pay through a tough patch, wages at {value}.",
+    "left":"Pay packets shrink as {nation} wages drop to {value}.",
+    "radleft":"Bosses win, workers lose: {nation} wages driven to {value}.",
+    "centre":"{nation} wages slip to {value}; productivity must follow pay.",
+    "right":"{nation} wages at {value} — grow the economy to lift them.",
+    "farright":"{nation} workers squeezed, wages down to {value}.",
+    "tabloid":"PAY PAIN! {nation} wages crushed to {value}!"}$j$),
+
+  ('Innovation surge', 'Innovation', 'above', 5, 4, $j${
+    "record":"Innovation in {nation} accelerates to {value}.",
+    "state":"{nation}'s research drive pays off, innovation up to {value}.",
+    "left":"{nation} innovates at {value} — share the breakthroughs widely.",
+    "radleft":"Whose invention? {nation} innovation at {value}, patents to the few.",
+    "centre":"{nation} innovation rises to {value}; back the founders.",
+    "right":"Enterprise sparks {nation} innovation to {value}.",
+    "farright":"{nation} ingenuity leads, innovation up to {value}.",
+    "tabloid":"BRAINWAVE! {nation} invents its way to {value}!"}$j$),
+
+  ('Living standards squeeze', 'Standard of Living', 'below', -5, 6, $j${
+    "record":"Standard of living in {nation} declines ({value}).",
+    "state":"{nation} cushions households; living standards at {value}.",
+    "left":"Everyday life gets harder as {nation} standards fall to {value}.",
+    "radleft":"The many go without while {nation} standards drop to {value}.",
+    "centre":"{nation} living standards slip to {value}; broad relief needed.",
+    "right":"{nation} standards at {value} — lower taxes, let people keep more.",
+    "farright":"{nation} families do without, standards at {value}.",
+    "tabloid":"BELT TIGHTENS! {nation} living standards at {value}!"}$j$),
+
+  ('Fraying society', 'Social Integration', 'below', -5, 5, $j${
+    "record":"Social cohesion in {nation} weakens ({value}).",
+    "state":"{nation} promotes shared values; cohesion at {value}.",
+    "left":"Division deepens as {nation} social integration falls to {value}.",
+    "radleft":"Divide and rule: {nation}'s cohesion driven to {value}.",
+    "centre":"{nation} social integration slips to {value}; rebuild common ground.",
+    "right":"{nation} cohesion at {value} — integration must be earned.",
+    "farright":"{nation} pulled apart, social integration at {value}.",
+    "tabloid":"NATION SPLIT! {nation} cohesion cracks to {value}!"}$j$),
+
+  ('Warming alarm', 'Global Warming', 'above', 5, 4, $j${
+    "record":"{nation}'s warming contribution rises (index {value}).",
+    "state":"{nation} weighs climate action against jobs; index at {value}.",
+    "left":"{nation} warming climbs to {value} — a just transition can't wait.",
+    "radleft":"Fossil capital burns the planet: {nation} at {value}.",
+    "centre":"{nation} warming index reaches {value}; credible targets now.",
+    "right":"{nation} keeps industry running, warming index at {value}.",
+    "farright":"Climate diktats rejected — {nation} sits at {value}.",
+    "tabloid":"HEATING UP! {nation} warming index at {value}!"}$j$),
+
+  ('Baby bust', 'Birth Rate', 'below', -5, 5, $j${
+    "record":"The birth rate in {nation} falls ({value}).",
+    "state":"{nation} supports young families; birth rate at {value}.",
+    "left":"Priced out of parenthood as {nation} birth rate drops to {value}.",
+    "radleft":"Insecurity deters families: {nation} birth rate at {value}.",
+    "centre":"{nation} birth rate slips to {value}; ease the cost of children.",
+    "right":"{nation} birth rate at {value} — back families to reverse it.",
+    "farright":"{nation}'s future in doubt, birth rate down to {value}.",
+    "tabloid":"BABY BUST! {nation} birth rate plunges to {value}!"}$j$),
+
+  ('Cyber exposure', 'Cybersecurity', 'below', -5, 5, $j${
+    "record":"Cybersecurity in {nation} weakens ({value}).",
+    "state":"{nation} hardens key systems; cyber posture at {value}.",
+    "left":"Public data left exposed as {nation} cybersecurity falls to {value}.",
+    "radleft":"Surveillance grows, defence doesn't: {nation} cyber at {value}.",
+    "centre":"{nation} cybersecurity slips to {value}; shore up the defences.",
+    "right":"{nation} cyber posture at {value} — invest before the breach.",
+    "farright":"{nation} left open to hostile states, cyber at {value}.",
+    "tabloid":"HACK ALERT! {nation} cyber defences at {value}!"}$j$)
 ) as v(name, subject, direction, value, priority, headlines)
 where not exists (select 1 from public.headline_rules hr where hr.name = v.name);
