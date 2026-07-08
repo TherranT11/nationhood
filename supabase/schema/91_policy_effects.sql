@@ -94,7 +94,7 @@ returns void language plpgsql security definer set search_path = public as $$
 begin
   if coalesce(p_delta, 0) = 0 then return; end if;
   update public.parties
-     set popularity = greatest(0, least(100, coalesce(popularity, 0) + p_delta))
+     set popularity = public._clamp_pop(coalesce(popularity, 0) + p_delta)
    where id = p_party;
 end $$;
 revoke all on function public._pop_floor_add(uuid, numeric) from public, anon, authenticated;
@@ -168,7 +168,7 @@ begin
         v_old := r.popularity;
         if v_v >= 0 then v_new := public._mod_cap_raise(p_nation, r.archetype, v_old, v_old + v_v);
         else             v_new := public._mod_floor_drop(p_nation, r.archetype, v_old, v_old + v_v); end if;
-        update public.parties set popularity = greatest(0, least(100, v_new)) where id = r.id;
+        update public.parties set popularity = public._clamp_pop(v_new) where id = r.id;
       end loop;
     -- Popularity Ceiling → RETIRED. Party popularity no longer has a reach ceiling (it floats freely
     -- in 0..100), so this effect no longer does anything. Left as an explicit no-op so an authored

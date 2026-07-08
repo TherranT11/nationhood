@@ -41,10 +41,9 @@ begin
 
   if v_is_pm then
     -- The premier walking out = resigning: their party −5 Party Popularity (floor-respecting,
-    -- clamped 0..100), then a snap election reseats the whole government.
+    -- floored at _pop_min), then a snap election reseats the whole government.
     update public.parties
-       set popularity = greatest(0, least(100, public._mod_floor_drop(
-             v_nation, archetype, popularity, popularity - 5)))
+       set popularity = public._mod_floor_drop(v_nation, archetype, popularity, popularity - 5)
      where id = v_p.id;
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_nation, v_p.id, 'declaration',
@@ -58,8 +57,7 @@ begin
   -- the table, then −5 Government Confidence through the one clamp+collapse source. The leaver
   -- is out before the confidence hit, so a resulting collapse never double-penalises them.
   update public.parties
-     set popularity = greatest(0, least(100, public._mod_floor_drop(
-           v_nation, archetype, popularity, popularity - 3)))
+     set popularity = public._mod_floor_drop(v_nation, archetype, popularity, popularity - 3)
    where id = v_p.id;
   update public.parties set in_government = false where id = v_p.id;
 

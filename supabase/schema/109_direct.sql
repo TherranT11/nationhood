@@ -85,7 +85,7 @@ begin
 
   v_newceil := greatest(v_p.pop_floor, v_p.pop_ceiling - 3);                                  -- ceiling ≥ floor
   v_eff     := public._effective_ceiling(v_p.nation_id, v_p.archetype, v_newceil, v_p.pop_floor);
-  v_newpop  := greatest(v_p.pop_floor, least(v_p.popularity + 3, v_eff));                     -- +3, clamped to [floor, ceiling]
+  v_newpop  := greatest(public._pop_min(), least(v_p.popularity + 3, v_eff));                  -- +3, clamped to [min, ceiling]
   v_gain    := v_newpop - v_p.popularity;
 
   update public.parties set pop_ceiling = v_newceil, popularity = v_newpop, influence = influence - 1 where id = v_p.id;

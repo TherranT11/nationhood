@@ -85,7 +85,7 @@ begin
   loop
     if r.delta = 0 then continue; end if;
     update public.parties
-       set popularity = greatest(coalesce(r.pop_floor, 0),
+       set popularity = greatest(public._pop_min(),
              least(public._effective_ceiling(v_party.nation_id, r.archetype, r.pop_ceiling, r.pop_floor),
                    coalesce(r.popularity, 0) + (case when r.delta > 0 then 0.2 * r.delta else 0.3 * r.delta end)))
      where id = r.id;

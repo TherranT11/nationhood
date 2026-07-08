@@ -431,8 +431,8 @@ begin
   if v_party.id = v_n.host_party_id then raise exception 'The host can''t leave their own talks.'; end if;
 
   -- Reputational hit: −2% to the host and every party still at the table (leaver
-  -- included), floored at 0.
-  update public.parties set popularity = greatest(0, popularity - 2)
+  -- included), floored at the popularity minimum.
+  update public.parties set popularity = greatest(public._pop_min(), popularity - 2)
    where id = v_n.host_party_id
       or id in (select party_id from public.negotiation_parties
                  where negotiation_id = p_neg and status in ('invited', 'accepted'));

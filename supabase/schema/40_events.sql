@@ -58,6 +58,18 @@ returns text language sql immutable as $$
   select regexp_replace(coalesce(p, ''), '^[Tt]he\s+', '');
 $$;
 
+-- The minimum a party's popularity can fall to. Popularity can go NEGATIVE (a party in deep disrepute
+-- has to climb back), so a big penalty on a low party fully registers instead of being absorbed at 0.
+-- Bounded at −25 so a party isn't left permanently unrecoverable. ONE source for the floor — every
+-- popularity clamp reads it (defined here, in the earliest file that needs it). Election vote-share /
+-- seat math still treats <0 as 0: resolve_election (schema/60) only allocates to popularity >= the
+-- threshold (>= 0), so a negative party wins no seats.
+create or replace function public._pop_min()
+returns numeric language sql immutable as $$ select -25::numeric $$;
+-- Clamp a popularity value into its full range [_pop_min, 100]. ONE source for a direct popularity write.
+create or replace function public._clamp_pop(p_v numeric)
+returns numeric language sql immutable as $$ select greatest(public._pop_min(), least(100, coalesce(p_v, 0))); $$;
+
 -- Leader actions are server-authoritative (the client can't write the
 -- game-controlled columns popularity/pop_floor/funds/actions). Each action below
 -- validates + locks the party, rolls 1d6 + a leader stat, applies its own effect,
@@ -257,11 +269,11 @@ begin
     -- isn't lifted by the hit. One atomic UPDATE on the row's live popularity, so it
     -- stays race-safe without locking the target row.
     update public.parties
-       set popularity = public._mod_floor_drop(v_tnation, v_tarch, popularity, greatest(popularity - v_cut, pop_floor))
+       set popularity = public._mod_floor_drop(v_tnation, v_tarch, popularity, popularity - v_cut)
      where id = p_target returning popularity into v_tnewpop;
     v_cut := v_toldpop - v_tnewpop;  -- actual amount removed after the floor clamp
   end if;
-  v_p_newpop := greatest(v_p.popularity - v_self_pen, v_p.pop_floor);
+  v_p_newpop := v_p.popularity - v_self_pen;
   v_p_newpop := public._mod_floor_drop(v_p.nation_id, v_p.archetype, v_p.popularity, v_p_newpop); -- attacker's archetype floor (schema/70)
   v_self_pen := round(v_p.popularity - v_p_newpop)::int;  -- honest self-penalty after the floor (0 if grandfathered)
 
@@ -554,7 +566,7 @@ begin
     select popularity into v_pop from public.parties where id = p_party and nation_id = p_nation for update;
     if not found then raise exception 'That party is not in this nation.'; end if;
     update public.parties
-       set popularity = greatest(0, least(100, coalesce(popularity, 0) + p_value))
+       set popularity = public._clamp_pop(coalesce(popularity, 0) + p_value)
      where id = p_party;
     v_pid := p_party;
   end if;
