@@ -1322,7 +1322,7 @@
     var box = document.getElementById('statCards'); if (!box) return;
     var partyV = esc(party.name) + (party.abbreviation ? ' <span class="stat__sub">(' + esc(party.abbreviation) + ')</span>' : '');
     var leaderV = leader ? (esc(((leader.first_name || '') + ' ' + (leader.last_name || '')).trim()) + (leader.age != null ? ' <span class="stat__sub">(' + leader.age + ')</span>' : '')) : '—';
-    var appr = Math.max(0, Math.min(100, Number(party.popularity) || 0));
+    var appr = Math.min(100, Number(party.popularity) || 0);   // may be negative — a party in disrepute should see it
     box.innerHTML =
       '<div class="stat"><div class="stat__k">Party</div><div class="stat__v">' + partyV + '</div></div>' +
       '<div class="stat"><div class="stat__k">Party Leader</div><div class="stat__v">' + leaderV + '</div></div>' +
