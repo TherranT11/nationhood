@@ -95,12 +95,14 @@ begin
       v_new := round(v_old + v_step, 1);                     -- a deficit grows the debt (from 0 if need be)
     end if;
     update public.nations set economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{debt}', to_jsonb(v_new)) where id = r.id;
-    -- Budget-ledger line (kind 'budget' = not newsworthy, so it shows on the Budget page but not the news).
+    -- Budget-ledger line (kind 'budget' = not newsworthy, so it shows on the Budget page but not the
+    -- news). Report the amount the debt ACTUALLY moved (abs(new − old)) — for a surplus larger than the
+    -- remaining debt, that's less than the monthly step, so the step figure would overstate it.
     insert into public.events (nation_id, kind, body, game_date, tone, debt_after)
       values (r.id, 'budget',
         'Budget Balance of ' || v_cur || trim_scale(round(v_bal, 1)) || 'B/yr '
-          || case when v_bal > 0 then 'paid down ' || v_cur || trim_scale(v_step) || 'B of debt'
-                  else 'added ' || v_cur || trim_scale(v_step) || 'B to the debt' end
+          || case when v_bal > 0 then 'paid down ' || v_cur || trim_scale(abs(v_new - v_old)) || 'B of debt'
+                  else 'added ' || v_cur || trim_scale(abs(v_new - v_old)) || 'B to the debt' end
           || ', debt now ' || v_cur || trim_scale(v_new) || 'B.',
         public.current_game_date(), case when v_bal > 0 then 'pos' else 'neg' end, v_new);
   end loop;
@@ -128,6 +130,7 @@ begin
               end;
     v_new := round(v_old * (1 + v_rate), 1);
     v_add := round(v_new - v_old, 1);
+    if v_add <= 0 then continue; end if;   -- debt too small for the rounded interest to move it → no change, no ledger line
     v_cur := coalesce(r.economy->>'currency', '$');
     update public.nations set economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{debt}', to_jsonb(v_new)) where id = r.id;
     insert into public.events (nation_id, kind, body, game_date, tone, debt_after)

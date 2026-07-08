@@ -18,7 +18,9 @@ const BAND_MIN = [1, 9, 16, 24, 32, 39, 47, 55, 62, 70, 78, 85, 92];
 
 export function statLabel(stat, value) {
   const rung = STAT_LADDERS[stat]; if (!rung) return null;
-  const v = Math.round(Number(value)) || 0;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;   // unset / non-numeric → no label (caller shows '—')
+  const v = Math.round(num);
   let i = 0;
   for (let b = BAND_MIN.length - 1; b >= 0; b--) { if (v >= BAND_MIN[b]) { i = b; break; } }
   return rung[Math.min(i, rung.length - 1)];

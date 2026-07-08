@@ -36,6 +36,16 @@
   .partners{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   @media(max-width:640px){.partners{grid-template-columns:repeat(2,1fr)}}
   @media(max-width:420px){.partners{grid-template-columns:1fr}}
+  /* Selected partner's production — what they can supply long-term (nation.production). */
+  .prodpanel{margin-top:14px;border:1px solid var(--line2);background:var(--field);border-radius:12px;padding:12px 14px}
+  .prodpanel-h{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-bottom:10px}
+  .prodgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+  .prodcell{display:flex;flex-direction:column;gap:4px;padding:9px 10px;border:1px solid var(--line2);border-radius:9px;background:var(--surface)}
+  .prodcell .rd{width:8px;height:8px;border-radius:2px;flex:none}
+  .prodcell .pv{font-size:16px;font-weight:800;letter-spacing:-.02em;color:var(--ink)}
+  .prodcell .pv.zero{color:var(--soft)}
+  .prodcell .pl{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--soft)}
+  @media(max-width:640px){.prodgrid{grid-template-columns:repeat(3,1fr)}}
   .pcard{border:1px solid var(--line2);background:var(--field);border-radius:11px;padding:10px 11px;cursor:pointer;display:flex;align-items:center;gap:9px}
   .pcard:hover{border-color:var(--indigo)} .pcard.on{border-color:var(--indigo);background:var(--indigo-soft);box-shadow:0 0 0 1px var(--indigo)}
   .pc-crest{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:#fff;font-family:'Space Mono',monospace;font-weight:700;font-size:9px;flex:none}
@@ -215,6 +225,7 @@
     var body = '<div class="partners">' + cards + '</div>';
     if (S.draft){
       var t = S.draft;
+      body += productionPanel(S.byId[t.partner]);   // show the selected partner's production before the terms
       body += '<div class="layout" style="margin-top:14px">' +
         '<div>' + editor(t, true) + '</div>' +
         '<aside class="rail">' + dealCard(t, nameOf(t.partner), null) +
@@ -234,6 +245,19 @@
     var left = editor(t, editable) + approvals(a) + actions(a, editable, t);
     var right = '<aside class="rail">' + dealCard(t, nameOf(otherNation(a)), a.status === 'active' ? a.unit_price : null) + chatBox(a) + '</aside>';
     return '<div class="grp" id="detail">' + head + '<div class="layout"><div>' + left + '</div>' + right + '</div></div>';
+  }
+
+  /* ---- the selected partner's production across the six tradeable resources (nation.production),
+         so you can see what they can supply long-term before proposing terms ---- */
+  function productionPanel(n){
+    var prod = (n && n.production) || {};
+    var cells = RES.map(function(r){
+      var v = num(prod[r.k]);
+      return '<div class="prodcell"><span class="rd" style="background:var(--' + r.k + ')"></span>' +
+        '<span class="pv' + (v ? '' : ' zero') + '">' + v + '</span><span class="pl">' + r.label + '</span></div>';
+    }).join('');
+    return '<div class="prodpanel"><div class="prodpanel-h">What ' + esc(shortName((n && n.name) || 'they')) + ' produces &middot; units per cycle</div>' +
+      '<div class="prodgrid">' + cells + '</div></div>';
   }
 
   /* ---- shared editor (resource / qty / term / discount) ---- */
