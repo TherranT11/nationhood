@@ -79,20 +79,29 @@ begin
 end $$;
 grant execute on function public.committee_endorse(uuid) to authenticated;
 
--- Push a committee bill to the floor. Proposer only. With ≥1 endorsement it's free; unendorsed it
--- costs 5 Influence AND −2 Party Popularity. Opens the floor vote (window resets), the proposer
--- auto-votes Aye, and the standard tally runs (_resolve_proposal, schema/81).
+-- Push a committee bill to the floor. Proposer only. The push is FREE (no cost, no popularity hit)
+-- when the bill has ≥1 endorsement OR the proposing party already commands a majority of the
+-- chamber — a majority can carry the bill alone, so it needs no cross-party endorsement. Otherwise
+-- pushing unendorsed costs 5 Influence AND −2 Party Popularity. Opens the floor vote (window resets),
+-- the proposer auto-votes Aye, and the standard tally runs (_resolve_proposal, schema/81).
 create or replace function public.committee_push(p_proposal uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_party public.parties%rowtype; v_prop public.proposals%rowtype; v_tick int; v_endorsed boolean; v_cost int := 0; v_res text;
+declare
+  v_party public.parties%rowtype; v_prop public.proposals%rowtype; v_tick int;
+  v_endorsed boolean; v_total int; v_has_majority boolean; v_free boolean; v_cost int := 0; v_res text;
 begin
-  v_party := public._lock_party();      -- lock the caller's party (an endorsed push is free)
+  v_party := public._lock_party();      -- lock the caller's party (an endorsed / majority push is free)
   select * into v_prop from public.proposals where id = p_proposal for update;
   if not found or v_prop.status <> 'committee' then raise exception 'That bill is not in committee.'; end if;
   if v_prop.party_id <> v_party.id then raise exception 'Only the proposing party can push its bill to the floor.'; end if;
 
   select exists (select 1 from public.committee_endorsements where proposal_id = p_proposal) into v_endorsed;
-  if not v_endorsed then
+  -- A party holding a majority of the seats (≥ _majority, i.e. >50%) can pass the bill on its own,
+  -- so it's exempt from the unendorsed-push penalty — same one-source majority rule as elections/votes.
+  select legislature_seats into v_total from public.nations where id = v_prop.nation_id;
+  v_has_majority := coalesce(v_total, 0) > 0 and coalesce(v_party.seats, 0) >= public._majority(v_total);
+  v_free := v_endorsed or v_has_majority;
+  if not v_free then
     v_cost := 5;
     if v_party.influence < v_cost then raise exception 'Pushing an unendorsed bill to the floor costs 5 Influence.'; end if;
   end if;
@@ -100,7 +109,7 @@ begin
   select current_tick into v_tick from public.game_state where id;
   update public.proposals set status = 'voting', opened_tick = v_tick where id = p_proposal;
 
-  if not v_endorsed then
+  if not v_free then
     update public.parties set influence = influence - v_cost where id = v_party.id;   -- 5 Influence …
     perform public._apply_party_effect(v_party.id, v_party.nation_id, jsonb_build_object('t', 'Party Popularity', 'v', -2));  -- … and −2 Popularity
   end if;
@@ -108,7 +117,7 @@ begin
   insert into public.proposal_votes (proposal_id, party_id, aye) values (p_proposal, v_party.id, true)
     on conflict (proposal_id, party_id) do update set aye = true;
   v_res := public._resolve_proposal(p_proposal);
-  return jsonb_build_object('id', p_proposal, 'status', v_res, 'endorsed', v_endorsed, 'actions', v_party.influence - v_cost);
+  return jsonb_build_object('id', p_proposal, 'status', v_res, 'endorsed', v_endorsed, 'majority', v_has_majority, 'actions', v_party.influence - v_cost);
 end $$;
 grant execute on function public.committee_push(uuid) to authenticated;
 
