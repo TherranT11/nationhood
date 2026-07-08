@@ -26,8 +26,8 @@ begin
 end $$;
 revoke all on function public._reconcile_party_ceilings() from public, anon, authenticated;
 
--- Fix any party already over its effective ceiling right now, so the invariant holds the
--- moment this is applied (not only from the next tick onward).
-select public._reconcile_party_ceilings();
+-- NB: the one-time reconcile that used to run here is now at the end of schema/133 — this function
+-- calls _party_ceiling_cap (schema/133), which isn't defined yet at this point, so executing it here
+-- aborts a fresh top-to-bottom apply (and everything after it, incl. the news tables, never lands).
 
 notify pgrst, 'reload schema';

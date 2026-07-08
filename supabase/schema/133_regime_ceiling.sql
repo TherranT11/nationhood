@@ -30,4 +30,10 @@ revoke all on function public._party_ceiling_cap(uuid) from public, anon, authen
 update public.nations set economy = economy || jsonb_build_object('party_ceiling', 45)
  where id = 'sessau' and not (economy ? 'party_ceiling');
 
+-- Reconcile any party already over its effective ceiling right now, so the invariant holds the moment
+-- the schema is applied (not only from the next tick). Runs HERE, after _party_ceiling_cap is defined,
+-- because _reconcile_party_ceilings (schema/130) calls it — running it back in 130 aborts a fresh
+-- apply (the cap function doesn't exist yet) and stops everything after it from being created.
+select public._reconcile_party_ceilings();
+
 notify pgrst, 'reload schema';
