@@ -25,10 +25,37 @@ create policy "news_outlets_select_all" on public.news_outlets for select using 
 drop policy if exists "news_outlets_write_admin" on public.news_outlets;
 create policy "news_outlets_write_admin" on public.news_outlets for all
   using (public.is_admin()) with check (public.is_admin());
+-- Outlet identity shown in the admin editor: a slogan and a logo (a monogram over the colour above,
+-- or an uploaded image). `img` holds a small data URL for now — if outlet logos ever render
+-- player-facing, move them to a Storage bucket (like party-logos, schema/90) instead of a text column.
+-- Headlines denormalise only name/slant/colour, so these three live only on the outlet.
+alter table public.news_outlets add column if not exists slogan text;
+alter table public.news_outlets add column if not exists mono   text;
+alter table public.news_outlets add column if not exists img    text;   -- public URL of the logo in the news-logos bucket
 
--- Published headlines. Written ONLY by _publish_headline (security definer) — never from the
--- client, so no INSERT/UPDATE/DELETE policy exists. `paper`/`slant`/`color` are denormalised from
--- the outlet so a headline still reads correctly if its outlet is later renamed or removed.
+-- Public bucket for outlet logos (rendered player-facing on the News page). Mirrors party-logos
+-- (schema/90): everyone can read; only an admin can upload/replace/delete (outlets are admin-authored,
+-- unlike party crests which are per-player). 2 MB cap + image-only mimes enforced by the bucket.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('news-logos', 'news-logos', true, 2097152, array['image/png','image/jpeg','image/webp','image/gif'])
+on conflict (id) do update
+  set public = true, file_size_limit = 2097152,
+      allowed_mime_types = array['image/png','image/jpeg','image/webp','image/gif'];
+drop policy if exists "news_logos_read" on storage.objects;
+create policy "news_logos_read" on storage.objects for select using (bucket_id = 'news-logos');
+drop policy if exists "news_logos_insert" on storage.objects;
+create policy "news_logos_insert" on storage.objects for insert to authenticated
+  with check (bucket_id = 'news-logos' and public.is_admin());
+drop policy if exists "news_logos_update" on storage.objects;
+create policy "news_logos_update" on storage.objects for update to authenticated
+  using (bucket_id = 'news-logos' and public.is_admin()) with check (bucket_id = 'news-logos' and public.is_admin());
+drop policy if exists "news_logos_delete" on storage.objects;
+create policy "news_logos_delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'news-logos' and public.is_admin());
+
+-- Published headlines. Written ONLY by _publish_headline (security definer) — never from the client,
+-- so no INSERT/UPDATE/DELETE policy exists. The outlet's identity (paper/slant/color/mono/logo) is
+-- denormalised so a headline still renders correctly if its outlet is later renamed or removed.
 create table if not exists public.news_headlines (
   id         uuid primary key default gen_random_uuid(),
   nation_id  text not null references public.nations (id) on delete cascade,
@@ -41,6 +68,8 @@ create table if not exists public.news_headlines (
   tick       int,
   created_at timestamptz not null default now()
 );
+alter table public.news_headlines add column if not exists mono text;   -- denormalised outlet monogram
+alter table public.news_headlines add column if not exists logo text;   -- denormalised outlet logo URL
 alter table public.news_headlines enable row level security;
 drop policy if exists "news_headlines_select_all" on public.news_headlines;
 create policy "news_headlines_select_all" on public.news_headlines for select using (true);
@@ -58,8 +87,8 @@ begin
    order by md5(p_headline || id::text) limit 1;
   if not found then return; end if;   -- no papers in this nation → nothing to print
   select current_tick into v_tick from public.game_state where id;
-  insert into public.news_headlines (nation_id, outlet_id, paper, slant, color, headline, game_date, tick)
-    values (p_nation, v_o.id, v_o.name, v_o.slant, v_o.color, p_headline, public.current_game_date(), v_tick);
+  insert into public.news_headlines (nation_id, outlet_id, paper, slant, color, mono, logo, headline, game_date, tick)
+    values (p_nation, v_o.id, v_o.name, v_o.slant, v_o.color, v_o.mono, v_o.img, p_headline, public.current_game_date(), v_tick);
 end $$;
 
 -- The event kinds worth a headline — the public, reader-facing ones. Party-internal moves (rallies,

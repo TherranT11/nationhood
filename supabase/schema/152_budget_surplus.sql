@@ -103,15 +103,23 @@ end $$;
 revoke all on function public._apply_budget_balance(int) from public, anon, authenticated;
 drop function if exists public._apply_budget_surplus(int);   -- renamed (now moves debt both ways)
 
--- Annual interest: every January (tick 1 = Jan 1980, so (tick−1) mod 12 = 0), Public Debt grows
--- 5% — a $100bn debt gains $5bn. Result rounded to one decimal; zero-debt / dormant nations skip.
+-- Annual interest: every January (tick 1 = Jan 1980, so (tick−1) mod 12 = 0), Public Debt accrues
+-- interest — and the rate ESCALATES with debt-to-GDP, so a runaway debt compounds faster (a spiral
+-- that's hard to climb out of). Base 5%; over 100% of GDP it doubles to 10% (credit downgrade); over
+-- 200% it's 15% (sovereign debt spiral). The matching one-off stat pain lands in the January malaise
+-- pass (schema/125). Result rounded to one decimal; zero-debt / dormant nations skip.
 create or replace function public._apply_debt_interest(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
 begin
   if (p_tick - 1) % 12 <> 0 then return; end if;   -- January only
   update public.nations
      set economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{debt}',
-           to_jsonb(round(coalesce((economy->>'debt')::numeric, 0) * 1.05, 1)))
+           to_jsonb(round(coalesce((economy->>'debt')::numeric, 0) *
+             case
+               when gdp > 0 and (economy->>'debt')::numeric > gdp * 2 then 1.15   -- > 200% of GDP
+               when gdp > 0 and (economy->>'debt')::numeric > gdp     then 1.10   -- > 100% of GDP
+               else 1.05                                                          -- base
+             end, 1)))
    where coalesce((economy->>'debt')::numeric, 0) > 0
      and coalesce(dormant, false) = false;
 end $$;

@@ -25,7 +25,7 @@ create or replace function public._policy_money(p_v numeric, p_scale text, p_pop
 returns numeric language sql immutable as $$
   select case p_scale
            when 'perm' then p_v * p_pop
-           when 'pop'  then p_v * p_pop * (p_pros / 10.0)
+           when 'pop'  then p_v * p_pop * (p_pros / 50.0)
            else p_v
          end;
 $$;
@@ -116,12 +116,12 @@ begin
   if v_t is null or v_v = 0 then return; end if;
 
   case v_t
-    -- National stats (1..20)
-    when 'Prosperity' then perform public._nation_stat_add(p_nation, 'stats', 'prosperity', v_v, 1, 20);
-    when 'Welfare'    then perform public._nation_stat_add(p_nation, 'stats', 'welfare',    v_v, 1, 20);
-    when 'Growth'     then perform public._nation_stat_add(p_nation, 'stats', 'growth',     v_v, 1, 20);
-    when 'Order'      then perform public._nation_stat_add(p_nation, 'stats', 'order',      v_v, 1, 20);
-    when 'Image'      then perform public._nation_stat_add(p_nation, 'stats', 'image',      v_v, 1, 20);
+    -- National stats (1..100)
+    when 'Prosperity' then perform public._nation_stat_add(p_nation, 'stats', 'prosperity', v_v, 1, 100);
+    when 'Welfare'    then perform public._nation_stat_add(p_nation, 'stats', 'welfare',    v_v, 1, 100);
+    when 'Growth'     then perform public._nation_stat_add(p_nation, 'stats', 'growth',     v_v, 1, 100);
+    when 'Order'      then perform public._nation_stat_add(p_nation, 'stats', 'order',      v_v, 1, 100);
+    when 'Image'      then perform public._nation_stat_add(p_nation, 'stats', 'image',      v_v, 1, 100);
     -- Economy
     when 'Unemployment %' then perform public._nation_stat_add(p_nation, 'economy', 'unemployment', v_v, 0, 100);
     when 'Inflation %'    then perform public._nation_stat_add(p_nation, 'economy', 'inflation',    v_v, 0, 100);
@@ -143,7 +143,7 @@ begin
       -- matching economy key. Budget can never go below 0 — a shortfall rolls into Debt
       -- (_nation_budget_add). Debt floors at 0; Income is a rate and stays unbounded.
       select population, (stats->>'prosperity')::numeric into v_pop, v_pros from public.nations where id = p_nation;
-      v_amt := public._policy_money(v_v, v_scale, coalesce(v_pop, 0), coalesce(v_pros, 10));
+      v_amt := public._policy_money(v_v, v_scale, coalesce(v_pop, 0), coalesce(v_pros, 50));
       if v_t = 'Budget' then
         perform public._nation_budget_add(p_nation, v_amt);
       else

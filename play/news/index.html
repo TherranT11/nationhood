@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="/theme.js"></script>
-<title>News · Nationhood</title>
+<title>Home · Nationhood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -25,15 +25,17 @@
   .sec-h .n{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;color:var(--soft)}
 
   .feed{display:flex;flex-direction:column}
-  .hl{display:block;padding:13px 0;border-top:1px solid var(--line)}
+  .hl{display:flex;gap:13px;padding:13px 0;border-top:1px solid var(--line)}
   .hl:first-child{border-top:none;padding-top:2px}
   .hl:last-child{padding-bottom:2px}
-  .hl__paper{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:5px}
-  .hl__flag{width:18px;height:13px;border-radius:2px;object-fit:cover;flex:none;border:1px solid var(--line)}
+  .hl__logo{width:42px;height:42px;border-radius:10px;flex:none;display:grid;place-items:center;font-family:'Space Mono',monospace;font-weight:700;font-size:14px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45);background-size:cover;background-position:center;overflow:hidden}
+  .hl__body{flex:1;min-width:0}
+  .hl__paper{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:4px}
+  .hl__flag{width:16px;height:12px;border-radius:2px;object-fit:cover;flex:none;border:1px solid var(--line)}
   .hl__pname{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.03em;color:var(--muted)}
   .hl__slant{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:5px;padding:3px 7px}
   .hl__text{font-size:15.5px;font-weight:700;letter-spacing:-.01em;line-height:1.32;color:var(--ink)}
-  .hl__meta{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.02em;color:var(--soft);margin-top:5px}
+  .hl__meta{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.02em;color:var(--soft);margin-top:5px;display:flex;align-items:center;gap:5px}
 
   .empty{text-align:center;padding:40px 20px;color:var(--soft)}
   .empty b{display:block;color:var(--muted);font-size:15px;margin-bottom:6px}
@@ -50,7 +52,7 @@
     <div class="topbar" id="topbar"></div>
     <div class="phead">
       <span class="eye">The Press</span>
-      <h1>News</h1>
+      <h1>Home</h1>
       <p>The national and world news desk — the latest from your nation's papers and the wider world press.</p>
     </div>
 
@@ -72,28 +74,31 @@
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
   import { esc } from '/util.js';
+  import { slantLabel } from '/slants.js';   // ONE source for the slant vocabulary
 
   mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
-  // Slant id → reader-facing label. ONE source for the wording on this page (mirrors the SLANTS
-  // authored in the admin News editor); the colour rides on each headline row from the DB.
-  var SLANTS = { record:'Paper of Record', state:'State Media', left:'Left Wing', radleft:'Radical Left',
-                 centre:'Centrist', right:'Right Wing', farright:'Far Right', tabloid:'Tabloid' };
-  function slantLabel(s){ return SLANTS[s] || 'Independent'; }
-
-  // One headline row. `withFlag` shows the source nation's flag + name (World Press); own-nation
-  // headlines omit it since they're all this nation. Colour comes straight from the stored outlet.
+  // The outlet's logo: its uploaded image, else a monogram over its colour (same as the admin editor).
+  function logoBox(h, c) {
+    if (h.logo) return '<span class="hl__logo" style="background-image:url(' + esc(h.logo) + ')"></span>';
+    var mono = esc(h.mono || (h.paper || '?').replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || '?');
+    return '<span class="hl__logo" style="background:' + c + '">' + mono + '</span>';
+  }
+  // One headline row, led by the paper's logo. `withFlag` shows the source nation's flag + name
+  // (World Press); own-nation headlines omit it. Colour/logo ride on each row from the DB.
   function headlineRow(h, withFlag) {
     var c = esc(h.color || '#6b5cff');
     var nat = withFlag && h.nations ? h.nations : null;
     var flag = nat && nat.flag ? '<img class="hl__flag" src="' + esc(nat.flag) + '" alt="">' : '';
     var slant = '<span class="hl__slant" style="color:' + c + ';background:color-mix(in srgb,' + c + ' 13%,transparent);border:1px solid color-mix(in srgb,' + c + ' 40%,transparent)">' + esc(slantLabel(h.slant)) + '</span>';
-    var meta = (nat ? esc(nat.name) + ' · ' : '') + esc(h.game_date || '—');
-    return '<article class="hl">' +
-      '<div class="hl__paper">' + flag + '<span class="hl__pname">' + esc(h.paper || 'The Press') + '</span>' + slant + '</div>' +
-      '<div class="hl__text">' + esc(h.headline) + '</div>' +
-      '<div class="hl__meta">' + meta + '</div>' +
+    var meta = (nat ? flag + ' ' + esc(nat.name) + ' · ' : '') + esc(h.game_date || '—');
+    return '<article class="hl">' + logoBox(h, c) +
+      '<div class="hl__body">' +
+        '<div class="hl__paper"><span class="hl__pname">' + esc(h.paper || 'The Press') + '</span>' + slant + '</div>' +
+        '<div class="hl__text">' + esc(h.headline) + '</div>' +
+        '<div class="hl__meta">' + meta + '</div>' +
+      '</div>' +
     '</article>';
   }
 
@@ -127,7 +132,7 @@
     // World Press — latest from OTHER nations' papers (excludes the player's own when known).
     try {
       let q = supabase.from('news_headlines')
-        .select('paper, slant, color, headline, game_date, nation_id, nations(name, flag)')
+        .select('paper, slant, color, mono, logo, headline, game_date, nation_id, nations(name, flag)')
         .order('created_at', { ascending: false }).limit(40);
       if (nationId) q = q.neq('nation_id', nationId);
       const { data, error } = await q;
@@ -139,7 +144,7 @@
     if (nationId) {
       try {
         const { data, error } = await supabase.from('news_headlines')
-          .select('paper, slant, color, headline, game_date')
+          .select('paper, slant, color, mono, logo, headline, game_date')
           .eq('nation_id', nationId)
           .order('created_at', { ascending: false }).limit(30);
         if (error) throw error;

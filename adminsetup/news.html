@@ -106,36 +106,12 @@
 <input type="file" id="fileInput" accept="image/*" style="display:none">
 <div class="toast" id="toast"></div>
 
-<script>
-  var NATIONS=[
-    {id:'sessau',name:'Sessau'},{id:'wesmore',name:'Wesmore and Calcordia'},{id:'al-qadir',name:'Al-Qadir'},
-    {id:'montequilla',name:'Montequilla'},{id:'vesperia',name:'Federated States of Vesperia'},{id:'severia',name:'Severia'}
-  ];
-  var SLANTS=[
-    {id:'record',  label:'Paper of Record', color:'#c9c9d4'},
-    {id:'state',   label:'State Media',      color:'#E0820E'},
-    {id:'left',    label:'Left Wing',        color:'#e0575a'},
-    {id:'radleft', label:'Radical Left',     color:'#d64b8a'},
-    {id:'centre',  label:'Centrist',         color:'#6b5cff'},
-    {id:'right',   label:'Right Wing',       color:'#3f9fe0'},
-    {id:'farright',label:'Far Right',        color:'#c99a3a'},
-    {id:'tabloid', label:'Tabloid',          color:'#3fbf87'}
-  ];
-  var PALETTE=['#c9c9d4','#e0575a','#d64b8a','#6b5cff','#3f9fe0','#c99a3a','#3fbf87','#E0820E','#17b0b8','#e0494c'];
-
-  var OUTLETS=[
-    {id:1, nation:'sessau', name:'Sessau Today',            slogan:'The Paper of Record · Seyonne', slant:'record',  color:'#c9c9d4', mono:'ST', img:null},
-    {id:2, nation:'sessau', name:'La Voix du Peuple',       slogan:'The Voice of the People',       slant:'left',    color:'#e0575a', mono:'LV', img:null},
-    {id:3, nation:'sessau', name:'Le Quotidien de Seyonne', slogan:'Seyonne’s Daily · Independent', slant:'centre', color:'#6b5cff', mono:'LQ', img:null},
-    {id:4, nation:'sessau', name:'Le Rempart',              slogan:'The Rampart · For the Nation',  slant:'farright',color:'#c99a3a', mono:'LR', img:null},
-    {id:5, nation:'sessau', name:'L’Étincelle',   slogan:'Organ of the Workers’ Front', slant:'radleft', color:'#d64b8a', mono:'É', img:null},
-    {id:6, nation:'wesmore', name:'The Loxbridge Times',    slogan:'Record of the Realm',           slant:'record',  color:'#c9c9d4', mono:'LT', img:null},
-    {id:7, nation:'wesmore', name:'The Clarion',            slogan:'The People’s Paper',        slant:'tabloid', color:'#3fbf87', mono:'TC', img:null},
-    {id:8, nation:'al-qadir', name:'Qadira Herald',         slogan:'Voice of the Republic',         slant:'state',   color:'#E0820E', mono:'QH', img:null},
-    {id:9, nation:'montequilla', name:'El Faro',            slogan:'La verdad del pueblo',          slant:'left',    color:'#e0575a', mono:'EF', img:null}
-  ];
-  var seq=10;
-  var curNation='sessau', editing=null, deleteArm=null, delTimer=null;
+<script type="module">
+  import { supabase } from '/supabase.js';
+  import { SLANTS, PALETTE } from '/slants.js';   // ONE source for the slant vocabulary + logo palette
+  var NATIONS=[];   // loaded from the nations table
+  var OUTLETS=[];   // loaded from news_outlets (all nations; renderList filters by curNation)
+  var curNation=null, editing=null, deleteArm=null, delTimer=null, busy=false;
 
   function slant(id){return SLANTS.filter(function(s){return s.id===id;})[0]||SLANTS[0];}
   function autoMono(name){
@@ -156,7 +132,8 @@
   }
   function renderList(){
     var list=OUTLETS.filter(function(o){return o.nation===curNation;});
-    var natName=NATIONS.filter(function(n){return n.id===curNation;})[0].name;
+    var natInfo=NATIONS.filter(function(n){return n.id===curNation;})[0];
+    var natName=natInfo?natInfo.name:(curNation||'this nation');
     document.getElementById('count').textContent=list.length+' news site'+(list.length===1?'':'s')+' in '+natName;
     if(!list.length){ document.getElementById('list').innerHTML='<div class="empty">No news sites in '+natName+' yet.<br>Click “Add News Site” to create one.</div>'; return; }
     document.getElementById('list').innerHTML=list.map(function(o){
@@ -171,16 +148,22 @@
           '<button class="btn del'+(arm?' arm':'')+'" data-del="'+o.id+'">'+(arm?'Confirm?':'Delete')+'</button></div>'+
       '</div>';
     }).join('');
-    document.querySelectorAll('[data-edit]').forEach(function(b){b.onclick=function(){openEditor(parseInt(b.dataset.edit,10));};});
-    document.querySelectorAll('[data-del]').forEach(function(b){b.onclick=function(){del(parseInt(b.dataset.del,10));};});
+    document.querySelectorAll('[data-edit]').forEach(function(b){b.onclick=function(){openEditor(b.dataset.edit);};});
+    document.querySelectorAll('[data-del]').forEach(function(b){b.onclick=function(){del(b.dataset.del);};});
   }
   function render(){renderNations();renderList();}
 
   function del(id){
     if(deleteArm!==id){ deleteArm=id; renderList(); clearTimeout(delTimer); delTimer=setTimeout(function(){deleteArm=null;renderList();},3000); return; }
+    clearTimeout(delTimer); deleteArm=null; deleteOutlet(id);
+  }
+  async function deleteOutlet(id){
+    if(busy) return; busy=true;
     var o=OUTLETS.filter(function(x){return x.id===id;})[0];
-    OUTLETS=OUTLETS.filter(function(x){return x.id!==id;});
-    deleteArm=null; render(); ping('Deleted <b>'+(o?o.name:'site')+'</b>');
+    try{ var r=await supabase.from('news_outlets').delete().eq('id',id); if(r.error) throw r.error;
+      ping('Deleted <b>'+esc(o?o.name:'site')+'</b>'); await loadOutlets();
+    }catch(e){ ping('<b class="red">Delete failed — admin only</b>'); renderList(); }
+    finally{ busy=false; }
   }
 
   /* ---- editor ---- */
@@ -221,17 +204,40 @@
     if(editing.img){ p.style.backgroundImage='url('+editing.img+')'; p.style.background='center/cover'; p.textContent=''; p.style.backgroundImage='url('+editing.img+')'; p.style.backgroundSize='cover'; }
     else { p.style.backgroundImage=''; p.style.background=editing.color; p.textContent=editing.mono||autoMono(editing.name); }
   }
-  document.getElementById('fileInput').onchange=function(e){
+  // Upload the logo to the public news-logos bucket and keep its URL (rendered player-facing on the
+  // News page). Mirrors forum.js uploadImage — path is foldered by the admin's uid; RLS gates to admins.
+  document.getElementById('fileInput').onchange=async function(e){
     var f=e.target.files&&e.target.files[0]; if(!f)return;
-    var r=new FileReader(); r.onload=function(){ editing.img=r.result; document.getElementById('mBody').innerHTML=editorBody(); bindEditor(); updatePreview(); }; r.readAsDataURL(f);
+    if(busy) return; busy=true; ping('Uploading logo…');
+    try{
+      var u=(await supabase.auth.getUser()).data.user; if(!u) throw new Error('Not signed in.');
+      var ext=((f.name||'').split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,'')||'png';
+      var path=u.id+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.'+ext;
+      var up=await supabase.storage.from('news-logos').upload(path, f, { cacheControl:'3600', upsert:false });
+      if(up.error) throw up.error;
+      editing.img=supabase.storage.from('news-logos').getPublicUrl(path).data.publicUrl;
+      document.getElementById('mBody').innerHTML=editorBody(); bindEditor(); updatePreview(); ping('Logo uploaded');
+    }catch(err){ ping('<b class="red">Upload failed</b>'); }
+    finally{ busy=false; }
   };
 
-  function saveEditor(){
+  async function saveEditor(){
+    if(busy) return;
     if(!editing.name.trim()){ ping('<b class="red">Name required</b>'); return; }
+    if(!editing.nation){ ping('<b class="red">No nation selected</b>'); return; }
     if(!editing.mono) editing.mono=autoMono(editing.name);
-    if(editing.id){ OUTLETS=OUTLETS.map(function(o){return o.id===editing.id?editing:o;}); }
-    else { editing.id=seq++; OUTLETS.push(editing); }
-    closeEditor(); render(); ping('Saved <b>'+editing.name+'</b>');
+    busy=true;
+    var row={ nation_id:editing.nation, name:editing.name.trim(), slogan:editing.slogan||null,
+              slant:editing.slant, color:editing.color, mono:editing.mono||null, img:editing.img||null };
+    var nm=editing.name;
+    try{
+      var res = editing.id
+        ? await supabase.from('news_outlets').update(row).eq('id',editing.id)
+        : await supabase.from('news_outlets').insert(row);
+      if(res.error) throw res.error;
+      closeEditor(); await loadOutlets(); ping('Saved <b>'+esc(nm)+'</b>');
+    }catch(e){ ping('<b class="red">Save failed — admin only</b>'); }
+    finally{ busy=false; }
   }
   function closeEditor(){ document.getElementById('scrim').className='scrim hidden'; editing=null; }
 
@@ -246,7 +252,20 @@
   var toast=document.getElementById('toast'),tt;
   function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show');},2400);}
 
-  render();
+  /* ---- data (nations + news_outlets, schema/156) ---- */
+  async function loadNations(){
+    try{ var r=await supabase.from('nations').select('id, name').order('name'); if(r.error) throw r.error; NATIONS=r.data||[]; }
+    catch(e){ NATIONS=[]; }
+    if(NATIONS.length && !curNation) curNation=NATIONS[0].id;
+  }
+  async function loadOutlets(){
+    try{
+      var r=await supabase.from('news_outlets').select('*').order('created_at'); if(r.error) throw r.error;
+      OUTLETS=(r.data||[]).map(function(o){ return {id:o.id, nation:o.nation_id, name:o.name, slogan:o.slogan||'', slant:o.slant||'centre', color:o.color||'#6b5cff', mono:o.mono||'', img:o.img||null}; });
+      render();
+    }catch(e){ document.getElementById('list').innerHTML='<div class="empty">Couldn’t load outlets — make sure you’re signed in as an admin.</div>'; }
+  }
+  (async function(){ await loadNations(); await loadOutlets(); })();
 </script>
 </body>
 </html>

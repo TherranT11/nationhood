@@ -29,8 +29,8 @@ create or replace function public._economy_need(p_nation text, p_resource text)
 returns numeric language sql stable security definer set search_path = public as $$
   select case p_resource
     when 'food'     then greatest(1, ceil(coalesce(n.population, 0) / 50.0))
-    when 'goods'    then ceil(coalesce((n.stats->>'prosperity')::numeric, 0) / 2.0)
-    when 'services' then ceil(coalesce((n.stats->>'welfare')::numeric, 0) / 2.0)
+    when 'goods'    then ceil(coalesce((n.stats->>'prosperity')::numeric, 0) / 10.0)
+    when 'services' then ceil(coalesce((n.stats->>'welfare')::numeric, 0) / 10.0)
     when 'military' then coalesce((n.on_hand->>'military')::numeric, 0)
     else 0 end
   from public.nations n where n.id = p_nation;
@@ -169,18 +169,18 @@ begin
       v_mil   := coalesce((v_d->>'military')::boolean, false);
     end if;
 
-    -- Food: a fed nation grows +1M — but only while Growth holds at 9+. A stalling economy
-    -- (Growth < 9) freezes population growth even in a well-fed year (paired with the GDP hit
+    -- Food: a fed nation grows +1M — but only while Growth holds at 45+. A stalling economy
+    -- (Growth < 45) freezes population growth even in a well-fed year (paired with the GDP hit
     -- in schema/125). Unmet food costs Order; either way there's no population growth otherwise.
     if v_food then
-      if v_n.growth >= 9 then
+      if v_n.growth >= 45 then
         update public.nations set population = coalesce(population, 0) + 1 where id = v_n.id;
       end if;
     else
-      perform public._nation_stat_add(v_n.id, 'stats', 'order', -1, 1, 20);
+      perform public._nation_stat_add(v_n.id, 'stats', 'order', -1, 1, 100);
     end if;
-    if not v_goods then perform public._nation_stat_add(v_n.id, 'stats', 'prosperity', -1, 1, 20); end if;
-    if not v_serv  then perform public._nation_stat_add(v_n.id, 'stats', 'welfare', -1, 1, 20); end if;
+    if not v_goods then perform public._nation_stat_add(v_n.id, 'stats', 'prosperity', -1, 1, 100); end if;
+    if not v_serv  then perform public._nation_stat_add(v_n.id, 'stats', 'welfare', -1, 1, 100); end if;
     if not v_mil   then perform public._nation_stat_add(v_n.id, 'on_hand', 'military', -1, 0, null); end if;
 
     -- The government answers for the shortfall: for EACH of the four demands it missed, every
@@ -202,7 +202,7 @@ begin
      where id = v_n.id;
 
     v_msg := 'The ' || v_year || ' annual accounts are in. '
-          || (case when v_food and v_n.growth >= 9 then 'The nation was fed — population +1M. '
+          || (case when v_food and v_n.growth >= 45 then 'The nation was fed — population +1M. '
                     when v_food then 'The nation was fed, but a stalling economy held the population flat. '
                     else 'Food ran short — Order −1. ' end)
           || (case when v_goods then '' else 'Goods ran short — Prosperity −1. ' end)
