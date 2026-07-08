@@ -74,13 +74,40 @@
   .save:hover{filter:brightness(1.1)}
   .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(16px);background:#000;border:1px solid var(--line);color:#fff;font-family:'Space Mono',monospace;font-size:12px;padding:11px 17px;border-radius:11px;opacity:0;pointer-events:none;transition:all .3s;z-index:40}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)} .toast b{color:#a99dff}
+
+  /* rules toolbar + saved list */
+  .toolbar{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px}
+  .toolbar .field{flex:1;min-width:200px}
+  .toolbar .field label{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);display:block;margin-bottom:7px}
+  .newbtn{background:var(--indigo);color:#fff;border:none;border-radius:10px;padding:12px 16px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.03em;cursor:pointer;white-space:nowrap}
+  .newbtn:hover{filter:brightness(1.1)}
+  .rulecount{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px}
+  .rrow{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:9px}
+  .rrow.on{border-color:var(--indigo)}
+  .rrow .rinfo{flex:1;min-width:0}
+  .rrow .rname{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .rrow .rtrig{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-top:3px}
+  .rrow .rtag{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:5px;padding:3px 6px}
+  .rrow .rtag.off{color:var(--soft);background:var(--field);border:1px solid var(--line)}
+  .rrow .rtag.dorm{color:var(--amber);background:color-mix(in srgb,var(--amber) 14%,transparent);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent)}
+  .rrow .ract{display:flex;gap:7px;flex:none}
+  .listempty{border:1px dashed var(--line2);border-radius:12px;padding:26px;text-align:center;color:var(--soft);font-family:'Space Mono',monospace;font-size:12px}
+  .dormant{background:color-mix(in srgb,var(--amber) 12%,transparent);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);color:var(--amber);border-radius:10px;padding:11px 13px;font-size:12.5px;line-height:1.45;margin-bottom:14px}
 </style>
 </head>
 <body>
 <div class="page">
   <div class="eyebrow">Backend · Media · Headline Rules</div>
   <h1>Headline Rule</h1>
-  <div class="sub">Author a trigger and three headline variants. When the trigger fires, each outlet prints the variant matching its slant.</div>
+  <div class="sub">Author a trigger and its headline variants. When the trigger fires, each outlet prints the variant matching its slant.</div>
+
+  <!-- SAVED RULES -->
+  <div class="toolbar">
+    <div class="field"><label>Nation</label><div class="selw"><select id="natSel"></select></div></div>
+    <button class="newbtn" id="newRule">+ New Rule</button>
+  </div>
+  <div class="rulecount" id="ruleCount"></div>
+  <div id="rulesList"></div>
 
   <!-- IDENTITY -->
   <div class="card">
@@ -98,8 +125,8 @@
   <div class="card">
     <div class="sec-h">Trigger — when does this fire?</div>
     <div class="seg" id="ttype">
-      <button data-tt="threshold" class="on">Threshold crossing</button>
-      <button data-tt="event">Game event</button>
+      <button data-tt="event" class="on">Game event</button>
+      <button data-tt="threshold">Threshold crossing</button>
     </div>
     <div id="trigFields"></div>
   </div>
@@ -133,18 +160,28 @@
 
 <script type="module">
   import { POLICY_STATS } from '/policies.js';
+  import { supabase } from '/supabase.js';
   // Trigger Subject vocabulary. The familiar national + economy figures lead; then the full ministry
   // stat set (Crime, Environment, Infrastructure, Poverty, Press Freedom, …) from POLICY_STATS — the
   // ONE source in policies.js — appended and de-duped, so this list never drifts from the game's stats.
   var LEAD_STATS=['Prosperity','Welfare','Growth','Order','Global Image','Inflation','Unemployment','Tax Burden','Budget','Income','Debt','Regime'];
   var STATS=LEAD_STATS.concat(POLICY_STATS.filter(function(s){ return LEAD_STATS.indexOf(s)<0; }));
   var RESOURCES=['Energy','Food','Minerals','Goods','Services','Military','Diplomacy'];
+  // The event kinds a rule can fire on — the game's real events.kind values (MIRRORS _is_newsworthy in
+  // schema/156, the ONE server source), so a saved rule actually matches what the engine sees.
   var EVENTS=[
-    {id:'bill_pass',label:'A bill passes'},{id:'bill_fail',label:'A bill fails'},
-    {id:'war',label:'War is declared'},{id:'crisis_start',label:'A crisis begins'},{id:'crisis_end',label:'A crisis is resolved'},
-    {id:'resign',label:'A minister resigns'},{id:'appoint',label:'A minister is appointed'},
-    {id:'election',label:'An election is held'},{id:'initiative_done',label:'An initiative completes'},
-    {id:'coup',label:'A coup is attempted'},{id:'treaty',label:'A treaty is signed'}
+    {id:'law',            label:'A law is passed or amended'},
+    {id:'no_confidence',  label:'A no-confidence motion'},
+    {id:'declaration',    label:'A declaration is made'},
+    {id:'government',      label:'A government forms or falls'},
+    {id:'agenda',         label:'A government agenda update'},
+    {id:'ministry',        label:'A ministry / cabinet change'},
+    {id:'regime',         label:'A regime change'},
+    {id:'election',       label:'An election is held'},
+    {id:'economy',        label:'An economic event'},
+    {id:'crisis',         label:'A national crisis'},
+    {id:'world_event',    label:'A world event'},
+    {id:'world_broadcast',label:'A global turning point'}
   ];
   var SLANTS=[
     {id:'record',  label:'Record',   color:'#c9c9d4'},
@@ -155,16 +192,17 @@
   ];
 
   var state={
-    name:'', scope:'nation',
-    ttype:'threshold',
+    name:'', scope:'nation', nation:null,
+    ttype:'event',   // event triggers are live; threshold is stored-but-dormant (see the note under it)
     // threshold fields
     subjectType:'stat', subject:'Inflation', direction:'above', value:15, held:0,
     // event fields
-    event:'bill_pass', eventFilter:'',
+    event:'law', eventFilter:'',
     hmode:'slant',
     headlines:{ record:'', left:'', centre:'', right:'', farright:'', n1:'', n2:'', n3:'' },
     cooldown:12, priority:5, once:false
   };
+  var editingId=null;   // the headline_rules row being edited, or null for a new rule
 
   /* ---- trigger fields ---- */
   function subjectOptions(){
@@ -178,6 +216,7 @@
         .map(function(p){return '<option value="'+p[0]+'"'+(state.subjectType===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('');
       var unit = state.subjectType==='rate' ? ' pts/yr' : (state.subjectType==='stat'?'':' units');
       return '<div class="cond">'+
+        '<div class="dormant">Saved, but not firing yet — threshold triggers need live stat values, which most ministry stats don’t have yet. Use a Game event to publish now.</div>'+
         '<div class="flabel">Subject</div>'+
         '<div class="row"><div class="selw"><select id="subjType">'+subjTypeOpts+'</select></div>'+
           '<div class="selw"><select id="subj">'+subjectOptions()+'</select></div></div>'+
@@ -251,7 +290,7 @@
     return (txt||'')
       .replace(/\{value\}/g,state.value)
       .replace(/\{subject\}/g,state.subject)
-      .replace(/\{nation\}/g, state.scope==='global'?'the nation':'Sessau')
+      .replace(/\{nation\}/g, state.scope==='global'?'the nation':(natName(state.nation)||'the nation'))
       .replace(/\{resource\}/g, RESOURCES.indexOf(state.subject)>=0?state.subject:'the resource')
       .replace(/\{delta\}/g,'+3').replace(/\{seats\}/g,'137');
   }
@@ -286,18 +325,132 @@
   document.getElementById('cooldown').oninput=function(){state.cooldown=parseInt(this.value,10)||0;};
   document.getElementById('priority').oninput=function(){state.priority=parseInt(this.value,10)||0;};
   document.getElementById('once').onclick=function(){state.once=!state.once;this.className='chkrow'+(state.once?' on':'');this.querySelector('.cb').textContent=state.once?'✓':'';};
-  document.getElementById('save').onclick=function(){
-    if(!state.name.trim()){ping('<b class="red">Rule name required</b>');return;}
-    console.log('HEADLINE_RULE',state);
-    ping('Saved <b>'+state.name+'</b>');
-  };
+  document.getElementById('save').onclick=function(){ saveRule(); };
+  document.getElementById('newRule').onclick=function(){ newRule(); };
+  document.getElementById('natSel').onchange=function(){ state.nation=this.value; loadRules(); };
 
   function esc(s){return (s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
   function hexA(hex,a){var h=hex.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
   var toast=document.getElementById('toast'),tt;
   function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show');},2400);}
 
-  renderTrig(); renderHeadlines(); renderTokens(); renderPreview();
+  /* ---- persistence (headline_rules table, schema/157) ---- */
+  // Composer state → a headline_rules row. nation_id only set for a nation-scoped rule; the trigger
+  // fields not in use are nulled so a switched-over rule doesn't carry stale threshold/event data.
+  function stateToRow(){
+    return {
+      name: state.name.trim(), scope: state.scope,
+      nation_id: state.scope==='nation' ? state.nation : null,
+      trigger_type: state.ttype,
+      event_kind:   state.ttype==='event' ? state.event : null,
+      event_filter: state.ttype==='event' ? (state.eventFilter||null) : null,
+      subject_type: state.ttype==='threshold' ? state.subjectType : null,
+      subject:      state.ttype==='threshold' ? state.subject : null,
+      direction:    state.ttype==='threshold' ? state.direction : null,
+      value:        state.ttype==='threshold' ? state.value : null,
+      held:         state.ttype==='threshold' ? state.held : null,
+      headline_mode: state.hmode, headlines: state.headlines,
+      cooldown: state.cooldown, priority: state.priority, fire_once: state.once
+    };
+  }
+  // A saved row → composer state, then re-render every section.
+  function rowToState(r){
+    state = {
+      name:r.name||'', scope:r.scope||'nation', nation:r.nation_id||state.nation, ttype:r.trigger_type||'event',
+      subjectType:r.subject_type||'stat', subject:r.subject||'Inflation', direction:r.direction||'above',
+      value:(r.value==null?15:Number(r.value)), held:(r.held==null?0:Number(r.held)),
+      event:r.event_kind||'law', eventFilter:r.event_filter||'', hmode:r.headline_mode||'slant',
+      headlines:Object.assign({record:'',left:'',centre:'',right:'',farright:'',n1:'',n2:'',n3:''}, r.headlines||{}),
+      cooldown:(r.cooldown==null?12:r.cooldown), priority:(r.priority==null?5:r.priority), once:!!r.fire_once
+    };
+    editingId = r.id || null;
+    syncControls(); renderTrig(); renderHeadlines(); renderPreview();
+  }
+  // Push state back into the static form controls (the ones not re-rendered wholesale).
+  function syncControls(){
+    document.getElementById('name').value=state.name;
+    document.getElementById('cooldown').value=state.cooldown;
+    document.getElementById('priority').value=state.priority;
+    var once=document.getElementById('once'); once.className='chkrow'+(state.once?' on':''); once.querySelector('.cb').textContent=state.once?'✓':'';
+    document.querySelectorAll('#scope [data-scope]').forEach(function(x){x.className=(x.dataset.scope===state.scope?'on':'');});
+    document.querySelectorAll('#ttype [data-tt]').forEach(function(x){x.className=(x.dataset.tt===state.ttype?'on':'');});
+    document.querySelectorAll('#hmode [data-hm]').forEach(function(x){x.className=(x.dataset.hm===state.hmode?'on':'');});
+    var ns=document.getElementById('natSel'); if(ns && state.nation) ns.value=state.nation;
+    document.getElementById('save').textContent = editingId ? 'Update Headline Rule' : 'Save Headline Rule';
+  }
+  function newRule(){
+    editingId=null;
+    state.name=''; state.scope='nation'; state.ttype='event'; state.event='law'; state.eventFilter='';
+    state.subjectType='stat'; state.subject='Inflation'; state.direction='above'; state.value=15; state.held=0;
+    state.hmode='slant'; state.headlines={record:'',left:'',centre:'',right:'',farright:'',n1:'',n2:'',n3:''};
+    state.cooldown=12; state.priority=5; state.once=false;
+    syncControls(); renderTrig(); renderHeadlines(); renderPreview();
+    document.querySelectorAll('.rrow').forEach(function(x){x.classList.remove('on');});
+  }
+
+  var NATIONS=[];
+  function natName(id){ var n=NATIONS.filter(function(x){return x.id===id;})[0]; return n?(n.name||n.id):null; }
+  async function loadNations(){
+    var sel=document.getElementById('natSel');
+    try{ var r=await supabase.from('nations').select('id, name').order('name'); if(r.error) throw r.error; NATIONS=r.data||[]; }
+    catch(e){ NATIONS=[]; }
+    sel.innerHTML=NATIONS.map(function(n){return '<option value="'+esc(n.id)+'">'+esc(n.name||n.id)+'</option>';}).join('');
+    if(NATIONS.length && !state.nation) state.nation=NATIONS[0].id;
+    if(state.nation) sel.value=state.nation;
+  }
+  function evLabel(kind){ var e=EVENTS.filter(function(x){return x.id===kind;})[0]; return e?e.label:(kind||'—'); }
+  function ruleTrigText(r){
+    if(r.trigger_type==='threshold') return 'Threshold · '+(r.subject||'—')+' '+(r.direction==='below'?'<':'>')+' '+(r.value==null?'—':r.value);
+    return 'Event · '+evLabel(r.event_kind);
+  }
+  async function loadRules(){
+    var box=document.getElementById('rulesList'), cnt=document.getElementById('ruleCount');
+    box.innerHTML='<div class="listempty">Loading rules…</div>'; cnt.textContent='';
+    try{
+      var q=supabase.from('headline_rules').select('*').order('created_at',{ascending:false});
+      q = state.nation ? q.or('nation_id.eq.'+state.nation+',scope.eq.global') : q.eq('scope','global');
+      var r=await q; if(r.error) throw r.error;
+      renderRulesList(r.data||[]);
+    }catch(e){ box.innerHTML='<div class="listempty">Couldn’t load rules — make sure you’re signed in as an admin.</div>'; cnt.textContent=''; }
+  }
+  function renderRulesList(rules){
+    var box=document.getElementById('rulesList'), cnt=document.getElementById('ruleCount');
+    cnt.textContent=rules.length+' rule'+(rules.length===1?'':'s');
+    if(!rules.length){ box.innerHTML='<div class="listempty">No headline rules yet. Author one below and Save.</div>'; return; }
+    box.innerHTML=rules.map(function(r){
+      var tags=(r.scope==='global'?'<span class="rtag" style="color:#a99dff;background:var(--indigo-soft);border:1px solid #33305a">Global</span>':'')
+        +(r.enabled===false?'<span class="rtag off">Off</span>':'')
+        +(r.trigger_type==='threshold'?'<span class="rtag dorm">Dormant</span>':'');
+      return '<div class="rrow'+(r.id===editingId?' on':'')+'" data-id="'+r.id+'">'+
+        '<div class="rinfo"><div class="rname">'+esc(r.name||'Untitled')+tags+'</div><div class="rtrig">'+esc(ruleTrigText(r))+'</div></div>'+
+        '<div class="ract"><button class="minibtn" data-edit="'+r.id+'">Edit</button><button class="minibtn" data-del="'+r.id+'">Delete</button></div>'+
+      '</div>';
+    }).join('');
+    box.querySelectorAll('[data-edit]').forEach(function(b){ b.onclick=function(){ var r=rules.filter(function(x){return x.id===b.dataset.edit;})[0]; if(r){ rowToState(r); loadRules(); } }; });
+    box.querySelectorAll('[data-del]').forEach(function(b){ b.onclick=function(){ deleteRule(b.dataset.del); }; });
+  }
+  async function deleteRule(id){
+    try{ var r=await supabase.from('headline_rules').delete().eq('id',id); if(r.error) throw r.error;
+      if(editingId===id) newRule(); ping('Deleted rule'); loadRules();
+    }catch(e){ ping('<b class="red">Delete failed</b>'); }
+  }
+  async function saveRule(){
+    if(!state.name.trim()){ ping('<b class="red">Rule name required</b>'); return; }
+    if(state.scope==='nation' && !state.nation){ ping('<b class="red">Pick a nation first</b>'); return; }
+    var row=stateToRow();
+    try{
+      var res = editingId
+        ? await supabase.from('headline_rules').update(row).eq('id',editingId)
+        : await supabase.from('headline_rules').insert(row).select('id').single();
+      if(res.error) throw res.error;
+      if(!editingId && res.data){ editingId=res.data.id; }
+      syncControls(); ping('Saved <b>'+esc(state.name)+'</b>'); loadRules();
+    }catch(e){ ping('<b class="red">Save failed — admin only</b>'); }
+  }
+
+  // Initial paint (composer is synchronous), then load nations + rules from the backend.
+  renderTrig(); renderHeadlines(); renderTokens(); renderPreview(); syncControls();
+  (async function(){ await loadNations(); loadRules(); })();
 </script>
 </body>
 </html>
