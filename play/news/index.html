@@ -75,6 +75,7 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { esc } from '/util.js';
+  import { ideologyLabel } from '/archetypes.js';   // for the sidenav brand subtitle (party ideology · nation)
   import { slantLabel } from '/slants.js';   // ONE source for the slant vocabulary
 
   mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
@@ -128,8 +129,13 @@
       if (!party) { window.location.replace('/nation-select/'); return; }   // no party yet → pick a nation (maybeSingle so this branch is reachable)
       nationId = party.nation_id;
       setTopbarActions(party.influence);
-      const { data: nation } = await supabase.from('nations').select('name').eq('id', nationId).single();
-      document.getElementById('ownNat').textContent = (nation && nation.name) || nationId;
+      const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', nationId).single();
+      const nationName = (nation && nation.name) || nationId;
+      document.getElementById('ownNat').textContent = nationName;
+      // Fill the sidenav brand (top-left) like every other screen does, so it isn't stuck on the placeholder.
+      document.getElementById('pname').textContent = party.name;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
+      if (nation && nation.flag) { const f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
     } catch (e) {
       // Couldn't resolve the player's nation — still show the World Press (it doesn't need it).
       renderError(document.getElementById('own'), e);

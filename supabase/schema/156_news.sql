@@ -117,13 +117,39 @@ drop trigger if exists trg_event_to_headline on public.events;
 create trigger trg_event_to_headline after insert on public.events
   for each row execute function public._event_to_headline();
 
--- Seed a small press per nation so headlines have papers to print and the World Press isn't bare.
--- Guarded per (nation, name) so re-running never duplicates. Admin can add/edit more in the News tab.
+-- Seed a small press per nation (record / left / right) so headlines have papers to print. Nations with
+-- a cultural flavour get invented, tangential mastheads (NOT their real-world papers) — evoking the
+-- feel without naming a real title or place; every other nation (e.g. Severia) keeps the generic
+-- "<Nation> Times / Chronicle / Post". ONE source for outlet seeding, and AUTHORITATIVE for these three
+-- canonical papers' names: on apply it (re)names each mapped nation's record/left/right paper to the
+-- name below (from generic, a prior mapping, whatever) and inserts any that's missing — keyed by
+-- (nation, slant), so re-running never duplicates. Extra papers an admin adds on OTHER slants are left
+-- alone. Edit names here (the source), not in the News tab, or the next apply overwrites them.
+with names (nation_name, slant, paper) as (values
+  ('Sessau','record','Le Courrier'),           ('Sessau','left','La Sentinelle'),         ('Sessau','right','Le Patriote'),               -- French flavour
+  ('Al-Qadir','record','The Qadir Crescent'),  ('Al-Qadir','left','The People''s Dawn'),   ('Al-Qadir','right','The Cedar Standard'),      -- Levantine flavour
+  ('Laurentia','record','The Laurentian'),     ('Laurentia','left','The Maple Tribune'),  ('Laurentia','right','The Northern Post'),      -- Canadian flavour
+  ('Wesmore & Calcordia','record','The Standard'), ('Wesmore & Calcordia','left','The Loxbridge Caller'), ('Wesmore & Calcordia','right','The Crown Herald'),  -- Anglo flavour
+  ('Vesperia','record','The Vesperia Tribune'),('Vesperia','left','The Liberty Beacon'),  ('Vesperia','right','The Eagle Standard'),      -- Americana flavour
+  ('Montequilla','record','El Faro'),          ('Montequilla','left','La Voz del Pueblo'),('Montequilla','right','El Cóndor')             -- Andean flavour
+),
+canon (slant, suffix, color) as (values ('record','Times','#c9c9d4'), ('left','Chronicle','#e0575a'), ('right','Post','#3f9fe0')),
+-- (Re)name each mapped nation's record/left/right paper to the masthead above, whatever it's called now
+-- (data-modifying CTE: runs even though the INSERT below doesn't reference it). Authoritative for these
+-- three slants; papers on other slants aren't matched, so admin extras are untouched.
+renamed as (
+  update public.news_outlets o set name = nm.paper
+    from public.nations n
+    join names nm on lower(nm.nation_name) = lower(n.name)
+   where o.nation_id = n.id and o.slant = nm.slant and o.name <> nm.paper
+  returning o.id
+)
 insert into public.news_outlets (nation_id, name, slant, color)
-select n.id, n.name || ' ' || v.suffix, v.slant, v.color
-from public.nations n
-cross join (values ('Times','record','#c9c9d4'), ('Chronicle','left','#e0575a'), ('Post','right','#3f9fe0')) as v(suffix, slant, color)
-where not exists (select 1 from public.news_outlets o where o.nation_id = n.id and o.name = n.name || ' ' || v.suffix);
+select n.id, coalesce(nm.paper, n.name || ' ' || c.suffix), c.slant, c.color
+  from public.nations n
+  cross join canon c
+  left join names nm on lower(nm.nation_name) = lower(n.name) and nm.slant = c.slant
+ where not exists (select 1 from public.news_outlets o where o.nation_id = n.id and o.slant = c.slant);
 
 -- One-time backfill: seed headlines from recent existing events so the desk has content on first
 -- load. Runs only while the table is empty, so re-applying the schema never re-seeds or duplicates.

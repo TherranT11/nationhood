@@ -20,10 +20,10 @@ create table if not exists public.headline_rules (
   name          text not null default 'Untitled rule',
   scope         text not null default 'nation',        -- 'nation' | 'global' (any nation)
   nation_id     text references public.nations (id) on delete cascade,   -- set when scope = 'nation'
-  trigger_type  text not null default 'event',          -- 'event' | 'threshold' (threshold = dormant)
+  trigger_type  text not null default 'event',          -- 'event' | 'threshold' (both live: events fire from the trigger, thresholds from the per-tick sweep, schema/158)
   event_kind    text,                                   -- the events.kind this fires on
   event_filter  text,                                   -- stored, not yet evaluated
-  subject_type  text, subject text, direction text, value numeric, held int,   -- threshold (dormant)
+  subject_type  text, subject text, direction text, value numeric, held int,   -- threshold trigger fields (live via schema/158)
   headline_mode text not null default 'slant',          -- 'slant' (one per slant) | 'neutral' (3 variants)
   headlines     jsonb not null default '{}'::jsonb,     -- {record,left,centre,right,farright} or {n1,n2,n3}
   cooldown      int  not null default 12,               -- min ticks between fires (per nation)
