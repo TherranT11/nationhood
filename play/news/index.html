@@ -30,8 +30,12 @@
   .feed{display:flex;flex-direction:column}
   /* World Press can run long (every other nation's papers) — cap it and let it scroll. */
   #world{max-height:min(58vh,460px);overflow-y:auto;padding-right:6px}
+  /* Date section break — a subtle "SEPTEMBER 1983" divider grouping each tick's headlines. */
+  .datebreak{display:flex;align-items:center;gap:12px;margin:16px 0 2px;font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
+  .datebreak::after{content:'';height:1px;background:var(--line);flex:1}
+  .datebreak:first-child{margin-top:0}
   .hl{display:flex;gap:13px;padding:13px 0;border-top:1px solid var(--line)}
-  .hl:first-child{border-top:none;padding-top:2px}
+  .hl:first-child,.datebreak + .hl{border-top:none;padding-top:2px}
   .hl:last-child{padding-bottom:2px}
   .hl__logo{width:42px;height:42px;border-radius:10px;flex:none;display:grid;place-items:center;font-family:'Space Mono',monospace;font-weight:700;font-size:14px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45);background-size:cover;background-position:center;overflow:hidden}
   .hl__body{flex:1;min-width:0}
@@ -91,26 +95,37 @@
     var mono = esc(h.mono || (h.paper || '?').replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || '?');
     return '<span class="hl__logo" style="background:' + c + '">' + mono + '</span>';
   }
+  // The month/year to group under — the raw game_date ("September, 1983") shown as "SEPTEMBER 1983".
+  function dateLabel(d) { return (d || 'Undated').replace(',', ''); }
   // One headline row, led by the paper's logo. `withFlag` shows the source nation's flag + name
-  // (World Press); own-nation headlines omit it. Colour/logo ride on each row from the DB.
+  // (World Press); own-nation headlines omit it. The date isn't repeated per row — it's the group
+  // divider now — so the meta line carries only the source nation, and is dropped when there's none.
   function headlineRow(h, withFlag) {
     var c = esc(h.color || '#6b5cff');
     var nat = withFlag && h.nations ? h.nations : null;
     var flag = nat && nat.flag ? '<img class="hl__flag" src="' + esc(nat.flag) + '" alt="">' : '';
     var slant = '<span class="hl__slant" style="color:' + c + ';background:color-mix(in srgb,' + c + ' 13%,transparent);border:1px solid color-mix(in srgb,' + c + ' 40%,transparent)">' + esc(slantLabel(h.slant)) + '</span>';
-    var meta = (nat ? flag + ' ' + esc(nat.name) + ' · ' : '') + esc(h.game_date || '—');
+    var meta = nat ? flag + ' ' + esc(nat.name) : '';
     return '<article class="hl">' + logoBox(h, c) +
       '<div class="hl__body">' +
         '<div class="hl__paper"><span class="hl__pname">' + esc(h.paper || 'The Press') + '</span>' + slant + '</div>' +
         '<div class="hl__text">' + esc(h.headline) + '</div>' +
-        '<div class="hl__meta">' + meta + '</div>' +
+        (meta ? '<div class="hl__meta">' + meta + '</div>' : '') +
       '</div>' +
     '</article>';
   }
 
+  // Rows arrive newest-first, so consecutive rows share a game_date in runs — walk them and drop a
+  // date divider whenever it changes, grouping each month's headlines under one "SEPTEMBER 1983" break.
   function renderFeed(el, rows, withFlag, emptyMsg) {
     if (!rows || !rows.length) { el.innerHTML = '<div class="empty"><b>' + emptyMsg + '</b><span>Headlines appear as the world turns.</span></div>'; return; }
-    el.innerHTML = rows.map(function (h) { return headlineRow(h, withFlag); }).join('');
+    var html = '', last = null;
+    rows.forEach(function (h) {
+      var d = h.game_date || '';
+      if (d !== last) { html += '<div class="datebreak">' + esc(dateLabel(d)) + '</div>'; last = d; }
+      html += headlineRow(h, withFlag);
+    });
+    el.innerHTML = html;
   }
   function renderError(el, e) {
     // Surface the underlying reason instead of swallowing it — a silent catch made this
