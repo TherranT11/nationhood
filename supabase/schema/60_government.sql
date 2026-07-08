@@ -681,6 +681,10 @@ begin
   -- After the purge, so parties deleted this tick aren't snapshotted. Isolated like every step.
   begin perform public._snapshot_party_popularity(v_tick);
   exception when others then raise warning 'tick %: popularity snapshot failed — %', v_tick, sqlerrm; end;
+  -- Nation stat snapshot (schema/162): record each nation's settled live Growth this tick, so the
+  -- Growth page can draw a real trend. Also final (reads settled stats); isolated like every step.
+  begin perform public._snapshot_nation_stats(v_tick);
+  exception when others then raise warning 'tick %: nation stat snapshot failed — %', v_tick, sqlerrm; end;
   return jsonb_build_object('tick', v_tick, 'elections_resolved', v_count);
 end $$;
 revoke all on function public._advance_tick() from public, anon, authenticated;
