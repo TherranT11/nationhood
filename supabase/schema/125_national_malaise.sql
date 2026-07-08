@@ -1,5 +1,6 @@
 -- ===========================================================================
--- 125 · National malaise — the yearly cost of letting a headline stat slip below 9.
+-- 125 · National malaise — the yearly cost of letting a headline stat slip below 9, plus the
+-- debt-to-GDP crisis penalties (over 100% / 200% of GDP; see the debt block at the end of the loop).
 -- Each January (called from _advance_tick, schema/60), for every live nation, any of the
 -- five glance stats under 9 fires a tangible penalty and a feed line. The five stats are
 -- read up front (a snapshot), so one year's penalty can't cascade into another the same
@@ -28,7 +29,7 @@ returns void language plpgsql security definer set search_path = public as $$
 declare
   n record;
   v_pro numeric; v_wel numeric; v_gro numeric; v_ord numeric; v_img numeric; v_bud numeric; v_inc numeric;
-  v_regime numeric; v_open boolean; v_gdp_delta numeric;
+  v_regime numeric; v_open boolean; v_gdp_delta numeric; v_debt numeric;
 begin
   if (p_tick - 1) % 12 <> 0 then return; end if;   -- January only (tick 1, 13, 25, …)
   for n in select id, stats, economy, gdp from public.nations where not coalesce(dormant, false) loop
@@ -85,6 +86,37 @@ begin
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Budget', 'v', -round(v_bud * 0.05, 1)));   -- −5% of the treasury
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Income', 'v', -round(v_inc * 0.05, 1)));   -- −5% of annual income
       perform public._malaise_event(n.id, 'Due to low Global Image, the budget and income have suffered (−5% each).');
+    end if;
+
+    -- Debt-to-GDP crisis. Past 100% of GDP the nation's credit is downgraded; past 200% it tips into a
+    -- sovereign debt spiral. The interest RATE escalates in _apply_debt_interest (schema/152, run just
+    -- before this pass); here is the one-off pain. Austerity stalls Growth and (at 200%) capital flight
+    -- shrinks GDP — economic, so every regime pays it. The political fallout (Prosperity / Government
+    -- Confidence) is suppressed under an authoritarian regime (v_open), like the other malaise penalties.
+    -- Growth ↓ and GDP ↓ both worsen the ratio next year — the pain is a spiral, not a one-time toll.
+    v_debt := coalesce((n.economy->>'debt')::numeric, 0);
+    if v_debt > 0 and coalesce(n.gdp, 0) > 0 then
+      if v_debt > n.gdp * 2 then
+        perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Growth', 'v', -3));
+        v_gdp_delta := round(n.gdp * 0.05);   -- capital flight
+        if v_gdp_delta > 0 then update public.nations set gdp = greatest(0, gdp - v_gdp_delta) where id = n.id; end if;
+        if v_open then
+          perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Prosperity', 'v', -2));
+          perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Government Confidence', 'v', -12));
+        end if;
+        perform public._malaise_event(n.id,
+          'Public debt has passed 200% of GDP — a sovereign debt spiral. Borrowing costs jumped to 15% and growth collapsed (−3)'
+          || (case when v_gdp_delta > 0 then ', GDP shrank 5% (−$' || v_gdp_delta || 'B) as capital fled' else '' end)
+          || (case when v_open then ', and confidence in the government cratered (−12%)' else '' end) || '.');
+      elsif v_debt > n.gdp then
+        perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Growth', 'v', -2));
+        if v_open then
+          perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Government Confidence', 'v', -5));
+        end if;
+        perform public._malaise_event(n.id,
+          'Public debt has passed 100% of GDP — the nation''s credit was downgraded. Borrowing costs doubled to 10% and growth stalled (−2)'
+          || (case when v_open then ', while government confidence slipped (−5%)' else '' end) || '.');
+      end if;
     end if;
   end loop;
 end $$;
