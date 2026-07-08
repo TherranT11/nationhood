@@ -98,7 +98,7 @@ begin
         if v_r.opponent_party_id is not null then
           update public.parties
              set seats = greatest(0, seats - 1),
-                 popularity = public._mod_floor_drop(nation_id, archetype, popularity, greatest(popularity - 1, pop_floor))
+                 popularity = public._mod_floor_drop(nation_id, archetype, popularity, popularity - 1)
            where id = v_r.opponent_party_id;
         end if;
         insert into public.events (nation_id, party_id, kind, body, game_date)

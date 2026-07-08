@@ -489,19 +489,19 @@
         var roster = rr.data || [];
         var fw = roster.reduce(function (s, p) { var pop = Math.max(0, Number(p.popularity) || 0); return s + (pop >= thr ? pop : 0); }, 0);
         var proj = roster.map(function (p) {
-          var pop = Math.max(0, Number(p.popularity) || 0);
+          var raw = Number(p.popularity) || 0, pop = Math.max(0, raw);   // pop (floored) drives seats/share; raw (can be <0) is what we show
           var contesting = pop >= thr && fw > 0;
           var sh = contesting ? pop / fw : 0;
-          return { id: p.id, name: p.name, pop: pop, color: partyColor(p), share: sh, contesting: contesting, seats: Math.round(sh * seatsTotal), mine: p.id === party.id };
+          return { id: p.id, name: p.name, pop: pop, rawPop: raw, color: partyColor(p), share: sh, contesting: contesting, seats: Math.round(sh * seatsTotal), mine: p.id === party.id };
         }).sort(function (a, b) { return b.seats - a.seats || b.pop - a.pop; });
-        var meRow = proj.filter(function (p) { return p.mine; })[0] || { pop: Math.max(0, Number(party.popularity) || 0), share: 0, seats: 0 };
-        document.getElementById('polling').textContent = meRow.pop + '%';
+        var meRow = proj.filter(function (p) { return p.mine; })[0] || { pop: Math.max(0, Number(party.popularity) || 0), rawPop: Number(party.popularity) || 0, share: 0, seats: 0 };
+        document.getElementById('polling').textContent = meRow.rawPop + '%';
         document.getElementById('projSeats').textContent = meRow.seats;
         document.getElementById('standing').textContent = party.in_government ? 'In government' : 'Opposition';
         if (!ruling) renderProjection(proj, seatsTotal, maj, fw);
         var wi = document.getElementById('campInf'), wp = document.getElementById('campPop'), ws = document.getElementById('campSeats');
         if (wi) wi.textContent = campInfluence;
-        if (wp) wp.textContent = (Math.round(meRow.pop * 10) / 10) + '%';
+        if (wp) wp.textContent = (Math.round(meRow.rawPop * 10) / 10) + '%';
         if (ws) ws.textContent = meRow.seats;
         return { me: meRow, fieldWeight: fw, projection: proj };
       }
@@ -563,7 +563,7 @@
       if (!ruling && ticksAway != null && ticksAway >= 1 && ticksAway <= 6) setupCampaign(proj0.projection);
       var projNote;
       if (polling < thr) {
-        projNote = 'At <b>' + polling + '%</b> you sit below the <b>' + thr + '%</b> threshold and would take <b>no</b> seats. ';
+        projNote = 'At <b>' + me.rawPop + '%</b> you sit below the <b>' + thr + '%</b> threshold and would take <b>no</b> seats. ';
       } else if (fieldWeight <= 0) {
         projNote = 'No party has measurable support yet, so seats can’t be projected. ';
       } else {

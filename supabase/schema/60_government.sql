@@ -296,7 +296,7 @@ begin
   -- fresh mandate resets the field. Runs after seat allocation, so it doesn't skew
   -- the result that was just computed from the pre-election popularity.
   update public.parties
-     set popularity = greatest(pop_floor, round(popularity * 0.7, 1))
+     set popularity = greatest(public._pop_min(), round(popularity * 0.7, 1))
    where nation_id = p_nation;
 
   -- ---- RESCHEDULE + DISSOLVE SAVED AGREEMENTS -----------------------------
@@ -407,9 +407,9 @@ begin
   -- respecting (same path as policy effects), then clamp 0..100. Runs BEFORE the
   -- election so the punished parties carry it into the snap result.
   update public.parties p
-     set popularity = greatest(0, least(100, public._mod_floor_drop(
+     set popularity = public._mod_floor_drop(
            p_nation, p.archetype, p.popularity,
-           p.popularity - (case when p.id = v_gov.formateur_party_id then 5 else 3 end))))
+           p.popularity - (case when p.id = v_gov.formateur_party_id then 5 else 3 end))
    where p.nation_id = p_nation and p.in_government;
 
   -- Premier named before the election reseats everything (one source: the helper above).

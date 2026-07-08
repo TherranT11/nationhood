@@ -29,7 +29,7 @@ begin
     else
       v_new := public._mod_floor_drop(p_nation, v_arch, v_pop, v_pop + v_v);
     end if;
-    update public.parties set popularity = greatest(0, least(100, v_new)) where id = p_party;
+    update public.parties set popularity = public._clamp_pop(v_new) where id = p_party;
   elsif v_t = 'Popularity Ceiling' then
     -- Party-scoped and PERMANENT (schema/133). A ceiling drop moves the party's cumulative drop
     -- first — never restored — which lowers its cap (regime max − drop). Then pop_ceiling drops by

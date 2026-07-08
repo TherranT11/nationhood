@@ -210,7 +210,7 @@ begin
   if p_final and p_penalize then
     with hit as (
       update public.parties pp
-         set popularity = public._mod_floor_drop(pp.nation_id, pp.archetype, pp.popularity, greatest(pp.popularity - 1, pp.pop_floor))
+         set popularity = public._mod_floor_drop(pp.nation_id, pp.archetype, pp.popularity, pp.popularity - 1)
        where pp.nation_id = v_p.nation_id and pp.seats > 0
          and not exists (select 1 from public.proposal_votes pv where pv.proposal_id = p_proposal and pv.party_id = pp.id)
       returning pp.name

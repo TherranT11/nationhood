@@ -155,9 +155,9 @@ begin
   if v_won then
     v_self_new := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity,
                     least(v_p.popularity + 6, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor)));
-    v_targ_new := public._mod_floor_drop(v_t.nation_id, v_t.archetype, v_t.popularity, greatest(v_t.popularity - 6, v_t.pop_floor));
+    v_targ_new := public._mod_floor_drop(v_t.nation_id, v_t.archetype, v_t.popularity, v_t.popularity - 6);
   else
-    v_self_new := public._mod_floor_drop(v_p.nation_id, v_p.archetype, v_p.popularity, greatest(v_p.popularity - 6, v_p.pop_floor));
+    v_self_new := public._mod_floor_drop(v_p.nation_id, v_p.archetype, v_p.popularity, v_p.popularity - 6);
     v_targ_new := public._mod_cap_raise(v_t.nation_id, v_t.archetype, v_t.popularity,
                     least(v_t.popularity + 6, public._effective_ceiling(v_t.nation_id, v_t.archetype, v_t.pop_ceiling, v_t.pop_floor)));
   end if;
@@ -196,10 +196,10 @@ begin
   v_landed := random() < 0.5;
   if v_landed then
     v_cut := public._campaign_shield_cut(v_t.id, 3);   -- Town Hall halves a landed hit (and is spent)
-    v_targ_new := public._mod_floor_drop(v_t.nation_id, v_t.archetype, v_t.popularity, greatest(v_t.popularity - v_cut, v_t.pop_floor));
+    v_targ_new := public._mod_floor_drop(v_t.nation_id, v_t.archetype, v_t.popularity, v_t.popularity - v_cut);
     v_self_new := v_p.popularity;   -- your own standing is untouched when it lands
   else
-    v_self_new := public._mod_floor_drop(v_p.nation_id, v_p.archetype, v_p.popularity, greatest(v_p.popularity - 5, v_p.pop_floor));
+    v_self_new := public._mod_floor_drop(v_p.nation_id, v_p.archetype, v_p.popularity, v_p.popularity - 5);
     v_targ_new := v_t.popularity;   -- it backfired on you; the target is untouched
   end if;
   v_self_delta := v_self_new - v_p.popularity;
@@ -262,10 +262,10 @@ begin
   v_landed := random() < 0.5;
   if v_landed then
     v_cut := public._campaign_shield_cut(v_t.id, 4);   -- Town Hall halves a landed hit (and is spent)
-    v_targ_new := public._mod_floor_drop(v_t.nation_id, v_t.archetype, v_t.popularity, greatest(v_t.popularity - v_cut, v_t.pop_floor));
+    v_targ_new := public._mod_floor_drop(v_t.nation_id, v_t.archetype, v_t.popularity, v_t.popularity - v_cut);
     v_self_new := v_p.popularity;   -- untouched when it lands
   else
-    v_self_new := public._mod_floor_drop(v_p.nation_id, v_p.archetype, v_p.popularity, greatest(v_p.popularity - 3, v_p.pop_floor));
+    v_self_new := public._mod_floor_drop(v_p.nation_id, v_p.archetype, v_p.popularity, v_p.popularity - 3);
     v_targ_new := public._mod_cap_raise(v_t.nation_id, v_t.archetype, v_t.popularity,
                     least(v_t.popularity + 2, public._effective_ceiling(v_t.nation_id, v_t.archetype, v_t.pop_ceiling, v_t.pop_floor)));  -- sympathy bump
   end if;

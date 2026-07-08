@@ -207,12 +207,12 @@ returns numeric language sql immutable as $$
   select least(100, greatest(p_old, p_new));
 $$;
 
--- A dropping action's result. The popularity floor (and its archetype-modifier variant) was retired,
--- so a drop now applies in full, bounded only by 0 and never rising above where it started. ONE clamp
--- for every popularity loss.
+-- A dropping action's result. The popularity floor is now _pop_min (popularity may go negative), and a
+-- drop never rises above where it started. ONE clamp for every popularity loss. Callers pass the raw
+-- target (popularity − penalty); this does the flooring, so they must NOT pre-floor at 0/pop_floor.
 create or replace function public._mod_floor_drop(p_nation text, p_archetype text, p_old numeric, p_new numeric)
 returns numeric language sql immutable as $$
-  select greatest(0, least(p_old, p_new));
+  select greatest(public._pop_min(), least(p_old, p_new));
 $$;
 
 -- The combined Rate Multiplier a nation's active modifiers apply to a key ('income' or a
