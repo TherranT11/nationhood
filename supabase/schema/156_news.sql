@@ -25,6 +25,13 @@ create policy "news_outlets_select_all" on public.news_outlets for select using 
 drop policy if exists "news_outlets_write_admin" on public.news_outlets;
 create policy "news_outlets_write_admin" on public.news_outlets for all
   using (public.is_admin()) with check (public.is_admin());
+-- Outlet identity shown in the admin editor: a slogan and a logo (a monogram over the colour above,
+-- or an uploaded image). `img` holds a small data URL for now — if outlet logos ever render
+-- player-facing, move them to a Storage bucket (like party-logos, schema/90) instead of a text column.
+-- Headlines denormalise only name/slant/colour, so these three live only on the outlet.
+alter table public.news_outlets add column if not exists slogan text;
+alter table public.news_outlets add column if not exists mono   text;
+alter table public.news_outlets add column if not exists img    text;
 
 -- Published headlines. Written ONLY by _publish_headline (security definer) — never from the
 -- client, so no INSERT/UPDATE/DELETE policy exists. `paper`/`slant`/`color` are denormalised from
