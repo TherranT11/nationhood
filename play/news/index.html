@@ -26,6 +26,7 @@
   .sec-h{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
   .sec-h b{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);font-weight:700}
   .sec-h .n{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;color:var(--soft)}
+  .natfilter{margin-left:auto;max-width:190px;background:var(--surface);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:5px 8px;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;cursor:pointer}
 
   .feed{display:flex;flex-direction:column}
   /* World Press can run long (every other nation's papers) — cap it and let it scroll. */
@@ -67,7 +68,7 @@
     </div>
 
     <section class="panel">
-      <div class="sec-h"><b>World Press</b><span class="n">latest from other nations' papers</span></div>
+      <div class="sec-h"><b>World Press</b><span class="n">latest from other nations' papers</span><select class="natfilter" id="worldNat" aria-label="Filter World Press by nation" hidden><option value="">All nations</option></select></div>
       <div class="feed" id="world"><p class="empty"><b>Loading the wires…</b></p></div>
     </section>
 
@@ -167,16 +168,38 @@
       renderError(document.getElementById('own'), e);
     }
 
-    // World Press — latest from OTHER nations' papers (excludes the player's own when known).
+    // World Press — every OTHER nation's papers, or a single nation's desk when the filter picks one.
+    // worldReq tags each load so a slow earlier fetch can't overwrite a newer selection's result.
+    let worldReq = 0;
+    async function loadWorldPress(only) {
+      var el = document.getElementById('world'), req = ++worldReq;
+      try {
+        let q = supabase.from('news_headlines')
+          .select('paper, slant, color, mono, logo, headline, game_date, nation_id, nations(name, flag)')
+          .order('created_at', { ascending: false }).limit(40);
+        if (only) q = q.eq('nation_id', only);
+        else if (nationId) q = q.neq('nation_id', nationId);
+        const { data, error } = await q;
+        if (error) throw error;
+        if (req !== worldReq) return;   // a newer selection superseded this one
+        renderFeed(el, data, true, only ? 'No headlines from there yet.' : 'The wires are quiet.');
+      } catch (e) { if (req === worldReq) renderError(el, e); }
+    }
+    loadWorldPress(null);
+
+    // Nation filter for the World Press: every other live nation; picking one narrows the feed to its
+    // desk. Stays hidden if the nations can't be read or there are none, so the feed still works alone.
     try {
-      let q = supabase.from('news_headlines')
-        .select('paper, slant, color, mono, logo, headline, game_date, nation_id, nations(name, flag)')
-        .order('created_at', { ascending: false }).limit(40);
-      if (nationId) q = q.neq('nation_id', nationId);
-      const { data, error } = await q;
-      if (error) throw error;
-      renderFeed(document.getElementById('world'), data, true, 'The wires are quiet.');
-    } catch (e) { renderError(document.getElementById('world'), e); }
+      let nq = supabase.from('nations').select('id, name').eq('dormant', false).order('name');
+      if (nationId) nq = nq.neq('id', nationId);
+      const { data: nats } = await nq;
+      const natSel = document.getElementById('worldNat');
+      if (natSel && nats && nats.length) {
+        natSel.innerHTML = '<option value="">All nations</option>' + nats.map(function (n) { return '<option value="' + esc(n.id) + '">' + esc(n.name || n.id) + '</option>'; }).join('');
+        natSel.onchange = function () { loadWorldPress(this.value || null); };
+        natSel.hidden = false;
+      }
+    } catch (e) { /* no filter if nations can't be read; the feed still loads */ }
 
     // Your Nation — this nation's own headlines.
     if (nationId) {
