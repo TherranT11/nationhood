@@ -208,10 +208,18 @@
   /* Phone refresh (matches the Party page): tighter padding, smaller hero, drop
      the placeholder "Next Month" pill. Action cards already go 2-up at ≤700. */
   @media(max-width:560px){
-    .main{padding:16px 13px 40px}
-    .main h1{font-size:28px;margin:8px 0 12px}
+    .main{padding:12px 13px 40px}
+    /* Compact hero so the "what do I do" strip lands above the fold: smaller party name,
+       tighter margins, and the strip's label is dropped (the colored chips speak for themselves). */
+    .main h1{font-size:23px;margin:5px 0 9px}
     .main p{font-size:15px}
-    .panel{margin-top:16px;padding:16px 15px}
+    .attn{margin:9px 0 2px;gap:6px}
+    .attn__lbl{display:none}
+    .attn__chip{padding:5px 10px}
+    .attn__chip,.attn__clear{font-size:12px}
+    .panel{margin-top:14px;padding:14px 15px}
+    .stats{gap:10px}
+    .terr{gap:10px;margin-top:12px}
     .leadbar__grid{gap:10px}
     .lead{padding:13px 14px}
     .lead b{font-size:15px;padding-right:44px}          /* leave room for the cost pill on the narrower 2-up cards */
