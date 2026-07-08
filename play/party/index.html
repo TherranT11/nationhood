@@ -181,8 +181,8 @@
 </div>
 
 <script type="module">
-  import { supabase, isConfigured, requireUser } from '/supabase.js';
-  import { esc, majority, fmtPop } from '/util.js';
+  import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
+  import { esc, majority, fmtPop, tickToDate } from '/util.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { nationColors, drawNationMiniMap } from '/hexmap.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
@@ -198,7 +198,7 @@
     return logoUrl ? '<img src="' + esc(logoUrl) + '" alt="">' : esc(initials(fallback));
   }
 
-  function renderMasthead(party, leaderName, leaderAge) {
+  function renderMasthead(party, leaderName, leaderAge, foundedText) {
     PCOLOR = partyColor(party) || 'var(--indigo)';
     var mast = document.getElementById('mast');
     mast.style.setProperty('--pc', PCOLOR);
@@ -206,10 +206,8 @@
     document.getElementById('mastAbbr').textContent = party.abbreviation || '';
     document.getElementById('mastName').textContent = party.name || 'Your Party';
     document.getElementById('mastLeader').textContent = leaderName ? (leaderName + (leaderAge != null ? ' (' + leaderAge + ')' : '')) : '—';
-    // Founded date from created_at (the party's real creation timestamp).
-    var founded = '—';
-    if (party.created_at) { var d = new Date(party.created_at); if (!isNaN(d)) founded = d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }); }
-    document.getElementById('mastFounded').textContent = founded;
+    // Founded — the IN-GAME month/year (not the real-world date). See foundedInGame().
+    document.getElementById('mastFounded').textContent = foundedText || '—';
     mast.hidden = false;
     document.title = party.name + ' · Nationhood';
   }
@@ -426,7 +424,19 @@
         if (leader) { leaderName = ((leader.first_name || '') + ' ' + (leader.last_name || '')).trim(); leaderAge = leader.age; }
       } catch (e) { /* leader line falls back to — */ }
 
-      renderMasthead(party, leaderName, leaderAge);
+      // Founded date as the IN-GAME month/year. There's no stored founding tick, so derive it from
+      // created_at against the game clock (one tick = 8h = one in-game month; tick 1 = Jan 1980):
+      // foundedTick ≈ current tick − months elapsed since creation. tickToDate → "Month, Year".
+      var foundedText = '—';
+      try {
+        var curTick = await currentTick();
+        if (party.created_at) {
+          var elapsed = Math.round((Date.now() - new Date(party.created_at).getTime()) / (8 * 3600 * 1000));
+          foundedText = tickToDate(Math.max(1, Math.min(curTick, curTick - elapsed)));
+        }
+      } catch (e) { /* leave — */ }
+
+      renderMasthead(party, leaderName, leaderAge, foundedText);
       var eb = document.getElementById('editBtn'); eb.hidden = false; eb.onclick = openEdit;
 
       // Standing — approval history (schema/147, world-readable) feeds the sparkline + the ▲/▼ delta.
