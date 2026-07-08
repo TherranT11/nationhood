@@ -121,9 +121,9 @@
 
     let nationId = null;
     try {
-      const { data: party, error } = await supabase.from('parties').select('name, archetype, nation_id, influence').eq('user_id', user.id).single();
+      const { data: party, error } = await supabase.from('parties').select('name, archetype, nation_id, influence').eq('user_id', user.id).maybeSingle();
       if (error) throw error;
-      if (!party) { window.location.replace('/nation-select/'); return; }
+      if (!party) { window.location.replace('/nation-select/'); return; }   // no party yet → pick a nation (maybeSingle so this branch is reachable)
       nationId = party.nation_id;
       setTopbarActions(party.influence);
       const { data: nation } = await supabase.from('nations').select('name').eq('id', nationId).single();
