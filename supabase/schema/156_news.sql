@@ -129,8 +129,7 @@ with names (nation_name, slant, paper) as (values
   ('Sessau','record','Le Courrier'),           ('Sessau','left','La Sentinelle'),         ('Sessau','right','Le Patriote'),               -- French flavour
   ('Al-Qadir','record','The Qadir Crescent'),  ('Al-Qadir','left','The People''s Dawn'),   ('Al-Qadir','right','The Cedar Standard'),      -- Levantine flavour
   ('Laurentia','record','The Laurentian'),     ('Laurentia','left','The Maple Tribune'),  ('Laurentia','right','The Northern Post'),      -- Canadian flavour
-  ('Wesmore','record','The Wesmore Standard'), ('Wesmore','left','The Loxbridge Caller'), ('Wesmore','right','The Crown Herald'),         -- Anglo flavour
-  ('Calcordia','record','The Calcordia Gazette'), ('Calcordia','left','The Borough Voice'), ('Calcordia','right','The Albion Sentinel'),  -- Anglo flavour
+  ('Wesmore & Calcordia','record','The Standard'), ('Wesmore & Calcordia','left','The Loxbridge Caller'), ('Wesmore & Calcordia','right','The Crown Herald'),  -- Anglo flavour
   ('Vesperia','record','The Vesperia Tribune'),('Vesperia','left','The Liberty Beacon'),  ('Vesperia','right','The Eagle Standard'),      -- Americana flavour
   ('Montequilla','record','El Faro'),          ('Montequilla','left','La Voz del Pueblo'),('Montequilla','right','El Cóndor')             -- Andean flavour
 ),
