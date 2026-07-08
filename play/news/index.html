@@ -25,6 +25,8 @@
   .sec-h .n{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;color:var(--soft)}
 
   .feed{display:flex;flex-direction:column}
+  /* World Press can run long (every other nation's papers) — cap it and let it scroll. */
+  #world{max-height:min(58vh,460px);overflow-y:auto;padding-right:6px}
   .hl{display:flex;gap:13px;padding:13px 0;border-top:1px solid var(--line)}
   .hl:first-child{border-top:none;padding-top:2px}
   .hl:last-child{padding-bottom:2px}
