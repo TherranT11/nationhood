@@ -72,7 +72,6 @@
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { ideologyLabel } from '/archetypes.js';
   import { esc } from '/util.js';
   import { slantLabel } from '/slants.js';   // ONE source for the slant vocabulary
 
@@ -106,8 +105,13 @@
     if (!rows || !rows.length) { el.innerHTML = '<div class="empty"><b>' + emptyMsg + '</b><span>Headlines appear as the world turns.</span></div>'; return; }
     el.innerHTML = rows.map(function (h) { return headlineRow(h, withFlag); }).join('');
   }
-  function renderError(el) {
-    el.innerHTML = '<div class="empty"><b>Couldn’t load the news right now.</b><span>Refresh to try again.</span></div>';
+  function renderError(el, e) {
+    // Surface the underlying reason instead of swallowing it — a silent catch made this
+    // impossible to diagnose (both feeds just said "couldn't load"). Logs for the console
+    // and shows the message inline so the cause is visible without DevTools.
+    console.error('[news] load failed:', e);
+    var why = e && (e.message || e.code) ? ' (' + esc(String(e.message || e.code)) + ')' : '';
+    el.innerHTML = '<div class="empty"><b>Couldn’t load the news right now.</b><span>Refresh to try again.' + why + '</span></div>';
   }
 
   (async () => {
@@ -126,7 +130,7 @@
       document.getElementById('ownNat').textContent = (nation && nation.name) || nationId;
     } catch (e) {
       // Couldn't resolve the player's nation — still show the World Press (it doesn't need it).
-      renderError(document.getElementById('own'));
+      renderError(document.getElementById('own'), e);
     }
 
     // World Press — latest from OTHER nations' papers (excludes the player's own when known).
@@ -138,7 +142,7 @@
       const { data, error } = await q;
       if (error) throw error;
       renderFeed(document.getElementById('world'), data, true, 'The wires are quiet.');
-    } catch (e) { renderError(document.getElementById('world')); }
+    } catch (e) { renderError(document.getElementById('world'), e); }
 
     // Your Nation — this nation's own headlines.
     if (nationId) {
@@ -149,7 +153,7 @@
           .order('created_at', { ascending: false }).limit(30);
         if (error) throw error;
         renderFeed(document.getElementById('own'), data, false, 'No headlines at home yet.');
-      } catch (e) { renderError(document.getElementById('own')); }
+      } catch (e) { renderError(document.getElementById('own'), e); }
     }
   })();
 </script>
