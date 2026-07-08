@@ -49,9 +49,12 @@ create policy "wiki_update_own" on public.wiki_articles for update to authentica
   using      (public.is_admin() or author_id = auth.uid())
   with check (public.is_admin() or author_id = auth.uid());
 -- Deletes stay admin-only (no client mass-deletion of the shared encyclopedia).
-drop policy if exists "wiki_delete_admin" on public.wiki_articles;
-create policy "wiki_delete_admin" on public.wiki_articles for delete to authenticated
-  using (public.is_admin());
+-- Delete: the author can remove their own article (or an admin any) — the same scope as update/insert,
+-- so the article view can offer a Delete button next to Edit for your own entries.
+drop policy if exists "wiki_delete_admin" on public.wiki_articles;       -- old name (admin-only era)
+drop policy if exists "wiki_delete_own"   on public.wiki_articles;
+create policy "wiki_delete_own" on public.wiki_articles for delete to authenticated
+  using (public.is_admin() or author_id = auth.uid());
 
 -- Infobox art. Public read (articles show to every player); any signed-in player may upload (so they
 -- can illustrate their own articles). 2 MB image-only cap, like the other buckets. Updates/deletes

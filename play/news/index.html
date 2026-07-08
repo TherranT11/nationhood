@@ -58,8 +58,12 @@
      run away and dominate the page. Below this the feeds stack (own nation first) and flow naturally. */
   @media(min-width:1150px){
     .phead,.feeds{max-width:1040px}
-    .feeds{grid-template-columns:1fr 1fr;gap:22px}
-    #own,#world{max-height:min(64vh,540px);overflow-y:auto;padding-right:6px}
+    /* Equal-height columns: stretch both panels to the same (capped) height, and let each feed fill
+       and scroll inside its own panel — so a taller header (World Press carries the nation filter) or
+       a longer feed can't make one column taller than the other. */
+    .feeds{grid-template-columns:1fr 1fr;gap:22px;align-items:stretch}
+    .feeds .panel{display:flex;flex-direction:column;max-height:min(64vh,540px)}
+    #own,#world{flex:1;min-height:0;overflow-y:auto;padding-right:6px}
   }
   /* Mobile refresh — a tappable filter, tighter panels, and drop the descriptive subtext for room. */
   @media(max-width:820px){ .natfilter{padding:7px 10px;font-size:11px} }
