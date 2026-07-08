@@ -42,8 +42,8 @@
   .appr__trend{font-size:13px;font-weight:800;margin-left:8px;vertical-align:3px}
   .appr__trend--up{color:var(--green,#16915a)} .appr__trend--down{color:var(--red)}
   .appr__chart{width:100%;height:52px;display:block;margin-top:10px}
-  .srow{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
-  @media(max-width:520px){.srow{grid-template-columns:1fr}}
+  .srow{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin-top:14px;align-items:stretch}
+  @media(max-width:560px){.srow{grid-template-columns:1fr}}
   .scard{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px}
   .scard__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
   .scard__v{font-size:22px;font-weight:800;letter-spacing:-.01em;margin-top:8px;color:var(--ink)}
@@ -86,6 +86,11 @@
   .elbl{display:block;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);font-weight:700;margin:14px 0 6px}
   .einput{width:100%;background:var(--field,var(--bg));border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--ink);font-family:'Archivo',system-ui,sans-serif;font-size:15px}
   .einput.abbr{text-transform:uppercase;letter-spacing:.16em;font-family:'Space Mono',monospace;font-weight:700;max-width:150px}
+  .ecolorrow{display:flex;align-items:center;gap:12px}
+  .ecolor{width:52px;height:38px;padding:0;border:1px solid var(--line);border-radius:10px;background:none;cursor:pointer}
+  .ecolor::-webkit-color-swatch-wrapper{padding:3px}
+  .ecolor::-webkit-color-swatch{border:none;border-radius:7px}
+  .ecolorhex{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
   .elogorow{display:flex;align-items:center;gap:14px}
   .elogoprev{width:56px;height:56px;border-radius:12px;flex:none;display:grid;place-items:center;overflow:hidden;background:var(--pc,var(--indigo));color:#fff;font-family:'Space Mono',monospace;font-weight:700;font-size:16px}
   .elogoprev img{width:100%;height:100%;object-fit:cover}
@@ -120,27 +125,23 @@
       <button class="mast__edit" id="editBtn" type="button" hidden>Edit Party · 5 Influence</button>
     </div>
 
-    <!-- Standing — vital signs, filled by renderStanding(). -->
+    <!-- Standing — vital signs, filled by renderStanding(). Approval + Seats share one row;
+         Influence isn't repeated here (it's in the top bar). -->
     <section class="pstand" id="standing" hidden>
       <div class="pstand__h">Standing</div>
-      <div class="appr">
-        <div class="appr__k">Party Approval</div>
-        <div class="appr__v"><span id="apprVal">—</span><span class="appr__trend" id="apprTrend" hidden></span></div>
-        <svg class="appr__chart" id="apprSpark" viewBox="0 0 300 52" preserveAspectRatio="none" aria-hidden="true">
-          <line x1="0" y1="26" x2="300" y2="26" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="4 5" vector-effect="non-scaling-stroke"/>
-        </svg>
-      </div>
       <div class="srow">
+        <div class="appr">
+          <div class="appr__k">Party Approval</div>
+          <div class="appr__v"><span id="apprVal">—</span><span class="appr__trend" id="apprTrend" hidden></span></div>
+          <svg class="appr__chart" id="apprSpark" viewBox="0 0 300 52" preserveAspectRatio="none" aria-hidden="true">
+            <line x1="0" y1="26" x2="300" y2="26" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="4 5" vector-effect="non-scaling-stroke"/>
+          </svg>
+        </div>
         <div class="scard">
           <div class="scard__k">Seats</div>
           <div class="scard__v" id="seatVal">—</div>
           <div class="chamber" id="chamber" hidden><span class="chamber__fill" id="chamberFill"></span><i class="chamber__maj" id="chamberMaj"></i></div>
           <div class="scard__meta" id="seatMeta"></div>
-        </div>
-        <div class="scard">
-          <div class="scard__k">Influence</div>
-          <div class="scard__v" id="infVal">—</div>
-          <div class="scard__meta">Your action budget · banks to 100</div>
         </div>
       </div>
     </section>
@@ -166,6 +167,8 @@
     <input class="einput" id="eName" type="text" maxlength="48" autocomplete="off">
     <label class="elbl" for="eAbbr">Abbreviation (2–4 letters)</label>
     <input class="einput abbr" id="eAbbr" type="text" maxlength="4" autocomplete="off" spellcheck="false">
+    <label class="elbl" for="eColor">Colour</label>
+    <div class="ecolorrow"><input class="ecolor" id="eColor" type="color"><span class="ecolorhex" id="eColorHex"></span></div>
     <label class="elbl">Logo</label>
     <div class="elogorow">
       <div class="elogoprev" id="eLogoPrev"></div>
@@ -211,7 +214,7 @@
     document.title = party.name + ' · Nationhood';
   }
 
-  // Standing — approval (+ momentum + sparkline), seats-in-chamber, and Influence.
+  // Standing — approval (+ momentum + sparkline) and seats-in-chamber, side by side.
   function renderStanding(party, nation, series, prevPop) {
     var raw = Number(party.popularity) || 0, appr = Math.min(100, raw);   // may be negative; only the top is clamped
     document.getElementById('apprVal').textContent = (Math.round(appr * 10) / 10) + '%';
@@ -239,7 +242,6 @@
       document.getElementById('seatMeta').textContent = 'No legislature yet';
     }
 
-    document.getElementById('infVal').textContent = Math.max(0, Math.round(Number(party.influence) || 0));
     document.getElementById('standing').hidden = false;
   }
 
@@ -332,6 +334,11 @@
   function openEdit() {
     document.getElementById('eName').value = PARTY.name || '';
     document.getElementById('eAbbr').value = PARTY.abbreviation || '';
+    // Prefill the colour with the party's current effective colour (own colour, or archetype fallback).
+    var c = partyColor(PARTY) || '#5546e8';
+    if (!/^#[0-9a-fA-F]{6}$/.test(c)) c = '#5546e8';
+    var ci = document.getElementById('eColor'); ci.value = c.toLowerCase();
+    document.getElementById('eColorHex').textContent = c.toLowerCase();
     document.getElementById('eLogo').value = '';
     NEW_LOGO_FILE = null;
     document.getElementById('eLogoPrev').style.setProperty('--pc', PCOLOR);
@@ -339,6 +346,10 @@
     errEl.textContent = '';
     modal.hidden = false;
   }
+  document.getElementById('eColor').addEventListener('input', function (e) {
+    document.getElementById('eColorHex').textContent = e.target.value.toLowerCase();
+    document.getElementById('eLogoPrev').style.setProperty('--pc', e.target.value);   // preview the new colour on the logo swatch
+  });
   function closeEdit() { if (!BUSY) modal.hidden = true; }
 
   var NEW_LOGO_FILE = null;
@@ -368,6 +379,7 @@
     if (BUSY) return;
     var name = document.getElementById('eName').value.trim();
     var abbr = document.getElementById('eAbbr').value.trim().toUpperCase();
+    var color = document.getElementById('eColor').value;
     if (!name) { errEl.textContent = 'Enter a party name.'; return; }
     if (!/^[A-Z]{2,4}$/.test(abbr)) { errEl.textContent = 'The abbreviation must be 2–4 letters.'; return; }
     BUSY = true; errEl.textContent = '';
@@ -375,7 +387,7 @@
     try {
       var logoUrl = PARTY.logo_url || '';   // keep the existing logo unless a new one was picked
       if (NEW_LOGO_FILE) logoUrl = await uploadLogo(NEW_LOGO_FILE);
-      const { data, error } = await supabase.rpc('edit_party', { p_name: name, p_abbr: abbr, p_logo_url: logoUrl });
+      const { data, error } = await supabase.rpc('edit_party', { p_name: name, p_abbr: abbr, p_logo_url: logoUrl, p_color: color });
       if (error) throw error;
       window.location.reload();   // refresh the masthead, sidenav brand and topbar Influence together
     } catch (e) {
