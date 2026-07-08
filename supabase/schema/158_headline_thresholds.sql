@@ -13,9 +13,21 @@
 -- Infrastructure, Poverty, …) uses its policy-driven contribution (_nation_policy_stat, schema/152),
 -- so a rule fires when the nation's policy mix pushes that stat past the threshold. Resource on-hand
 -- and production read the stockpile/rate jsonb. 'rate' (change-per-year) needs prior-tick state and
--- stays dormant for now. The `held` (sustained-for) field is stored but not yet enforced — the
--- cooldown is what keeps a standing condition from re-firing every tick.
+-- stays dormant for now. The `held` (sustained-for) field IS enforced: a rule with held = N only fires
+-- once its condition has stayed true for N straight ticks (tracked in headline_threshold_state; a break
+-- resets the streak). The cooldown still governs how often a standing condition re-headlines.
 -- ===========================================================================
+
+-- Streak state for 'sustained for' (held) rules: the tick a rule's condition first became true for a
+-- nation, kept while it stays true and deleted the moment it breaks. Internal engine state — RLS on
+-- with no policy, so only the security-definer sweep (which bypasses RLS) ever touches it.
+create table if not exists public.headline_threshold_state (
+  rule_id    uuid not null references public.headline_rules (id) on delete cascade,
+  nation_id  text not null references public.nations (id) on delete cascade,
+  since_tick int  not null,
+  primary key (rule_id, nation_id)
+);
+alter table public.headline_threshold_state enable row level security;
 
 -- The numeric value of a rule's subject for one nation, or null when it isn't evaluable (a 'rate'
 -- subject, or an unknown key). ONE source for "what is this stat right now" in the headline engine.
@@ -56,7 +68,7 @@ revoke all on function public._headline_subject_value(jsonb, jsonb, jsonb, jsonb
 -- via the shared _publish_rule_headlines, with the crossing value + subject feeding the tokens.
 create or replace function public._resolve_headline_thresholds(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
-declare n record; r public.headline_rules%rowtype; v_val numeric; v_fired text[]; v_key text;
+declare n record; r public.headline_rules%rowtype; v_val numeric; v_cond boolean; v_fired text[]; v_key text; v_since int;
 begin
   for n in select id, stats, economy, on_hand, production from public.nations where not coalesce(dormant, false) loop
     v_fired := array[]::text[];
@@ -66,11 +78,27 @@ begin
          and (hr.scope = 'global' or (hr.scope = 'nation' and hr.nation_id = n.id))
        order by hr.priority desc, hr.created_at desc
     loop
-      v_key := coalesce(r.subject_type, 'stat') || '|' || coalesce(r.subject, '');
-      if v_key = any(v_fired) then continue; end if;   -- a higher-priority rule on this subject won
       v_val := public._headline_subject_value(n.stats, n.economy, n.on_hand, n.production, n.id, r.subject_type, r.subject);
-      if v_val is null then continue; end if;           -- not evaluable (rate / unknown)
-      if not ((r.direction = 'above' and v_val > r.value) or (r.direction = 'below' and v_val < r.value)) then continue; end if;
+      v_cond := v_val is not null
+                and ((r.direction = 'above' and v_val > r.value) or (r.direction = 'below' and v_val < r.value));
+      -- 'Sustained for' (held): maintain the streak first, independent of whether the rule fires — start
+      -- the clock when the condition turns true, clear it the moment it breaks (or can't be evaluated).
+      if coalesce(r.held, 0) > 0 then
+        if v_cond then
+          insert into public.headline_threshold_state (rule_id, nation_id, since_tick)
+            values (r.id, n.id, p_tick) on conflict (rule_id, nation_id) do nothing;
+        else
+          delete from public.headline_threshold_state where rule_id = r.id and nation_id = n.id;
+        end if;
+      end if;
+      if not v_cond then continue; end if;
+      -- not sustained long enough yet → hold fire until it has been true for `held` straight ticks
+      if coalesce(r.held, 0) > 0 then
+        select since_tick into v_since from public.headline_threshold_state where rule_id = r.id and nation_id = n.id;
+        if v_since is null or (p_tick - v_since) < r.held then continue; end if;
+      end if;
+      v_key := coalesce(r.subject_type, 'stat') || '|' || coalesce(r.subject, '');
+      if v_key = any(v_fired) then continue; end if;    -- a higher-priority rule on this subject won
       -- fire-once (per nation) + cooldown, read off the fire history like the event engine
       if r.fire_once and exists (select 1 from public.news_headlines h where h.rule_id = r.id and h.nation_id = n.id) then continue; end if;
       if exists (select 1 from public.news_headlines h where h.rule_id = r.id and h.nation_id = n.id
