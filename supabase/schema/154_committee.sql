@@ -117,7 +117,9 @@ begin
   insert into public.proposal_votes (proposal_id, party_id, aye) values (p_proposal, v_party.id, true)
     on conflict (proposal_id, party_id) do update set aye = true;
   v_res := public._resolve_proposal(p_proposal);
-  return jsonb_build_object('id', p_proposal, 'status', v_res, 'endorsed', v_endorsed, 'majority', v_has_majority, 'actions', v_party.influence - v_cost);
+  -- {id, status, actions} — the same shape the other proposal RPCs return (actions feeds the topbar
+  -- pill). The endorsed/majority flags were dropped: nothing reads them, so they were dead payload.
+  return jsonb_build_object('id', p_proposal, 'status', v_res, 'actions', v_party.influence - v_cost);
 end $$;
 grant execute on function public.committee_push(uuid) to authenticated;
 
