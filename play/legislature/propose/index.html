@@ -119,7 +119,7 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, policyEffectChange, effectText, optMoney, fiscalNet, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity, proposalInfluenceCost } from '/policies.js';
+  import { policyOptions, policyOptionIdx, policyEffectChange, effectText, policyInForceEffects, fiscalFactor, policyMoney, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity, proposalInfluenceCost } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
   import { isMonarchy, regimeText } from '/ladders.js';
 
@@ -143,6 +143,7 @@
     pendingPolicies = pendingPolicies || {};   // policyId → true for a bill already on the floor/agenda
     var noSeats = Number(partySeats) < 1;      // a party with no legislature seats can't author a bill (server enforces too)
     var pop = Number((nation && nation.population) || 0), pros = Number((nation && nation.stats && nation.stats.prosperity) || 10);
+    var gdp = Number((nation && nation.gdp) || 0);
     document.querySelector('.phead .eye').textContent = 'Legislature · Law';
     document.querySelector('.phead h1').textContent = 'Propose a Law';
     document.querySelector('.phead p').textContent = 'Pick a policy and climb the ladder to the rung you want to put to the chamber. If it passes, the nation switches to that rung and its effects land.';
@@ -185,12 +186,22 @@
     // The option in force for this nation (one source: policies.js).
     function inForceIdx() { return policyOptionIdx(curDef(), currentPolicies, curPolicy().id); }
 
-    // Money helpers (optMoney/fiscalNet/optOneTimeMoney) live in policies.js — ONE source shared
-    // with the Legislature bill view. They scale by THIS nation's pop/prosperity, passed in here.
-    function rungMeta(o) {   // short fiscal summary line under a rung's name
-      var m = optMoney(o, pop, pros), net = m.Income + m.Budget;
+    // The recurring fiscal cost of BEING on rung i (₣B/yr), cumulative like the stat effects: the rung's
+    // Budget Balance contribution (flat or % of GDP — the one-source the nation's budget balance reads,
+    // schema/152) plus any annualized Income/Budget money, less Debt. A surplus is +, a cost is −. ONE
+    // source for the per-rung meta line and the "Fiscal impact" delta below; scales by this nation.
+    function rungFiscal(i) {
+      var sum = 0;
+      policyInForceEffects(curDef(), i).forEach(function (e) {
+        if (e.t === 'Budget Balance') { var v = Number(e.v) || 0; sum += e.unit === 'gdp' ? v / 100 * gdp : v; }
+        else if (isMoneyTarget(e.t)) { var f = fiscalFactor(e); if (f) sum += policyMoney(Number(e.v) || 0, e.scale, pop, pros) * f * (e.t === 'Debt' ? -1 : 1); }
+      });
+      return sum;
+    }
+    function rungMeta(i) {   // short fiscal summary under a rung's name: its recurring ₣B/yr, signed
+      var net = rungFiscal(i);
       if (Math.abs(net) < 0.05) return 'no fiscal cost';
-      return net > 0 ? '₣' + net.toFixed(1) + 'B/yr revenue' : '₣' + Math.abs(net).toFixed(1) + 'B/yr cost';
+      return (net > 0 ? '+₣' : '−₣') + Math.abs(net).toFixed(1) + 'B/yr';
     }
 
     function renderLadder() {
@@ -203,7 +214,7 @@
         var isCur = i === cur, isProp = i === sel.proposed;
         var badge = isCur ? '<span class="rbadge cur">In force</span>' : isProp ? '<span class="rbadge prop">Proposed</span>' : '';
         return '<button type="button" class="rung' + (isCur ? ' current' : '') + (isProp ? ' proposed' : '') + '" data-i="' + i + '"' + (isCur ? ' disabled' : '') + '>' +
-          '<span><span class="rn">' + esc(o.name || ('Option ' + (i + 1))) + '</span><span class="rmeta">' + esc(rungMeta(o)) + '</span></span>' + badge + '</button>';
+          '<span><span class="rn">' + esc(o.name || ('Option ' + (i + 1))) + '</span><span class="rmeta">' + esc(rungMeta(i)) + '</span></span>' + badge + '</button>';
       }).join('');
       lad.querySelectorAll('.rung').forEach(function (btn) {
         btn.onclick = function () { var i = +btn.dataset.i; if (i === inForceIdx()) return; sel.proposed = i; autofill(); paint(); };
@@ -229,9 +240,8 @@
     function renderFiscal() {
       var box = document.getElementById('l-fiscal');
       if (sel.proposed == null) { box.innerHTML = '<p class="none">—</p>'; return; }
-      var opts = policyOptions(curDef());
-      var netY = fiscalNet(opts[inForceIdx()], opts[sel.proposed], pop, pros);
-      var oneT = optOneTimeMoney(opts[sel.proposed], pop, pros);
+      var netY = rungFiscal(sel.proposed) - rungFiscal(inForceIdx());   // recurring change vs the rung in force
+      var oneT = optOneTimeMoney(policyOptions(curDef())[sel.proposed], pop, pros);
       var rows = [];
       if (Math.abs(netY) >= 0.005) rows.push(fRow('Net fiscal impact', 'per year', netY, true, true));
       if (Math.abs(oneT) >= 0.005) rows.push(fRow('One-time cost', 'on enactment', oneT, true));
@@ -255,7 +265,7 @@
       // C is the sum of every level up to C — and a move reads as the difference: leaving a −3 rung (D)
       // for a −1 rung (B) nets +2, not the target's absolute −1. Money is in the fiscal block; the two
       // vote-popularity targets are computed directionally below, not authored per level.
-      var effs = policyEffectChange(def, inForceIdx(), sel.proposed).filter(function (e) { return !isMoneyTarget(e.t) && (e.t || '').indexOf('Party Popularity') !== 0; });
+      var effs = policyEffectChange(def, inForceIdx(), sel.proposed).filter(function (e) { return !isMoneyTarget(e.t) && e.t !== 'Budget Balance' && (e.t || '').indexOf('Party Popularity') !== 0; });
       html += effs.filter(function (e) { return Math.abs(e.v) >= 0.0001; })
         .map(function (e) { return effRow(effectText({ t: e.t, v: e.v, unit: e.unit }, pop, pros), 'while in force'); }).join('');
       // Vote-popularity: computed from the direction + size of the proposed move (one source:
@@ -569,7 +579,7 @@
     try {
       ({ data: party } = await supabase.from('parties').select('name, archetype, nation_id, influence, seats').eq('user_id', user.id).single());
       if (!party) { window.location.replace('/nation-select/'); return; }
-      ({ data: nation } = await supabase.from('nations').select('name, flag, economy, declarations, policies, population, stats, electoral_threshold').eq('id', party.nation_id).single());
+      ({ data: nation } = await supabase.from('nations').select('name, flag, economy, declarations, policies, population, stats, gdp, electoral_threshold').eq('id', party.nation_id).single());
       const nationName = (nation && nation.name) || party.nation_id;
 
       document.getElementById('pname').textContent = party.name;
