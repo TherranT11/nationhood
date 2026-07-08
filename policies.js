@@ -188,11 +188,12 @@ export function isMoneyTarget(t) { return t === 'Budget' || t === 'Debt' || t ==
 // Tax Burden % is now DERIVED server-side (schema/47 _nation_tax_burden, exposed via the
 // nation_tax_burden RPC) — the ONE source the tick and the client share. The client reads
 // it from that RPC rather than recomputing here.
-// Money scaling: flat = v; perm = v × pop(millions); pop = v × pop × prosperity/10.
+// Money scaling: flat = v; perm = v × pop(millions); pop = v × pop × prosperity/50
+// (prosperity is on the 1..100 scale — 50 is the neutral midpoint, so a mid nation scales ×1).
 export function policyMoney(v, scale, pop, pros) {
   if (scale === 'flat') return v;
   if (scale === 'perm') return v * pop;
-  return v * pop * (pros / 10);
+  return v * pop * (pros / 50);
 }
 // The annual ₣B factor for a money effect the fiscal summary annualizes: per-year ×1,
 // permanent per-tick ×12, else 0 (one-time and finite-duration money fall through to the
@@ -252,8 +253,8 @@ var POL_TGT_LABEL = { 'Party Popularity': 'Party Popularity (parties in govt)',
                       'Popularity Ceiling': 'Popularity Ceiling (parties in govt)' };
 export function polTgtLabel(t) { return POL_TGT_LABEL[t] || t; }
 
-// One effect as display text for a nation context (pop in millions, prosperity 1–20;
-// the same coalesce(pop,0)/coalesce(pros,10) the server applies). Returns
+// One effect as display text for a nation context (pop in millions, prosperity 1–100;
+// the same coalesce(pop,0)/coalesce(pros,50) the server applies). Returns
 // { text, cad, cls } where cls is 'pos' | 'neg' | '' by direction.
 export function effectText(e, pop, pros) {
   // New-model effects (no cadence) are one-time transition changes — applied when the policy
@@ -265,7 +266,7 @@ export function effectText(e, pop, pros) {
           : e.cad === 'year' ? 'per year'
           : (Number(e.dur) > 0 ? 'per tick · ' + Number(e.dur) + ' mo' : 'per tick');
   if (isMoneyTarget(e.t)) {
-    var amt = policyMoney(Number(e.v) || 0, e.scale, Number(pop) || 0, Number(pros) || 10);
+    var amt = policyMoney(Number(e.v) || 0, e.scale, Number(pop) || 0, Number(pros) || 50);
     return { text: polTgtLabel(e.t) + ' ' + (amt >= 0 ? '+' : '−') + '₣' + Math.abs(amt).toFixed(2) + 'B',
              cad: cad, cls: amt > 0 ? 'pos' : amt < 0 ? 'neg' : '' };
   }

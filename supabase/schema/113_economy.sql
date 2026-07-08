@@ -29,8 +29,8 @@ create or replace function public._economy_need(p_nation text, p_resource text)
 returns numeric language sql stable security definer set search_path = public as $$
   select case p_resource
     when 'food'     then greatest(1, ceil(coalesce(n.population, 0) / 50.0))
-    when 'goods'    then ceil(coalesce((n.stats->>'prosperity')::numeric, 0) / 2.0)
-    when 'services' then ceil(coalesce((n.stats->>'welfare')::numeric, 0) / 2.0)
+    when 'goods'    then ceil(coalesce((n.stats->>'prosperity')::numeric, 0) / 10.0)
+    when 'services' then ceil(coalesce((n.stats->>'welfare')::numeric, 0) / 10.0)
     when 'military' then coalesce((n.on_hand->>'military')::numeric, 0)
     else 0 end
   from public.nations n where n.id = p_nation;
@@ -202,7 +202,7 @@ begin
      where id = v_n.id;
 
     v_msg := 'The ' || v_year || ' annual accounts are in. '
-          || (case when v_food and v_n.growth >= 9 then 'The nation was fed — population +1M. '
+          || (case when v_food and v_n.growth >= 45 then 'The nation was fed — population +1M. '
                     when v_food then 'The nation was fed, but a stalling economy held the population flat. '
                     else 'Food ran short — Order −1. ' end)
           || (case when v_goods then '' else 'Goods ran short — Prosperity −1. ' end)

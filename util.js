@@ -107,8 +107,8 @@ export function economyNeed(resource, nation) {
   var stats = (nation && nation.stats) || {}, on = (nation && nation.on_hand) || {};
   switch (resource) {
     case 'food':     return Math.max(1, Math.ceil((Number(nation && nation.population) || 0) / 50));
-    case 'goods':    return Math.ceil((Number(stats.prosperity) || 0) / 2);
-    case 'services': return Math.ceil((Number(stats.welfare) || 0) / 2);
+    case 'goods':    return Math.ceil((Number(stats.prosperity) || 0) / 10);
+    case 'services': return Math.ceil((Number(stats.welfare) || 0) / 10);
     case 'military': return Number(on.military) || 0;
     default:         return 0;
   }

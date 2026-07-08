@@ -25,7 +25,7 @@ create or replace function public._policy_money(p_v numeric, p_scale text, p_pop
 returns numeric language sql immutable as $$
   select case p_scale
            when 'perm' then p_v * p_pop
-           when 'pop'  then p_v * p_pop * (p_pros / 10.0)
+           when 'pop'  then p_v * p_pop * (p_pros / 50.0)
            else p_v
          end;
 $$;
@@ -143,7 +143,7 @@ begin
       -- matching economy key. Budget can never go below 0 — a shortfall rolls into Debt
       -- (_nation_budget_add). Debt floors at 0; Income is a rate and stays unbounded.
       select population, (stats->>'prosperity')::numeric into v_pop, v_pros from public.nations where id = p_nation;
-      v_amt := public._policy_money(v_v, v_scale, coalesce(v_pop, 0), coalesce(v_pros, 10));
+      v_amt := public._policy_money(v_v, v_scale, coalesce(v_pop, 0), coalesce(v_pros, 50));
       if v_t = 'Budget' then
         perform public._nation_budget_add(p_nation, v_amt);
       else

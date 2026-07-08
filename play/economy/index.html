@@ -282,8 +282,8 @@
   ];
   var DEMANDS = [
     { k:'food',     label:'Food',            type:'res',   good:'Population +1M', bad:'Order −1',      formula:function(n){ return '1 Food per 50M people (min 1) · pop ' + fmt(n.population) + 'M'; } },
-    { k:'goods',    label:'Goods',           type:'res',   good:'Prosperity held', bad:'Prosperity −1', formula:function(n){ return 'Prosperity ÷ 2 · ' + num((n.stats||{}).prosperity) + ' ÷ 2'; } },
-    { k:'services', label:'Services',        type:'res',   good:'Welfare held',    bad:'Welfare −1',    formula:function(n){ return 'Welfare ÷ 2 · ' + num((n.stats||{}).welfare) + ' ÷ 2'; } },
+    { k:'goods',    label:'Goods',           type:'res',   good:'Prosperity held', bad:'Prosperity −1', formula:function(n){ return 'Prosperity ÷ 10 · ' + num((n.stats||{}).prosperity) + ' ÷ 10'; } },
+    { k:'services', label:'Services',        type:'res',   good:'Welfare held',    bad:'Welfare −1',    formula:function(n){ return 'Welfare ÷ 10 · ' + num((n.stats||{}).welfare) + ' ÷ 10'; } },
     { k:'military', label:'Military upkeep', type:'money', good:'Forces maintained', bad:'Military −1',  formula:function(n){ return 'Military × $1B · ' + fmt((n.on_hand||{}).military) + ' units'; } }
   ];
 
@@ -359,7 +359,7 @@
       '<div class="pd">Run a production cycle to top up stockpiles: <b>' + batch + '</b>. Costs ' + PRODUCE_COST + ' Influence · ' + PRODUCE_COOLDOWN + '-tick cooldown.<div class="onhand">' + strip + '</div></div>' +
       '<div class="cost">' + (onCd ? 'Cooldown: ' + cdLeft + ' tick' + (cdLeft === 1 ? '' : 's') + ' left' : 'On-hand shown above') + '</div>' + prodBtn + '</div>';
     // Advance Society
-    var pros = num((n.stats||{}).prosperity), advCost = pros + 5, goods = num(on.goods);
+    var pros = num((n.stats||{}).prosperity), advCost = Math.round(pros / 5) + 5, goods = num(on.goods);
     var advanced = num(n.advanced_year) === STATE.period;
     var advBtn = '';
     if (STATE.isHog) {
@@ -369,7 +369,7 @@
     }
     var advance = '<div class="actcard' + (advanced ? ' done' : '') + '"><div class="pt">Advance Society <span class="hogtag">Head of Government action only</span></div>' +
       '<div class="pd">Invest beyond upkeep to raise living standards: <b>Prosperity +1</b>. The richer you are, the dearer it gets. Once a year.</div>' +
-      '<div class="cost">Cost: ' + advCost + ' Goods (Prosperity + 5) · have ' + fmt(goods) + '</div>' + advBtn + '</div>';
+      '<div class="cost">Cost: ' + advCost + ' Goods (Prosperity ÷ 5 + 5) · have ' + fmt(goods) + '</div>' + advBtn + '</div>';
     return '<div class="develop">' + produce + advance + '</div>';
   }
 

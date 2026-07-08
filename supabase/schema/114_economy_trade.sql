@@ -15,7 +15,7 @@
 --
 -- Imports: the head of government buys units from another nation at the world price,
 -- paid from the Budget — the seller loses the units and banks the payment. Advance
--- Society: spend (Prosperity + 5) Goods for +1 Prosperity, once per year.
+-- Society: spend (Prosperity ÷ 5 + 5) Goods for +1 Prosperity, once per year.
 -- ===========================================================================
 
 -- Base price (the anchor the tier multiplies). $B per unit.
@@ -200,7 +200,7 @@ begin
 end $$;
 grant execute on function public.economy_import(text, text, int) to authenticated;
 
--- Advance Society: invest in living standards for +1 Prosperity. Costs (Prosperity + 5)
+-- Advance Society: invest in living standards for +1 Prosperity. Costs (Prosperity ÷ 5 + 5)
 -- Goods from on-hand — the richer you are, the dearer it gets — and may be done once per
 -- year. Head-of-government gated. The once-a-year lock is a year stamp that auto-expires.
 alter table public.nations add column if not exists advanced_year int;
@@ -223,7 +223,7 @@ begin
     raise exception 'Society has already been advanced this year.'; end if;
 
   v_pros := coalesce((v_n.stats->>'prosperity')::numeric, 0);
-  v_cost := v_pros + 5;
+  v_cost := round(v_pros / 5.0) + 5;
   v_have := coalesce((v_n.on_hand->>'goods')::numeric, 0);
   if v_have < v_cost then
     raise exception 'Not enough Goods to advance society (need %, have %).', v_cost, v_have; end if;
