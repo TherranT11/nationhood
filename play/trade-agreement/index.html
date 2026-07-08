@@ -165,7 +165,7 @@
   function shortName(nm){ return (nm || '').split(/\s|&/)[0]; }
   function resLabel(k){ var r = RES.filter(function(x){ return x.k === k; })[0]; return r ? r.label : k; }
 
-  var S = { party:null, nationId:null, isTM:false, nations:[], byId:{}, agreements:[], sel:null, msgs:[], draft:null, edit:null, busy:false };
+  var S = { party:null, nationId:null, isTM:false, nations:[], byId:{}, agreements:[], sel:null, msgs:[], draft:null, edit:null, busy:false, sanctioned:{} };
 
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="note">' + msg + '</div>'; }
   function nameOf(id){ var n = S.byId[id]; return (n && n.name) || id; }
@@ -214,7 +214,7 @@
   }
 
   function proposePanel(){
-    var others = S.nations.filter(function(n){ return n.id !== S.nationId; });
+    var others = S.nations.filter(function(n){ return n.id !== S.nationId && !S.sanctioned[n.id]; });   // sanctioned nations can't be trade partners
     var cards = others.map(function(n){
       return '<div class="pcard' + (S.draft && S.draft.partner === n.id ? ' on' : '') + '" data-partner="' + esc(n.id) + '">' +
         '<div class="pc-crest" style="background:' + colorFor(n.id) + '">' + esc(crestOf(n.name)) + '</div>' +
@@ -447,7 +447,13 @@
       var { data: nations } = await supabase.from('nations')
         .select('id, name, flag, economy, production, demands, on_hand').eq('dormant', false).order('name');
       var { data: isTM } = await supabase.rpc('is_trade_minister');
+      // Active sanctions involving this nation (either direction) — a sanctioned nation can't be a
+      // trade-agreement partner at all (mirrors the server guard in schema/121).
+      var { data: sanc } = await supabase.from('sanctions').select('by_nation, target_nation').eq('active', true)
+        .or('by_nation.eq.' + party.nation_id + ',target_nation.eq.' + party.nation_id);
       S.party = party; S.nationId = party.nation_id; S.isTM = isTM === true;
+      S.sanctioned = {};
+      (sanc || []).forEach(function(s){ S.sanctioned[s.by_nation === party.nation_id ? s.target_nation : s.by_nation] = true; });
       S.nations = nations || []; S.byId = {}; S.nations.forEach(function(n){ S.byId[n.id] = n; });
       if (S.isTM) await reload(); else render();
       // Light poll keeps both sides in sync (read-only refresh of deals + the open chat). Skip

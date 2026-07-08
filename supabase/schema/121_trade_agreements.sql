@@ -95,6 +95,9 @@ begin
   perform public._validate_trade_terms(p_resource, p_qty, p_years, p_discount);
   select name into v_sname from public.nations where id = p_seller_nation and not coalesce(dormant, false);
   if not found then raise exception 'No such trading partner.'; end if;
+  -- A sanction (either direction) bars a trade agreement outright — can't propose one (schema/117).
+  if public._trade_sanctioned(v_p.nation_id, p_seller_nation) then
+    raise exception 'Trade with % is barred by sanctions.', coalesce(v_sname, p_seller_nation); end if;
 
   insert into public.trade_agreements (buyer_nation, seller_nation, buyer_party_id,
       resource, qty_per_year, term_years, discount_pct, buyer_approved)
@@ -136,6 +139,9 @@ begin
   select * into v_a from public.trade_agreements where id = p_id for update;
   if not found then raise exception 'No such trade agreement.'; end if;
   if v_a.status <> 'negotiating' then raise exception 'This agreement is no longer open.'; end if;
+  -- Can't approve/receive a deal with a nation you're sanctioning (or that sanctions you) — schema/117.
+  if p_approved and public._trade_sanctioned(v_a.buyer_nation, v_a.seller_nation) then
+    raise exception 'This agreement is barred by sanctions.'; end if;
 
   if v_p.nation_id = v_a.buyer_nation then
     v_side := 'buyer'; update public.trade_agreements set buyer_approved = p_approved where id = p_id;
@@ -165,6 +171,8 @@ begin
   if not found then raise exception 'No such trade agreement.'; end if;
   if v_a.buyer_party_id <> v_p.id then raise exception 'Only the proposing nation commits the agreement.'; end if;
   if v_a.status <> 'negotiating' then raise exception 'This agreement is no longer open.'; end if;
+  if public._trade_sanctioned(v_a.buyer_nation, v_a.seller_nation) then
+    raise exception 'Trade with this nation is barred by sanctions.'; end if;
   if not (v_a.buyer_approved and v_a.seller_approved) then
     raise exception 'Both trade ministers must approve before you can commit.'; end if;
 
