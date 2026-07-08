@@ -67,16 +67,33 @@ returns numeric language sql stable security definer set search_path = public as
   from public.nations n where n.id = p_nation;
 $$;
 
+-- ONE source for a nation's LIVE stat value: the authored base (ministry_stats, schema/150, with the
+-- legacy stats.* mirror as the fallback for the consolidated Prosperity / Growth / Rule of Law) PLUS
+-- the sum of in-force policy effects on it (_nation_policy_stat, schema/152) — i.e. exactly the
+-- base+contribution the Government page shows, so every reader agrees. plpgsql so the schema/152 call
+-- resolves at runtime (152 is applied after this file). Depends on: 150, 152, 70 (_to_num).
+create or replace function public._nation_live_stat(p_nation text, p_stat text)
+returns numeric language plpgsql stable security definer set search_path = public as $$
+declare v_base numeric; v_leg text;
+begin
+  v_leg := case p_stat when 'Growth' then 'growth' when 'Prosperity' then 'prosperity' when 'Rule of Law' then 'order' end;
+  select coalesce(public._to_num(ministry_stats->>p_stat),
+                  case when v_leg is not null then public._to_num(stats->>v_leg) end, 0)
+    into v_base from public.nations where id = p_nation;
+  return coalesce(v_base, 0) + coalesce(public._nation_policy_stat(p_nation, p_stat), 0);
+end $$;
+revoke all on function public._nation_live_stat(text, text) from public, anon, authenticated;
+
 -- Business climate — how far the nation's economy sits above/below the world baseline
 -- (CLIMATE_BASE: tax 25, growth 50, prosperity 60, unemployment 7, inflation 10). Growth and
--- Prosperity are on the 1..100 stat scale, so their baselines/weights are the 5×-normalized old
--- 1..20 tuning (growth −10→−50 ×0.2; prosperity −12→−60 ×0.06) — the score is unchanged. The tax
--- input is the DERIVED burden above. The FORMULA lives here only (corporations.js reads it via RPC).
+-- Prosperity are the LIVE stat (base + policy effects, _nation_live_stat above — the same value the
+-- Government page shows) on the 1..100 scale; their baselines/weights are the 5×-normalized old 1..20
+-- tuning (−50 ×0.2 / −60 ×0.06). The tax input is the DERIVED burden. The FORMULA lives here only.
 create or replace function public._business_climate(p_nation text)
 returns numeric language sql stable security definer set search_path = public as $$
   select round((
-      (coalesce((n.stats->>'growth')::numeric, 0)         - 50) * 0.2
-    + (coalesce((n.stats->>'prosperity')::numeric, 0)     - 60) * 0.06
+      (public._nation_live_stat(p_nation, 'Growth')       - 50) * 0.2
+    + (public._nation_live_stat(p_nation, 'Prosperity')   - 60) * 0.06
     - (public._nation_tax_burden(p_nation)                - 25) * 0.04
     - (coalesce((n.economy->>'inflation')::numeric, 0)    - 10) * 0.3
     - (coalesce((n.economy->>'unemployment')::numeric, 0) -  7) * 0.3
@@ -91,10 +108,10 @@ $$;
 create or replace function public._business_climate_parts(p_nation text)
 returns jsonb language sql stable security definer set search_path = public as $$
   select jsonb_build_array(
-    jsonb_build_object('label','Growth',       'unit','/100', 'value', coalesce((n.stats->>'growth')::numeric, 0),
-      'contrib', round((coalesce((n.stats->>'growth')::numeric, 0) - 50) * 0.2, 1)),
-    jsonb_build_object('label','Prosperity',   'unit','/100', 'value', coalesce((n.stats->>'prosperity')::numeric, 0),
-      'contrib', round((coalesce((n.stats->>'prosperity')::numeric, 0) - 60) * 0.06, 1)),
+    jsonb_build_object('label','Growth',       'unit','/100', 'value', public._nation_live_stat(p_nation, 'Growth'),
+      'contrib', round((public._nation_live_stat(p_nation, 'Growth') - 50) * 0.2, 1)),
+    jsonb_build_object('label','Prosperity',   'unit','/100', 'value', public._nation_live_stat(p_nation, 'Prosperity'),
+      'contrib', round((public._nation_live_stat(p_nation, 'Prosperity') - 60) * 0.06, 1)),
     jsonb_build_object('label','Tax Rate',     'unit','%',   'value', public._nation_tax_burden(p_nation),
       'contrib', round(-(public._nation_tax_burden(p_nation) - 25) * 0.04, 1)),
     jsonb_build_object('label','Inflation',    'unit','%',   'value', coalesce((n.economy->>'inflation')::numeric, 0),
