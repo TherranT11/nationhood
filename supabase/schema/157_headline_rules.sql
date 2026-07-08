@@ -92,8 +92,8 @@ begin
                    v_rule.headlines->>'centre', v_rule.headlines->>'n1', '')), ''), p_nation);
       end if;
       if v_txt is not null then
-        insert into public.news_headlines (nation_id, outlet_id, paper, slant, color, headline, game_date, tick, rule_id)
-          values (p_nation, v_o.id, v_o.name, v_o.slant, v_o.color, v_txt, public.current_game_date(), v_tick, v_rule.id);
+        insert into public.news_headlines (nation_id, outlet_id, paper, slant, color, mono, logo, headline, game_date, tick, rule_id)
+          values (p_nation, v_o.id, v_o.name, v_o.slant, v_o.color, v_o.mono, v_o.img, v_txt, public.current_game_date(), v_tick, v_rule.id);
         v_pub := v_pub + 1;
       end if;
       v_i := v_i + 1;

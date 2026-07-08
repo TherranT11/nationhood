@@ -215,9 +215,21 @@
     if(editing.img){ p.style.backgroundImage='url('+editing.img+')'; p.style.background='center/cover'; p.textContent=''; p.style.backgroundImage='url('+editing.img+')'; p.style.backgroundSize='cover'; }
     else { p.style.backgroundImage=''; p.style.background=editing.color; p.textContent=editing.mono||autoMono(editing.name); }
   }
-  document.getElementById('fileInput').onchange=function(e){
+  // Upload the logo to the public news-logos bucket and keep its URL (rendered player-facing on the
+  // News page). Mirrors forum.js uploadImage — path is foldered by the admin's uid; RLS gates to admins.
+  document.getElementById('fileInput').onchange=async function(e){
     var f=e.target.files&&e.target.files[0]; if(!f)return;
-    var r=new FileReader(); r.onload=function(){ editing.img=r.result; document.getElementById('mBody').innerHTML=editorBody(); bindEditor(); updatePreview(); }; r.readAsDataURL(f);
+    if(busy) return; busy=true; ping('Uploading logo…');
+    try{
+      var u=(await supabase.auth.getUser()).data.user; if(!u) throw new Error('Not signed in.');
+      var ext=((f.name||'').split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,'')||'png';
+      var path=u.id+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.'+ext;
+      var up=await supabase.storage.from('news-logos').upload(path, f, { cacheControl:'3600', upsert:false });
+      if(up.error) throw up.error;
+      editing.img=supabase.storage.from('news-logos').getPublicUrl(path).data.publicUrl;
+      document.getElementById('mBody').innerHTML=editorBody(); bindEditor(); updatePreview(); ping('Logo uploaded');
+    }catch(err){ ping('<b class="red">Upload failed</b>'); }
+    finally{ busy=false; }
   };
 
   async function saveEditor(){
