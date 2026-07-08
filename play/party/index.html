@@ -54,6 +54,28 @@
   .chamber__fill--maj{background:var(--green,#16915a)}
   .chamber__maj{position:absolute;top:-3px;height:12px;width:2px;background:var(--ink);opacity:.5;border-radius:1px}
 
+  /* Territory — the nation map, with selectable hexes and a detail panel on the right. */
+  .pterr{margin-top:16px}
+  .pterr__grid{display:grid;grid-template-columns:1fr 320px;gap:14px;align-items:start}
+  @media(max-width:760px){.pterr__grid{grid-template-columns:1fr}}
+  .pterr__card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px}
+  .pterr__map{position:relative;width:100%;aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:#bcd9e6}
+  .pterr__map canvas{display:block;width:100%;height:100%;cursor:crosshair}
+  .pterr__none{position:absolute;inset:0;display:grid;place-items:center;color:var(--soft);font-size:13px}
+  .hexpanel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;min-height:130px}
+  .hexpanel__hint{color:var(--soft);font-size:13px}
+  .hexpanel__name{font-size:18px;font-weight:900;letter-spacing:-.01em;color:var(--ink)}
+  .hexpanel__tag{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);border-radius:20px;padding:3px 9px;display:inline-block;margin-top:6px}
+  .hexpanel__tag--mine{color:var(--green,#16915a);background:color-mix(in srgb,var(--green,#16915a) 14%,transparent)}
+  .hexrow{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+  .hexrow:last-child{border-bottom:none}
+  .hexrow .k{color:var(--muted)} .hexrow .v{font-weight:700;text-align:right;color:var(--ink)}
+  .hexres{margin-top:12px}
+  .hexres__h{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:6px}
+  .hexchips{display:flex;flex-wrap:wrap;gap:6px}
+  .hexchip{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;background:var(--field,var(--bg));border:1px solid var(--line);border-radius:7px;padding:4px 8px}
+  .hexchip .rk{color:var(--soft);font-weight:400}
+
   /* Edit Party modal */
   .emodal{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:18px}
   .emodal[hidden]{display:none}
@@ -122,6 +144,17 @@
         </div>
       </div>
     </section>
+
+    <!-- Territory — the nation map with selectable hexes + a detail panel, filled by loadTerritory(). -->
+    <section class="pterr" id="territory" hidden>
+      <div class="pstand__h">Territory</div>
+      <div class="pterr__grid">
+        <div class="pterr__card">
+          <div class="pterr__map" id="mapBox"><canvas id="natMap"></canvas><span class="pterr__none" id="mapNone">Loading map&hellip;</span></div>
+        </div>
+        <div class="hexpanel" id="hexPanel"><div class="hexpanel__hint">Select a hex on the map to see its details.</div></div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -146,8 +179,9 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
-  import { esc, majority } from '/util.js';
+  import { esc, majority, fmtPop } from '/util.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
+  import { nationColors, drawNationMiniMap } from '/hexmap.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
@@ -223,6 +257,73 @@
       '<path d="' + area + '" fill="var(--indigo-soft, rgba(107,92,255,.14))" stroke="none"/>' +
       '<path d="' + line + '" fill="none" stroke="var(--indigo, #6b5cff)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>' +
       '<circle cx="' + pts[n - 1][0].toFixed(1) + '" cy="' + pts[n - 1][1].toFixed(1) + '" r="2.6" fill="var(--indigo, #6b5cff)"/>';
+  }
+
+  // ---- Territory: the nation map with clickable hexes + a detail panel ----
+  var MAP = { cv: null, box: null, none: null, opts: null, hitAt: null, cities: [], natName: {}, mine: null };
+  var HEX_RES = ['energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy'];
+  function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+
+  function paintMap() {
+    var res = drawNationMiniMap(MAP.cv, MAP.box, MAP.opts);   // truthy object (with hexAt) when land is painted
+    MAP.none.style.display = res ? 'none' : ''; MAP.cv.style.display = res ? 'block' : 'none';
+    MAP.hitAt = res ? res.hexAt : null;
+    if (!res) MAP.none.textContent = 'No territory to map.';
+  }
+
+  function renderHexPanel(hex) {
+    var el = document.getElementById('hexPanel');
+    if (!hex) { el.innerHTML = '<div class="hexpanel__hint">Select a hex on the map to see its details.</div>'; return; }
+    var mine = hex.nation_id && MAP.mine && hex.nation_id === MAP.mine;
+    var tag = mine ? '<span class="hexpanel__tag hexpanel__tag--mine">Your territory</span>'
+      : hex.nation_id ? '<span class="hexpanel__tag">' + esc(MAP.natName[hex.nation_id] || hex.nation_id) + '</span>'
+      : '<span class="hexpanel__tag">Unclaimed</span>';
+    var city = MAP.cities.filter(function (c) { return c.q === hex.q && c.r === hex.r; })[0];
+    function row(k, v) { return v ? '<div class="hexrow"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>' : ''; }
+    var resv = hex.resources || {};
+    var chips = HEX_RES.filter(function (k) { return Number(resv[k]) > 0; })
+      .map(function (k) { return '<span class="hexchip"><b>' + Math.round(Number(resv[k])) + '</b> <span class="rk">' + cap(k) + '</span></span>'; }).join('');
+    el.innerHTML =
+      '<div class="hexpanel__name">' + esc(hex.name || ('Hex ' + hex.q + ', ' + hex.r)) + '</div>' + tag +
+      '<div style="margin-top:12px">' +
+        row('Coordinates', hex.q + ', ' + hex.r) +
+        row('Terrain', cap(hex.terrain || '')) +
+        row('Continent', hex.continent ? esc(hex.continent) : '') +
+        row('Population', hex.population != null ? fmtPop(hex.population) : '') +
+        (city ? row('City', esc(city.name)) : '') +
+      '</div>' +
+      '<div class="hexres"><div class="hexres__h">Resources</div><div class="hexchips">' + (chips || '<span class="hexpanel__hint">None</span>') + '</div></div>';
+  }
+
+  async function loadTerritory(party) {
+    MAP.cv = document.getElementById('natMap'); MAP.box = document.getElementById('mapBox'); MAP.none = document.getElementById('mapNone');
+    MAP.mine = party.nation_id;
+    var nations = [];
+    try {
+      var nr = await supabase.from('nations').select('id, name, color').order('name');
+      if (nr.error) nr = await supabase.from('nations').select('id, name').order('name');   // color not migrated
+      nations = nr.data || [];
+    } catch (e) {}
+    nations.forEach(function (n) { MAP.natName[n.id] = n.name; });
+    var hexes = [];
+    try {
+      var hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id, continent, name, population, resources');
+      if (hr.error) hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id, continent');   // detail cols not migrated
+      hexes = hr.data || [];
+    } catch (e) {}
+    try { var cr = await supabase.from('cities').select('name, q, r').eq('nation_id', party.nation_id).not('q', 'is', null); MAP.cities = cr.error ? [] : (cr.data || []); } catch (e) { MAP.cities = []; }
+    MAP.opts = { hexes: hexes, natColor: nationColors(nations), viewedId: party.nation_id, mode: 'nation', cities: MAP.cities, selected: null };
+    document.getElementById('territory').hidden = false;
+    paintMap();
+    MAP.cv.onclick = function (e) {
+      if (!MAP.hitAt) return;
+      var rect = MAP.cv.getBoundingClientRect();
+      var hex = MAP.hitAt(e.clientX - rect.left, e.clientY - rect.top);
+      MAP.opts.selected = hex ? { q: hex.q, r: hex.r } : null;   // ring the picked hex (or clear on sea)
+      paintMap();
+      renderHexPanel(hex);
+    };
+    window.addEventListener('resize', paintMap);   // the canvas refits its box
   }
 
   // ---- Edit Party modal ----
@@ -324,6 +425,7 @@
         if (series.length >= 2) prevPop = series[series.length - 2];   // previous tick's close = the trend baseline
       } catch (e) { /* no history yet → flat approval, no sparkline */ }
       renderStanding(party, nation || {}, series, prevPop);
+      loadTerritory(party).catch(function () { /* map is a non-critical add-on */ });
     } catch (e) { /* chrome still renders */ }
   })();
 </script>
