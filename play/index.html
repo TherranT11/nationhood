@@ -1339,7 +1339,11 @@
       var nations = nr.data || [];
       var hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id, continent');
       if (hr.error) hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id');   // continent not migrated yet
-      var opts = { hexes: hr.error ? [] : (hr.data || []), natColor: nationColors(nations), viewedId: nationId, mode: 'nation' };
+      // Placed cities of the viewed nation (small black dots + names on their hex). Degrades to none
+      // if the q/r columns aren't migrated yet.
+      var cr = await supabase.from('cities').select('name, q, r, nation_id').eq('nation_id', nationId).not('q', 'is', null);
+      var cities = cr.error ? [] : (cr.data || []);
+      var opts = { hexes: hr.error ? [] : (hr.data || []), natColor: nationColors(nations), viewedId: nationId, mode: 'nation', cities: cities };
       function paint() { var ok = drawNationMiniMap(cv, box, opts); if (none) none.style.display = ok ? 'none' : ''; cv.style.display = ok ? 'block' : 'none'; if (none && !ok) none.textContent = 'Map unavailable'; }
       paint();
       window.addEventListener('resize', paint);

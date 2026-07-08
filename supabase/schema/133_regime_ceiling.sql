@@ -13,16 +13,12 @@
 
 alter table public.parties add column if not exists conv_ceiling_drop numeric not null default 0;
 
--- A party's popularity-ceiling cap: its nation's regime max (default 50) less its cumulative,
--- permanent conviction ceiling drops, floored at 0. Read wherever pop_ceiling is bounded. A
--- one-party state (nations.ruling_party set) has NO cap — its ruler dominates totally (schema/98
--- sets pop_ceiling 100), so the regime cap must not claw that back.
+-- A party's popularity-ceiling cap. The reach ceiling was retired — party popularity floats freely
+-- in 0..100 — so the regime max no longer caps how popular a party can get; this returns 100 for every
+-- party. Kept (with economy.party_ceiling and conv_ceiling_drop still stored) so an authoritarian cap
+-- on opposition popularity can be reinstated later by restoring the old body.
 create or replace function public._party_ceiling_cap(p_party uuid)
-returns numeric language sql stable security definer set search_path = public as $$
-  select case when n.ruling_party is not null then 100
-              else greatest(0, coalesce((n.economy->>'party_ceiling')::numeric, 50) - coalesce(p.conv_ceiling_drop, 0)) end
-    from public.parties p join public.nations n on n.id = p.nation_id where p.id = p_party;
-$$;
+returns numeric language sql immutable as $$ select 100::numeric $$;
 revoke all on function public._party_ceiling_cap(uuid) from public, anon, authenticated;
 
 -- Sessau's regime allowed a 45% party ceiling (its legacy "45% Ceiling" text) — seed it. Every

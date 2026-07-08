@@ -101,6 +101,11 @@
   .wm-inspect .wm-res > div{min-width:0}
   .wm-clear{margin-top:12px;width:100%;border:1.5px solid var(--red,#C42B2B);color:var(--red,#C42B2B);background:none;border-radius:8px;padding:8px;cursor:pointer;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700}
   .wm-clear:hover{background:var(--red-soft,#FBEAE9)}
+  .wm-inspect .wm-cities{display:flex;flex-direction:column;gap:3px}
+  .wm-inspect .wm-city{display:flex;align-items:center;gap:8px;margin:0;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--ink,#15151B);cursor:pointer}
+  .wm-inspect .wm-city input{width:auto;margin:0;flex:none}
+  .wm-inspect .wm-city em{color:var(--soft,#8d8d95);font-style:normal;font-size:11px}
+  .wm-city-note{font-size:11.5px;color:var(--soft,#8d8d95);line-height:1.4}
 
   /* modifiers */
   .mcard{border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:12px;border-left:5px solid var(--mc,#9a9a9a)}
@@ -2087,7 +2092,10 @@
       var natName = {}, natColor = {}, natOrder = [];
       var tool = 'select', assignNation = '', selKey = null, layer = 'nations', assignContinent = '';
       var conts = {};   // continent name -> colour (the registry; hexes store the name)
+      var cityRows = [], cityLoaded = {};   // cities [{id,nation_id,name,q,r}] + id -> {q,r} at load (to detect placement changes)
       var painting = false, panning = false, last = { x: 0, y: 0 }, moved = 0, loadedOnce = false;
+      // Unplace every city sitting on a hex (a city can only sit on a land hex of its own nation).
+      function clearCitiesAt(q, r) { cityRows.forEach(function (c) { if (c.q === q && c.r === r) { c.q = null; c.r = null; } }); }
 
       // ---- geometry (shared module; thin adapters bind the editor's view + ctx) ----
       function axialToPix(q, r) { return HM.axialToPix(q, r, SIZE * view.z, view.x, view.y); }
@@ -2133,6 +2141,9 @@
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         Object.keys(cent).forEach(function (key) { var c = cent[key]; ctx.font = '700 ' + (12 * Math.min(1.2, view.z)) + 'px Archivo'; ctx.fillStyle = '#15151b'; ctx.fillText(layer === 'continents' ? key : (natName[key] || 'Nation'), c.x / c.n, c.y / c.n); });
         ctx.textAlign = 'left';
+        // Placed cities: black dot + name (shared renderer). Labels fade out when zoomed far out.
+        HM.drawCityMarkers(ctx, cityRows, function (q, r) { return axialToPix(q, r); },
+          { dot: Math.max(1.8, 2.6 * Math.min(1.4, view.z)), labels: view.z >= 0.85, font: '600 ' + Math.round(10 * Math.min(1.4, view.z)) + 'px Archivo' });
       }
 
       // ---- data ----
@@ -2145,10 +2156,10 @@
       function contColorMap() { var list = continentList(), m = {}; list.forEach(function (c, i) { m[c] = conts[c] || HM.paletteAt(i); }); return m; }
       function paint(q, r) {
         if (!inBounds(q, r)) return; var k = q + ',' + r;
-        if (tool === 'sea') { delete hexes[k]; if (selKey === k) closeInspect(); }
+        if (tool === 'sea') { delete hexes[k]; clearCitiesAt(q, r); if (selKey === k) closeInspect(); }
         else if (tool === 'land') { ensure(q, r).terrain = 'land'; }
         else if (tool === 'nation' && layer === 'continents') { if (!assignContinent) { status('Pick or add a continent first.'); return; } var hc = ensure(q, r); hc.terrain = 'land'; hc.continent = assignContinent; }
-        else if (tool === 'nation') { if (!assignNation) { status('Pick a nation to assign first.'); return; } var h = ensure(q, r); h.terrain = 'land'; h.nation_id = assignNation; }
+        else if (tool === 'nation') { if (!assignNation) { status('Pick a nation to assign first.'); return; } var h = ensure(q, r); if (h.nation_id && h.nation_id !== assignNation) clearCitiesAt(q, r); h.terrain = 'land'; h.nation_id = assignNation; }
         draw();
       }
       async function load() {
@@ -2171,6 +2182,15 @@
         conts = {};
         if (!res.error) (res.data || []).forEach(function (c) { conts[c.name] = c.color; });
       }
+      // The city roster (with any hex placement). Falls back to the pre-q/r column set so the editor
+      // still works before the migration is applied. cityLoaded snapshots placement to detect changes.
+      async function loadCities() {
+        var res = await supabase.from('cities').select('id, nation_id, name, q, r').order('name');
+        if (res.error) res = await supabase.from('cities').select('id, nation_id, name').order('name');
+        cityRows = (res.data || []).map(function (c) { return { id: c.id, nation_id: c.nation_id, name: c.name, q: c.q == null ? null : c.q, r: c.r == null ? null : c.r }; });
+        cityLoaded = {}; cityRows.forEach(function (c) { cityLoaded[c.id] = { q: c.q, r: c.r }; });
+      }
+      function cityById(id) { for (var i = 0; i < cityRows.length; i++) if (cityRows[i].id === id) return cityRows[i]; return null; }
       // The colour swatch shows + edits the selected nation's (Nations layer) or continent's
       // (Continents layer) colour.
       function syncColorSwatch() {
@@ -2246,7 +2266,16 @@
             var cu = await supabase.from('continents').upsert(cl.map(function (c) { return { name: c, color: cm[c] }; }), { onConflict: 'name' });
             if (cu.error) { status('Hexes saved, but continent colours didn’t: ' + cu.error.message); btn.disabled = false; return; }
           }
-          status('Saved · ' + rows.length + ' hex' + (rows.length === 1 ? '' : 'es') + '.');
+          // City placements: write only the cities whose hex (q,r) changed since load.
+          var nrm = function (v) { return v == null ? null : v; };
+          var cityChanged = cityRows.filter(function (c) { var L = cityLoaded[c.id] || {}; return nrm(L.q) !== nrm(c.q) || nrm(L.r) !== nrm(c.r); });
+          for (var cj = 0; cj < cityChanged.length; cj++) {
+            var cc = cityChanged[cj];
+            var ccu = await supabase.from('cities').update({ q: cc.q, r: cc.r }).eq('id', cc.id);
+            if (ccu.error) { status('Hexes saved, but a city placement didn’t: ' + ccu.error.message); btn.disabled = false; return; }
+          }
+          cityRows.forEach(function (c) { cityLoaded[c.id] = { q: c.q, r: c.r }; });
+          status('Saved · ' + rows.length + ' hex' + (rows.length === 1 ? '' : 'es') + (cityChanged.length ? ' · ' + cityChanged.length + ' city placement' + (cityChanged.length === 1 ? '' : 's') : '') + '.');
         } catch (e) { status('Save failed: ' + ((e && e.message) || 'error')); }
         btn.disabled = false;
       }
@@ -2260,6 +2289,20 @@
         var h = ensure(q, r); selKey = nk;
         var box = document.getElementById('wmInspect'); box.hidden = false;
         var natOpts = '<option value="">— none —</option>' + natOrder.map(function (id) { return '<option value="' + esc(id) + '"' + (h.nation_id === id ? ' selected' : '') + '>' + esc(natName[id]) + '</option>'; }).join('');
+        // Cities of this hex's nation, each a checkbox (checked = sitting on THIS hex). A city can only
+        // be placed on a hex of its own nation, so the list is scoped to h.nation_id.
+        var hexCities = h.nation_id ? cityRows.filter(function (c) { return c.nation_id === h.nation_id; }) : [];
+        var citiesHtml;
+        if (!h.nation_id) {
+          citiesHtml = '<label>Cities</label><div class="wm-city-note">Assign a nation to this hex to place its cities.</div>';
+        } else if (!hexCities.length) {
+          citiesHtml = '<label>Cities</label><div class="wm-city-note">' + esc(natName[h.nation_id] || 'This nation') + ' has no cities yet — add them in the Cities tab.</div>';
+        } else {
+          citiesHtml = '<label>Cities in this hex</label><div class="wm-cities">' + hexCities.map(function (c) {
+            var on = c.q === q && c.r === r, elsewhere = !on && c.q != null && c.r != null;
+            return '<label class="wm-city"><input type="checkbox" data-city="' + esc(c.id) + '"' + (on ? ' checked' : '') + '><span>' + esc(c.name) + (elsewhere ? ' <em>(on ' + c.q + ', ' + c.r + ')</em>' : '') + '</span></label>';
+          }).join('') + '</div>';
+        }
         box.innerHTML =
           '<h4>Hex ' + q + ', ' + r + '<button class="wm-x" id="wmIx" type="button" aria-label="Close">×</button></h4>' +
           '<label>Terrain</label><select id="wmITerrain"><option value="sea"' + (h.terrain === 'sea' ? ' selected' : '') + '>Sea</option><option value="land"' + (h.terrain === 'land' ? ' selected' : '') + '>Land</option></select>' +
@@ -2269,15 +2312,27 @@
           '<label>Name</label><input id="wmIName" type="text" maxlength="60" value="' + esc(h.name || '') + '">' +
           '<label>Population</label><input id="wmIPop" type="number" min="0" step="1" value="' + (h.population != null ? h.population : '') + '">' +
           '<label>Resources</label><div class="wm-res">' + WM_RES.map(function (k) { return '<div><label style="margin:0 0 2px">' + (k.charAt(0).toUpperCase() + k.slice(1)) + '</label><input data-res="' + k + '" type="number" step="any" value="' + (h.resources && h.resources[k] != null ? h.resources[k] : '') + '"></div>'; }).join('') + '</div>' +
+          citiesHtml +
           '<button class="wm-clear" id="wmIClear" type="button">Erase hex (→ sea)</button>';
         box.querySelector('#wmIx').onclick = closeInspect;
-        box.querySelector('#wmITerrain').onchange = function () { h.terrain = this.value; if (h.terrain === 'sea') h.nation_id = null; openInspect(q, r); draw(); };
-        box.querySelector('#wmINation').onchange = function () { h.nation_id = this.value || null; if (h.nation_id) h.terrain = 'land'; draw(); };
+        box.querySelector('#wmITerrain').onchange = function () { h.terrain = this.value; if (h.terrain === 'sea') { h.nation_id = null; clearCitiesAt(q, r); } openInspect(q, r); draw(); };
+        box.querySelector('#wmINation').onchange = function () {
+          h.nation_id = this.value || null; if (h.nation_id) h.terrain = 'land';
+          clearCitiesAt(q, r);   // cities belong to one nation — reassigning the hex unplaces any sitting here
+          openInspect(q, r);     // refresh the cities list for the new nation
+        };
         box.querySelector('#wmICont').oninput = function () { h.continent = this.value.trim() || null; if (h.continent) h.terrain = 'land'; draw(); };
         box.querySelector('#wmIName').oninput = function () { h.name = this.value; };
         box.querySelector('#wmIPop').oninput = function () { h.population = this.value === '' ? null : Number(this.value); };
         box.querySelectorAll('[data-res]').forEach(function (inp) { inp.oninput = function () { var v = this.value, key = this.dataset.res; if (v === '' || Number(v) === 0) delete h.resources[key]; else h.resources[key] = Number(v); }; });
-        box.querySelector('#wmIClear').onclick = function () { delete hexes[selKey]; selKey = null; box.hidden = true; draw(); };
+        box.querySelectorAll('[data-city]').forEach(function (chk) {
+          chk.onchange = function () {
+            var c = cityById(chk.dataset.city); if (!c) return;
+            if (chk.checked) { c.q = q; c.r = r; } else if (c.q === q && c.r === r) { c.q = null; c.r = null; }
+            openInspect(q, r);   // refresh the "(on q,r)" hints and redraw the dots
+          };
+        });
+        box.querySelector('#wmIClear').onclick = function () { clearCitiesAt(q, r); delete hexes[selKey]; selKey = null; box.hidden = true; draw(); };
         draw();
       }
 
@@ -2333,7 +2388,7 @@
       document.getElementById('wmEraseAll').addEventListener('click', function () {
         if (!Object.keys(hexes).length) { status('The map is already empty.'); return; }
         if (!confirm('Erase ALL land on the map? Every hex is cleared back to sea. Nothing is permanent until you Save Map.')) return;
-        hexes = {}; closeInspect(); status('All land erased — Save Map to make it permanent.');
+        hexes = {}; cityRows.forEach(function (c) { c.q = null; c.r = null; }); closeInspect(); status('All land erased — Save Map to make it permanent.');
       });
       document.getElementById('wmSave').addEventListener('click', save);
       document.getElementById('wmZin').onclick = function () { zoomAt(cv.clientWidth / 2, cv.clientHeight / 2, 1.18); };
@@ -2344,7 +2399,7 @@
       window.addEventListener('resize', function () { if (!document.querySelector('.tabpane[data-tab="world-map"]').hidden) fit(); });
 
       return { onShow: async function () {
-        if (!loadedOnce) { loadedOnce = true; view = { x: cv.clientWidth / 2, y: cv.clientHeight / 2, z: 1 }; await loadNations(); await loadContinents(); await load(); }
+        if (!loadedOnce) { loadedOnce = true; view = { x: cv.clientWidth / 2, y: cv.clientHeight / 2, z: 1 }; await loadNations(); await loadContinents(); await loadCities(); await load(); }
         fit();
       } };
     }

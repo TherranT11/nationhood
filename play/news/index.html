@@ -18,17 +18,27 @@
   .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
   .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
   .phead p{color:var(--muted);font-size:13.5px;margin-top:5px;max-width:620px}
+  /* Masthead dateline — the current in-game month/year, centred between hairline rules. */
+  .dateline{display:flex;align-items:center;gap:14px;margin-top:16px;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--ink)}
+  .dateline::before,.dateline::after{content:'';height:1px;background:var(--line);flex:1}
 
-  .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-top:18px}
-  .sec-h{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
+  /* Reading column: capped so headlines don't stretch on wide screens; two columns when there's room. */
+  .phead,.feeds{max-width:720px}
+  .feeds{display:grid;grid-template-columns:1fr;gap:18px;align-items:start;margin-top:18px}
+  .feeds .panel{margin-top:0}
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px}
+  .sec-h{display:flex;align-items:baseline;flex-wrap:wrap;gap:10px;margin-bottom:14px}
   .sec-h b{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);font-weight:700}
   .sec-h .n{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;color:var(--soft)}
+  .natfilter{margin-left:auto;max-width:190px;background:var(--surface);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:5px 8px;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;cursor:pointer}
 
   .feed{display:flex;flex-direction:column}
-  /* World Press can run long (every other nation's papers) — cap it and let it scroll. */
-  #world{max-height:min(58vh,460px);overflow-y:auto;padding-right:6px}
+  /* Date section break — a subtle "SEPTEMBER 1983" divider grouping each tick's headlines. */
+  .datebreak{display:flex;align-items:center;gap:12px;margin:16px 0 2px;font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
+  .datebreak::after{content:'';height:1px;background:var(--line);flex:1}
+  .datebreak:first-child{margin-top:0}
   .hl{display:flex;gap:13px;padding:13px 0;border-top:1px solid var(--line)}
-  .hl:first-child{border-top:none;padding-top:2px}
+  .hl:first-child,.datebreak + .hl{border-top:none;padding-top:2px}
   .hl:last-child{padding-bottom:2px}
   .hl__logo{width:42px;height:42px;border-radius:10px;flex:none;display:grid;place-items:center;font-family:'Space Mono',monospace;font-weight:700;font-size:14px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45);background-size:cover;background-position:center;overflow:hidden}
   .hl__body{flex:1;min-width:0}
@@ -43,6 +53,17 @@
   .empty b{display:block;color:var(--muted);font-size:15px;margin-bottom:6px}
   .empty span{display:block;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:var(--soft);margin-top:6px}
 
+  /* Two columns on wide screens — Your Nation leads (left); World Press (right) is scroll-capped so it
+     doesn't dominate the page. Below this the feeds stack, own nation first. */
+  @media(min-width:1150px){
+    .phead,.feeds{max-width:1040px}
+    .feeds{grid-template-columns:1fr 1fr;gap:22px}
+    #world{max-height:min(64vh,540px);overflow-y:auto;padding-right:6px}
+  }
+  /* Mobile refresh — a tappable filter, tighter panels, and drop the descriptive subtext for room. */
+  @media(max-width:820px){ .natfilter{padding:7px 10px;font-size:11px} }
+  @media(max-width:520px){ .panel{padding:16px 15px} .n-desc{display:none} }
+
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -56,17 +77,20 @@
       <span class="eye">The Press</span>
       <h1>Home</h1>
       <p>The national and world news desk — the latest from your nation's papers and the wider world press.</p>
+      <div class="dateline" id="dateline" hidden></div>
     </div>
 
-    <section class="panel">
-      <div class="sec-h"><b>World Press</b><span class="n">latest from other nations' papers</span></div>
-      <div class="feed" id="world"><p class="empty"><b>Loading the wires…</b></p></div>
-    </section>
+    <div class="feeds">
+      <section class="panel">
+        <div class="sec-h"><b>Your Nation</b><span class="n" id="ownNat"></span></div>
+        <div class="feed" id="own"><p class="empty"><b>Loading…</b></p></div>
+      </section>
 
-    <section class="panel">
-      <div class="sec-h"><b>Your Nation</b><span class="n" id="ownNat"></span></div>
-      <div class="feed" id="own"><p class="empty"><b>Loading…</b></p></div>
-    </section>
+      <section class="panel">
+        <div class="sec-h"><b>World Press</b><span class="n n-desc">latest from other nations' papers</span><select class="natfilter" id="worldNat" aria-label="Filter World Press by nation" hidden><option value="">All nations</option></select></div>
+        <div class="feed" id="world"><p class="empty"><b>Loading the wires…</b></p></div>
+      </section>
+    </div>
   </main>
 </div>
 
@@ -74,7 +98,7 @@
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { esc } from '/util.js';
+  import { esc, tickToDate } from '/util.js';
   import { ideologyLabel } from '/archetypes.js';   // for the sidenav brand subtitle (party ideology · nation)
   import { slantLabel } from '/slants.js';   // ONE source for the slant vocabulary
 
@@ -87,26 +111,37 @@
     var mono = esc(h.mono || (h.paper || '?').replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || '?');
     return '<span class="hl__logo" style="background:' + c + '">' + mono + '</span>';
   }
+  // The month/year to group under — the raw game_date ("September, 1983") shown as "SEPTEMBER 1983".
+  function dateLabel(d) { return (d || 'Undated').replace(',', ''); }
   // One headline row, led by the paper's logo. `withFlag` shows the source nation's flag + name
-  // (World Press); own-nation headlines omit it. Colour/logo ride on each row from the DB.
+  // (World Press); own-nation headlines omit it. The date isn't repeated per row — it's the group
+  // divider now — so the meta line carries only the source nation, and is dropped when there's none.
   function headlineRow(h, withFlag) {
     var c = esc(h.color || '#6b5cff');
     var nat = withFlag && h.nations ? h.nations : null;
     var flag = nat && nat.flag ? '<img class="hl__flag" src="' + esc(nat.flag) + '" alt="">' : '';
     var slant = '<span class="hl__slant" style="color:' + c + ';background:color-mix(in srgb,' + c + ' 13%,transparent);border:1px solid color-mix(in srgb,' + c + ' 40%,transparent)">' + esc(slantLabel(h.slant)) + '</span>';
-    var meta = (nat ? flag + ' ' + esc(nat.name) + ' · ' : '') + esc(h.game_date || '—');
+    var meta = nat ? flag + ' ' + esc(nat.name) : '';
     return '<article class="hl">' + logoBox(h, c) +
       '<div class="hl__body">' +
         '<div class="hl__paper"><span class="hl__pname">' + esc(h.paper || 'The Press') + '</span>' + slant + '</div>' +
         '<div class="hl__text">' + esc(h.headline) + '</div>' +
-        '<div class="hl__meta">' + meta + '</div>' +
+        (meta ? '<div class="hl__meta">' + meta + '</div>' : '') +
       '</div>' +
     '</article>';
   }
 
+  // Rows arrive newest-first, so consecutive rows share a game_date in runs — walk them and drop a
+  // date divider whenever it changes, grouping each month's headlines under one "SEPTEMBER 1983" break.
   function renderFeed(el, rows, withFlag, emptyMsg) {
     if (!rows || !rows.length) { el.innerHTML = '<div class="empty"><b>' + emptyMsg + '</b><span>Headlines appear as the world turns.</span></div>'; return; }
-    el.innerHTML = rows.map(function (h) { return headlineRow(h, withFlag); }).join('');
+    var html = '', last = null;
+    rows.forEach(function (h) {
+      var d = h.game_date || '';
+      if (d !== last) { html += '<div class="datebreak">' + esc(dateLabel(d)) + '</div>'; last = d; }
+      html += headlineRow(h, withFlag);
+    });
+    el.innerHTML = html;
   }
   function renderError(el, e) {
     // Surface the underlying reason instead of swallowing it — a silent catch made this
@@ -121,6 +156,13 @@
     if (!isConfigured) return;
     const user = await requireUser();
     if (!user) return; // redirected to login
+
+    // Masthead dateline — the current in-game month/year, grounding the page in the game clock.
+    // A read failure just leaves it hidden; the feeds still load.
+    try {
+      const { data: gs } = await supabase.from('game_state').select('current_tick').single();
+      if (gs) { const dl = document.getElementById('dateline'); dl.textContent = tickToDate(gs.current_tick).replace(',', '').toUpperCase(); dl.hidden = false; }
+    } catch (e) { /* no dateline if the clock can't be read */ }
 
     let nationId = null;
     try {
@@ -141,16 +183,38 @@
       renderError(document.getElementById('own'), e);
     }
 
-    // World Press — latest from OTHER nations' papers (excludes the player's own when known).
+    // World Press — every OTHER nation's papers, or a single nation's desk when the filter picks one.
+    // worldReq tags each load so a slow earlier fetch can't overwrite a newer selection's result.
+    let worldReq = 0;
+    async function loadWorldPress(only) {
+      var el = document.getElementById('world'), req = ++worldReq;
+      try {
+        let q = supabase.from('news_headlines')
+          .select('paper, slant, color, mono, logo, headline, game_date, nation_id, nations(name, flag)')
+          .order('created_at', { ascending: false }).limit(40);
+        if (only) q = q.eq('nation_id', only);
+        else if (nationId) q = q.neq('nation_id', nationId);
+        const { data, error } = await q;
+        if (error) throw error;
+        if (req !== worldReq) return;   // a newer selection superseded this one
+        renderFeed(el, data, true, only ? 'No headlines from there yet.' : 'The wires are quiet.');
+      } catch (e) { if (req === worldReq) renderError(el, e); }
+    }
+    loadWorldPress(null);
+
+    // Nation filter for the World Press: every other live nation; picking one narrows the feed to its
+    // desk. Stays hidden if the nations can't be read or there are none, so the feed still works alone.
     try {
-      let q = supabase.from('news_headlines')
-        .select('paper, slant, color, mono, logo, headline, game_date, nation_id, nations(name, flag)')
-        .order('created_at', { ascending: false }).limit(40);
-      if (nationId) q = q.neq('nation_id', nationId);
-      const { data, error } = await q;
-      if (error) throw error;
-      renderFeed(document.getElementById('world'), data, true, 'The wires are quiet.');
-    } catch (e) { renderError(document.getElementById('world'), e); }
+      let nq = supabase.from('nations').select('id, name').eq('dormant', false).order('name');
+      if (nationId) nq = nq.neq('id', nationId);
+      const { data: nats } = await nq;
+      const natSel = document.getElementById('worldNat');
+      if (natSel && nats && nats.length) {
+        natSel.innerHTML = '<option value="">All nations</option>' + nats.map(function (n) { return '<option value="' + esc(n.id) + '">' + esc(n.name || n.id) + '</option>'; }).join('');
+        natSel.onchange = function () { loadWorldPress(this.value || null); };
+        natSel.hidden = false;
+      }
+    } catch (e) { /* no filter if nations can't be read; the feed still loads */ }
 
     // Your Nation — this nation's own headlines.
     if (nationId) {
