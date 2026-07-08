@@ -255,7 +255,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
-  import { esc, economyPeriod, economyNeed, worldTier, worldPrice, TIER_MULT, TIER_LABEL, RESOURCE_BASE, PRODUCE_COST, PRODUCE_COOLDOWN } from '/util.js';
+  import { esc, economyPeriod, economyNeed, worldTier, worldPrice, TIER_MULT, TIER_LABEL, RESOURCE_BASE, PRODUCE_COST, PRODUCE_COOLDOWN, fmtGdp } from '/util.js';
   import { mountTopbar } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
@@ -297,7 +297,7 @@
 
   function renderStats(n){
     var st = n.stats || {}, ec = n.economy || {};
-    var rows = [['Population', fmt(n.population) + 'M'], ['Prosperity', num(st.prosperity)], ['Welfare', num(st.welfare)],
+    var rows = [['GDP', STATE.currency + fmtGdp(n.gdp)], ['Population', fmt(n.population) + 'M'], ['Prosperity', num(st.prosperity)], ['Welfare', num(st.welfare)],
       ['Order', num(st.order)], ['Growth', num(st.growth)], ['Unemploy.', num(ec.unemployment) + '%'], ['Inflation', num(ec.inflation) + '%']];
     return '<div class="stats">' + rows.map(function(r){ return '<div class="stat">' + r[0] + '<b>' + r[1] + '</b></div>'; }).join('') + '</div>';
   }
@@ -347,9 +347,11 @@
 
   function developCards(){
     var n = STATE.nation, prod = n.production || {}, on = n.on_hand || {};
-    // Produce
-    var batch = RESLIST.filter(function(r){ return num(prod[r.k]) > 0; }).map(function(r){ return '+' + fmt(prod[r.k]) + ' ' + r.label; }).join(' · ') || 'no production set';
-    var strip = RESLIST.map(function(r){ return '<span class="oh"><span class="rd" style="background:var(--' + r.k + ')"></span><b>' + fmt(on[r.k]) + '</b> <span class="rk">' + r.label + '</span></span>'; }).join('');
+    // Produce — Diplomacy is produced and banked by the same tick (schema/113) but isn't traded, so
+    // it joins the produce batch + on-hand strip here without appearing in the trade views (RESLIST).
+    var PROD_ALL = RESLIST.concat([{ k: 'diplomacy', label: 'Diplomacy' }]);
+    var batch = PROD_ALL.filter(function(r){ return num(prod[r.k]) > 0; }).map(function(r){ return '+' + fmt(prod[r.k]) + ' ' + r.label; }).join(' · ') || 'no production set';
+    var strip = PROD_ALL.map(function(r){ return '<span class="oh"><span class="rd" style="background:var(--' + r.k + ')"></span><b>' + fmt(on[r.k]) + '</b> <span class="rk">' + r.label + '</span></span>'; }).join('');
     var cdLeft = num(n.produce_until_tick) - num(STATE.tick), onCd = cdLeft > 0;
     var canProduce = STATE.isHog && !onCd && num(STATE.party.influence) >= PRODUCE_COST;
     var prodLabel = onCd ? ('On cooldown · ' + cdLeft + ' tick' + (cdLeft === 1 ? '' : 's'))
@@ -548,7 +550,7 @@
   async function reload(){
     try {
       var { data: ns } = await supabase.from('nations')
-        .select('id, name, flag, population, stats, economy, on_hand, production, demands, advanced_year, produce_until_tick')
+        .select('id, name, flag, population, gdp, stats, economy, on_hand, production, demands, advanced_year, produce_until_tick')
         .eq('dormant', false).order('name');
       if (ns) {
         STATE.nations = ns;
@@ -746,7 +748,7 @@
       const { data: party } = await supabase.from('parties').select('id, name, archetype, nation_id, influence').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: nations } = await supabase.from('nations')
-        .select('id, name, flag, population, stats, economy, on_hand, production, demands, advanced_year, produce_until_tick')
+        .select('id, name, flag, population, gdp, stats, economy, on_hand, production, demands, advanced_year, produce_until_tick')
         .eq('dormant', false).order('name');
       const nation = (nations || []).find(function(n){ return n.id === party.nation_id; }) || { id: party.nation_id };
       const { data: gov } = await supabase.from('governments')
