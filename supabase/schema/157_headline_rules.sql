@@ -60,7 +60,7 @@ end $$;
 -- plain event-body headline (schema/156). Called by the events trigger below.
 create or replace function public._generate_event_headlines(p_nation text, p_kind text, p_body text)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_rule public.headline_rules%rowtype; v_tick int; v_o record; v_txt text; v_variant text; v_i int := 0;
+declare v_rule public.headline_rules%rowtype; v_tick int; v_o record; v_txt text; v_variant text; v_i int := 0; v_pub int := 0;
 begin
   select current_tick into v_tick from public.game_state where id;
   select r.* into v_rule
@@ -94,9 +94,14 @@ begin
       if v_txt is not null then
         insert into public.news_headlines (nation_id, outlet_id, paper, slant, color, headline, game_date, tick, rule_id)
           values (p_nation, v_o.id, v_o.name, v_o.slant, v_o.color, v_txt, public.current_game_date(), v_tick, v_rule.id);
+        v_pub := v_pub + 1;
       end if;
       v_i := v_i + 1;
     end loop;
+    if v_pub > 0 then return; end if;
+    -- the winning rule had no usable headline text (misconfigured) — fall back to the plain event body
+    -- rather than silence the desk. (A rule RESTING on cooldown is handled below, and stays silent.)
+    perform public._publish_headline(p_nation, p_body);
     return;
   end if;
 

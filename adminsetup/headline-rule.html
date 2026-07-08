@@ -203,6 +203,7 @@
     cooldown:12, priority:5, once:false
   };
   var editingId=null;   // the headline_rules row being edited, or null for a new rule
+  var busy=false;       // write lock — guards Save/Delete against a double-click double-write
 
   /* ---- trigger fields ---- */
   function subjectOptions(){
@@ -430,13 +431,17 @@
     box.querySelectorAll('[data-del]').forEach(function(b){ b.onclick=function(){ deleteRule(b.dataset.del); }; });
   }
   async function deleteRule(id){
+    if(busy) return; busy=true;
     try{ var r=await supabase.from('headline_rules').delete().eq('id',id); if(r.error) throw r.error;
       if(editingId===id) newRule(); ping('Deleted rule'); loadRules();
     }catch(e){ ping('<b class="red">Delete failed</b>'); }
+    finally{ busy=false; }
   }
   async function saveRule(){
+    if(busy) return;
     if(!state.name.trim()){ ping('<b class="red">Rule name required</b>'); return; }
     if(state.scope==='nation' && !state.nation){ ping('<b class="red">Pick a nation first</b>'); return; }
+    busy=true;
     var row=stateToRow();
     try{
       var res = editingId
@@ -446,6 +451,7 @@
       if(!editingId && res.data){ editingId=res.data.id; }
       syncControls(); ping('Saved <b>'+esc(state.name)+'</b>'); loadRules();
     }catch(e){ ping('<b class="red">Save failed — admin only</b>'); }
+    finally{ busy=false; }
   }
 
   // Initial paint (composer is synchronous), then load nations + rules from the backend.
