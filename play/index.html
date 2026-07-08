@@ -244,6 +244,12 @@
   .stat__trend{font-size:12px;font-weight:800;margin-left:7px;vertical-align:2px}
   .stat__trend--up{color:var(--green,#16915a)}
   .stat__trend--down{color:var(--red,#C42B2B)}
+  /* Seats card: a thin chamber bar (fill = your share) with a tick at the majority line, + a caption. */
+  .stat__meta{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--soft);margin-top:8px;font-weight:600}
+  .chamber{position:relative;height:6px;margin-top:10px;background:var(--line);border-radius:99px}
+  .chamber__fill{position:absolute;left:0;top:0;height:6px;background:var(--muted);border-radius:99px}
+  .chamber__fill--maj{background:var(--green,#16915a)}
+  .chamber__maj{position:absolute;top:-3px;height:12px;width:2px;background:var(--ink);opacity:.5;border-radius:1px}
   /* "Needs your attention" strip */
   .attn{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 2px}
   .attn__lbl{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);font-weight:700;margin-right:2px}
@@ -418,7 +424,7 @@
   import { fetchNationInitiatives, renderNationInitiatives } from '/initiatives.js';
   import { openJointProposer, fetchJointNegotiations, renderJointNegotiations } from '/joint.js';
   import { statLabel, statBand, regimeLabel, statName, regimeText, REGIME_TIERS } from '/ladders.js';
-  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, PRODUCE_COST, PRODUCE_COOLDOWN, declaredValue, fmtPop, fmtGdp } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, PRODUCE_COST, PRODUCE_COOLDOWN, declaredValue, fmtPop, fmtGdp, majority } from '/util.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { MINISTRIES } from '/ministries.js';
   import { hasUnvotedFloorMeasure } from '/proposals.js';   // ONE source (shared with the Legislature nav dot)
@@ -1369,7 +1375,7 @@
   // prevPop is last tick's settled popularity (schema/147); when present, the approval card shows a
   // ▲/▼ delta so momentum reads at a glance — the difference matters most for a party clawing back
   // from negative. Omitted (null) or a flat 0.0 move shows no arrow rather than a meaningless one.
-  function renderStatCards(party, leader, prevPop) {
+  function renderStatCards(party, leader, prevPop, totalSeats) {
     var box = document.getElementById('statCards'); if (!box) return;
     var partyV = esc(party.name) + (party.abbreviation ? ' <span class="stat__sub">(' + esc(party.abbreviation) + ')</span>' : '');
     var leaderV = leader ? (esc(((leader.first_name || '') + ' ' + (leader.last_name || '')).trim()) + (leader.age != null ? ' <span class="stat__sub">(' + leader.age + ')</span>' : '')) : '—';
@@ -1381,10 +1387,29 @@
       if (d > 0) trend = ' <span class="stat__trend stat__trend--up" title="Up since last tick">▲ ' + d.toFixed(1) + '</span>';
       else if (d < 0) trend = ' <span class="stat__trend stat__trend--down" title="Down since last tick">▼ ' + Math.abs(d).toFixed(1) + '</span>';
     }
+    // Seats in context: your seats out of the whole chamber, whether you're governing, and the
+    // majority line — the same majority() the Elections page uses (mirrors schema/45 _majority).
+    // A thin chamber bar fills to your share with a tick at the threshold. When there's no
+    // legislature yet (total 0), fall back to the bare count so nothing divides by zero.
+    var mySeats = party.seats || 0, total = Number(totalSeats) || 0, seatsCard;
+    if (total > 0) {
+      var maj = majority(total);
+      var fillPct = Math.min(100, mySeats / total * 100), majPct = Math.min(100, maj / total * 100);
+      var gov = party.in_government ? 'In government' : 'Opposition';
+      seatsCard = '<div class="stat"><div class="stat__k">Seats</div>' +
+        '<div class="stat__v">' + mySeats + ' <span class="stat__sub">/ ' + total + '</span></div>' +
+        '<div class="chamber" title="' + mySeats + ' of ' + total + ' · ' + maj + ' for a majority">' +
+          '<span class="chamber__fill' + (mySeats >= maj ? ' chamber__fill--maj' : '') + '" style="width:' + fillPct.toFixed(1) + '%"></span>' +
+          '<i class="chamber__maj" style="left:' + majPct.toFixed(1) + '%"></i></div>' +
+        '<div class="stat__meta">' + gov + ' · majority ' + maj + '</div></div>';
+    } else {
+      seatsCard = '<div class="stat"><div class="stat__k">Seats</div><div class="stat__v">' + mySeats + '</div>' +
+        '<div class="stat__meta">No legislature yet</div></div>';
+    }
     box.innerHTML =
       '<div class="stat"><div class="stat__k">Party</div><div class="stat__v">' + partyV + '</div></div>' +
       '<div class="stat"><div class="stat__k">Party Leader</div><div class="stat__v">' + leaderV + '</div></div>' +
-      '<div class="stat"><div class="stat__k">Seats</div><div class="stat__v">' + (party.seats || 0) + '</div></div>' +
+      seatsCard +
       '<div class="stat"><div class="stat__k">Party Approval</div><div class="stat__v">' + (Math.round(appr * 10) / 10) + '%' + trend + '</div></div>';
   }
 
@@ -1485,7 +1510,7 @@
         .select('tick, popularity').eq('party_id', party.id).order('tick', { ascending: false }).limit(2);
       if (pph && pph.length >= 2) prevPop = Number(pph[1].popularity);
     } catch (e) { /* no trend if the history read fails — the approval number still renders */ }
-    renderStatCards(party, myLeader, prevPop);
+    renderStatCards(party, myLeader, prevPop, (nation && nation.legislature_seats) || 0);
     renderSnapshotAndMap(nation, parties, govt, decl, party.nation_id, hogName);
     var formal = decl('formal_state_name');
     if (formal) document.getElementById('kicker').textContent = formal;   // eyebrow → declared formal state name
