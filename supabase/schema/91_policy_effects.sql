@@ -85,21 +85,17 @@ revoke all on function public._nation_budget_add(text, numeric) from public, ano
 -- or 0); a RISE lifts popularity up to at least the new floor. The floor stays within [0, ceiling].
 -- Read by the Popularity Floor effect below (per in-government party) and the mayoral prize / loss
 -- (schema/110), so every party-floor change obeys one rule.
+-- The popularity floor was retired, so a "floor grant" (a mayoral prize/loss in schema/110, a
+-- Popularity Floor policy effect below) no longer confers a standing floor — it simply moves the
+-- party's popularity by the delta, bounded to 0..100. Keeps those effects meaningful (a won city
+-- still lifts popularity; a lost one still costs it) without a binding floor.
 create or replace function public._pop_floor_add(p_party uuid, p_delta numeric)
 returns void language plpgsql security definer set search_path = public as $$
-declare r record; v_new numeric;
 begin
   if coalesce(p_delta, 0) = 0 then return; end if;
-  select popularity, pop_floor, pop_ceiling into r from public.parties where id = p_party;
-  if not found then return; end if;
-  v_new := greatest(0, least(coalesce(r.pop_ceiling, 100), coalesce(r.pop_floor, 0) + p_delta));   -- the new floor
-  if p_delta < 0 then
-    update public.parties set pop_floor = v_new,
-      popularity = greatest(v_new, coalesce(r.popularity, 0) - (coalesce(r.pop_floor, 0) - v_new)) where id = p_party;
-  else
-    update public.parties set pop_floor = v_new,
-      popularity = least(coalesce(r.pop_ceiling, 100), greatest(coalesce(r.popularity, 0), v_new)) where id = p_party;
-  end if;
+  update public.parties
+     set popularity = greatest(0, least(100, coalesce(popularity, 0) + p_delta))
+   where id = p_party;
 end $$;
 revoke all on function public._pop_floor_add(uuid, numeric) from public, anon, authenticated;
 
@@ -174,10 +170,11 @@ begin
         else             v_new := public._mod_floor_drop(p_nation, r.archetype, v_old, v_old + v_v); end if;
         update public.parties set popularity = greatest(0, least(100, v_new)) where id = r.id;
       end loop;
-    -- Popularity Ceiling → the support ceiling of every party currently IN GOVERNMENT
-    -- (0..100), the same government-only scope as Party Popularity above.
+    -- Popularity Ceiling → RETIRED. Party popularity no longer has a reach ceiling (it floats freely
+    -- in 0..100), so this effect no longer does anything. Left as an explicit no-op so an authored
+    -- policy carrying it doesn't silently drift the inert pop_ceiling column.
     when 'Popularity Ceiling' then
-      update public.parties set pop_ceiling = greatest(0, least(100, pop_ceiling + v_v)) where nation_id = p_nation and in_government;
+      null;
     -- Popularity Floor → the support floor of every party currently IN GOVERNMENT (same scope).
     -- A DROP drags the standing popularity down with it by the SAME amount (the base that never
     -- abandons you shrank), never below the new floor / 0; a RISE lifts popularity up to at least

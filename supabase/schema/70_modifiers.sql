@@ -199,18 +199,20 @@ $$;
 -- grandfathered (the bound never yanks it back across its starting point), so a
 -- raise never cuts and a drop never lifts. No matching modifier → p_new unchanged.
 
--- A raising action's result, capped by the archetype ceiling but never below where
--- it started (an over-cap party keeps its standing; the ceiling just blocks gains).
+-- A raising action's result. The party-popularity reach ceiling (and its archetype-modifier
+-- variant) was retired — popularity floats freely — so a raise now applies in full, bounded only by
+-- the natural 100% max and never dropping below where it started. ONE clamp for every popularity gain.
 create or replace function public._mod_cap_raise(p_nation text, p_archetype text, p_old numeric, p_new numeric)
-returns numeric language sql stable security definer set search_path = public as $$
-  select greatest(p_old, least(p_new, coalesce(public._mod_archetype_pop_ceiling(p_nation, p_archetype), p_new)));
+returns numeric language sql immutable as $$
+  select least(100, greatest(p_old, p_new));
 $$;
 
--- A dropping action's result, held up by the archetype floor but never raised above
--- where it started (a below-floor party isn't lifted by being attacked/penalised).
+-- A dropping action's result. The popularity floor (and its archetype-modifier variant) was retired,
+-- so a drop now applies in full, bounded only by 0 and never rising above where it started. ONE clamp
+-- for every popularity loss.
 create or replace function public._mod_floor_drop(p_nation text, p_archetype text, p_old numeric, p_new numeric)
-returns numeric language sql stable security definer set search_path = public as $$
-  select least(p_old, greatest(p_new, coalesce(public._mod_archetype_pop_floor(p_nation, p_archetype), p_new)));
+returns numeric language sql immutable as $$
+  select greatest(0, least(p_old, p_new));
 $$;
 
 -- The combined Rate Multiplier a nation's active modifiers apply to a key ('income' or a

@@ -111,6 +111,7 @@
   .camp__use{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:9px 14px;border-radius:9px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer;align-self:flex-start}
   .camp__use:hover{filter:brightness(1.06)}
   .camp__use:disabled{opacity:.5;cursor:not-allowed;filter:none}
+  .camp-act--used{opacity:.55}
   .camp-result{margin-top:14px;font-family:'Space Mono',monospace;font-size:12px;color:var(--ink);line-height:1.55}
   .camp-result:empty{display:none}
   @media(max-width:560px){.camp-acts{grid-template-columns:1fr}}
@@ -157,7 +158,7 @@
 
     <section class="mod" id="campMod" hidden>
       <div class="mod__hd"><span>Campaign Trail</span><span class="r">Six months to the vote</span></div>
-      <p class="camp-intro">The election is close enough to campaign. Each action is paid in Influence the moment you use it, and moves standing before the ballot.</p>
+      <p class="camp-intro">The election is close enough to campaign. Each action is paid in Influence the moment you use it, moves standing before the ballot, and may be used <b>once per campaign</b>.</p>
       <div class="camp-wallet">
         <div class="cw"><div class="v" id="campInf">&mdash;</div><div class="l">Influence</div></div>
         <div class="cw"><div class="v" id="campPop">&mdash;</div><div class="l">Your popularity</div></div>
@@ -499,28 +500,37 @@
       function setupCampaign(projection) {
         var mod = document.getElementById('campMod'); if (!mod) return;
         mod.hidden = false;
-        var CAMP = { door: { rpc: 'campaign_door_knock', cost: 4, target: false }, public: { rpc: 'campaign_public_appearance', cost: 3, target: false }, debate: { rpc: 'campaign_tv_debate', cost: 5, target: true }, attack: { rpc: 'campaign_attack', cost: 2, target: true } };
+        // Each action is server-side ONE use per campaign (schema/148, keyed by party + election tick),
+        // so `key` maps the card to that server action name and `used` mirrors what's already spent.
+        var CAMP = { door: { rpc: 'campaign_door_knock', cost: 4, target: false, key: 'door_knock' }, public: { rpc: 'campaign_public_appearance', cost: 3, target: false, key: 'public_appearance' }, debate: { rpc: 'campaign_tv_debate', cost: 5, target: true, key: 'tv_debate' }, attack: { rpc: 'campaign_attack', cost: 2, target: true, key: 'attack' } };
+        var used = {};   // server action key → true once spent this campaign
         var rivals = projection.filter(function (p) { return !p.mine; });
         var optHtml = rivals.length ? rivals.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>'; }).join('') : '<option value="">No rival parties</option>';
         mod.querySelectorAll('.camp__target').forEach(function (sel) { sel.innerHTML = optHtml; });
         var result = document.getElementById('campResult'), busy = false;
         function affordability() {
           mod.querySelectorAll('.camp-act').forEach(function (el) {
-            var cfg = CAMP[el.dataset.act];
-            el.querySelector('.camp__use').disabled = busy || campInfluence < cfg.cost || (cfg.target && !rivals.length);
+            var cfg = CAMP[el.dataset.act], btn = el.querySelector('.camp__use'), spent = !!used[cfg.key];
+            el.classList.toggle('camp-act--used', spent);
+            btn.disabled = spent || busy || campInfluence < cfg.cost || (cfg.target && !rivals.length);
+            btn.textContent = spent ? 'Used this campaign' : 'Use';
           });
         }
+        // Grey out actions this party has already run this campaign (one use each per election).
+        supabase.from('campaign_actions_used').select('action').eq('party_id', party.id).eq('election_tick', nextTick)
+          .then(function (r) { (r.data || []).forEach(function (row) { used[row.action] = true; }); affordability(); });
         mod.querySelectorAll('.camp-act').forEach(function (el) {
           var cfg = CAMP[el.dataset.act], sel = el.querySelector('.camp__target');
           el.querySelector('.camp-act__cost').textContent = cfg.cost + ' Influence';   // CAMP is the one source for the cost
           el.querySelector('.camp__use').onclick = function () {
-            if (busy) return;
+            if (busy || used[cfg.key]) return;
             var args = {};
             if (cfg.target) { if (!sel || !sel.value) { result.textContent = 'Pick a party to target first.'; return; } args = { p_target: sel.value }; }
             busy = true; affordability();
             supabase.rpc(cfg.rpc, args).then(function (r) {
               if (r.error) throw r.error;
               var d = r.data || {};
+              used[cfg.key] = true;   // spent — one use per campaign
               if (d.influence != null) { campInfluence = Number(d.influence); setTopbarActions(campInfluence); }
               result.textContent = d.body || 'Done.';
               return loadProjection();   // repaint wallet + projection with the new popularity

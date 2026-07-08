@@ -21,8 +21,8 @@ create table if not exists public.parties (
   -- logic moves these later. They live here so each page reads one source.
   seats         int     not null default 0,     -- seats held in the legislature
   popularity    numeric not null default 0,     -- public support, % (fractional — actions move it in tenths)
-  pop_floor     numeric not null default 0,     -- support floor: the base attacks can't push below, % (fractional; starts at 0, no player action currently raises it)
-  pop_ceiling   numeric not null default 5,     -- support ceiling: current reach / cap on popularity, % (fractional — Ad Blitz nudges it)
+  pop_floor     numeric not null default 0,     -- RETIRED: popularity has no floor now (floats freely 0..100). Column kept for compatibility; migration 161 zeroes it.
+  pop_ceiling   numeric not null default 100,   -- RETIRED: popularity has no reach ceiling now (floats freely 0..100). Column kept for compatibility; migration 161 sets it to 100.
   funds         bigint  not null default 0,      -- party treasury, in the nation's currency
   in_government boolean not null default false, -- governing vs in opposition
   influence int not null default 12,    -- Influence: the party's action budget. Banks up to 100, accruing +3/tick (+1 for the largest party in the nation) in advance_tick (schema/60); spent on actions and campaigning. Formerly Action Points (reset to 12/tick).
@@ -37,8 +37,9 @@ alter table public.parties add column if not exists popularity numeric not null 
 alter table public.parties alter column popularity type numeric using popularity::numeric; -- widen int → numeric for fractional support
 alter table public.parties add column if not exists pop_floor numeric not null default 0;
 alter table public.parties alter column pop_floor type numeric using pop_floor::numeric; -- widen int → numeric for fractional floor
-alter table public.parties add column if not exists pop_ceiling numeric not null default 5;
+alter table public.parties add column if not exists pop_ceiling numeric not null default 100;
 alter table public.parties alter column pop_ceiling type numeric using pop_ceiling::numeric; -- widen int → numeric for fractional ceiling
+alter table public.parties alter column pop_ceiling set default 100;   -- reach ceiling retired (popularity floats 0..100)
 alter table public.parties add column if not exists funds bigint not null default 0;
 alter table public.parties add column if not exists in_government boolean not null default false;
 -- Influence was formerly `actions_remaining` (Action Points). Rename the column IN PLACE on any
@@ -118,17 +119,14 @@ revoke insert, update on public.parties from authenticated;
 grant insert (user_id, nation_id, name, abbreviation, description) on public.parties to authenticated;
 grant update (user_id, nation_id, name, abbreviation, description, color, logo_url) on public.parties to authenticated;
 
--- Archetype crowding: a party's popularity ceiling is trimmed by 2 points for every
--- OTHER party in the nation sharing its archetype. ONE source for the gameplay cap
--- (the leader actions in schema/40) and the Party page display (mirrored in JS).
+-- Archetype crowding penalty — retired. Party popularity no longer has a reach ceiling or floor
+-- (it floats freely in 0..100), so crowding no longer trims a cap. Kept as a 0-returning stub so
+-- any lingering caller compiles; nothing consults it now.
 create or replace function public._archetype_ceiling_penalty(p_nation text, p_archetype text)
-returns numeric language sql stable as $$
-  select 2 * greatest(0, count(*) - 1)::numeric
-    from public.parties where nation_id = p_nation and archetype = p_archetype;
-$$;
--- A party's EFFECTIVE popularity ceiling: its own ceiling less the crowding penalty,
--- never below its floor. The cap the raise actions actually enforce.
+returns numeric language sql immutable as $$ select 0::numeric $$;
+-- A party's EFFECTIVE popularity ceiling. The per-party reach ceiling / floor / crowding system was
+-- removed — popularity now moves in full and is bounded only by the natural 0..100 range — so the
+-- effective ceiling is simply 100. Kept (with its old signature) because many raise actions call it
+-- as `least(popularity + delta, _effective_ceiling(...))`; returning 100 makes those clamp at 100.
 create or replace function public._effective_ceiling(p_nation text, p_archetype text, p_ceiling numeric, p_floor numeric)
-returns numeric language sql stable as $$
-  select greatest(coalesce(p_floor, 0), p_ceiling - public._archetype_ceiling_penalty(p_nation, p_archetype));
-$$;
+returns numeric language sql immutable as $$ select 100::numeric $$;

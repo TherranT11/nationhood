@@ -25,6 +25,38 @@ begin
 end $$;
 revoke all on function public._require_campaign(text) from public, anon, authenticated;
 
+-- One-time use (per campaign): each of the four campaign actions may be run ONCE per general
+-- election. The key is (party, election_tick, action) — because the tick is the party's
+-- next_election_tick, the allowance resets automatically the moment the next election is scheduled.
+-- Public-read so the Elections page can grey out an action a party has already spent; written only by
+-- _campaign_use_once (security definer).
+create table if not exists public.campaign_actions_used (
+  party_id      uuid not null references public.parties (id) on delete cascade,
+  election_tick int  not null,
+  action        text not null,
+  used_at       timestamptz not null default now(),
+  primary key (party_id, election_tick, action)
+);
+alter table public.campaign_actions_used enable row level security;
+drop policy if exists "campaign_actions_used_select_all" on public.campaign_actions_used;
+create policy "campaign_actions_used_select_all" on public.campaign_actions_used for select using (true);
+
+-- Claim a party's single use of one campaign action for the current election. Raises (rolling the
+-- whole action back) if it has already been used this campaign. ONE gate, called by all four RPCs.
+create or replace function public._campaign_use_once(p_party uuid, p_nation text, p_action text, p_label text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_next int;
+begin
+  select next_election_tick into v_next from public.nations where id = p_nation;
+  begin
+    insert into public.campaign_actions_used (party_id, election_tick, action)
+      values (p_party, coalesce(v_next, 0), p_action);
+  exception when unique_violation then
+    raise exception 'Your party has already run % this campaign.', p_label;
+  end;
+end $$;
+revoke all on function public._campaign_use_once(uuid, text, text, text) from public, anon, authenticated;
+
 -- Record a party's campaign popularity move as a feed event. A non-zero delta is tagged
 -- 'Party Popularity' so it shows in the news feed AND the dashboard approval factors (schema/147);
 -- a zero-delta move (e.g. already at the ceiling) is written as a plain narrative note with no
@@ -46,6 +78,7 @@ declare v_p public.parties%rowtype; v_cost int := 4; v_roll int; v_new numeric; 
 begin
   v_p := public._lock_party();
   perform public._require_campaign(v_p.nation_id);
+  perform public._campaign_use_once(v_p.id, v_p.nation_id, 'door_knock', 'a door-knocking drive');
   if v_p.influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
   v_roll := 1 + floor(random() * 4)::int;   -- 1D4
   v_new := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity,
@@ -65,6 +98,7 @@ declare v_p public.parties%rowtype; v_cost int := 3; v_new numeric; v_delta nume
 begin
   v_p := public._lock_party();
   perform public._require_campaign(v_p.nation_id);
+  perform public._campaign_use_once(v_p.id, v_p.nation_id, 'public_appearance', 'a public appearance');
   if v_p.influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
   v_new := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity,
              least(v_p.popularity + 1, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor)));
@@ -85,6 +119,7 @@ declare v_p public.parties%rowtype; v_t public.parties%rowtype; v_cost int := 5;
 begin
   v_p := public._lock_party();
   perform public._require_campaign(v_p.nation_id);
+  perform public._campaign_use_once(v_p.id, v_p.nation_id, 'tv_debate', 'a TV debate');
   if v_p.influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
   -- Lock the target too: FOR UPDATE so two attackers can't both read-then-write its popularity and
   -- lose one update. Lock order is caller-then-target, so two players targeting each other at the
@@ -130,6 +165,7 @@ declare v_p public.parties%rowtype; v_t public.parties%rowtype; v_cost int := 2;
 begin
   v_p := public._lock_party();
   perform public._require_campaign(v_p.nation_id);
+  perform public._campaign_use_once(v_p.id, v_p.nation_id, 'attack', 'an attack campaign');
   if v_p.influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
   select * into v_t from public.parties where id = p_target for update;
   if not found or v_t.nation_id <> v_p.nation_id then raise exception 'Choose a target in your nation.'; end if;
