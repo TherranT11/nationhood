@@ -496,6 +496,8 @@
   function setActions(n) {
     partyActions = n;
     setTopbarActions(n);
+    ATTN.influence = n; renderAttention();   // one source for the Influence count — updates the strip after every action
+
     // Each button carries its action cost (data-cost; default 1), so a button greys
     // out the moment you can't afford it — not just at zero.
     actionBtns.forEach(function (b) { b.disabled = n < (parseInt(b.dataset.cost, 10) || 1); });
@@ -1528,9 +1530,9 @@
       document.getElementById('lede').style.display = 'none';         // eyebrow + party name is the whole header now
       document.title = party.name + ' · Nationhood';
 
-      // Command-center attention strip: seed capacity + the campaign window now (the crises / world-
-      // event / floor-vote counts arrive from their own loaders below), then reveal it.
-      ATTN.influence = party.influence != null ? party.influence : 12;
+      // Command-center attention strip: seed the campaign window now (the crises / world-event /
+      // floor-vote counts arrive from their own loaders below; Influence is owned by setActions),
+      // then reveal it.
       var awayT = (nation && nation.next_election_tick != null) ? (nation.next_election_tick - curTick) : null;
       ATTN.campaign = !!(nation && !nation.ruling_party && awayT != null && awayT >= 1 && awayT <= 6);
       ATTN.ready = true; renderAttention();
