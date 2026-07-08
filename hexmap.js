@@ -94,13 +94,25 @@ export function drawNationMiniMap(cv, box, opts) {
       if (ed.sea) { ctx.strokeStyle = '#7fa9bd'; ctx.lineWidth = 1.6; } else { ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.2; } ctx.stroke();
     });
   }
+  // Selection ring (opts.selected = {q,r}): highlight one land hex — a dark outline with a white
+  // inner so it reads over any fill. Used by the interactive territory explorer (Party page).
+  if (o.selected) {
+    var shx = hmap[o.selected.q + ',' + o.selected.r];
+    if (shx) {
+      var sp = axialToPix(o.selected.q, o.selected.r, s, ox, oy);
+      hexPath(ctx, sp.x, sp.y, s * 0.96); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,18,14,.9)'; ctx.stroke();
+      hexPath(ctx, sp.x, sp.y, s * 0.96); ctx.lineWidth = 1.3; ctx.strokeStyle = '#fff'; ctx.stroke();
+    }
+  }
   // Placed cities (opts.cities = [{name,q,r}]). Dot always; label only when the hexes are large
   // enough to read (a zoomed-out world view shows dots alone). Uses the same s/ox/oy transform.
   if (o.cities && o.cities.length) {
     drawCityMarkers(ctx, o.cities, function (q, r) { return axialToPix(q, r, s, ox, oy); },
       { dot: Math.max(1.5, s * 0.13), labels: s >= 9, font: '600 ' + Math.max(8, Math.min(12, Math.round(s * 0.78))) + 'px Archivo' });
   }
-  return true;
+  // Truthy result (callers only test it as a boolean for the "painted any land?" check) that also
+  // carries a hit-test: hexAt(px,py) → the land-hex row at a canvas-relative point, or null (sea).
+  return { hexAt: function (px, py) { var a = pixToAxial(px, py, s, ox, oy); return hmap[a[0] + ',' + a[1]] || null; } };
 }
 
 // City markers: a small black dot (and, when there's room, the city name) at each placed city's hex
