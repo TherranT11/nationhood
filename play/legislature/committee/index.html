@@ -98,7 +98,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
-  import { esc } from '/util.js';
+  import { esc, majority } from '/util.js';
   import { partyColor } from '/archetypes.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
@@ -111,6 +111,7 @@
   var PID = new URLSearchParams(location.search).get('id');
   var ME = null, PROP = null, DEF = null, CUR_TICK = 0, ENDORSED_BY_ME = false, POLL = null, BUSY = false;
   var NAT_POLICIES = {};   // the bill nation's in-force policy options (for the "from" rung)
+  var NAT_SEATS = 0;       // the bill nation's total legislature seats — for the majority-free-push check
   var PARTY = {};          // party_id → { name, color }
   var COMMITTEE_WINDOW = 6;   // ticks a bill sits in committee — mirrors _expire_committee (schema/154)
 
@@ -163,15 +164,20 @@
     if (PROP.status !== 'committee' || !inNation) { card.hidden = true; return; }
     card.hidden = false; btns.innerHTML = ''; note.textContent = '';
     if (isProposer) {
-      var endorsed = endorseCount > 0;
+      // A majority (≥ 51% of the chamber) can carry the bill alone, so its push is free even with no
+      // endorsement — mirrors committee_push (schema/154), which uses the same _majority threshold.
+      var hasMajority = NAT_SEATS > 0 && (ME.seats || 0) >= majority(NAT_SEATS);
+      var free = endorseCount > 0 || hasMajority;
       var b = document.createElement('button');
-      b.className = 'btn btn--push' + (endorsed ? '' : ' warn');
-      b.textContent = 'Push to the Floor · ' + (endorsed ? 'Free' : '5 Influence');
+      b.className = 'btn btn--push' + (free ? '' : ' warn');
+      b.textContent = 'Push to the Floor · ' + (free ? 'Free' : '5 Influence');
       b.onclick = doPush;
       btns.appendChild(b);
-      note.textContent = endorsed
-        ? 'This bill has an endorsement — pushing it to the floor is free.'
-        : 'No endorsement yet — pushing now costs 5 Influence and −2 Party Popularity.';
+      note.textContent = hasMajority
+        ? 'Your party holds a majority — you can carry this bill alone, so pushing it to the floor is free.'
+        : endorseCount > 0
+          ? 'This bill has an endorsement — pushing it to the floor is free.'
+          : 'No endorsement yet — pushing now costs 5 Influence and −2 Party Popularity.';
     } else {
       var e = document.createElement('button');
       e.className = 'btn btn--end';
@@ -254,7 +260,7 @@
     var user = await requireUser();
     if (!user) return;
     try {
-      var { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, color, influence').eq('user_id', user.id).maybeSingle();
+      var { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, color, influence, seats').eq('user_id', user.id).maybeSingle();
       ME = party || null;
       if (ME) setTopbarActions(ME.influence);
 
@@ -265,12 +271,13 @@
       var [gsR, defR, natR, partiesR] = await Promise.all([
         supabase.from('game_state').select('current_tick').maybeSingle(),
         supabase.from('policies').select('definition').eq('id', prop.payload && prop.payload.policy_id).maybeSingle(),
-        supabase.from('nations').select('name, policies').eq('id', prop.nation_id).maybeSingle(),
+        supabase.from('nations').select('name, policies, legislature_seats').eq('id', prop.nation_id).maybeSingle(),
         supabase.from('parties').select('id, name, color, archetype').eq('nation_id', prop.nation_id)
       ]);
       CUR_TICK = (gsR.data && gsR.data.current_tick) || 0;
       DEF = defR.data && defR.data.definition;
       NAT_POLICIES = (natR.data && natR.data.policies) || {};
+      NAT_SEATS = (natR.data && natR.data.legislature_seats) || 0;
       document.getElementById('cNation').textContent = (natR.data && natR.data.name) || prop.nation_id;
       (partiesR.data || []).forEach(function (p) { PARTY[p.id] = { name: p.name, color: partyColor(p) }; });
 

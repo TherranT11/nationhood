@@ -53,12 +53,13 @@
   .empty b{display:block;color:var(--muted);font-size:15px;margin-bottom:6px}
   .empty span{display:block;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:var(--soft);margin-top:6px}
 
-  /* Two columns on wide screens — Your Nation leads (left); World Press (right) is scroll-capped so it
-     doesn't dominate the page. Below this the feeds stack, own nation first. */
+  /* Two columns on wide screens — Your Nation (left) + World Press (right), equal width. Both feeds
+     share one scroll cap so the columns are even in height and each scrolls on its own; neither can
+     run away and dominate the page. Below this the feeds stack (own nation first) and flow naturally. */
   @media(min-width:1150px){
     .phead,.feeds{max-width:1040px}
     .feeds{grid-template-columns:1fr 1fr;gap:22px}
-    #world{max-height:min(64vh,540px);overflow-y:auto;padding-right:6px}
+    #own,#world{max-height:min(64vh,540px);overflow-y:auto;padding-right:6px}
   }
   /* Mobile refresh — a tappable filter, tighter panels, and drop the descriptive subtext for room. */
   @media(max-width:820px){ .natfilter{padding:7px 10px;font-size:11px} }
