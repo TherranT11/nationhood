@@ -1,20 +1,27 @@
 // Qualitative stat ladders — the single source of truth for every nation stat's
-// word label, shared by the tutorial and the online nation pages. Index 0 = value
-// 1. All five ladders run 1–20; for Growth the low-middle (≈8–10, "Flatlining"
-// to "Ticking over") is the flat, near-zero-growth band, with contraction below
-// and expansion above. The number is the source — the word always follows it.
+// word label, shared by the tutorial and the online nation pages. Each ladder has
+// 13 bands across the 1–100 scale: band 0 = 1–8 (the worst), band 12 = 92–100 (the
+// best). For Growth the middle band (~47–54, "Stalling"→"Ticking over") is the flat,
+// near-zero-growth band, with contraction below and expansion above. The number is
+// the source — the word always follows it.
 export const STAT_LADDERS = {
-  prosperity: ['Economic collapse','Failed economy','Deep depression','Depression','Severe downturn','Struggling economy','Weak economy','Underdeveloped','Developing economy','Modest economy','Steady economy','Solid economy','Prosperous','Thriving economy','Wealthy','Affluent economy','Booming economy','Economic powerhouse','Industrial titan','Engine of the world'],
-  welfare: ['Total destitution','Widespread misery','No safety net','Deep deprivation','Bare subsistence','Hardscrabble living','Threadbare services','Minimal provision','Patchy support','Basic safety net','Adequate services','Decent provision','Strong public services','Well looked-after','Comprehensive care','Generous welfare state','Comprehensive cradle-to-grave','Universal abundance','Total social security','Want abolished'],
-  order: ['Total anarchy','Open rebellion','Lawless chaos','Rampant unrest','Crime and disorder','Fragile peace','Shaky stability','Mostly calm','Settled and stable','Law and order','Firm control','A tight grip','Strong authority','Rigid discipline','Heavy enforcement','Iron rule','Watchful state','Surveillance state','Absolute obedience','Total police state'],
-  image: ['Global pariah','Despised abroad','Disgraced reputation','Widely distrusted','Poor standing','A forgotten nobody','Quietly overlooked','Mildly regarded','Fair reputation','Respected enough','Well regarded','Rising influence','Admired abroad','Real prestige','Soft-power player','Globally admired','Cultural beacon','World-renowned','A revered power','Icon of the age'],
-  growth: ['Economic freefall','Severe contraction','Deep recession','Recession','Sharp slowdown','Shrinking','Stalling','Flatlining','Sluggish','Ticking over','Modest growth','Steady growth','Solid expansion','Healthy expansion','Strong growth','Rapid growth','Surging','Booming','Red-hot expansion','Overheating'],
+  prosperity: ['Economic collapse','Deep depression','Severe downturn','Struggling economy','Weak economy','Developing economy','Steady economy','Solid economy','Prosperous','Wealthy','Affluent economy','Economic powerhouse','Engine of the world'],
+  welfare: ['Total destitution','No safety net','Deep deprivation','Threadbare services','Minimal provision','Patchy support','Adequate services','Decent provision','Strong public services','Comprehensive care','Generous welfare state','Universal abundance','Want abolished'],
+  order: ['Total anarchy','Lawless chaos','Rampant unrest','Crime and disorder','Shaky stability','Mostly calm','Settled and stable','Law and order','Firm control','Strong authority','Heavy enforcement','Surveillance state','Total police state'],
+  image: ['Global pariah','Disgraced reputation','Widely distrusted','Poor standing','Quietly overlooked','Mildly regarded','Fair reputation','Well regarded','Rising influence','Admired abroad','Soft-power player','Globally admired','Icon of the age'],
+  growth: ['Economic freefall','Severe contraction','Deep recession','Recession','Sharp slowdown','Stalling','Ticking over','Modest growth','Steady growth','Solid expansion','Strong growth','Booming','Red-hot expansion'],
 };
+
+// The inclusive lower bound of each of the 13 bands on the 1–100 scale — band 0 is 1–8,
+// band 12 is 92–100. A value takes the highest band whose lower bound it reaches.
+const BAND_MIN = [1, 9, 16, 24, 32, 39, 47, 55, 62, 70, 78, 85, 92];
 
 export function statLabel(stat, value) {
   const rung = STAT_LADDERS[stat]; if (!rung) return null;
-  const i = Math.min(rung.length, Math.max(1, Math.round(value))) - 1; // clamp into range
-  return rung[i];
+  const v = Math.round(Number(value)) || 0;
+  let i = 0;
+  for (let b = BAND_MIN.length - 1; b >= 0; b--) { if (v >= BAND_MIN[b]) { i = b; break; } }
+  return rung[Math.min(i, rung.length - 1)];
 }
 
 // Display NAME for a stat key — the one source for stat labels. Most are just the
@@ -25,15 +32,16 @@ export function statName(key) {
   return key ? key.charAt(0).toUpperCase() + key.slice(1) : '';
 }
 
-// Colour band for a stat value — the single source for how a number maps to
-// good/warn/bad, shared by every nation view. Growth has its own thresholds
-// (contracting → bad, around the flat 10 midpoint → warn, strong → good); the
-// other ladders just turn 'good' once they're in the upper half. '' = neutral.
+// Colour band for a stat value (1–100) — the single source for how a number maps to
+// good/warn/bad, shared by every nation view. Growth has its own thresholds (contracting
+// → bad, around the flat ~50 midpoint → warn, strong → good); the other ladders just turn
+// 'good' once they're past the midpoint. '' = neutral. Thresholds mirror the yearly malaise
+// pass (schema/125): a stat under 45 fires a penalty; Growth pays a GDP dividend at 55+.
 export function statBand(stat, value) {
   if (typeof value !== 'number') return '';
-  if (value < 9) return 'bad';   // below 9 is failing (red) — the same threshold the yearly malaise penalty (schema/125) uses
-  if (stat === 'growth') return value >= 13 ? 'good' : 'warn';
-  return value >= 11 ? 'good' : '';
+  if (value < 45) return 'bad';   // below 45 is failing (red) — the malaise penalty threshold (schema/125)
+  if (stat === 'growth') return value >= 55 ? 'good' : 'warn';
+  return value >= 55 ? 'good' : '';
 }
 
 // Regime — a single 1–25 democracy↔autocracy scale. Unlike the ladders above it

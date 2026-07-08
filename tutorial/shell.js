@@ -718,8 +718,8 @@ export { STAT_LADDERS, statLabel } from '/ladders.js';
 // .nation). The home tiles, the topbar Budget, and the Draft-a-Bill projection all
 // read liveStat() so the number is computed in exactly one place.
 export const NATION_BASE = {
-  prosperity: 14, welfare: 14, growth: 9, order: 8, image: 17,
-  inflation: 13, unemployment: 9, budget: 12.4, debt: 31,
+  prosperity: 70, welfare: 70, growth: 45, order: 40, image: 85,   // national stats on the 1–100 scale (ladders.js)
+  inflation: 13, unemployment: 9, budget: 12.4, debt: 31,          // economy figures (%, ₣B) — not 1–100 stats
 };
 export function liveStat(stat, nation) {
   const base = NATION_BASE[stat] ?? 0;
@@ -808,7 +808,7 @@ export function computeCrisis(vote) {
     vote,                                   // the decisive vote, kept for record/traceability
     step: pass ? 4 : 2,                     // Select Industries Refuse to Work / Labour Vocal in the Media
     tick,
-    growth: pass ? 2 : 1,                   // Growth per tick
+    growth: pass ? 10 : 5,                  // Growth per tick (1–100 scale)
     outcome: pass ? 'nationalized' : 'refused',
     roll: { die, cha: THEO_CHARISMA, total, good },
   };
@@ -825,18 +825,18 @@ export function computeCrisis(vote) {
 // Legislature page; keep in sync until there's a shared bills module.
 const SCRIPTED_BILLS = [
   { id: 'b1', week: DEFAULT_WEEK, name: 'Energy Independence Act', aye: 40, effect: 'Energy ▲, Debt ▲', delta: { debt: 5 } },
-  { id: 'b2', week: DEFAULT_WEEK, name: 'Thirty-Five Hour Week Act', aye: 40, effect: 'Welfare ▲, Prosperity ▼, Growth ▼', delta: { welfare: 2, prosperity: -1, growth: -1 } },
-  { id: 'img', week: 24, name: 'Industrial Modernisation Bill', aye: 122, effect: 'Growth ▲, Unemployment ▼, Welfare ▲, Budget −₣23B', delta: { growth: 1, unemployment: -1, welfare: 1, budget: -23 } },
+  { id: 'b2', week: DEFAULT_WEEK, name: 'Thirty-Five Hour Week Act', aye: 40, effect: 'Welfare ▲, Prosperity ▼, Growth ▼', delta: { welfare: 10, prosperity: -5, growth: -5 } },
+  { id: 'img', week: 24, name: 'Industrial Modernisation Bill', aye: 122, effect: 'Growth ▲, Unemployment ▼, Welfare ▲, Budget −₣23B', delta: { growth: 5, unemployment: -1, welfare: 5, budget: -23 } },
 ];
 const ASSEMBLY_SEATS = { wp: 40, cu: 50, la: 44, nr: 32 }; // other-party seats (also mirrored on the Legislature page)
 const FRONT_SEATS = 114, MAJORITY = 141;
 
-// Confidence shift from the net Welfare/Prosperity of passed bills (the rules):
-// Welfare ≤ −1 → −2, ≥ +2 → +1; Prosperity ≤ −1 → −1, ≥ +3 → +1.
+// Confidence shift from the net Welfare/Prosperity of passed bills (1–100 deltas):
+// Welfare ≤ −5 → −2, ≥ +10 → +1; Prosperity ≤ −5 → −1, ≥ +15 → +1.
 function confidenceFromStats(welfare, prosperity) {
   let c = 0;
-  if (welfare <= -1) c -= 2; else if (welfare >= 2) c += 1;
-  if (prosperity <= -1) c -= 1; else if (prosperity >= 3) c += 1;
+  if (welfare <= -5) c -= 2; else if (welfare >= 10) c += 1;
+  if (prosperity <= -5) c -= 1; else if (prosperity >= 15) c += 1;
   return c;
 }
 
