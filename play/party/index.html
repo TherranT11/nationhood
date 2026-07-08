@@ -152,7 +152,7 @@
         <div class="pterr__card">
           <div class="pterr__map" id="mapBox"><canvas id="natMap"></canvas><span class="pterr__none" id="mapNone">Loading map&hellip;</span></div>
         </div>
-        <div class="hexpanel" id="hexPanel"><div class="hexpanel__hint">Select a hex on the map to see its details.</div></div>
+        <div class="hexpanel" id="hexPanel"><div class="hexpanel__hint">Select one of your hexes to see its details.</div></div>
       </div>
     </section>
   </main>
@@ -273,7 +273,7 @@
 
   function renderHexPanel(hex) {
     var el = document.getElementById('hexPanel');
-    if (!hex) { el.innerHTML = '<div class="hexpanel__hint">Select a hex on the map to see its details.</div>'; return; }
+    if (!hex) { el.innerHTML = '<div class="hexpanel__hint">Select one of your hexes to see its details.</div>'; return; }
     var mine = hex.nation_id && MAP.mine && hex.nation_id === MAP.mine;
     var tag = mine ? '<span class="hexpanel__tag hexpanel__tag--mine">Your territory</span>'
       : hex.nation_id ? '<span class="hexpanel__tag">' + esc(MAP.natName[hex.nation_id] || hex.nation_id) + '</span>'
@@ -319,7 +319,8 @@
       if (!MAP.hitAt) return;
       var rect = MAP.cv.getBoundingClientRect();
       var hex = MAP.hitAt(e.clientX - rect.left, e.clientY - rect.top);
-      MAP.opts.selected = hex ? { q: hex.q, r: hex.r } : null;   // ring the picked hex (or clear on sea)
+      if (hex && hex.nation_id !== MAP.mine) hex = null;   // strict "our territory": only your own hexes are selectable
+      MAP.opts.selected = hex ? { q: hex.q, r: hex.r } : null;   // ring the picked hex (or clear on a neighbour/sea)
       paintMap();
       renderHexPanel(hex);
     };
