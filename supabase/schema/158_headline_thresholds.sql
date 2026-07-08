@@ -60,6 +60,11 @@ begin
     when 'Unemployment' then public._to_num(p_economy->>'unemployment')
     when 'Budget'       then public._to_num(p_economy->>'budget')
     when 'Debt'         then public._to_num(p_economy->>'debt')
+    -- Debt as a % of GDP — the meaningful, nation-size-independent measure (a flat $ debt threshold
+    -- fires for every big nation and no small one). Null when GDP is unknown/zero.
+    when 'Debt to GDP'  then (select case when coalesce(n.gdp, 0) > 0
+                                          then round(public._to_num(p_economy->>'debt') / n.gdp * 100, 1) end
+                                from public.nations n where n.id = p_nation)
     when 'Income'       then public._to_num(p_economy->>'income')
     when 'Regime'       then public._to_num(p_economy->>'regime')
     when 'Tax Burden'   then public._nation_tax_burden(p_nation)

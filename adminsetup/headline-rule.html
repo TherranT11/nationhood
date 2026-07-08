@@ -163,7 +163,7 @@
   // Trigger Subject vocabulary. The familiar national + economy figures lead; then the full ministry
   // stat set (Crime, Environment, Infrastructure, Poverty, Press Freedom, …) from POLICY_STATS — the
   // ONE source in policies.js — appended and de-duped, so this list never drifts from the game's stats.
-  var LEAD_STATS=['Prosperity','Welfare','Growth','Order','Global Image','Inflation','Unemployment','Tax Burden','Budget','Income','Debt','Regime'];
+  var LEAD_STATS=['Prosperity','Welfare','Growth','Order','Global Image','Inflation','Unemployment','Tax Burden','Budget','Income','Debt','Debt to GDP','Regime'];
   var STATS=LEAD_STATS.concat(POLICY_STATS.filter(function(s){ return LEAD_STATS.indexOf(s)<0; }));
   var RESOURCES=['Energy','Food','Minerals','Goods','Services','Military','Diplomacy'];
   // The event kinds a rule can fire on — the game's real events.kind values (MIRRORS _is_newsworthy in
