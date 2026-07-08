@@ -271,6 +271,13 @@
   .attn__inf{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--soft);margin-left:auto}
   .attn__inf b{color:var(--ink)}
   @media(max-width:520px){.attn__inf{margin-left:0}}
+  /* Nation view selector + read-only ribbon (viewing another nation) */
+  .viewsel{display:flex;align-items:center;gap:8px;margin:2px 0 6px}
+  .viewsel label{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);font-weight:700}
+  .viewsel select{font-family:'Archivo',system-ui,sans-serif;font-size:13px;font-weight:700;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:6px 30px 6px 13px;cursor:pointer;-webkit-appearance:none;appearance:none;max-width:min(70vw,320px);text-overflow:ellipsis;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238d8d95' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center}
+  .viewsel select:hover{border-color:var(--soft,#8d8d95)}
+  .roribbon{display:flex;align-items:center;gap:8px;margin:10px 0 4px;padding:9px 14px;border-radius:12px;font-size:13px;font-weight:600;line-height:1.4;color:var(--indigo,#5546E8);background:color-mix(in srgb,var(--indigo,#5546E8) 9%,transparent);border:1px solid color-mix(in srgb,var(--indigo,#5546E8) 28%,transparent)}
+  .roribbon b{font-weight:800}
   .terr{margin-top:16px;display:grid;grid-template-columns:repeat(2,1fr);gap:14px;align-items:start}
   @media(max-width:760px){.terr{grid-template-columns:1fr}}
   .terr__card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
@@ -293,11 +300,17 @@
 
   <main class="main">
     <div class="topbar" id="topbar"></div>
+    <!-- Nation view selector: switch the page to view another nation read-only (map, stats,
+         cabinet, regime…). URL-driven (?view=<id>); the boot branches into foreign mode. -->
+    <div class="viewsel"><label for="natView">View</label><select id="natView"><option value="">My Nation</option></select></div>
     <div id="inactBan"></div>
     <div id="restoreBan"></div>
     <div class="kicker" id="kicker">The Instance</div>
     <h1 id="welcome">Welcome</h1>
     <p id="lede">Your party is now part of the nation.</p>
+
+    <!-- Read-only ribbon, shown only when viewing another nation (foreign view). -->
+    <div class="roribbon" id="roRibbon" hidden></div>
 
     <!-- Command-center "needs your attention" strip — a glanceable to-do row (pending decisions,
          crises, floor votes, campaign window) + your Influence to spend. Built by renderAttention. -->
@@ -1524,6 +1537,107 @@
     if (formal) document.getElementById('kicker').textContent = formal;   // eyebrow → declared formal state name
   }
 
+  // Fill the nation-view selector: "My Nation" first, then every other nation alphabetically.
+  // Selecting one navigates to /play/?view=<id> (or /play/ for your own) — the boot then branches.
+  // Returns your own nation row ({id,name,flag}) so foreign mode can keep the sidebar brand + flag.
+  async function populateNatSelector(myNationId, currentView) {
+    var sel = document.getElementById('natView'); if (!sel) return null;
+    var list = [];
+    try {
+      var r = await supabase.from('nations').select('id, name, flag').eq('dormant', false).order('name');
+      if (r.error) r = await supabase.from('nations').select('id, name, flag').order('name');   // dormant not migrated
+      list = r.data || [];
+    } catch (e) { list = []; }
+    var mine = null;
+    list.forEach(function (n) { if (n.id === myNationId) mine = n; });
+    var opts = '<option value="">★ My Nation' + (mine && mine.name ? ' — ' + esc(mine.name) : '') + '</option>';
+    list.forEach(function (n) {
+      if (n.id === myNationId) return;
+      opts += '<option value="' + esc(n.id) + '">' + esc(n.name || n.id) + '</option>';
+    });
+    sel.innerHTML = opts;
+    sel.value = (currentView && currentView !== myNationId) ? currentView : '';
+    sel.onchange = function () { location.href = sel.value ? ('/play/?view=' + encodeURIComponent(sel.value)) : '/play/'; };
+    return mine;
+  }
+
+  // Foreign (read-only) view of another nation: the nation-level panels only — snapshot + map,
+  // cabinet, regime, modifiers, initiatives (view-only), laws in progress, crises. No action bars,
+  // no "your party" cards, no attention strip. Every read here is world-readable.
+  async function renderForeignNation(nationId, curTick, gameDate, myParty, myNation) {
+    // The left-rail brand stays the player's own identity (who you are, not what you're viewing).
+    if (myParty) {
+      document.getElementById('pname').textContent = myParty.name;
+      document.getElementById('psub').textContent = ideologyLabel(myParty) + (myNation && myNation.name ? ' · ' + myNation.name : '');
+    }
+    if (myNation && myNation.flag) { var mf = document.getElementById('flag'); mf.onload = function () { mf.hidden = false; }; mf.src = myNation.flag; }
+    setTopbarActions(myParty && myParty.influence != null ? myParty.influence : 0);   // topbar Influence stays yours
+
+    // The viewed nation (world-readable). Fall back to core columns if an optional one has drifted.
+    var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, population, gdp, declarations, legislature_seats').eq('id', nationId).single();
+    var nation = nsel.data;
+    if (nsel.error) nation = (await supabase.from('nations').select('name, flag, stats, economy').eq('id', nationId).single()).data;
+    if (!nation) {
+      document.getElementById('kicker').textContent = '';
+      document.getElementById('welcome').textContent = 'Nation unavailable';
+      var le = document.getElementById('lede'); le.style.display = ''; le.textContent = 'That nation could not be loaded. Use the selector to pick another.';
+      return;
+    }
+    var nationName = nation.name || nationId;
+    document.getElementById('kicker').textContent = 'Viewing another nation';
+    document.getElementById('welcome').textContent = nationName;
+    document.getElementById('lede').style.display = 'none';
+    document.getElementById('attention').hidden = true;   // no attention strip abroad
+    document.title = nationName + ' · Nationhood';
+    feedCtx = { nationId: nationId, nation: nation, gameDate: gameDate };   // loadCrises/drawTerritory read this
+
+    var rib = document.getElementById('roRibbon');
+    rib.innerHTML = '👁 Viewing <b>' + esc(nationName) + '</b> — read-only. Switch back to <b>My Nation</b> to take actions.';
+    rib.hidden = false;
+
+    renderRegime(nation);
+
+    // Parties + active government + HoG person + declaration slots → the Nation Snapshot + map.
+    var parties = [];
+    try {
+      var pr = await supabase.from('parties').select('id, name, abbreviation, seats, archetype, color, in_government').eq('nation_id', nationId);
+      if (pr.error) pr = await supabase.from('parties').select('id, name, abbreviation, seats, archetype, in_government').eq('nation_id', nationId);
+      parties = pr.data || [];
+    } catch (e) { /* snapshot degrades */ }
+    var govt = null;
+    try { const { data } = await supabase.from('governments').select('type, formateur_party_id, formed_tick').eq('nation_id', nationId).eq('status', 'active').maybeSingle(); govt = data; } catch (e) {}
+    var hogName = '';
+    try {
+      var fpid = govt && govt.formateur_party_id;
+      if (fpid) {
+        const { data } = await supabase.from('politicians').select('first_name, last_name').eq('party_id', fpid).eq('status', 'Party Leader').order('created_at').limit(1).maybeSingle();
+        if (data) hogName = ((data.first_name || '') + ' ' + (data.last_name || '')).trim();
+      }
+    } catch (e) { /* HoG row hidden */ }
+    var slots = [];
+    try { const { data } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed, grp, sort_order').order('sort_order'); slots = data || []; } catch (e) {}
+    var slotBySlug = {}; slots.forEach(function (s) { slotBySlug[s.slug] = s; });
+    var vals = nation.declarations || {};
+    function decl(slug) { var v = slotBySlug[slug] ? declaredValue(slotBySlug[slug], vals) : ''; return (v && v !== '—') ? v : ''; }
+    renderSnapshotAndMap(nation, parties, govt, decl, nationId, hogName);
+    var formal = decl('formal_state_name'); if (formal) document.getElementById('kicker').textContent = formal;
+
+    loadCabinet(nationId).catch(function () {});
+    try { renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(nationId)); } catch (e) {}
+    fetchNationInitiatives(nationId).then(function (data) {
+      renderNationInitiatives(document.getElementById('homeInitiatives'), data, { canEnact: false, currentTick: curTick });   // view-only: no enact/deactivate controls
+    }).catch(function () {});
+    supabase.from('nation_law_implementations').select('id, implement_tick, title').eq('nation_id', nationId).order('implement_tick')
+      .then(function (r) {
+        var rows = (r && r.data) || [], panel = document.getElementById('implPanel'), el = document.getElementById('homeImpl');
+        if (!panel || !el) return;
+        if (!rows.length) { panel.hidden = true; return; }
+        el.innerHTML = rows.map(function (x) { var left = Math.max(0, (x.implement_tick || 0) - curTick); return '<div class="impl"><div class="impl__t">' + esc(x.title) + '</div><div class="impl__when">' + left + ' month' + (left === 1 ? '' : 's') + ' to take effect</div></div>'; }).join('');
+        panel.hidden = false;
+      }).catch(function () {});
+    loadCrises();   // reads feedCtx.nationId (set above); reveals its panel only if the viewed nation has any
+  }
+
   (async () => {
     if (!isConfigured) return; // local dev: leave placeholders
     const user = await requireUser();
@@ -1535,6 +1649,17 @@
       // The player's party (one per user). No party yet → send them to choose a nation.
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
+
+      // Nation-view selector (shown in both modes). If ?view targets a nation other than your own,
+      // render that nation read-only and stop — none of the your-party / action wiring below runs.
+      var VIEW_ID = new URLSearchParams(location.search).get('view');
+      if (VIEW_ID && VIEW_ID !== party.nation_id) {
+        var myNationRow = await populateNatSelector(party.nation_id, VIEW_ID);
+        await renderForeignNation(VIEW_ID, curTick, gameDate, party, myNationRow);
+        return;
+      }
+      populateNatSelector(party.nation_id, VIEW_ID);   // own mode: fill the selector in the background, don't block boot
+
       // The snapshot only needs name/flag/stats/economy; ruling_party and
       // former_ruling_party feed the one-party-restored banner. If the full select
       // errors (e.g. an older DB missing those two columns), fall back to the core
