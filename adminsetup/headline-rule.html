@@ -92,7 +92,6 @@
   .rrow .rtag.dorm{color:var(--amber);background:color-mix(in srgb,var(--amber) 14%,transparent);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent)}
   .rrow .ract{display:flex;gap:7px;flex:none}
   .listempty{border:1px dashed var(--line2);border-radius:12px;padding:26px;text-align:center;color:var(--soft);font-family:'Space Mono',monospace;font-size:12px}
-  .dormant{background:color-mix(in srgb,var(--amber) 12%,transparent);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);color:var(--amber);border-radius:10px;padding:11px 13px;font-size:12.5px;line-height:1.45;margin-bottom:14px}
 </style>
 </head>
 <body>
@@ -192,7 +191,7 @@
 
   var state={
     name:'', scope:'nation', nation:null,
-    ttype:'event',   // event triggers are live; threshold is stored-but-dormant (see the note under it)
+    ttype:'event',   // both trigger types are live; event is the default for a new rule
     // threshold fields
     subjectType:'stat', subject:'Inflation', direction:'above', value:15, held:0,
     // event fields
@@ -216,7 +215,6 @@
         .map(function(p){return '<option value="'+p[0]+'"'+(state.subjectType===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('');
       var unit = state.subjectType==='rate' ? ' pts/yr' : (state.subjectType==='stat'?'':' units');
       return '<div class="cond">'+
-        '<div class="dormant">Saved, but not firing yet — threshold triggers need live stat values, which most ministry stats don’t have yet. Use a Game event to publish now.</div>'+
         '<div class="flabel">Subject</div>'+
         '<div class="row"><div class="selw"><select id="subjType">'+subjTypeOpts+'</select></div>'+
           '<div class="selw"><select id="subj">'+subjectOptions()+'</select></div></div>'+

@@ -672,6 +672,10 @@ begin
   -- cascade, the nation slot frees up). Wall-clock, so it fires on whichever tick crosses 21 days.
   begin perform public._purge_inactive_parties();
   exception when others then raise warning 'tick %: inactive purge failed — %', v_tick, sqlerrm; end;
+  -- Headline thresholds (schema/158): after the tick's stats settle, any nation whose stat crosses a
+  -- threshold rule prints slanted headlines. Late in the tick so it reads final values; cooldown-guarded.
+  begin perform public._resolve_headline_thresholds(v_tick);
+  exception when others then raise warning 'tick %: headline thresholds failed — %', v_tick, sqlerrm; end;
   -- Party popularity snapshot (schema/147): the FINAL step — record each surviving party's
   -- settled popularity for this tick, so the Nation dashboard can draw a real approval trend.
   -- After the purge, so parties deleted this tick aren't snapshotted. Isolated like every step.

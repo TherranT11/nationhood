@@ -9,11 +9,10 @@
 -- This SUPERSEDES the plain event-body headline from schema/156 — which stays the fallback when no
 -- rule matches, so the desk is never silent.
 --
--- SCOPE OF THIS BUILD: only 'event' triggers are evaluated. 'threshold' triggers (a stat crossing a
--- value) are STORED but DORMANT — most ministry stats have no live values yet (policies.js: "authored
--- ahead of the stat backend"), so there's nothing to evaluate them against. They light up once that
--- backend exists. The event `filter` field is likewise stored but not matched (no structured event
--- data to match on yet). Both are intentional, labeled gaps — not silent no-ops.
+-- Both trigger types are live: 'event' rules fire here (on a game event) and 'threshold' rules fire
+-- from the per-tick stat sweep (schema/158) — every ministry stat is evaluable there via its stored
+-- value or its policy-driven contribution. The only remaining labeled gap is the event `filter` field
+-- (freeform, e.g. margin<20): stored but not matched, since there's no structured event data yet.
 -- ===========================================================================
 
 create table if not exists public.headline_rules (
@@ -43,24 +42,56 @@ create policy "headline_rules_admin_all" on public.headline_rules for all
 -- no separate state table to keep in sync.
 alter table public.news_headlines add column if not exists rule_id uuid references public.headline_rules (id) on delete set null;
 
--- Fill the runtime tokens in a headline. Only {nation} carries data for an event rule; the stat/number
--- tokens ({value}, {subject}, …) belong to threshold rules and light up with that backend — until then
--- they're left as authored. ONE place tokens are resolved.
-create or replace function public._headline_fill(p_text text, p_nation text)
+-- Fill the runtime tokens in a headline. {nation} always resolves; {value} + {subject} carry the
+-- crossing figure + stat name for a threshold rule (null for an event rule → left as authored).
+-- ONE place tokens are resolved. Value is trimmed of trailing zeros (16.0 → 16, 16.5 → 16.5).
+create or replace function public._headline_fill(p_text text, p_nation text, p_value numeric default null, p_subject text default null)
 returns text language plpgsql stable set search_path = public as $$
-declare v_name text;
+declare v_name text; v_out text;
 begin
   if p_text is null then return null; end if;
   select name into v_name from public.nations where id = p_nation;
-  return replace(p_text, '{nation}', coalesce(v_name, 'the nation'));
+  v_out := replace(p_text, '{nation}', coalesce(v_name, 'the nation'));
+  if p_value   is not null then v_out := replace(v_out, '{value}',   rtrim(rtrim(round(p_value, 1)::text, '0'), '.')); end if;
+  if p_subject is not null then v_out := replace(v_out, '{subject}', p_subject); end if;
+  return v_out;
 end $$;
+
+-- Publish one rule's headlines for a nation: every outlet prints its slant's variant (neutral rules
+-- rotate n1/n2/n3), tokens filled, tagged with the rule id. Returns how many were published (0 if the
+-- rule has no usable text). ONE source for firing a rule — shared by the event engine and the
+-- threshold sweep (schema/158). p_value/p_subject feed the {value}/{subject} tokens (threshold rules).
+create or replace function public._publish_rule_headlines(p_nation text, p_rule public.headline_rules, p_value numeric default null, p_subject text default null)
+returns int language plpgsql security definer set search_path = public as $$
+declare v_tick int; v_o record; v_txt text; v_variant text; v_i int := 0; v_pub int := 0;
+begin
+  select current_tick into v_tick from public.game_state where id;
+  for v_o in select * from public.news_outlets where nation_id = p_nation order by created_at loop
+    if p_rule.headline_mode = 'neutral' then v_variant := (array['n1','n2','n3'])[(v_i % 3) + 1];
+    else v_variant := v_o.slant; end if;
+    v_txt := public._headline_fill(nullif(btrim(coalesce(p_rule.headlines->>v_variant, '')), ''), p_nation, p_value, p_subject);
+    -- fall back to a written variant if this slant is blank, so no paper is left silent
+    if v_txt is null then
+      v_txt := public._headline_fill(nullif(btrim(coalesce(p_rule.headlines->>'record',
+                 p_rule.headlines->>'centre', p_rule.headlines->>'n1', '')), ''), p_nation, p_value, p_subject);
+    end if;
+    if v_txt is not null then
+      insert into public.news_headlines (nation_id, outlet_id, paper, slant, color, mono, logo, headline, game_date, tick, rule_id)
+        values (p_nation, v_o.id, v_o.name, v_o.slant, v_o.color, v_o.mono, v_o.img, v_txt, public.current_game_date(), v_tick, p_rule.id);
+      v_pub := v_pub + 1;
+    end if;
+    v_i := v_i + 1;
+  end loop;
+  return v_pub;
+end $$;
+revoke all on function public._publish_rule_headlines(text, public.headline_rules, numeric, text) from public, anon, authenticated;
 
 -- Publish the headlines for a game event: the winning event rule (by priority, off cooldown, not
 -- already fired-once) makes every outlet print its slant's variant; with no rule, fall back to the
 -- plain event-body headline (schema/156). Called by the events trigger below.
 create or replace function public._generate_event_headlines(p_nation text, p_kind text, p_body text)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_rule public.headline_rules%rowtype; v_tick int; v_o record; v_txt text; v_variant text; v_i int := 0; v_pub int := 0;
+declare v_rule public.headline_rules%rowtype; v_tick int;
 begin
   select current_tick into v_tick from public.game_state where id;
   select r.* into v_rule
@@ -78,27 +109,7 @@ begin
    limit 1;
 
   if found then
-    -- One headline per outlet, each printing its slant's variant (neutral rules rotate n1/n2/n3).
-    for v_o in select * from public.news_outlets where nation_id = p_nation order by created_at loop
-      if v_rule.headline_mode = 'neutral' then
-        v_variant := (array['n1','n2','n3'])[(v_i % 3) + 1];
-      else
-        v_variant := v_o.slant;
-      end if;
-      v_txt := public._headline_fill(nullif(btrim(coalesce(v_rule.headlines->>v_variant, '')), ''), p_nation);
-      -- fall back to a written variant if this slant is blank, so no paper is left silent
-      if v_txt is null then
-        v_txt := public._headline_fill(nullif(btrim(coalesce(v_rule.headlines->>'record',
-                   v_rule.headlines->>'centre', v_rule.headlines->>'n1', '')), ''), p_nation);
-      end if;
-      if v_txt is not null then
-        insert into public.news_headlines (nation_id, outlet_id, paper, slant, color, mono, logo, headline, game_date, tick, rule_id)
-          values (p_nation, v_o.id, v_o.name, v_o.slant, v_o.color, v_o.mono, v_o.img, v_txt, public.current_game_date(), v_tick, v_rule.id);
-        v_pub := v_pub + 1;
-      end if;
-      v_i := v_i + 1;
-    end loop;
-    if v_pub > 0 then return; end if;
+    if public._publish_rule_headlines(p_nation, v_rule) > 0 then return; end if;
     -- the winning rule had no usable headline text (misconfigured) — fall back to the plain event body
     -- rather than silence the desk. (A rule RESTING on cooldown is handled below, and stays silent.)
     perform public._publish_headline(p_nation, p_body);
