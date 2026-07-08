@@ -33,6 +33,27 @@
   .mast__edit:disabled{opacity:.5;cursor:not-allowed}
   @media(max-width:560px){.mast{flex-direction:column;align-items:flex-start;text-align:left;padding-top:52px}.mast__edit{top:14px;right:14px}}
 
+  /* Standing — the party's vital signs: approval (+ trend + sparkline), seats, Influence. */
+  .pstand{margin-top:16px}
+  .pstand__h{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft);margin:0 2px 10px}
+  .appr{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+  .appr__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .appr__v{font-size:32px;font-weight:900;letter-spacing:-.02em;margin-top:6px;color:var(--ink)}
+  .appr__trend{font-size:13px;font-weight:800;margin-left:8px;vertical-align:3px}
+  .appr__trend--up{color:var(--green,#16915a)} .appr__trend--down{color:var(--red)}
+  .appr__chart{width:100%;height:52px;display:block;margin-top:10px}
+  .srow{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  @media(max-width:520px){.srow{grid-template-columns:1fr}}
+  .scard{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+  .scard__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .scard__v{font-size:22px;font-weight:800;letter-spacing:-.01em;margin-top:8px;color:var(--ink)}
+  .scard__v small{font-weight:600;font-size:15px;color:var(--muted)}
+  .scard__meta{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--soft);margin-top:8px;font-weight:600}
+  .chamber{position:relative;height:6px;margin-top:10px;background:var(--line);border-radius:99px}
+  .chamber__fill{position:absolute;left:0;top:0;height:6px;background:var(--muted);border-radius:99px}
+  .chamber__fill--maj{background:var(--green,#16915a)}
+  .chamber__maj{position:absolute;top:-3px;height:12px;width:2px;background:var(--ink);opacity:.5;border-radius:1px}
+
   /* Edit Party modal */
   .emodal{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:18px}
   .emodal[hidden]{display:none}
@@ -76,6 +97,31 @@
       </div>
       <button class="mast__edit" id="editBtn" type="button" hidden>Edit Party · 5 Influence</button>
     </div>
+
+    <!-- Standing — vital signs, filled by renderStanding(). -->
+    <section class="pstand" id="standing" hidden>
+      <div class="pstand__h">Standing</div>
+      <div class="appr">
+        <div class="appr__k">Party Approval</div>
+        <div class="appr__v"><span id="apprVal">—</span><span class="appr__trend" id="apprTrend" hidden></span></div>
+        <svg class="appr__chart" id="apprSpark" viewBox="0 0 300 52" preserveAspectRatio="none" aria-hidden="true">
+          <line x1="0" y1="26" x2="300" y2="26" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="4 5" vector-effect="non-scaling-stroke"/>
+        </svg>
+      </div>
+      <div class="srow">
+        <div class="scard">
+          <div class="scard__k">Seats</div>
+          <div class="scard__v" id="seatVal">—</div>
+          <div class="chamber" id="chamber" hidden><span class="chamber__fill" id="chamberFill"></span><i class="chamber__maj" id="chamberMaj"></i></div>
+          <div class="scard__meta" id="seatMeta"></div>
+        </div>
+        <div class="scard">
+          <div class="scard__k">Influence</div>
+          <div class="scard__v" id="infVal">—</div>
+          <div class="scard__meta">Your action budget · banks to 100</div>
+        </div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -100,7 +146,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
-  import { esc } from '/util.js';
+  import { esc, majority } from '/util.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
@@ -129,6 +175,54 @@
     document.getElementById('mastFounded').textContent = founded;
     mast.hidden = false;
     document.title = party.name + ' · Nationhood';
+  }
+
+  // Standing — approval (+ momentum + sparkline), seats-in-chamber, and Influence.
+  function renderStanding(party, nation, series, prevPop) {
+    var raw = Number(party.popularity) || 0, appr = Math.min(100, raw);   // may be negative; only the top is clamped
+    document.getElementById('apprVal').textContent = (Math.round(appr * 10) / 10) + '%';
+    if (prevPop != null) {
+      var d = Math.round((raw - Number(prevPop)) * 10) / 10;   // truthful delta vs the previous tick's close
+      var tEl = document.getElementById('apprTrend');
+      if (d > 0) { tEl.className = 'appr__trend appr__trend--up'; tEl.textContent = '▲ ' + d.toFixed(1); tEl.hidden = false; }
+      else if (d < 0) { tEl.className = 'appr__trend appr__trend--down'; tEl.textContent = '▼ ' + Math.abs(d).toFixed(1); tEl.hidden = false; }
+    }
+    drawSparkline(series);
+
+    // Seats in context: your seats out of the whole chamber, the majority line, and govern/oppose.
+    var mySeats = party.seats || 0, total = Number(nation.legislature_seats) || 0;
+    if (total > 0) {
+      var maj = majority(total);
+      document.getElementById('seatVal').innerHTML = mySeats + ' <small>/ ' + total + '</small>';
+      var fill = document.getElementById('chamberFill');
+      fill.style.width = Math.min(100, mySeats / total * 100).toFixed(1) + '%';
+      if (mySeats >= maj) fill.classList.add('chamber__fill--maj');
+      document.getElementById('chamberMaj').style.left = Math.min(100, maj / total * 100).toFixed(1) + '%';
+      document.getElementById('chamber').hidden = false;
+      document.getElementById('seatMeta').textContent = (party.in_government ? 'In government' : 'Opposition') + ' · majority ' + maj;
+    } else {
+      document.getElementById('seatVal').textContent = String(mySeats);
+      document.getElementById('seatMeta').textContent = 'No legislature yet';
+    }
+
+    document.getElementById('infVal').textContent = Math.max(0, Math.round(Number(party.influence) || 0));
+    document.getElementById('standing').hidden = false;
+  }
+
+  // Draw the approval trajectory into the hero SVG (oldest → newest). Under 2 points, keep the dashed
+  // placeholder (same pattern as the Budget / Growth sparklines).
+  function drawSparkline(s) {
+    var svg = document.getElementById('apprSpark');
+    if (!svg || !s || s.length < 2) return;
+    var W = 300, H = 52, pad = 6, n = s.length;
+    var min = Math.min.apply(null, s), max = Math.max.apply(null, s), span = (max - min) || 1;
+    var pts = s.map(function (v, i) { return [(i / (n - 1)) * W, H - pad - ((v - min) / span) * (H - 2 * pad)]; });
+    var line = pts.map(function (p, i) { return (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join(' ');
+    var area = 'M' + pts[0][0].toFixed(1) + ' ' + H + ' ' + line.replace(/^M/, 'L') + ' L' + pts[n - 1][0].toFixed(1) + ' ' + H + ' Z';
+    svg.innerHTML =
+      '<path d="' + area + '" fill="var(--indigo-soft, rgba(107,92,255,.14))" stroke="none"/>' +
+      '<path d="' + line + '" fill="none" stroke="var(--indigo, #6b5cff)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<circle cx="' + pts[n - 1][0].toFixed(1) + '" cy="' + pts[n - 1][1].toFixed(1) + '" r="2.6" fill="var(--indigo, #6b5cff)"/>';
   }
 
   // ---- Edit Party modal ----
@@ -198,11 +292,11 @@
     if (!user) return; // redirected to login
     try {
       const { data: party, error } = await supabase.from('parties')
-        .select('id, name, abbreviation, archetype, color, logo_url, influence, created_at, nation_id')
+        .select('id, name, abbreviation, archetype, color, logo_url, influence, popularity, seats, in_government, created_at, nation_id')
         .eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
       PARTY = party;
-      const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats').eq('id', party.nation_id).single();
 
       // Fill the shared sidenav brand + the topbar Influence.
       document.getElementById('pname').textContent = party.name;
@@ -220,6 +314,16 @@
 
       renderMasthead(party, leaderName, leaderAge);
       var eb = document.getElementById('editBtn'); eb.hidden = false; eb.onclick = openEdit;
+
+      // Standing — approval history (schema/147, world-readable) feeds the sparkline + the ▲/▼ delta.
+      var series = [], prevPop = null;
+      try {
+        const { data: pph } = await supabase.from('party_popularity_history')
+          .select('tick, popularity').eq('party_id', party.id).order('tick', { ascending: true });
+        series = (pph || []).map(function (r) { return Number(r.popularity); }).filter(isFinite);
+        if (series.length >= 2) prevPop = series[series.length - 2];   // previous tick's close = the trend baseline
+      } catch (e) { /* no history yet → flat approval, no sparkline */ }
+      renderStanding(party, nation || {}, series, prevPop);
     } catch (e) { /* chrome still renders */ }
   })();
 </script>
