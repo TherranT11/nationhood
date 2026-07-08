@@ -170,7 +170,7 @@
             refresh();
             return;
           }
-          window.location.replace('/play/');   // already have a party → your instance
+          window.location.replace('/play/news/');   // already have a party → your Home (news desk)
           return;
         }
 
@@ -268,7 +268,7 @@
         if (error || !created) { fail('That name or abbreviation is already taken in this nation.'); return; }
         if (refound) { try { await supabase.rpc('party_relaunch'); } catch (e) { /* flag clears on next relaunch attempt */ } }  // retire the relaunch prompt
         else await seedLeader(created.id);  // a brand-new party gets its Party Leader (a relaunch already has one)
-        window.location.href = '/play/';
+        window.location.href = '/play/news/';
       } catch (e) {
         fail('Something went wrong. Try again.');
       }
