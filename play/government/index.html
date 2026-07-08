@@ -223,17 +223,19 @@
     return identityBox + citiesBox(CITIES, nation.population, declValue('capital_name'), MAYOR_ABBR);
   }
 
-  // State-of-the-Nation ministry stats — grouped placeholder cards (values are "--" until the
-  // backend is built). One collapsible group per ministry cluster, mirroring the tutorial.
+  // State-of-the-Nation ministry stats — one collapsible group per ministry cluster. Each cell
+  // computes from the nation's admin-authored ministry_stats base + in-force policy contributions
+  // (policies.js), so a cell shows "--" only when nothing has set it. Every POLICY_STATS entry is
+  // placed in a group here, so any stat an admin can author (or a policy can target) actually surfaces.
   var STAT_GROUPS = [
     { name: 'Head of Government', stats: ['Budget Balance', 'Growth', 'Bureaucracy'] },
     { name: 'Finance', stats: ['Tax Burden', 'Public Debt', 'Interest Rates'] },
-    { name: 'Interior', stats: ['Crime', 'Immigration', 'Extremism'] },
-    { name: 'Economy', stats: ['Unemployment', 'Poverty', 'Wages'] },
-    { name: 'Labor, Health and Social Affairs', stats: ['Prosperity', 'Press Freedom', 'Social Integration'] },
-    { name: 'Society', stats: ['Rule of Law', 'Standard of Living', 'Housing Affordability'] },
+    { name: 'Interior', stats: ['Crime', 'Immigration', 'Extremism', 'Birth Rate', 'Demographic Pressure'] },
+    { name: 'Economy', stats: ['Unemployment', 'Poverty', 'Wages', 'Innovation', 'Infrastructure'] },
+    { name: 'Labor, Health and Social Affairs', stats: ['Prosperity', 'Press Freedom', 'Social Integration', 'Health', 'Education', 'Pension Quality'] },
+    { name: 'Society', stats: ['Rule of Law', 'Standard of Living', 'Housing Affordability', 'Equity Between Generations'] },
     { name: 'Defense', stats: ['Armed Forces Funding', 'Military Research', 'Cybersecurity'] },
-    { name: 'Environment', stats: ['CO₂ Emissions', 'Global Warming', 'Energy Availability'] }
+    { name: 'Environment', stats: ['CO₂ Emissions', 'Global Warming', 'Energy Availability', 'Environment'] }
   ];
   // Budget Balance is the one ministry stat with its own screen (/play/budget/) — a
   // slug→href map keeps that special-case out of the generic cell loop.
