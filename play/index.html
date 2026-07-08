@@ -348,6 +348,13 @@
   </div>
 </div>
 
+<div class="amodal" id="industrializeModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Industrialize</b><button class="amodal__x" id="industrializeClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list" id="industrializeBody"><p class="empty">Loading…</p></div>
+  </div>
+</div>
+
 <div class="amodal" id="deployModal" hidden>
   <div class="amodal__panel">
     <div class="amodal__hd"><b>Deploy the Military</b><button class="amodal__x" id="deployClose" type="button" aria-label="Close">&times;</button></div>
@@ -1173,13 +1180,65 @@
     if (!isEconDevMin) { el.innerHTML = ''; return; }
     el.innerHTML = '<section class="panel leadbar">' +
       '<div class="glance-hd"><span>Minister of Economic Development &middot; This Week’s Action</span></div>' +
-      '<p class="leadbar__sub">Your party holds the Economic Development portfolio. Launch a national initiative to permanently raise a production output.</p>' +
+      '<p class="leadbar__sub">Your party holds the Economic Development portfolio. Launch a national initiative to permanently raise a production output, or industrialize raw stock into finished Goods.</p>' +
       '<div class="leadbar__grid">' +
         '<button class="lead" type="button" id="econdev-initiative" data-cost="2"><b>Initiative</b><span class="lead__lane">National Initiatives</span><span class="lead__desc">Enact a national programme — a lasting boost to a resource.</span></button>' +
+        '<button class="lead" type="button" id="econdev-industrialize" data-cost="2"><b>Industrialize</b><span class="lead__lane">Production</span><span class="lead__desc">Forge Goods from raw stock — 1 Energy + 1 Mineral + 2 Influence each.</span></button>' +
       '</div></section>';
     el.querySelectorAll('.lead').forEach(stampCost);
     var b = document.getElementById('econdev-initiative');
     if (b) b.addEventListener('click', function () { var t = document.getElementById('homeInitiatives'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+    var ind = document.getElementById('econdev-industrialize');
+    if (ind) { actionBtns.push(ind); ind.addEventListener('click', function () { if (!ind.disabled) openIndustrialize(); }); }
+  }
+
+  // INDUSTRIALIZE — the Minister of Economic Development forges finished Goods from raw stock: each
+  // Good burns 1 Energy + 1 Mineral (on_hand) and costs 2 Influence. The quantity is capped by
+  // whichever runs out first — Energy, Minerals or Influence. Fires economy_industrialize (schema/114,
+  // the server is authoritative) through performAction, which spends the action budget and toasts.
+  var industrializeModal = document.getElementById('industrializeModal');
+  var closeIndustrialize = wireModalClose(industrializeModal, 'industrializeClose');
+  var IND = { energy: 0, minerals: 0, goods: 0, qty: 1 };
+  function openIndustrialize() {
+    if (acting || !feedCtx) return;
+    document.getElementById('industrializeBody').innerHTML = '<p class="empty">Loading…</p>';
+    industrializeModal.hidden = false;
+    loadIndustrialize();
+  }
+  async function loadIndustrialize() {
+    try {
+      const { data: nrow } = await supabase.from('nations').select('on_hand').eq('id', feedCtx.nationId).maybeSingle();
+      var oh = (nrow || {}).on_hand || {};
+      IND.energy = Number(oh.energy) || 0; IND.minerals = Number(oh.minerals) || 0; IND.goods = Number(oh.goods) || 0;
+      IND.qty = 1;
+      renderIndustrialize();
+    } catch (e) { document.getElementById('industrializeBody').innerHTML = '<p class="empty">Couldn’t load. Try again.</p>'; }
+  }
+  function indMax() { return Math.max(0, Math.min(IND.energy, IND.minerals, Math.floor(partyActions / 2))); }
+  function renderIndustrialize() {
+    var body = document.getElementById('industrializeBody'), max = indMax();
+    IND.qty = Math.max(max > 0 ? 1 : 0, Math.min(IND.qty, max));
+    var costInf = 2 * IND.qty;
+    var costLine = max < 1
+      ? '<p class="exp-warn">' + (partyActions < 2 ? 'Not enough Influence — each Good costs 2.'
+          : (IND.energy < 1 ? 'No Energy on hand to industrialize.' : 'No Minerals on hand to industrialize.')) + '</p>'
+      : '<div class="exp-cost">Cost: <b>' + IND.qty + ' Energy · ' + IND.qty + ' Minerals · ' + costInf + ' Influence</b> → <b>+' + IND.qty + ' Goods</b></div>';
+    body.innerHTML =
+      '<div class="u-status">On hand: <b>' + IND.energy + ' Energy</b> · <b>' + IND.minerals + ' Minerals</b> · <b>' + IND.goods + ' Goods</b> — you have <b>' + partyActions + ' Influence</b></div>' +
+      '<label class="exp-lab">How many Goods to create</label>' +
+      '<div class="exp-step"><button type="button" id="indMinus"' + (IND.qty <= 1 ? ' disabled' : '') + '>−</button><span id="indQty">' + IND.qty + '</span>' +
+        '<button type="button" id="indPlus"' + (IND.qty >= max ? ' disabled' : '') + '>+</button><span class="exp-max">max ' + max + '</span></div>' +
+      costLine +
+      '<div class="noco__btns"><button class="noco__btn noco__cancel" id="indCancel" type="button">Cancel</button>' +
+        '<button class="noco__btn noco__confirm" id="indGo" type="button"' + (max > 0 ? '' : ' disabled') + '>Create ' + IND.qty + ' Good' + (IND.qty === 1 ? '' : 's') + '</button></div>';
+    document.getElementById('indMinus').onclick = function () { if (IND.qty > 1) { IND.qty--; renderIndustrialize(); } };
+    document.getElementById('indPlus').onclick = function () { if (IND.qty < indMax()) { IND.qty++; renderIndustrialize(); } };
+    document.getElementById('indCancel').onclick = closeIndustrialize;
+    document.getElementById('indGo').onclick = function () {
+      var qty = IND.qty; if (qty < 1) return; closeIndustrialize();
+      performAction(function () { return supabase.rpc('economy_industrialize', { p_goods: qty }); },
+        function (d) { var n = d.goods || qty; return 'Industrialized — +' + n + ' Good' + (n === 1 ? '' : 's') + '.'; });
+    };
   }
 
   // The Minister of Defence container — shown only to the party holding the Defence
