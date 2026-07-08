@@ -1,5 +1,9 @@
 -- ===========================================================================
 -- Seed: a wide spread of THRESHOLD headline rules, one variant per paper slant.
+-- PREREQUISITE: apply schema_all.sql FIRST — it creates public.headline_rules (schema/157) and the
+-- news tables this seed and the engine depend on. Running the seed against a DB that hasn't had the
+-- schema applied fails with: relation "public.headline_rules" does not exist.
+--
 -- Global scope (nation_id null) → they apply in every nation; each nation's papers print the variant
 -- matching their slant. Fires from the per-tick sweep (schema/158) on each stat's STORED value — the
 -- same 1..100 number the admin authors and the player sees (ministry_stats, schema/150; the national

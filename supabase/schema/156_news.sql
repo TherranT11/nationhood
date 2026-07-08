@@ -75,8 +75,11 @@ drop policy if exists "news_headlines_select_all" on public.news_headlines;
 create policy "news_headlines_select_all" on public.news_headlines for select using (true);
 create index if not exists news_headlines_recent on public.news_headlines (created_at desc);
 
--- Publish one headline for a nation, attributed to ONE of its outlets (rotated by the headline
--- text so different stories surface different papers). No-op if the nation has no outlets yet.
+-- Publish one plain, OBJECTIVE headline (an event body: a bill endorsed in committee, demand
+-- settled, goods bought…) for a nation — carried by its Paper of Record only. Objective facts
+-- belong to the record; the slanted papers weigh in only when a headline rule gives them a take
+-- (_publish_rule_headlines, all outlets). So the same factual line never repeats across every paper.
+-- Falls back to one deterministic outlet if a nation has no record-slant paper. No-op if it has none.
 create or replace function public._publish_headline(p_nation text, p_headline text)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_o public.news_outlets%rowtype; v_tick int;
@@ -84,7 +87,7 @@ begin
   if p_headline is null or btrim(p_headline) = '' then return; end if;
   select * into v_o from public.news_outlets
    where nation_id = p_nation
-   order by md5(p_headline || id::text) limit 1;
+   order by (slant = 'record') desc, md5(p_headline || id::text) limit 1;
   if not found then return; end if;   -- no papers in this nation → nothing to print
   select current_tick into v_tick from public.game_state where id;
   insert into public.news_headlines (nation_id, outlet_id, paper, slant, color, mono, logo, headline, game_date, tick)

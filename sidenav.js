@@ -84,8 +84,9 @@ const CSS = `
 
 function svgEl(inner) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + inner + '</svg>'; }
 
-// Active = the item whose href matches the current path. Home only matches the index
-// itself; every other section also matches its sub-pages (e.g. /play/legislature/bill/).
+// Active = the item whose href matches the current path. The /play/ index (Nation) matches
+// only itself; every other section — Home (/play/news/) included — also matches its sub-pages
+// (e.g. /play/legislature/bill/).
 function isActive(path, href) {
   if (!href) return false;
   if (href === '/play/') return path === '/play/' || path === '/play';
