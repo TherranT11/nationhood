@@ -204,6 +204,57 @@ begin
 end $$;
 grant execute on function public.economy_import(text, text, int) to authenticated;
 
+-- Does the SIGNED-IN player's party hold the Economic Development portfolio? The client gate
+-- for the Industrialize action on the Economy page; the server stays authoritative in
+-- economy_industrialize. Reuses _party_holds_ministry — one source.
+create or replace function public.is_econdev_minister()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select public._party_holds_ministry(id, 'Economic Development') from public.parties where user_id = auth.uid()), false);
+$$;
+grant execute on function public.is_econdev_minister() to authenticated;
+
+-- Industrialize: the MINISTER OF ECONOMIC DEVELOPMENT turns raw inputs into finished Goods —
+-- each Good forged burns 1 Energy + 1 Mineral from on-hand stock and costs 2 Influence. On-hand
+-- must cover the inputs and the party must hold the Influence; the stock swaps in place (energy
+-- and minerals down, goods up) with no money changing hands. The economy page previews on-hand;
+-- the counts are re-read here so a stale client can't over-mint.
+create or replace function public.economy_industrialize(p_goods int)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_p public.parties%rowtype; v_nation text; v_cost int; v_name text;
+  v_energy numeric; v_minerals numeric;
+begin
+  if coalesce(p_goods, 0) < 1 then raise exception 'Choose how many Goods to create.'; end if;
+  v_cost := 2 * p_goods;
+
+  v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
+  v_nation := v_p.nation_id;
+  if not public._party_holds_ministry(v_p.id, 'Economic Development') then
+    raise exception 'Only the Minister of Economic Development can industrialize.'; end if;
+  if v_p.influence < v_cost then
+    raise exception 'Not enough Influence (need % for % Goods).', v_cost, p_goods; end if;
+
+  -- Lock the nation row so two concurrent runs can't both pass the stock check and overdraw it.
+  select name, coalesce((on_hand->>'energy')::numeric, 0), coalesce((on_hand->>'minerals')::numeric, 0)
+    into v_name, v_energy, v_minerals
+    from public.nations where id = v_nation for update;
+  if v_energy < p_goods then raise exception 'Not enough Energy (need %, have %).', p_goods, v_energy; end if;
+  if v_minerals < p_goods then raise exception 'Not enough Minerals (need %, have %).', p_goods, v_minerals; end if;
+
+  perform public._nation_stat_add(v_nation, 'on_hand', 'energy',   -p_goods, 0, null);
+  perform public._nation_stat_add(v_nation, 'on_hand', 'minerals', -p_goods, 0, null);
+  perform public._nation_stat_add(v_nation, 'on_hand', 'goods',     p_goods, 0, null);
+  update public.parties set influence = influence - v_cost where id = v_p.id;
+
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_nation, v_p.id, 'economy',
+      'Nation of ' || v_name || ' has continued to industrialize, creating ' || p_goods || ' goods.',
+      public.current_game_date());
+
+  return jsonb_build_object('goods', p_goods, 'cost', v_cost, 'actions', v_p.influence - v_cost);
+end $$;
+grant execute on function public.economy_industrialize(int) to authenticated;
+
 -- Advance Society: invest in living standards for +1 Prosperity. Costs (Prosperity ÷ 5 + 5)
 -- Goods from on-hand — the richer you are, the dearer it gets — and may be done once per
 -- year. Head-of-government gated. The once-a-year lock is a year stamp that auto-expires.

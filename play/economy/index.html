@@ -251,6 +251,21 @@
   </div>
 </div>
 
+<!-- INDUSTRIALIZE MODAL -->
+<div class="overlay" id="indOverlay">
+  <div class="tmodal">
+    <div class="tm-h"><button class="tclose" id="indClose">✕</button>
+      <div class="tm-mode">Industrialize</div><div class="tm-title">Forge Goods</div>
+      <div class="tm-sub">Each Good burns 1 Energy + 1 Mineral and costs 2 Influence.</div></div>
+    <div class="tm-body">
+      <div class="tlabel">Goods to create</div>
+      <div class="qty"><div class="stepper"><button id="iMinus">−</button><span class="v" id="iV">1</span><button id="iPlus">+</button></div><span class="avail" id="iAvail"></span></div>
+      <div class="deal" id="indDeal"></div>
+      <button class="confirm" id="indConfirm">Industrialize</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -370,7 +385,21 @@
     var advance = '<div class="actcard' + (advanced ? ' done' : '') + '"><div class="pt">Advance Society <span class="hogtag">Head of Government action only</span></div>' +
       '<div class="pd">Invest beyond upkeep to raise living standards: <b>Prosperity +1</b>. The richer you are, the dearer it gets. Once a year.</div>' +
       '<div class="cost">Cost: ' + advCost + ' Goods (Prosperity ÷ 5 + 5) · have ' + fmt(goods) + '</div>' + advBtn + '</div>';
-    return '<div class="develop">' + produce + advance + '</div>';
+    // Industrialize — Minister of Economic Development: forge Goods from Energy + Minerals.
+    var industrialize = '';
+    if (STATE.isEconDev) {
+      var energy = num(on.energy), minerals = num(on.minerals), inf = num(STATE.party.influence);
+      var maxGoods = Math.min(energy, minerals, Math.floor(inf / 2));
+      var indBtn = '<button class="actbtn" id="industrializeBtn"' + (maxGoods >= 1 ? '' : ' disabled') + '>' +
+        (energy < 1 || minerals < 1 ? 'Need Energy & Minerals' : (inf < 2 ? 'Need 2 Influence' : 'Industrialize')) + '</button>';
+      industrialize = '<div class="actcard"><div class="pt">Industrialize <span class="hogtag">Minister of Economic Development action only</span></div>' +
+        '<div class="pd">Forge finished <b>Goods</b> from raw stock — each Good burns 1 Energy + 1 Mineral. Costs 2 Influence per Good.' +
+        '<div class="onhand"><span class="oh"><span class="rd" style="background:var(--energy)"></span><b>' + fmt(energy) + '</b> <span class="rk">Energy</span></span>' +
+        '<span class="oh"><span class="rd" style="background:var(--minerals)"></span><b>' + fmt(minerals) + '</b> <span class="rk">Minerals</span></span>' +
+        '<span class="oh"><span class="rd" style="background:var(--goods)"></span><b>' + fmt(num(on.goods)) + '</b> <span class="rk">Goods</span></span></div></div>' +
+        '<div class="cost">Cost: 1 Energy + 1 Mineral + 2 Influence per Good · Influence ' + fmt(inf) + '</div>' + indBtn + '</div>';
+    }
+    return '<div class="develop">' + produce + advance + industrialize + '</div>';
   }
 
   function worldMarkets(){
@@ -536,6 +565,7 @@
     document.querySelectorAll('[data-draw]').forEach(function(b){ b.onclick = function(){ if (!b.disabled) openDraw(b.dataset.draw); }; });
     var pb = document.getElementById('produceBtn'); if (pb) pb.onclick = function(){ produce(pb); };
     var ab = document.getElementById('advanceBtn'); if (ab) ab.onclick = function(){ advance(ab); };
+    var ib = document.getElementById('industrializeBtn'); if (ib) ib.onclick = function(){ if (!ib.disabled) openIndustrialize(); };
     document.querySelectorAll('[data-import]').forEach(function(b){ b.onclick = function(){ openImport(b.dataset.import); }; });
     document.querySelectorAll('[data-sort]').forEach(function(b){ b.onclick = function(){ STATE.sortKey = b.dataset.sort; render(); }; });
     document.querySelectorAll('[data-lsort]').forEach(function(b){ b.onclick = function(){ STATE.ledgerSort = b.dataset.lsort; render(); }; });
@@ -738,6 +768,40 @@
   document.getElementById('drawClose').onclick = closeDraw;
   document.getElementById('drawOverlay').onclick = function(e){ if (e.target === this) closeDraw(); };
 
+  /* ===== INDUSTRIALIZE MODAL — forge Goods from Energy + Minerals ===== */
+  var I = { qty:1 };
+  function indMax(){ var on = STATE.nation.on_hand || {}; return Math.max(0, Math.min(num(on.energy), num(on.minerals), Math.floor(num(STATE.party.influence) / 2))); }
+  function openIndustrialize(){ I.qty = 1; document.getElementById('indOverlay').classList.add('show'); renderIndDeal(); }
+  function closeIndustrialize(){ document.getElementById('indOverlay').classList.remove('show'); }
+  function renderIndDeal(){
+    var mx = indMax(); if (I.qty > mx) I.qty = Math.max(1, mx);
+    var on = STATE.nation.on_hand || {}, inf = num(STATE.party.influence);
+    document.getElementById('iV').textContent = I.qty;
+    document.getElementById('iAvail').textContent = mx + ' possible (limited by Energy, Minerals or Influence)';
+    document.getElementById('iPlus').disabled = I.qty >= mx; document.getElementById('iMinus').disabled = I.qty <= 1;
+    document.getElementById('indDeal').innerHTML =
+      '<div class="drow"><span>You create</span><span class="dv">' + I.qty + ' Goods</span></div>' +
+      '<div class="drow"><span>Burns</span><span class="dv">' + I.qty + ' Energy + ' + I.qty + ' Minerals</span></div>' +
+      '<div class="drow total"><span>Influence cost</span><span class="dv">' + (2 * I.qty) + '</span></div>' +
+      '<div class="relnote">On hand: ' + fmt(num(on.energy)) + ' Energy · ' + fmt(num(on.minerals)) + ' Minerals · ' + fmt(inf) + ' Influence.</div>';
+    var btn = document.getElementById('indConfirm');
+    btn.disabled = mx < 1;
+    btn.textContent = mx < 1 ? 'Not enough to industrialize' : 'Create ' + I.qty + ' Goods · ' + (2 * I.qty) + ' Influence';
+  }
+  async function confirmIndustrialize(){
+    var btn = document.getElementById('indConfirm'); btn.disabled = true;
+    var { error } = await supabase.rpc('economy_industrialize', { p_goods: I.qty });
+    if (error) { ping('<b class="red">' + esc(error.message) + '</b>'); btn.disabled = false; return; }
+    closeIndustrialize();
+    ping('Industrialized — <b class="green">+' + I.qty + ' Goods</b>.');
+    await reload();
+  }
+  document.getElementById('iPlus').onclick = function(){ if (I.qty < indMax()) { I.qty++; renderIndDeal(); } };
+  document.getElementById('iMinus').onclick = function(){ if (I.qty > 1) { I.qty--; renderIndDeal(); } };
+  document.getElementById('indConfirm').onclick = function(){ if (!this.disabled) confirmIndustrialize(); };
+  document.getElementById('indClose').onclick = closeIndustrialize;
+  document.getElementById('indOverlay').onclick = function(e){ if (e.target === this) closeIndustrialize(); };
+
   (async () => {
     if (!isConfigured) { fail('Supabase isn’t configured.'); return; }
     const user = await requireUser();
@@ -753,6 +817,7 @@
         .select('formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
       const { data: gs } = await supabase.from('game_state').select('current_tick').single();
       const { data: tradeMin } = await supabase.rpc('is_trade_minister');   // does my party hold Trade?
+      const { data: econDevMin } = await supabase.rpc('is_econdev_minister');   // does my party hold Economic Development?
       const { data: tp } = await supabase.rpc('nation_trade_policy', { p_nation: party.nation_id });   // in-force trade rung
       const { data: flows } = await supabase.from('trade_flows').select('exporter_id, importer_id, resource, value');   // World Trade ledger
       const { data: sanc } = await supabase.from('sanctions').select('by_nation, target_nation, active')   // active embargoes touching this nation
@@ -773,6 +838,7 @@
         nation: nation, party: party, nations: nations || [nation],
         isHog: !!(gov && gov.formateur_party_id && gov.formateur_party_id === party.id),
         isTradeMin: tradeMin === true,
+        isEconDev: econDevMin === true,
         trade: tp || { importMult: 1, tariff: 0, blocked: false, name: 'Managed Trade' },
         flows: flows || [],
         sanctions: sancSets(sanc, party.nation_id),
