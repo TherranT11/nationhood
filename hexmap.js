@@ -94,7 +94,38 @@ export function drawNationMiniMap(cv, box, opts) {
       if (ed.sea) { ctx.strokeStyle = '#7fa9bd'; ctx.lineWidth = 1.6; } else { ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.2; } ctx.stroke();
     });
   }
+  // Placed cities (opts.cities = [{name,q,r}]). Dot always; label only when the hexes are large
+  // enough to read (a zoomed-out world view shows dots alone). Uses the same s/ox/oy transform.
+  if (o.cities && o.cities.length) {
+    drawCityMarkers(ctx, o.cities, function (q, r) { return axialToPix(q, r, s, ox, oy); },
+      { dot: Math.max(1.5, s * 0.13), labels: s >= 9, font: '600 ' + Math.max(8, Math.min(12, Math.round(s * 0.78))) + 'px Archivo' });
+  }
   return true;
+}
+
+// City markers: a small black dot (and, when there's room, the city name) at each placed city's hex
+// centre. `cities` = [{ name, q, r }] — rows with a null q/r (unplaced) are skipped. `toPix(q,r)`
+// returns the on-screen centre for the caller's current transform/zoom. Several cities in one hex are
+// spread vertically so they don't stack. The label carries a white halo so it reads over any hex fill.
+// ONE source, shared by the admin World Map editor and the nation-page mini-map.
+export function drawCityMarkers(ctx, cities, toPix, opts) {
+  var o = opts || {}, dot = o.dot || 2.4, labels = o.labels !== false, font = o.font || '600 10px Archivo';
+  var byHex = {};
+  (cities || []).forEach(function (c) { if (c.q == null || c.r == null) return; var k = c.q + ',' + c.r; (byHex[k] = byHex[k] || []).push(c); });
+  ctx.save();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.font = font; ctx.lineJoin = 'round';
+  Object.keys(byHex).forEach(function (k) {
+    var g = byHex[k], base = toPix(g[0].q, g[0].r), n = g.length, step = dot * 2 + (labels ? 11 : 4);
+    g.forEach(function (c, i) {
+      var cx = base.x, cy = base.y + (i - (n - 1) / 2) * step;
+      ctx.beginPath(); ctx.arc(cx, cy, dot, 0, Math.PI * 2); ctx.fillStyle = '#15151b'; ctx.fill();
+      if (labels && c.name) {
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(c.name, cx, cy + dot + 1);
+        ctx.fillStyle = '#15151b'; ctx.fillText(c.name, cx, cy + dot + 1);
+      }
+    });
+  });
+  ctx.restore();
 }
 
 function corner(cx, cy, s, i) { var a = Math.PI / 180 * (60 * i - 90); return { x: cx + s * Math.cos(a), y: cy + s * Math.sin(a) }; }

@@ -24,6 +24,12 @@ create index if not exists cities_nation_idx on public.cities (nation_id);
 -- Drop the early capital flag if a prior apply created it: the capital is derived from the
 -- 'capital_name' declaration now (one source), not stored per city.
 alter table public.cities drop column if exists is_capital;
+-- Optional map placement: the world_hexes cell (axial q, r) a city sits on. Null = unplaced. Set in
+-- the adminsetup World Map editor (only ever a hex of the city's own nation); rendered as a small
+-- black dot + label on the editor canvas and the nation-page mini-map. Still pure flavour — nothing
+-- in the tick reads it.
+alter table public.cities add column if not exists q int;
+alter table public.cities add column if not exists r int;
 
 -- RLS: world-readable (cities show on the public Nation page); admin writes only —
 -- mirrors the declarations table. Players never write cities from the client.
