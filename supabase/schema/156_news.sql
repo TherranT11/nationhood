@@ -117,13 +117,39 @@ drop trigger if exists trg_event_to_headline on public.events;
 create trigger trg_event_to_headline after insert on public.events
   for each row execute function public._event_to_headline();
 
--- Seed a small press per nation so headlines have papers to print and the World Press isn't bare.
--- Guarded per (nation, name) so re-running never duplicates. Admin can add/edit more in the News tab.
+-- Seed a small press per nation (record / left / right) so headlines have papers to print. Where a
+-- nation has a real-world cultural analog, its three papers are named after that country's press;
+-- every other nation (e.g. Severia) keeps the generic "<Nation> Times / Chronicle / Post". ONE source
+-- for outlet seeding. Idempotent AND self-correcting: a mapped nation's still-generic paper is renamed
+-- to its analog on apply, and any missing canonical paper is inserted — keyed by (nation, slant), so
+-- re-running never duplicates and admin-added papers are left untouched. Admin can add/edit in News.
+with names (nation_name, slant, paper) as (values
+  ('Sessau','record','Le Monde'),              ('Sessau','left','Libération'),            ('Sessau','right','Le Figaro'),                  -- France
+  ('Al-Qadir','record','Tishreen'),            ('Al-Qadir','left','Al-Thawra'),           ('Al-Qadir','right','Al-Watan'),                 -- Syria
+  ('Laurentia','record','The Globe and Mail'), ('Laurentia','left','Toronto Star'),       ('Laurentia','right','National Post'),           -- Canada
+  ('Wesmore','record','The Times'),            ('Wesmore','left','The Guardian'),         ('Wesmore','right','The Telegraph'),             -- UK
+  ('Calcordia','record','The Independent'),    ('Calcordia','left','Daily Mirror'),       ('Calcordia','right','Daily Mail'),              -- UK
+  ('Vesperia','record','The New York Times'),  ('Vesperia','left','The Washington Post'), ('Vesperia','right','The Wall Street Journal'),  -- USA
+  ('Montequilla','record','El Comercio'),      ('Montequilla','left','El Telégrafo'),     ('Montequilla','right','El Universo')            -- Ecuador
+),
+canon (slant, suffix, color) as (values ('record','Times','#c9c9d4'), ('left','Chronicle','#e0575a'), ('right','Post','#3f9fe0')),
+-- Rename a mapped nation's still-generically-named paper to its analog (data-modifying CTE: runs even
+-- though the INSERT below doesn't reference it). Only the seeded "<Nation> <Suffix>" name is matched,
+-- so a paper an admin renamed by hand is never clobbered.
+renamed as (
+  update public.news_outlets o set name = nm.paper
+    from public.nations n
+    join names nm on lower(nm.nation_name) = lower(n.name)
+    join canon c on c.slant = nm.slant
+   where o.nation_id = n.id and o.slant = nm.slant and o.name = n.name || ' ' || c.suffix
+  returning o.id
+)
 insert into public.news_outlets (nation_id, name, slant, color)
-select n.id, n.name || ' ' || v.suffix, v.slant, v.color
-from public.nations n
-cross join (values ('Times','record','#c9c9d4'), ('Chronicle','left','#e0575a'), ('Post','right','#3f9fe0')) as v(suffix, slant, color)
-where not exists (select 1 from public.news_outlets o where o.nation_id = n.id and o.name = n.name || ' ' || v.suffix);
+select n.id, coalesce(nm.paper, n.name || ' ' || c.suffix), c.slant, c.color
+  from public.nations n
+  cross join canon c
+  left join names nm on lower(nm.nation_name) = lower(n.name) and nm.slant = c.slant
+ where not exists (select 1 from public.news_outlets o where o.nation_id = n.id and o.slant = c.slant);
 
 -- One-time backfill: seed headlines from recent existing events so the desk has content on first
 -- load. Runs only while the table is empty, so re-applying the schema never re-seeds or duplicates.
