@@ -578,6 +578,16 @@
         document.getElementById('candnote').innerHTML = ruling
           ? 'The next <b>Party Congress</b> of ' + esc(ruling) + ' convenes <b>' + when + '</b> (' + inText + '). Factions contend for standing within the party, not seats at a public ballot.'
           : projNote + 'The next general election is set for <b>' + when + '</b> (' + inText + ').';
+      } else if (nextTick != null) {
+        // Due now: a snap election was called (next_election_tick pulled to the current tick), or a
+        // scheduled election's tick has arrived. resolve_election runs on the next tick — so this is
+        // imminent, NOT "not scheduled". Without this branch a called election reads as unscheduled.
+        document.getElementById('nextDate').textContent = ruling ? 'Congress imminent' : 'Election imminent';
+        document.getElementById('nextIn').textContent = 'Polls open at the next tick';
+        document.getElementById('termNote').textContent = 'Called';
+        document.getElementById('candnote').innerHTML = ruling
+          ? 'A <b>Party Congress</b> of ' + esc(ruling) + ' has been called — factions settle their standing at the next tick.'
+          : projNote + 'A general election has been called — the nation goes to the polls at the next tick.';
       } else {
         document.getElementById('candnote').innerHTML = ruling
           ? 'No Party Congress has been scheduled yet.'

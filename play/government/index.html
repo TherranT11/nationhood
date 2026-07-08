@@ -44,18 +44,8 @@
   .empty b{display:block;color:var(--muted);font-size:16px;margin-bottom:5px}
   .muted{color:var(--soft);font-size:13px;font-style:italic}
 
-  /* State of the Nation — economy facts, domestic production, identity declarations, cities
-     (folded in from the retired Nation page; the map + nation-browser moved to World). */
-  .facts{display:flex;flex-direction:column}
-  .frow{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}
-  .frow:last-child{border-bottom:none}
-  .frow .fk{color:var(--muted);font-size:12.5px;font-family:'Space Mono',monospace;letter-spacing:.03em}
-  .frow .fv{font-weight:700;font-size:14.5px;text-align:right}
-  .econ{display:flex;flex-wrap:wrap;gap:10px}
-  .ecell{flex:1;min-width:118px;border:1px solid var(--line);border-radius:11px;padding:11px 14px;background:var(--field)}
-  .ecell .k{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
-  .ecell .v{font-weight:800;font-size:19px;letter-spacing:-.01em;margin-top:3px}
-  .ecell .oh{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
+  /* State of the Nation — identity declarations + cities (folded in from the retired Nation page;
+     the map + nation-browser moved to World; Domestic Economy moved to the Economy page). */
   .decls{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:16px 26px}
   .dgrp__h{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:4px}
   .drow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px}
@@ -114,7 +104,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
-  import { esc, majority, declaredValue, loadHogTitleSlot, fmtGdp, fmtPop, tickToDate } from '/util.js';
+  import { esc, majority, declaredValue, loadHogTitleSlot, fmtPop, tickToDate } from '/util.js';
   import { fetchAdministrations, renderAdministrations } from '/administrations.js';
   import { partyColor, ideologyLabel } from '/archetypes.js';
   import { nationBudgetBalance, nationStatContributions } from '/policies.js';
@@ -177,13 +167,9 @@
   }
 
 
-  // ---- State of the Nation (folded in from the retired Nation page): the nation's economy
-  // facts + domestic production, its identity declarations, and its cities. The world map and
-  // the nation browser moved to World; this is the your-nation summary only. ----
-  function cap(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
-  // The domestic production resources shown in the strip. Each accrues an on-hand stockpile
-  // through the produce tick (schema/113), Diplomacy included — produced, banked, and spent.
-  var ECON = ['energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy'];
+  // ---- State of the Nation (folded in from the retired Nation page): the nation's identity
+  // declarations and its cities. The world map + nation browser moved to World, and Domestic
+  // Economy moved to the Economy page; this is the your-nation summary only. ----
 
   // Cities roster — capital first, then by population share (desc), then name. The capital is
   // the one whose name matches the declared capital_name (ONE source — the declaration). Each
@@ -214,24 +200,13 @@
     return '<section class="panel"><h2>Cities</h2>' + body + '</section>';
   }
 
-  // Assemble the State-of-the-Nation panels (Domestic Economy, National Identity, Cities) for
-  // the given nation, reading the module-level declaration slots + cities loaded at boot.
+  // Assemble the State-of-the-Nation panels (National Identity, Cities) for the given nation,
+  // reading the module-level declaration slots + cities loaded at boot. (Domestic Economy moved
+  // to the Economy page, which already owns production, stockpiles and population.)
   function stateOfNation(nation){
-    var eco = nation.economy || {}, prod = nation.production || {}, onhand = nation.on_hand || {};
     var vals = nation.declarations || {};
     var slotBySlug = {}; DECL_SLOTS.forEach(function(s){ slotBySlug[s.slug] = s; });
     function declValue(slug){ return declaredValue(slotBySlug[slug], vals); }
-    function frow(k, v){ return '<div class="frow"><span class="fk">' + k + '</span><span class="fv">' + v + '</span></div>'; }
-
-    var economy =
-      '<section class="panel"><h2>Domestic Economy</h2>' +
-        '<div class="facts">' +
-          frow('GDP', (eco.currency || '$') + fmtGdp(nation.gdp)) +
-          frow('Population', fmtPop(nation.population)) +
-        '</div>' +
-        '<div class="econ" style="margin-top:14px">' +
-          ECON.map(function(k){ var v = prod[k], oh = onhand[k]; return '<div class="ecell"><div class="k">' + cap(k) + ' Production</div><div class="v">' + (v != null ? v : '—') + '</div><div class="oh">On hand · ' + (oh != null ? oh : '—') + '</div></div>'; }).join('') +
-        '</div></section>';
 
     // National Identity = every declaration slot's current value, grouped.
     var groups = [];
@@ -245,20 +220,22 @@
       : '<p class="muted" style="padding:8px 0">No declarations have been defined yet.</p>';
     var identityBox = '<section class="panel"><h2>National Identity</h2>' + declHtml + '</section>';
 
-    return economy + identityBox + citiesBox(CITIES, nation.population, declValue('capital_name'), MAYOR_ABBR);
+    return identityBox + citiesBox(CITIES, nation.population, declValue('capital_name'), MAYOR_ABBR);
   }
 
-  // State-of-the-Nation ministry stats — grouped placeholder cards (values are "--" until the
-  // backend is built). One collapsible group per ministry cluster, mirroring the tutorial.
+  // State-of-the-Nation ministry stats — one collapsible group per ministry cluster. Each cell
+  // computes from the nation's admin-authored ministry_stats base + in-force policy contributions
+  // (policies.js), so a cell shows "--" only when nothing has set it. Every POLICY_STATS entry is
+  // placed in a group here, so any stat an admin can author (or a policy can target) actually surfaces.
   var STAT_GROUPS = [
     { name: 'Head of Government', stats: ['Budget Balance', 'Growth', 'Bureaucracy'] },
     { name: 'Finance', stats: ['Tax Burden', 'Public Debt', 'Interest Rates'] },
-    { name: 'Interior', stats: ['Crime', 'Immigration', 'Extremism'] },
-    { name: 'Economy', stats: ['Unemployment', 'Poverty', 'Wages'] },
-    { name: 'Labor, Health and Social Affairs', stats: ['Prosperity', 'Press Freedom', 'Social Integration'] },
-    { name: 'Society', stats: ['Rule of Law', 'Standard of Living', 'Housing Affordability'] },
+    { name: 'Interior', stats: ['Crime', 'Immigration', 'Extremism', 'Birth Rate', 'Demographic Pressure'] },
+    { name: 'Economy', stats: ['Unemployment', 'Poverty', 'Wages', 'Innovation', 'Infrastructure'] },
+    { name: 'Labor, Health and Social Affairs', stats: ['Prosperity', 'Press Freedom', 'Social Integration', 'Health', 'Education', 'Pension Quality'] },
+    { name: 'Society', stats: ['Rule of Law', 'Standard of Living', 'Housing Affordability', 'Equity Between Generations'] },
     { name: 'Defense', stats: ['Armed Forces Funding', 'Military Research', 'Cybersecurity'] },
-    { name: 'Environment', stats: ['CO₂ Emissions', 'Global Warming', 'Energy Availability'] }
+    { name: 'Environment', stats: ['CO₂ Emissions', 'Global Warming', 'Energy Availability', 'Environment'] }
   ];
   // Budget Balance is the one ministry stat with its own screen (/play/budget/) — a
   // slug→href map keeps that special-case out of the generic cell loop.
@@ -430,8 +407,8 @@
     try {
       const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      var nRes = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations, population, gdp, production, on_hand, policies, ministry_stats').eq('id', party.nation_id).single();
-      if (nRes.error) nRes = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations, population, gdp, production, on_hand, policies').eq('id', party.nation_id).single();   // ministry_stats not migrated yet
+      var nRes = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations, population, gdp, policies, ministry_stats').eq('id', party.nation_id).single();
+      if (nRes.error) nRes = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations, population, gdp, policies').eq('id', party.nation_id).single();   // ministry_stats not migrated yet
       const nation = nRes.data;
       MY_PARTY_ID = party.id; NATION_ID = party.nation_id; NATION = nation || {};
       // The declared Head of Government title (e.g. "Prime Minister"), via the
