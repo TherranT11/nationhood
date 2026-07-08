@@ -2159,7 +2159,7 @@
         if (tool === 'sea') { delete hexes[k]; clearCitiesAt(q, r); if (selKey === k) closeInspect(); }
         else if (tool === 'land') { ensure(q, r).terrain = 'land'; }
         else if (tool === 'nation' && layer === 'continents') { if (!assignContinent) { status('Pick or add a continent first.'); return; } var hc = ensure(q, r); hc.terrain = 'land'; hc.continent = assignContinent; }
-        else if (tool === 'nation') { if (!assignNation) { status('Pick a nation to assign first.'); return; } var h = ensure(q, r); h.terrain = 'land'; h.nation_id = assignNation; }
+        else if (tool === 'nation') { if (!assignNation) { status('Pick a nation to assign first.'); return; } var h = ensure(q, r); if (h.nation_id && h.nation_id !== assignNation) clearCitiesAt(q, r); h.terrain = 'land'; h.nation_id = assignNation; }
         draw();
       }
       async function load() {
@@ -2317,11 +2317,9 @@
         box.querySelector('#wmIx').onclick = closeInspect;
         box.querySelector('#wmITerrain').onchange = function () { h.terrain = this.value; if (h.terrain === 'sea') { h.nation_id = null; clearCitiesAt(q, r); } openInspect(q, r); draw(); };
         box.querySelector('#wmINation').onchange = function () {
-          var newNat = this.value || null;
-          // a city can only sit on a hex of its own nation — drop any placed here that no longer matches
-          cityRows.forEach(function (c) { if (c.q === q && c.r === r && c.nation_id !== newNat) { c.q = null; c.r = null; } });
-          h.nation_id = newNat; if (h.nation_id) h.terrain = 'land';
-          openInspect(q, r);   // refresh the cities list for the new nation
+          h.nation_id = this.value || null; if (h.nation_id) h.terrain = 'land';
+          clearCitiesAt(q, r);   // cities belong to one nation — reassigning the hex unplaces any sitting here
+          openInspect(q, r);     // refresh the cities list for the new nation
         };
         box.querySelector('#wmICont').oninput = function () { h.continent = this.value.trim() || null; if (h.continent) h.terrain = 'land'; draw(); };
         box.querySelector('#wmIName').oninput = function () { h.name = this.value; };
