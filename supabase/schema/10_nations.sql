@@ -103,7 +103,7 @@ values (
   69,
   678,
   280,
-  '{"prosperity":14,"welfare":13,"order":13,"image":16,"growth":9}'::jsonb,
+  '{"prosperity":70,"welfare":65,"order":65,"image":80,"growth":45}'::jsonb,
   '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"tax":30,"budget":12.4,"debt":31,"currency":"$"}'::jsonb
 )
 on conflict (id) do nothing;

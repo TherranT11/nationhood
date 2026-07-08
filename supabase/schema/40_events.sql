@@ -457,7 +457,7 @@ grant execute on function public.party_recruit_hire(text) to authenticated;
 --
 -- Target → where it lives + its band (one source; mirrors the adminsetup dropdown
 -- and the nations.stats/economy/production layout in schema/10):
---   stats (rank 1–20, integer): Prosperity, Welfare, Growth, Order, Image
+--   stats (rank 1–100, integer): Prosperity, Welfare, Growth, Order, Image
 --   economy: Unemployment %, Inflation % (≥0) · Budget (any) · Debt (≥0) · Regime (rank 1–20)
 --   production (≥0): Energy, Food, Minerals, Goods, Services, Diplomacy
 --   Government Confidence → the nation's active government (0–100); errors if none

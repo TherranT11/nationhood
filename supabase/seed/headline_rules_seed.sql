@@ -1,19 +1,24 @@
 -- ===========================================================================
 -- Seed: a wide spread of THRESHOLD headline rules, one variant per paper slant.
 -- Global scope (nation_id null) → they apply in every nation; each nation's papers print the variant
--- matching their slant. Fires from the per-tick sweep (schema/158): the national/economy stats use
--- their stored value; the ministry stats use their policy-driven contribution, so a rule fires when a
--- nation's policy mix pushes that stat past the threshold.
+-- matching their slant. Fires from the per-tick sweep (schema/158) on each stat's STORED value — the
+-- same 1..100 number the admin authors and the player sees (ministry_stats, schema/150; the national
+-- stats now share that 1..100 scale). So a rule fires when the nation's authored stat crosses the line.
 --
--- Tokens: {nation} = the nation, {value} = the crossing figure, {subject} = the stat name.
--- Idempotent: each rule is guarded by name, so re-running never duplicates. Adds NO new papers.
--- Slant ids: record | state | left | radleft | centre | right | farright | tabloid (slants.js).
--- Tune thresholds/cooldowns to taste, or add more in Admin Setup → News → Headline Rules.
+-- Thresholds are on the 1..100 scale (Poverty > 40, Golden age Prosperity > 90, Crime > 60, …);
+-- Inflation/Unemployment stay percentages. Tokens: {nation} = the nation, {value} = the crossing
+-- figure, {subject} = the stat name. Slants: record | state | left | radleft | centre | right |
+-- farright | tabloid (slants.js). Adds NO new papers.
+--
+-- Idempotent AND authoritative: re-running UPDATES an existing rule of the same name to these values
+-- (so edits here propagate) and INSERTS the ones not present yet. Tune thresholds/cooldowns to taste,
+-- or add more in Admin Setup → News → Headline Rules.
 -- ===========================================================================
 
-insert into public.headline_rules (name, scope, trigger_type, subject_type, subject, direction, value, headline_mode, headlines, cooldown, priority)
-select v.name, 'global', 'threshold', 'stat', v.subject, v.direction, v.value, 'slant', v.headlines::jsonb, 12, v.priority
-from (values
+-- The Global Image rule was retired.
+delete from public.headline_rules where name = 'Reputation crisis';
+
+with v (name, subject, direction, value, priority, headlines) as (values
   -- ---- National & economy stats (stored values) ----------------------------------------------------
   ('Inflation crisis', 'Inflation', 'above', 15, 7, $j${
     "record":"Inflation in {nation} rises to {value}%.",
@@ -35,7 +40,7 @@ from (values
     "farright":"{nation} jobs vanish as unemployment reaches {value}%.",
     "tabloid":"NO JOBS! {nation} unemployment rockets to {value}%!"}$j$),
 
-  ('Recession', 'Growth', 'below', 8, 6, $j${
+  ('Recession', 'Growth', 'below', 30, 6, $j${
     "record":"{nation} growth slows to {value}.",
     "state":"A brief adjustment: {nation} growth steadies at {value}, ministers say.",
     "left":"Austerity bites: {nation} growth collapses to {value} as families pay.",
@@ -45,7 +50,7 @@ from (values
     "farright":"Globalist mismanagement drags {nation} to {value} growth.",
     "tabloid":"ECONOMY IN FREEFALL! {nation} growth crashes to {value}!"}$j$),
 
-  ('Economic boom', 'Growth', 'above', 15, 5, $j${
+  ('Economic boom', 'Growth', 'above', 75, 5, $j${
     "record":"{nation} growth accelerates to {value}.",
     "state":"Boom times: {nation}'s bold plan powers growth to {value}.",
     "left":"{nation} booms at {value} — now share the gains with workers.",
@@ -55,7 +60,7 @@ from (values
     "farright":"{nation} thrives at {value} when it puts itself first.",
     "tabloid":"BOOM! {nation} economy on fire at {value}!"}$j$),
 
-  ('Living standards slide', 'Prosperity', 'below', 8, 6, $j${
+  ('Living standards slide', 'Prosperity', 'below', 25, 6, $j${
     "record":"Prosperity in {nation} falls to {value}.",
     "state":"{nation} shields households as prosperity holds near {value}.",
     "left":"Hardship spreads as {nation} prosperity drops to {value}.",
@@ -65,7 +70,7 @@ from (values
     "farright":"{nation} left poorer, prosperity down to {value}.",
     "tabloid":"SKINT! {nation} living standards tank to {value}!"}$j$),
 
-  ('Unrest', 'Order', 'below', 8, 6, $j${
+  ('Unrest', 'Order', 'below', 25, 6, $j${
     "record":"Public order in {nation} weakens to {value}.",
     "state":"{nation} maintains calm; order steady at {value}, police say.",
     "left":"Neglect breeds unrest as {nation} order falls to {value}.",
@@ -75,7 +80,7 @@ from (values
     "farright":"Chaos on the streets: {nation} order collapses to {value}.",
     "tabloid":"STREETS IN CHAOS! {nation} order hits {value}!"}$j$),
 
-  ('Welfare in retreat', 'Welfare', 'below', 8, 6, $j${
+  ('Welfare in retreat', 'Welfare', 'below', 25, 6, $j${
     "record":"Welfare provision in {nation} falls to {value}.",
     "state":"{nation} protects core services; welfare steady at {value}.",
     "left":"Safety net shredded: {nation} welfare drops to {value}.",
@@ -85,18 +90,9 @@ from (values
     "farright":"{nation} welfare down to {value} — care for our own first.",
     "tabloid":"SAFETY NET RIPPED! {nation} welfare at {value}!"}$j$),
 
-  ('Reputation crisis', 'Global Image', 'below', 8, 5, $j${
-    "record":"{nation}'s standing abroad falls to {value}.",
-    "state":"{nation} deepens ties; global image resilient at {value}.",
-    "left":"{nation} isolated on the world stage, image down to {value}.",
-    "radleft":"Empire's friends desert {nation}; image at {value}.",
-    "centre":"{nation}'s global image slips to {value}; rebuild alliances.",
-    "right":"Weak leadership erodes {nation}'s standing to {value}.",
-    "farright":"Disrespected abroad: {nation}'s image sinks to {value}.",
-    "tabloid":"HUMILIATED! {nation}'s world image at {value}!"}$j$),
 
-  -- ---- Ministry stats (policy-driven contribution) -------------------------------------------------
-  ('Crime wave', 'Crime', 'above', 5, 6, $j${
+  -- ---- Ministry stats (stored 1..100 value, ministry_stats) -----------------------------------------
+  ('Crime wave', 'Crime', 'above', 60, 6, $j${
     "record":"Crime is rising in {nation} (index {value}).",
     "state":"{nation} steps up policing as crime edges to {value}.",
     "left":"Cuts fuel crime in {nation}, now at {value} — invest in communities.",
@@ -106,7 +102,7 @@ from (values
     "farright":"Lawlessness grips {nation}: crime surges to {value}.",
     "tabloid":"CRIME WAVE! {nation} streets unsafe at {value}!"}$j$),
 
-  ('Pollution alarm', 'Environment', 'below', -5, 5, $j${
+  ('Pollution alarm', 'Environment', 'below', 30, 5, $j${
     "record":"Environmental quality in {nation} declines ({value}).",
     "state":"{nation} balances growth and green goals; environment at {value}.",
     "left":"Communities choke as {nation} lets the environment fall to {value}.",
@@ -116,7 +112,7 @@ from (values
     "farright":"{nation} land and water neglected, environment at {value}.",
     "tabloid":"TOXIC! {nation} environment poisoned to {value}!"}$j$),
 
-  ('Green progress', 'Environment', 'above', 5, 4, $j${
+  ('Green progress', 'Environment', 'above', 70, 4, $j${
     "record":"{nation} improves its environment to {value}.",
     "state":"{nation}'s green plan delivers, environment up to {value}.",
     "left":"A cleaner {nation} for all as the environment reaches {value}.",
@@ -126,7 +122,7 @@ from (values
     "farright":"{nation} protects its own land, environment up to {value}.",
     "tabloid":"GOING GREEN! {nation} cleans up to {value}!"}$j$),
 
-  ('Poverty crisis', 'Poverty', 'above', 5, 6, $j${
+  ('Poverty crisis', 'Poverty', 'above', 40, 6, $j${
     "record":"Poverty is rising in {nation} (index {value}).",
     "state":"{nation} widens support as hardship ticks to {value}.",
     "left":"Millions pushed under: {nation} poverty climbs to {value}.",
@@ -136,7 +132,7 @@ from (values
     "farright":"{nation}'s own left behind, poverty at {value}.",
     "tabloid":"BREADLINE BRITAIN-STYLE! {nation} poverty at {value}!"}$j$),
 
-  ('Press crackdown', 'Press Freedom', 'below', -5, 6, $j${
+  ('Press crackdown', 'Press Freedom', 'below', 30, 6, $j${
     "record":"Press freedom in {nation} narrows ({value}).",
     "state":"{nation} curbs disinformation; a responsible press at {value}.",
     "left":"Voices silenced as {nation} press freedom falls to {value}.",
@@ -146,7 +142,7 @@ from (values
     "farright":"{nation} tames the elite press, freedom index {value}.",
     "tabloid":"GAGGED! {nation} muzzles the press at {value}!"}$j$),
 
-  ('Immigration surge', 'Immigration', 'above', 5, 5, $j${
+  ('Immigration surge', 'Immigration', 'above', 60, 5, $j${
     "record":"Immigration to {nation} rises (index {value}).",
     "state":"{nation} manages orderly arrivals at {value}.",
     "left":"{nation} welcomes newcomers at {value} — fund services to match.",
@@ -156,7 +152,7 @@ from (values
     "farright":"{nation} overwhelmed: immigration hits {value}.",
     "tabloid":"BORDERS BURST! {nation} migration at {value}!"}$j$),
 
-  ('Extremism rising', 'Extremism', 'above', 5, 6, $j${
+  ('Extremism rising', 'Extremism', 'above', 40, 6, $j${
     "record":"Extremism is growing in {nation} (index {value}).",
     "state":"{nation} confronts radical fringes, contained at {value}.",
     "left":"Hate emboldened: {nation} extremism climbs to {value}.",
@@ -166,7 +162,7 @@ from (values
     "farright":"{nation}'s establishment drives ordinary people to {value}.",
     "tabloid":"RADICALS RISING! {nation} extremism at {value}!"}$j$),
 
-  ('Rule of law erodes', 'Rule of Law', 'below', -5, 6, $j${
+  ('Rule of law erodes', 'Rule of Law', 'below', 30, 6, $j${
     "record":"Rule of law in {nation} weakens ({value}).",
     "state":"{nation} reforms the courts; rule of law steady at {value}.",
     "left":"Justice for the powerful only as {nation} rule of law falls to {value}.",
@@ -176,7 +172,7 @@ from (values
     "farright":"{nation}'s laws ignored — rule of law sinks to {value}.",
     "tabloid":"ABOVE THE LAW! {nation} justice at {value}!"}$j$),
 
-  ('Housing crisis', 'Housing Affordability', 'below', -5, 6, $j${
+  ('Housing crisis', 'Housing Affordability', 'below', 30, 6, $j${
     "record":"Housing affordability in {nation} worsens ({value}).",
     "state":"{nation} accelerates homebuilding; affordability at {value}.",
     "left":"Locked out: {nation} housing affordability crashes to {value}.",
@@ -186,7 +182,7 @@ from (values
     "farright":"{nation}'s young priced out, housing at {value}.",
     "tabloid":"PRICED OUT! {nation} homes out of reach at {value}!"}$j$),
 
-  ('Energy shortage', 'Energy Availability', 'below', -5, 6, $j${
+  ('Energy shortage', 'Energy Availability', 'below', 30, 6, $j${
     "record":"Energy availability in {nation} tightens ({value}).",
     "state":"{nation} secures supply through winter; energy at {value}.",
     "left":"Cold homes as {nation} energy availability falls to {value}.",
@@ -196,7 +192,7 @@ from (values
     "farright":"{nation} left in the dark, energy at {value}.",
     "tabloid":"LIGHTS OUT! {nation} energy crunch at {value}!"}$j$),
 
-  ('Emissions rising', 'CO₂ Emissions', 'above', 5, 4, $j${
+  ('Emissions rising', 'CO₂ Emissions', 'above', 60, 4, $j${
     "record":"{nation} carbon emissions rise (index {value}).",
     "state":"{nation} balances industry and climate; emissions at {value}.",
     "left":"{nation} emissions climb to {value} — a just transition now.",
@@ -206,7 +202,7 @@ from (values
     "farright":"Global climate diktats aside, {nation} emits at {value}.",
     "tabloid":"SMOKESTACK NATION! {nation} emissions at {value}!"}$j$),
 
-  ('Health improving', 'Health', 'above', 5, 4, $j${
+  ('Health improving', 'Health', 'above', 70, 4, $j${
     "record":"Health outcomes in {nation} improve to {value}.",
     "state":"{nation}'s health investment pays off, up to {value}.",
     "left":"Public health delivers for {nation} — outcomes at {value}.",
@@ -247,7 +243,7 @@ from (values
     "farright":"{nation} workers thrown out as unemployment reaches {value}%.",
     "tabloid":"JOBS ARMAGEDDON! {nation} unemployment at {value}%!"}$j$),
 
-  ('Golden age', 'Prosperity', 'above', 20, 5, $j${
+  ('Golden age', 'Prosperity', 'above', 90, 5, $j${
     "record":"Prosperity in {nation} rises to {value}.",
     "state":"A golden age: {nation} prosperity soars to {value}.",
     "left":"{nation} prospers at {value} — now lock in gains for all.",
@@ -257,7 +253,7 @@ from (values
     "farright":"{nation} flourishes at {value} by backing its own.",
     "tabloid":"BOOM TIME! {nation} living it up at {value}!"}$j$),
 
-  ('Iron grip', 'Order', 'above', 18, 5, $j${
+  ('Iron grip', 'Order', 'above', 90, 5, $j${
     "record":"Public order in {nation} is exceptionally tight ({value}).",
     "state":"{nation} enjoys firm stability, order strong at {value}.",
     "left":"Order at {value} — but at what cost to {nation}'s freedoms?",
@@ -267,8 +263,8 @@ from (values
     "farright":"Strength restored: {nation} order commands {value}.",
     "tabloid":"CRACKDOWN! {nation} locked down tight at {value}!"}$j$),
 
-  -- ---- Further ministry stats (policy-driven contribution) -----------------------------------------
-  ('Schools failing', 'Education', 'below', -5, 6, $j${
+  -- ---- Further ministry stats (stored 1..100 value, ministry_stats) ---------------------------------
+  ('Schools failing', 'Education', 'below', 30, 6, $j${
     "record":"Education standards in {nation} slip ({value}).",
     "state":"{nation} reforms schools; standards steady at {value}.",
     "left":"Class sizes swell as {nation} education falls to {value}.",
@@ -278,7 +274,7 @@ from (values
     "farright":"{nation} classrooms neglected, education at {value}.",
     "tabloid":"SCHOOL SCANDAL! {nation} education sinks to {value}!"}$j$),
 
-  ('Schools improving', 'Education', 'above', 5, 4, $j${
+  ('Schools improving', 'Education', 'above', 70, 4, $j${
     "record":"Education in {nation} improves to {value}.",
     "state":"{nation}'s schools plan delivers, education up to {value}.",
     "left":"Every child gains as {nation} education reaches {value}.",
@@ -288,7 +284,7 @@ from (values
     "farright":"{nation} teaches its own well, education up to {value}.",
     "tabloid":"TOP MARKS! {nation} schools shine at {value}!"}$j$),
 
-  ('Crumbling infrastructure', 'Infrastructure', 'below', -5, 6, $j${
+  ('Crumbling infrastructure', 'Infrastructure', 'below', 30, 6, $j${
     "record":"Infrastructure in {nation} degrades ({value}).",
     "state":"{nation} prioritises repairs; infrastructure holding at {value}.",
     "left":"Potholes and delays as {nation} infrastructure falls to {value}.",
@@ -298,7 +294,7 @@ from (values
     "farright":"{nation}'s roads and rails crumble to {value}.",
     "tabloid":"FALLING APART! {nation} infrastructure rots to {value}!"}$j$),
 
-  ('Building the future', 'Infrastructure', 'above', 5, 4, $j${
+  ('Building the future', 'Infrastructure', 'above', 70, 4, $j${
     "record":"{nation} upgrades its infrastructure to {value}.",
     "state":"{nation}'s build-out delivers, infrastructure up to {value}.",
     "left":"Investment reaches every region as {nation} infrastructure hits {value}.",
@@ -308,7 +304,7 @@ from (values
     "farright":"{nation} builds for its own, infrastructure at {value}.",
     "tabloid":"ON THE MOVE! {nation} infrastructure booms to {value}!"}$j$),
 
-  ('Wage squeeze', 'Wages', 'below', -5, 6, $j${
+  ('Wage squeeze', 'Wages', 'below', 30, 6, $j${
     "record":"Wages in {nation} fall behind ({value}).",
     "state":"{nation} steadies pay through a tough patch, wages at {value}.",
     "left":"Pay packets shrink as {nation} wages drop to {value}.",
@@ -318,7 +314,7 @@ from (values
     "farright":"{nation} workers squeezed, wages down to {value}.",
     "tabloid":"PAY PAIN! {nation} wages crushed to {value}!"}$j$),
 
-  ('Innovation surge', 'Innovation', 'above', 5, 4, $j${
+  ('Innovation surge', 'Innovation', 'above', 70, 4, $j${
     "record":"Innovation in {nation} accelerates to {value}.",
     "state":"{nation}'s research drive pays off, innovation up to {value}.",
     "left":"{nation} innovates at {value} — share the breakthroughs widely.",
@@ -328,7 +324,7 @@ from (values
     "farright":"{nation} ingenuity leads, innovation up to {value}.",
     "tabloid":"BRAINWAVE! {nation} invents its way to {value}!"}$j$),
 
-  ('Living standards squeeze', 'Standard of Living', 'below', -5, 6, $j${
+  ('Living standards squeeze', 'Standard of Living', 'below', 30, 6, $j${
     "record":"Standard of living in {nation} declines ({value}).",
     "state":"{nation} cushions households; living standards at {value}.",
     "left":"Everyday life gets harder as {nation} standards fall to {value}.",
@@ -338,7 +334,7 @@ from (values
     "farright":"{nation} families do without, standards at {value}.",
     "tabloid":"BELT TIGHTENS! {nation} living standards at {value}!"}$j$),
 
-  ('Fraying society', 'Social Integration', 'below', -5, 5, $j${
+  ('Fraying society', 'Social Integration', 'below', 30, 5, $j${
     "record":"Social cohesion in {nation} weakens ({value}).",
     "state":"{nation} promotes shared values; cohesion at {value}.",
     "left":"Division deepens as {nation} social integration falls to {value}.",
@@ -348,7 +344,7 @@ from (values
     "farright":"{nation} pulled apart, social integration at {value}.",
     "tabloid":"NATION SPLIT! {nation} cohesion cracks to {value}!"}$j$),
 
-  ('Warming alarm', 'Global Warming', 'above', 5, 4, $j${
+  ('Warming alarm', 'Global Warming', 'above', 60, 4, $j${
     "record":"{nation}'s warming contribution rises (index {value}).",
     "state":"{nation} weighs climate action against jobs; index at {value}.",
     "left":"{nation} warming climbs to {value} — a just transition can't wait.",
@@ -358,7 +354,7 @@ from (values
     "farright":"Climate diktats rejected — {nation} sits at {value}.",
     "tabloid":"HEATING UP! {nation} warming index at {value}!"}$j$),
 
-  ('Baby bust', 'Birth Rate', 'below', -5, 5, $j${
+  ('Baby bust', 'Birth Rate', 'below', -10, 5, $j${
     "record":"The birth rate in {nation} falls ({value}).",
     "state":"{nation} supports young families; birth rate at {value}.",
     "left":"Priced out of parenthood as {nation} birth rate drops to {value}.",
@@ -368,7 +364,7 @@ from (values
     "farright":"{nation}'s future in doubt, birth rate down to {value}.",
     "tabloid":"BABY BUST! {nation} birth rate plunges to {value}!"}$j$),
 
-  ('Cyber exposure', 'Cybersecurity', 'below', -5, 5, $j${
+  ('Cyber exposure', 'Cybersecurity', 'below', 30, 5, $j${
     "record":"Cybersecurity in {nation} weakens ({value}).",
     "state":"{nation} hardens key systems; cyber posture at {value}.",
     "left":"Public data left exposed as {nation} cybersecurity falls to {value}.",
@@ -377,5 +373,17 @@ from (values
     "right":"{nation} cyber posture at {value} — invest before the breach.",
     "farright":"{nation} left open to hostile states, cyber at {value}.",
     "tabloid":"HACK ALERT! {nation} cyber defences at {value}!"}$j$)
-) as v(name, subject, direction, value, priority, headlines)
-where not exists (select 1 from public.headline_rules hr where hr.name = v.name);
+),
+-- Refresh any rule already seeded under the same name to the values above (thresholds/text/priority).
+upd as (
+  update public.headline_rules hr
+     set scope = 'global', trigger_type = 'threshold', subject_type = 'stat',
+         subject = v.subject, direction = v.direction, value = v.value,
+         headline_mode = 'slant', headlines = v.headlines::jsonb, cooldown = 12, priority = v.priority
+    from v where hr.name = v.name
+   returning hr.name
+)
+-- Insert the rules that don't exist yet.
+insert into public.headline_rules (name, scope, trigger_type, subject_type, subject, direction, value, headline_mode, headlines, cooldown, priority)
+select v.name, 'global', 'threshold', 'stat', v.subject, v.direction, v.value, 'slant', v.headlines::jsonb, 12, v.priority
+from v where v.name not in (select name from upd);

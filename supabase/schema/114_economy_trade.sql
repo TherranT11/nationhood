@@ -229,13 +229,13 @@ begin
     raise exception 'Not enough Goods to advance society (need %, have %).', v_cost, v_have; end if;
 
   perform public._nation_stat_add(v_p.nation_id, 'on_hand', 'goods', -v_cost, 0, null);
-  perform public._nation_stat_add(v_p.nation_id, 'stats', 'prosperity', 1, 1, 20);
+  perform public._nation_stat_add(v_p.nation_id, 'stats', 'prosperity', 1, 1, 100);
   update public.nations set advanced_year = v_period where id = v_p.nation_id;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_p.nation_id, v_p.id, 'economy', 'The government invested in society — Prosperity +1.', public.current_game_date());
 
-  return jsonb_build_object('cost', v_cost, 'prosperity', least(20, v_pros + 1));
+  return jsonb_build_object('cost', v_cost, 'prosperity', least(100, v_pros + 1));
 end $$;
 grant execute on function public.economy_advance() to authenticated;
 

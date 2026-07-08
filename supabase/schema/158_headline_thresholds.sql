@@ -1,18 +1,18 @@
 -- ===========================================================================
 -- 158 · Headline thresholds — the stat-crossing trigger, now ACTIVE.
--- Depends on: 10 (nations), 05 (game_state), 47 (_nation_tax_burden), 70 (_to_num), 152
--- (_nation_policy_stat), 156/157 (news_outlets, headline_rules, _publish_rule_headlines). After 157.
+-- Depends on: 10 (nations), 05 (game_state), 47 (_nation_tax_burden), 70 (_to_num), 150
+-- (ministry_stats), 156/157 (news_outlets, headline_rules, _publish_rule_headlines). After 157.
 --
 -- Each tick (from _advance_tick, schema/60) every live nation is checked against every enabled
 -- threshold rule: when the subject stat is above/below the rule's value, the rule fires and each
 -- paper prints its slant's variant ({value}/{subject} tokens filled). Cooldown + fire-once are read
 -- off the fire history (news_headlines.rule_id), exactly like the event engine.
 --
--- Every ministry stat is evaluable: the five national stats + the economy figures use their stored
--- value; Tax Burden is the derived rate (schema/47); ANY other ministry stat (Crime, Environment,
--- Infrastructure, Poverty, …) uses its policy-driven contribution (_nation_policy_stat, schema/152),
--- so a rule fires when the nation's policy mix pushes that stat past the threshold. Resource on-hand
--- and production read the stockpile/rate jsonb. 'rate' (change-per-year) needs prior-tick state and
+-- A rule fires on the stat's STORED value — the same 1..100 number the admin authors and the player
+-- sees. The ministry-stat grid (nations.ministry_stats, schema/150) is the ONE source for every
+-- ministry stat (Crime, Environment, Poverty, …); the legacy national/economy fields back it up for
+-- the stats not carried there. Tax Burden is the derived rate (schema/47). Resource on-hand and
+-- production read the stockpile/rate jsonb. 'rate' (change-per-year) needs prior-tick state and
 -- stays dormant for now. The `held` (sustained-for) field IS enforced: a rule with held = N only fires
 -- once its condition has stayed true for N straight ticks (tracked in headline_threshold_state; a break
 -- resets the streak). The cooldown still governs how often a standing condition re-headlines.
@@ -30,24 +30,30 @@ create table if not exists public.headline_threshold_state (
 alter table public.headline_threshold_state enable row level security;
 
 -- The numeric value of a rule's subject for one nation, or null when it isn't evaluable (a 'rate'
--- subject, or an unknown key). ONE source for "what is this stat right now" in the headline engine.
+-- subject, an unauthored stat, or an unknown key). ONE source for "what is this stat right now" in the
+-- headline engine — the stored value the admin authored, matching the Government page the player sees.
+drop function if exists public._headline_subject_value(jsonb, jsonb, jsonb, jsonb, text, text, text);
 create or replace function public._headline_subject_value(
-  p_stats jsonb, p_economy jsonb, p_onhand jsonb, p_production jsonb,
+  p_stats jsonb, p_economy jsonb, p_ministry jsonb, p_onhand jsonb, p_production jsonb,
   p_nation text, p_subject_type text, p_subject text)
 returns numeric language plpgsql stable security definer set search_path = public as $$
-declare v_st text := coalesce(p_subject_type, 'stat');
+declare v_st text := coalesce(p_subject_type, 'stat'); v_val numeric;
 begin
   if p_subject is null then return null; end if;
   if v_st = 'onhand'     then return public._to_num(p_onhand->>lower(p_subject)); end if;
   if v_st = 'production'  then return public._to_num(p_production->>lower(p_subject)); end if;
   if v_st = 'rate'       then return null; end if;   -- change-per-year: not yet evaluated
-  -- v_st = 'stat': stored national/economy stats where they exist, Tax Burden derived, and every
-  -- other ministry stat via its policy-driven contribution so nothing is left un-evaluable.
+  -- v_st = 'stat': the admin-authored ministry-stat value is the ONE 1..100 source (schema/150); the
+  -- legacy national/economy fields back it up for the stats not carried there (and the consolidated
+  -- five — Rule of Law lives on stats.order). An unauthored stat returns null → no headline.
+  v_val := public._to_num(p_ministry->>p_subject);
+  if v_val is not null then return v_val; end if;
   return case p_subject
     when 'Prosperity'   then public._to_num(p_stats->>'prosperity')
     when 'Welfare'      then public._to_num(p_stats->>'welfare')
     when 'Growth'       then public._to_num(p_stats->>'growth')
     when 'Order'        then public._to_num(p_stats->>'order')
+    when 'Rule of Law'  then public._to_num(p_stats->>'order')   -- consolidated onto stats.order (schema/150)
     when 'Global Image' then public._to_num(p_stats->>'image')
     when 'Image'        then public._to_num(p_stats->>'image')
     when 'Inflation'    then public._to_num(p_economy->>'inflation')
@@ -57,10 +63,10 @@ begin
     when 'Income'       then public._to_num(p_economy->>'income')
     when 'Regime'       then public._to_num(p_economy->>'regime')
     when 'Tax Burden'   then public._nation_tax_burden(p_nation)
-    else public._nation_policy_stat(p_nation, p_subject)
+    else null
   end;
 end $$;
-revoke all on function public._headline_subject_value(jsonb, jsonb, jsonb, jsonb, text, text, text) from public, anon, authenticated;
+revoke all on function public._headline_subject_value(jsonb, jsonb, jsonb, jsonb, jsonb, text, text, text) from public, anon, authenticated;
 
 -- The per-tick threshold sweep. For each live nation, the enabled threshold rules are scanned in
 -- priority order; the first satisfied, off-cooldown, not-fired-once rule PER SUBJECT fires (so two
@@ -70,7 +76,7 @@ create or replace function public._resolve_headline_thresholds(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
 declare n record; r public.headline_rules%rowtype; v_val numeric; v_cond boolean; v_fired text[]; v_key text; v_since int;
 begin
-  for n in select id, stats, economy, on_hand, production from public.nations where not coalesce(dormant, false) loop
+  for n in select id, stats, economy, ministry_stats, on_hand, production from public.nations where not coalesce(dormant, false) loop
     v_fired := array[]::text[];
     for r in
       select hr.* from public.headline_rules hr
@@ -78,7 +84,7 @@ begin
          and (hr.scope = 'global' or (hr.scope = 'nation' and hr.nation_id = n.id))
        order by hr.priority desc, hr.created_at desc
     loop
-      v_val := public._headline_subject_value(n.stats, n.economy, n.on_hand, n.production, n.id, r.subject_type, r.subject);
+      v_val := public._headline_subject_value(n.stats, n.economy, n.ministry_stats, n.on_hand, n.production, n.id, r.subject_type, r.subject);
       v_cond := v_val is not null
                 and ((r.direction = 'above' and v_val > r.value) or (r.direction = 'below' and v_val < r.value));
       -- 'Sustained for' (held): maintain the streak first, independent of whether the rule fires — start

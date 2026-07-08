@@ -116,12 +116,12 @@ begin
   if v_t is null or v_v = 0 then return; end if;
 
   case v_t
-    -- National stats (1..20)
-    when 'Prosperity' then perform public._nation_stat_add(p_nation, 'stats', 'prosperity', v_v, 1, 20);
-    when 'Welfare'    then perform public._nation_stat_add(p_nation, 'stats', 'welfare',    v_v, 1, 20);
-    when 'Growth'     then perform public._nation_stat_add(p_nation, 'stats', 'growth',     v_v, 1, 20);
-    when 'Order'      then perform public._nation_stat_add(p_nation, 'stats', 'order',      v_v, 1, 20);
-    when 'Image'      then perform public._nation_stat_add(p_nation, 'stats', 'image',      v_v, 1, 20);
+    -- National stats (1..100)
+    when 'Prosperity' then perform public._nation_stat_add(p_nation, 'stats', 'prosperity', v_v, 1, 100);
+    when 'Welfare'    then perform public._nation_stat_add(p_nation, 'stats', 'welfare',    v_v, 1, 100);
+    when 'Growth'     then perform public._nation_stat_add(p_nation, 'stats', 'growth',     v_v, 1, 100);
+    when 'Order'      then perform public._nation_stat_add(p_nation, 'stats', 'order',      v_v, 1, 100);
+    when 'Image'      then perform public._nation_stat_add(p_nation, 'stats', 'image',      v_v, 1, 100);
     -- Economy
     when 'Unemployment %' then perform public._nation_stat_add(p_nation, 'economy', 'unemployment', v_v, 0, 100);
     when 'Inflation %'    then perform public._nation_stat_add(p_nation, 'economy', 'inflation',    v_v, 0, 100);

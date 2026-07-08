@@ -169,18 +169,18 @@ begin
       v_mil   := coalesce((v_d->>'military')::boolean, false);
     end if;
 
-    -- Food: a fed nation grows +1M — but only while Growth holds at 9+. A stalling economy
-    -- (Growth < 9) freezes population growth even in a well-fed year (paired with the GDP hit
+    -- Food: a fed nation grows +1M — but only while Growth holds at 45+. A stalling economy
+    -- (Growth < 45) freezes population growth even in a well-fed year (paired with the GDP hit
     -- in schema/125). Unmet food costs Order; either way there's no population growth otherwise.
     if v_food then
-      if v_n.growth >= 9 then
+      if v_n.growth >= 45 then
         update public.nations set population = coalesce(population, 0) + 1 where id = v_n.id;
       end if;
     else
-      perform public._nation_stat_add(v_n.id, 'stats', 'order', -1, 1, 20);
+      perform public._nation_stat_add(v_n.id, 'stats', 'order', -1, 1, 100);
     end if;
-    if not v_goods then perform public._nation_stat_add(v_n.id, 'stats', 'prosperity', -1, 1, 20); end if;
-    if not v_serv  then perform public._nation_stat_add(v_n.id, 'stats', 'welfare', -1, 1, 20); end if;
+    if not v_goods then perform public._nation_stat_add(v_n.id, 'stats', 'prosperity', -1, 1, 100); end if;
+    if not v_serv  then perform public._nation_stat_add(v_n.id, 'stats', 'welfare', -1, 1, 100); end if;
     if not v_mil   then perform public._nation_stat_add(v_n.id, 'on_hand', 'military', -1, 0, null); end if;
 
     -- The government answers for the shortfall: for EACH of the four demands it missed, every
