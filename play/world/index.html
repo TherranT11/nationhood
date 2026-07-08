@@ -24,7 +24,8 @@
   .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:20px}
   @media(max-width:760px){.grid{grid-template-columns:1fr}}
 
-  .wcard{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;display:flex;flex-direction:column}
+  .wcard{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;display:flex;flex-direction:column;color:inherit;text-decoration:none;cursor:pointer;transition:border-color .15s,transform .15s}
+  a.wcard:hover{border-color:var(--acc);transform:translateY(-2px)}
   .wc-top{display:flex;align-items:flex-start;gap:13px}
   .emb{width:96px;height:64px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-weight:700;font-size:26px;color:#fff;background:var(--acc)}
   .emb.img{object-fit:contain;border:1px solid var(--line);background:var(--chip)}
@@ -152,7 +153,9 @@
       }).join('');
 
       var relVal = (relMap && relMap[n.id] != null) ? relMap[n.id] : 5;
-      return '<article class="wcard" style="--acc:' + acc + '">' +
+      // The whole card links into the Nation page's read-only view of that nation (map, stats,
+      // cabinet, regime…) — see play/index.html's ?view=<id> foreign mode.
+      return '<a class="wcard" href="/play/?view=' + encodeURIComponent(n.id) + '" style="--acc:' + acc + '">' +
         '<div class="wc-top">' + badge +
           '<div class="wc-id"><h2>' + esc(formalName) + '</h2></div>' + relMeter(relVal) + '</div>' +
         '<div class="figs">' +
@@ -164,7 +167,7 @@
           '<span class="govtype">' + esc(govType) + '</span>' +
         '</div>' +
         '<div class="wstats">' + statsHtml + '</div>' +
-      '</article>';
+      '</a>';
     }).join('');
 
     document.getElementById('content').innerHTML = '<div class="grid">' + cards + '</div>';
