@@ -17,10 +17,39 @@
   .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
   .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
   .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
-  .phead p{color:var(--muted);font-size:13.5px;margin-top:5px;max-width:620px}
 
-  .soon{margin-top:22px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:34px 26px;text-align:center;color:var(--soft)}
-  .soon b{display:block;color:var(--muted);font-size:16px;margin-bottom:5px}
+  /* Masthead — the party's letterhead: logo, name, abbreviation, leader, founded date. */
+  .mast{position:relative;display:flex;align-items:center;gap:20px;margin-top:20px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px 24px;border-top:3px solid var(--pc,var(--indigo))}
+  .mast__logo{width:76px;height:76px;border-radius:16px;flex:none;display:grid;place-items:center;overflow:hidden;background:var(--pc,var(--indigo));color:#fff;font-family:'Space Mono',monospace;font-weight:700;font-size:24px;letter-spacing:.02em}
+  .mast__logo img{width:100%;height:100%;object-fit:cover}
+  .mast__body{min-width:0;flex:1}
+  .mast__abbr{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.16em;color:var(--pc,var(--indigo))}
+  .mast__name{font-weight:900;font-size:clamp(22px,3.4vw,30px);letter-spacing:-.03em;line-height:1.1;margin:3px 0 0}
+  .mast__meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:9px;font-size:13.5px;color:var(--muted)}
+  .mast__meta b{color:var(--ink);font-weight:700}
+  .mast__meta .k{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-right:5px}
+  .mast__edit{position:absolute;top:16px;right:16px;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:9px;padding:8px 12px;cursor:pointer}
+  .mast__edit:hover{filter:brightness(1.05)}
+  .mast__edit:disabled{opacity:.5;cursor:not-allowed}
+  @media(max-width:560px){.mast{flex-direction:column;align-items:flex-start;text-align:left;padding-top:52px}.mast__edit{top:14px;right:14px}}
+
+  /* Edit Party modal */
+  .emodal{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:18px}
+  .emodal[hidden]{display:none}
+  .emodal__panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto}
+  .emodal__hd{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+  .emodal__hd b{font-size:17px;font-weight:900;letter-spacing:-.01em}
+  .emodal__x{background:none;border:none;color:var(--soft);font-size:22px;line-height:1;cursor:pointer;padding:0 4px}
+  .elbl{display:block;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);font-weight:700;margin:14px 0 6px}
+  .einput{width:100%;background:var(--field,var(--bg));border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--ink);font-family:'Archivo',system-ui,sans-serif;font-size:15px}
+  .einput.abbr{text-transform:uppercase;letter-spacing:.16em;font-family:'Space Mono',monospace;font-weight:700;max-width:150px}
+  .elogorow{display:flex;align-items:center;gap:14px}
+  .elogoprev{width:56px;height:56px;border-radius:12px;flex:none;display:grid;place-items:center;overflow:hidden;background:var(--pc,var(--indigo));color:#fff;font-family:'Space Mono',monospace;font-weight:700;font-size:16px}
+  .elogoprev img{width:100%;height:100%;object-fit:cover}
+  .ecost{margin-top:18px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
+  .eerr{color:var(--red);font-size:13px;margin-top:10px;min-height:1px}
+  .esave{margin-top:12px;width:100%;background:var(--ink);color:var(--bg);border:none;border-radius:10px;padding:12px;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.05em;cursor:pointer}
+  .esave:hover{filter:brightness(1.12)} .esave:disabled{opacity:.55;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -31,38 +60,167 @@
     <div class="topbar" id="topbar"></div>
     <div class="phead">
       <span class="eye">Your Party</span>
-      <h1 id="phTitle">Party</h1>
-      <p>Your party's home.</p>
+      <h1>Party</h1>
     </div>
 
-    <div class="soon"><b>Coming soon</b><span>This page is being built out.</span></div>
+    <!-- Masthead — the party letterhead, filled by renderMasthead(). -->
+    <div class="mast" id="mast" hidden>
+      <div class="mast__logo" id="mastLogo"></div>
+      <div class="mast__body">
+        <div class="mast__abbr" id="mastAbbr"></div>
+        <div class="mast__name" id="mastName"></div>
+        <div class="mast__meta">
+          <span><span class="k">Leader</span><b id="mastLeader">—</b></span>
+          <span><span class="k">Founded</span><b id="mastFounded">—</b></span>
+        </div>
+      </div>
+      <button class="mast__edit" id="editBtn" type="button" hidden>Edit Party · 5 Influence</button>
+    </div>
   </main>
+</div>
+
+<!-- Edit Party modal -->
+<div class="emodal" id="editModal" hidden>
+  <div class="emodal__panel">
+    <div class="emodal__hd"><b>Edit Party</b><button class="emodal__x" id="editClose" type="button" aria-label="Close">&times;</button></div>
+    <label class="elbl" for="eName">Party name</label>
+    <input class="einput" id="eName" type="text" maxlength="48" autocomplete="off">
+    <label class="elbl" for="eAbbr">Abbreviation (2–4 letters)</label>
+    <input class="einput abbr" id="eAbbr" type="text" maxlength="4" autocomplete="off" spellcheck="false">
+    <label class="elbl">Logo</label>
+    <div class="elogorow">
+      <div class="elogoprev" id="eLogoPrev"></div>
+      <input type="file" id="eLogo" accept="image/png,image/jpeg,image/webp,image/gif">
+    </div>
+    <div class="ecost">Costs <b>5 Influence</b></div>
+    <div class="eerr" id="eErr"></div>
+    <button class="esave" id="eSave" type="button">Save · 5 Influence</button>
+  </div>
 </div>
 
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
-  import { ideologyLabel } from '/archetypes.js';
+  import { esc } from '/util.js';
+  import { ideologyLabel, partyColor } from '/archetypes.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
   mountTopbar();   // shared top bar (Discord/Influence/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
 
+  var PARTY = null, PCOLOR = 'var(--indigo)', BUSY = false;
+
+  function initials(s) { return String(s || '?').trim().slice(0, 3).toUpperCase(); }
+  function logoInner(logoUrl, fallback) {
+    return logoUrl ? '<img src="' + esc(logoUrl) + '" alt="">' : esc(initials(fallback));
+  }
+
+  function renderMasthead(party, leaderName, leaderAge) {
+    PCOLOR = partyColor(party) || 'var(--indigo)';
+    var mast = document.getElementById('mast');
+    mast.style.setProperty('--pc', PCOLOR);
+    document.getElementById('mastLogo').innerHTML = logoInner(party.logo_url, party.abbreviation || party.name);
+    document.getElementById('mastAbbr').textContent = party.abbreviation || '';
+    document.getElementById('mastName').textContent = party.name || 'Your Party';
+    document.getElementById('mastLeader').textContent = leaderName ? (leaderName + (leaderAge != null ? ' (' + leaderAge + ')' : '')) : '—';
+    // Founded date from created_at (the party's real creation timestamp).
+    var founded = '—';
+    if (party.created_at) { var d = new Date(party.created_at); if (!isNaN(d)) founded = d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }); }
+    document.getElementById('mastFounded').textContent = founded;
+    mast.hidden = false;
+    document.title = party.name + ' · Nationhood';
+  }
+
+  // ---- Edit Party modal ----
+  var modal = document.getElementById('editModal'), errEl = document.getElementById('eErr');
+  function openEdit() {
+    document.getElementById('eName').value = PARTY.name || '';
+    document.getElementById('eAbbr').value = PARTY.abbreviation || '';
+    document.getElementById('eLogo').value = '';
+    NEW_LOGO_FILE = null;
+    document.getElementById('eLogoPrev').style.setProperty('--pc', PCOLOR);
+    document.getElementById('eLogoPrev').innerHTML = logoInner(PARTY.logo_url, PARTY.abbreviation || PARTY.name);
+    errEl.textContent = '';
+    modal.hidden = false;
+  }
+  function closeEdit() { if (!BUSY) modal.hidden = true; }
+
+  var NEW_LOGO_FILE = null;
+  document.getElementById('eAbbr').addEventListener('input', function (e) { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4); });
+  document.getElementById('eLogo').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) { NEW_LOGO_FILE = null; return; }
+    if (f.size > 2 * 1024 * 1024) { errEl.textContent = 'That image is over 2 MB — pick a smaller one.'; e.target.value = ''; NEW_LOGO_FILE = null; return; }
+    NEW_LOGO_FILE = f; errEl.textContent = '';
+    var r = new FileReader();
+    r.onload = function () { document.getElementById('eLogoPrev').innerHTML = '<img src="' + r.result + '" alt="">'; };
+    r.readAsDataURL(f);
+  });
+
+  // Upload a picked logo to the party-logos bucket (path must start with the user's id per RLS).
+  async function uploadLogo(file) {
+    var u = (await supabase.auth.getUser()).data.user;
+    if (!u) throw new Error('Not signed in.');
+    var ext = ((file.name || '').split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+    var path = u.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+    var up = await supabase.storage.from('party-logos').upload(path, file, { cacheControl: '3600', upsert: false });
+    if (up.error) throw new Error(up.error.message);
+    return supabase.storage.from('party-logos').getPublicUrl(path).data.publicUrl;
+  }
+
+  async function saveEdit() {
+    if (BUSY) return;
+    var name = document.getElementById('eName').value.trim();
+    var abbr = document.getElementById('eAbbr').value.trim().toUpperCase();
+    if (!name) { errEl.textContent = 'Enter a party name.'; return; }
+    if (!/^[A-Z]{2,4}$/.test(abbr)) { errEl.textContent = 'The abbreviation must be 2–4 letters.'; return; }
+    BUSY = true; errEl.textContent = '';
+    var btn = document.getElementById('eSave'); btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      var logoUrl = PARTY.logo_url || '';   // keep the existing logo unless a new one was picked
+      if (NEW_LOGO_FILE) logoUrl = await uploadLogo(NEW_LOGO_FILE);
+      const { data, error } = await supabase.rpc('edit_party', { p_name: name, p_abbr: abbr, p_logo_url: logoUrl });
+      if (error) throw error;
+      window.location.reload();   // refresh the masthead, sidenav brand and topbar Influence together
+    } catch (e) {
+      BUSY = false; btn.disabled = false; btn.textContent = 'Save · 5 Influence';
+      errEl.textContent = (e && e.message) || 'Could not save your party.';
+    }
+  }
+
+  document.getElementById('editClose').onclick = closeEdit;
+  modal.addEventListener('click', function (e) { if (e.target === modal) closeEdit(); });
+  document.getElementById('eSave').onclick = saveEdit;
+
   (async () => {
     if (!isConfigured) return;
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      const { data: party, error } = await supabase.from('parties').select('name, archetype, nation_id, influence').eq('user_id', user.id).single();
+      const { data: party, error } = await supabase.from('parties')
+        .select('id, name, abbreviation, archetype, color, logo_url, influence, created_at, nation_id')
+        .eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
+      PARTY = party;
       const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', party.nation_id).single();
-      // Fill the shared sidenav brand (flag / party name / ideology · nation) + the topbar Influence.
-      document.getElementById('phTitle').textContent = party.name;
+
+      // Fill the shared sidenav brand + the topbar Influence.
       document.getElementById('pname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + ((nation && nation.name) || party.nation_id);
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
       setTopbarActions(party.influence);
-    } catch (e) { /* chrome still renders; leave the placeholder */ }
+
+      // The Party Leader (the seeded politician), for the masthead's "Led by" line.
+      var leaderName = '', leaderAge = null;
+      try {
+        const { data: leader } = await supabase.from('politicians').select('first_name, last_name, age')
+          .eq('party_id', party.id).eq('status', 'Party Leader').order('created_at').limit(1).maybeSingle();
+        if (leader) { leaderName = ((leader.first_name || '') + ' ' + (leader.last_name || '')).trim(); leaderAge = leader.age; }
+      } catch (e) { /* leader line falls back to — */ }
+
+      renderMasthead(party, leaderName, leaderAge);
+      var eb = document.getElementById('editBtn'); eb.hidden = false; eb.onclick = openEdit;
+    } catch (e) { /* chrome still renders */ }
   })();
 </script>
 </body>

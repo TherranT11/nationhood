@@ -9,6 +9,9 @@
 // the stat backend, so effects are stored but not yet applied live. ONE source for the
 // policy builder's stat picker. (Distinct from the live world-event target list, which
 // still uses the current backend stat names until the models converge.)
+// The stats a policy effect can target (the policy-builder vocabulary). 'Regime' moves the nation's
+// place on the 1–25 scale — applied server-side by _apply_policy_effect (schema/91, republic range
+// only) — and is shown as the Government page's regime graph rather than a ministry-stat cell.
 export const POLICY_STATS = [
   'Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Interest Rates',
   'Crime', 'Immigration', 'Extremism', 'Unemployment', 'Poverty', 'Wages',
@@ -16,7 +19,7 @@ export const POLICY_STATS = [
   'Military Research', 'Cybersecurity', 'Energy Availability', 'CO₂ Emissions', 'Global Warming',
   'Rule of Law', 'Standard of Living', 'Housing Affordability',
   'Pension Quality', 'Equity Between Generations', 'Demographic Pressure', 'Birth Rate',
-  'Education', 'Health', 'Innovation', 'Environment', 'Infrastructure'
+  'Education', 'Health', 'Innovation', 'Environment', 'Infrastructure', 'Regime'
 ];
 
 // The valid input range for a ministry stat, where one is defined — used to bound the admin
@@ -31,11 +34,12 @@ export const STAT_RANGES = {
   'Innovation': { min: 1, max: 100 }
 };
 
-// The admin-typed ministry stats (the Edit Nation "Ministry Stats" grid). Derived from
-// POLICY_STATS — one source — minus the stats that are COMPUTED from policy effects rather than
-// typed: Budget Balance and Bureaucracy.
-var COMPUTED_STATS = ['Budget Balance', 'Bureaucracy'];
-export const MINISTRY_STATS = POLICY_STATS.filter(function (s) { return COMPUTED_STATS.indexOf(s) < 0; });
+// The admin-typed ministry stats (the Edit Nation "Ministry Stats" grid). Derived from POLICY_STATS
+// — one source — minus stats that are NOT typed in that grid: Budget Balance & Bureaucracy are
+// COMPUTED from policy effects, and Regime lives on economy.regime (its own graph), so it's a
+// policy-effect target but never a typed ministry field.
+var NON_MINISTRY_STATS = ['Budget Balance', 'Bureaucracy', 'Regime'];
+export const MINISTRY_STATS = POLICY_STATS.filter(function (s) { return NON_MINISTRY_STATS.indexOf(s) < 0; });
 
 // A policy's vote-popularity reaction: how a party's popularity moves for how it votes on a
 // proposed level change. def.popRaise is the swing per rung for voting to RAISE the policy
