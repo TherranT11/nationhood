@@ -81,6 +81,9 @@
   .wm-contcolor{width:38px;height:34px;padding:2px;border:1.5px solid var(--line2,#D9D6D0);border-radius:9px;background:var(--surface,#fff);cursor:pointer}
   .wm-actions{display:flex;align-items:center;gap:12px}
   .wm-status{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft,#8d8d95)}
+  .wm-status--ok{color:var(--green,#16915a);font-weight:700}
+  .wm-status--warn{color:var(--amber,#E0820E);font-weight:700}
+  .wm-status--err{color:var(--red,#C42B2B);font-weight:700}
   .wm-save{border:none;background:var(--indigo,#5546E8);color:#fff;border-radius:9px;padding:9px 16px;cursor:pointer;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700}
   .wm-save:hover{filter:brightness(1.08)} .wm-save:disabled{opacity:.55;cursor:not-allowed;filter:none}
   .wm-eraseall{border:1.5px solid var(--line2,#D9D6D0);background:var(--surface,#fff);color:var(--muted,#5b5b63);border-radius:9px;padding:8px 14px;cursor:pointer;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700}
@@ -2256,6 +2259,16 @@
             for (var i = 0; i < dels.length; i++) { var d = loaded[dels[i]]; var dr = await supabase.from('world_hexes').delete().eq('q', d.q).eq('r', d.r); if (dr.error) throw dr.error; }
           }
           loaded = {}; Object.keys(hexes).forEach(function (k) { loaded[k] = { q: hexes[k].q, r: hexes[k].r }; });
+          // Verify the write actually landed. A silent non-persist — an RLS/schema issue in the live DB,
+          // or being signed in as a non-admin — is the ONE failure the upsert/delete can't report, and it
+          // reads exactly as "Save Map did nothing". Read the row count straight back and, if it doesn't
+          // match what we just wrote, say so loudly instead of a false "Saved".
+          var verify = await supabase.from('world_hexes').select('q', { count: 'exact', head: true });
+          if (!verify.error && verify.count != null && verify.count !== rows.length) {
+            status('Save didn’t stick — the server has ' + verify.count + ' hex' + (verify.count === 1 ? '' : 'es') + ', not the ' + rows.length +
+              ' just written. A row-level-security policy is blocking it — make sure you’re signed in as the admin account, and that schema 101 is applied. Reload to confirm.', 'err');
+            btn.disabled = false; return;
+          }
           // Persist the continents registry (name + colour) — every continent still in play, with
           // its effective colour, so old text-only continents pick up a stored colour too. The hexes
           // above are already saved at this point, so a registry failure is reported on its own (NOT
@@ -2264,7 +2277,7 @@
           if (cl.length) {
             var cm = contColorMap();
             var cu = await supabase.from('continents').upsert(cl.map(function (c) { return { name: c, color: cm[c] }; }), { onConflict: 'name' });
-            if (cu.error) { status('Hexes saved, but continent colours didn’t: ' + cu.error.message); btn.disabled = false; return; }
+            if (cu.error) { status('Hexes saved, but continent colours didn’t: ' + cu.error.message, 'warn'); btn.disabled = false; return; }
           }
           // City placements: write only the cities whose hex (q,r) changed since load.
           var nrm = function (v) { return v == null ? null : v; };
@@ -2272,14 +2285,20 @@
           for (var cj = 0; cj < cityChanged.length; cj++) {
             var cc = cityChanged[cj];
             var ccu = await supabase.from('cities').update({ q: cc.q, r: cc.r }).eq('id', cc.id);
-            if (ccu.error) { status('Hexes saved, but a city placement didn’t: ' + ccu.error.message); btn.disabled = false; return; }
+            if (ccu.error) { status('Hexes saved, but a city placement didn’t: ' + ccu.error.message, 'warn'); btn.disabled = false; return; }
           }
           cityRows.forEach(function (c) { cityLoaded[c.id] = { q: c.q, r: c.r }; });
-          status('Saved · ' + rows.length + ' hex' + (rows.length === 1 ? '' : 'es') + (cityChanged.length ? ' · ' + cityChanged.length + ' city placement' + (cityChanged.length === 1 ? '' : 's') : '') + '.');
-        } catch (e) { status('Save failed: ' + ((e && e.message) || 'error')); }
+          status('Saved · ' + rows.length + ' hex' + (rows.length === 1 ? '' : 'es') + (cityChanged.length ? ' · ' + cityChanged.length + ' city placement' + (cityChanged.length === 1 ? '' : 's') : '') + '.', 'ok');
+        } catch (e) { status('Save failed: ' + ((e && e.message) || 'error'), 'err'); }
         btn.disabled = false;
       }
-      function status(t) { document.getElementById('wmStatus').textContent = t; }
+      // Status line by the Save button. kind = 'ok' | 'warn' | 'err' colours it so a failure can't be
+      // mistaken for a silent success (which read as "Save Map did nothing"); no kind = neutral.
+      function status(t, kind) {
+        var el = document.getElementById('wmStatus');
+        el.textContent = t;
+        el.className = 'wm-status' + (kind ? ' wm-status--' + kind : '');
+      }
 
       // ---- inspector ----
       function closeInspect() { if (selKey && hexes[selKey] && isEmpty(hexes[selKey])) delete hexes[selKey]; selKey = null; document.getElementById('wmInspect').hidden = true; draw(); }
