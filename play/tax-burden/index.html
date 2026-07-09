@@ -84,7 +84,7 @@
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
+      const { data: party, error } = await supabase.from('parties').select('nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
       var nRes = await supabase.from('nations').select('name, flag, declarations, policies, gdp').eq('id', party.nation_id).single();
       var nation = nRes.data || {};
