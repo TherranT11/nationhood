@@ -233,7 +233,7 @@
   <div class="tmodal">
     <div class="tm-h"><button class="tclose" id="sancClose">✕</button>
       <div class="tm-mode">Trade sanctions</div><div class="tm-title">Embargo a nation</div>
-      <div class="tm-sub">Bars trade both ways. Sanctioning a regime ≤4 rallies your government (+1 popularity, +2 Confidence); a democracy costs −1 Image. 3 Influence to enact.</div></div>
+      <div class="tm-sub">Bars trade both ways. Sanctioning a regime ≤4 rallies your government (+1 popularity); a democracy costs −1 Image. 3 Influence to enact.</div></div>
     <div class="tm-body"><div id="sancList"></div></div>
   </div>
 </div>
@@ -668,7 +668,7 @@
       var reg = regimeNum((n.economy || {}).regime), auth = reg != null && reg <= 4;
       var hint = onMe ? 'Has sanctioned you — trade barred'
         : byMe ? 'Under your sanction — trade barred both ways'
-        : auth ? 'Authoritarian regime — a stand rallies your government (+1 popularity, +2 Confidence)'
+        : auth ? 'Authoritarian regime — a stand rallies your government (+1 popularity)'
         : reg != null ? 'Democracy — sanctioning costs −1 Image'
         : 'Regime unknown';
       var btn = byMe
@@ -686,7 +686,7 @@
     if (error) { ping('<b class="red">' + esc(error.message) + '</b>'); btn.disabled = false; return; }
     if (rpc === 'place_sanction') {
       var nm = (data && data.target) || 'the nation';
-      if (data && data.rewarded) ping('Sanctions on <b>' + esc(nm) + '</b> — <b class="green">+1 popularity, +2 Government Confidence</b>.');
+      if (data && data.rewarded) ping('Sanctions on <b>' + esc(nm) + '</b> — <b class="green">+1 popularity</b>.');
       else if (data && data.penalized) ping('Sanctions on <b>' + esc(nm) + '</b> — <b class="red">−1 Image</b> for embargoing a democracy.');
       else ping('Sanctions imposed on <b>' + esc(nm) + '</b>.');
     } else {

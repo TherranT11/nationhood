@@ -74,7 +74,7 @@ const EVENT_CAP = 600;
 export async function fetchAdministrations(nationId){
   try {
     const [govR, evR, partyR] = await Promise.all([
-      supabase.from('governments').select('id, formateur_party_id, type, confidence, conf_breakdown, formed_tick, status, created_at').eq('nation_id', nationId).order('formed_tick', { ascending: false }),
+      supabase.from('governments').select('id, formateur_party_id, type, coalition_health, coalition_health_max, formed_tick, status, created_at').eq('nation_id', nationId).order('formed_tick', { ascending: false }),
       supabase.from('events').select('kind, body, game_date, created_at').eq('nation_id', nationId).order('created_at', { ascending: false }).limit(EVENT_CAP),
       supabase.from('parties').select('id, name').eq('nation_id', nationId)
     ]);
@@ -104,7 +104,7 @@ export function renderAdministrations(el, data, ctx){
       name: partyName[g.formateur_party_id] || 'A former government',
       type: g.type, ongoing: g.status === 'active',
       startTick: g.formed_tick, endTick: endTick,
-      conf: (g.conf_breakdown && g.conf_breakdown.formed != null) ? Math.round(g.conf_breakdown.formed) : Math.round(Number(g.confidence) || 0),
+      hearts: (g.coalition_health_max != null) ? g.coalition_health_max : (g.coalition_health != null ? g.coalition_health : null),
       events: evs
     };
   });
@@ -143,7 +143,7 @@ export function renderAdministrations(el, data, ctx){
 
     inner.innerHTML =
       '<div class="ah__hd"><div class="ah__who"><b>' + esc((ctx.hogTitle || 'Head of Government') + ' · ' + a.name) + '</b>' +
-        '<span>' + typeLabel(a.type) + ' Government · ' + a.conf + '% confidence at formation</span></div>' +
+        '<span>' + typeLabel(a.type) + ' Government' + (a.hearts != null ? ' · ' + a.hearts + ' heart' + (a.hearts === 1 ? '' : 's') + ' Coalition Health at formation' : '') + '</span></div>' +
         '<div class="ah__term"><div class="rg">' + esc(tickToDate(a.startTick)) + ' — ' + (a.ongoing ? '<span class="cur">Present</span>' : esc(tickToDate(a.endTick))) + '</div>' +
         '<small>In office ' + dur(a.endTick - a.startTick) + '</small></div></div>' +
       '<div class="ah__chips">' + summary + '</div>' +

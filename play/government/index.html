@@ -115,9 +115,9 @@
   mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
-  // Coalition Strength (hearts) is fixed at formation: 2 hearts, plus 1 for every 2 parties
-  // in the governing coalition (rounded down). Deterministic from the coalition size — no
-  // confidence %, no per-factor breakdown.
+  // Coalition Health (hearts) at formation: 2 hearts, plus 1 for every 2 parties in the
+  // governing coalition (rounded down) — mirrors _seat_government (schema/60). Used only as a
+  // fallback when a government row predates the stored coalition_health (schema/165).
   function coalitionHearts(govPartyCount){ return 2 + Math.floor((govPartyCount || 0) / 2); }
 
   // The hemicycle: government parties fill the arc first (full colour), opposition
@@ -298,7 +298,7 @@
       box.innerHTML = '<div class="panel"><div class="empty"><b>' +
         (oneParty ? 'No coalition government' : 'No government has formed yet') + '</b><span>' +
         (oneParty
-          ? esc(nation.name || 'This nation') + ' is a one-party state — power isn’t shared through a coalition, so there’s no Government Confidence to track here.'
+          ? esc(nation.name || 'This nation') + ' is a one-party state — power isn’t shared through a coalition, so there’s no Coalition Health to track here.'
           : 'A government is seated when the nation holds its first general election.') +
         '</span></div></div>' +
         ministryStats(nation) + stateOfNation(nation);   // stats + economy/identity/cities still apply without a government
@@ -320,19 +320,25 @@
     var govSeats = gov.reduce(function(s,p){ return s + (p.seats||0); }, 0);
     var total = nation.legislature_seats || 0;
     var maj = majority(total);
-    var hearts = coalitionHearts(gov.length);   // 2 + 1 per 2 coalition parties (rounded down)
+    // Coalition Health — the STORED gauge (schema/165). Falls back to the formation formula
+    // for a legacy government seated before hearts were tracked. Full hearts show current
+    // health; the remainder up to the formation max show as empty (damage taken).
+    var maxHearts = (govt.coalition_health_max != null) ? govt.coalition_health_max : coalitionHearts(gov.length);
+    var hearts = (govt.coalition_health != null) ? govt.coalition_health : maxHearts;
     var heartsHtml = '';
-    for (var hi = 0; hi < hearts; hi++) {
-      heartsHtml += '<svg class="heart on" viewBox="0 0 24 24" style="fill:var(--green)">' +
+    for (var hi = 0; hi < maxHearts; hi++) {
+      var on = hi < hearts;
+      heartsHtml += '<svg class="heart' + (on ? ' on' : '') + '" viewBox="0 0 24 24"' + (on ? ' style="fill:var(--green)"' : '') + '>' +
         '<path d="M12 21s-8-5.3-8-11a4.6 4.6 0 0 1 8-2.9 4.6 4.6 0 0 1 8 2.9c0 5.7-8 11-8 11z"/></svg>';
     }
 
     box.innerHTML =
-      // 1 — Coalition Strength (hearts, fixed at formation from the coalition size)
-      '<div class="panel"><h2>Coalition Strength</h2>' +
+      // 1 — Coalition Health (hearts): the government's stability gauge
+      '<div class="panel"><h2>Coalition Health</h2>' +
         '<div class="conf__hearts">' + heartsHtml + '</div>' +
-        '<div class="conf__note">Set when the government forms: 2 hearts, plus 1 for every 2 parties in the governing coalition (' +
-          gov.length + ' part' + (gov.length === 1 ? 'y' : 'ies') + ' → ' + hearts + ' heart' + (hearts === 1 ? '' : 's') + ').</div>' +
+        '<div class="conf__note">' + hearts + ' of ' + maxHearts + ' heart' + (maxHearts === 1 ? '' : 's') + '. ' +
+          'A debt-to-GDP crisis, a vacant cabinet, or a neglected agenda each cost a heart; delivering on the agenda restores one. ' +
+          'At zero hearts the government falls apart and a snap election is held.</div>' +
       '</div>' +
       // 2 — The National Assembly (hemicycle)
       '<div class="panel"><h2>The National Assembly</h2>' +

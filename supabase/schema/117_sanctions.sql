@@ -75,8 +75,7 @@ begin
 
   if v_reward_ok then
     perform public._apply_policy_effect(v_buyer, jsonb_build_object('t', 'Party Popularity', 'v', 1));
-    perform public._apply_policy_effect(v_buyer, jsonb_build_object('t', 'Government Confidence', 'v', 2));
-    v_rewarded := true;
+    v_rewarded := true;   -- Government Confidence reward retired (schema/165)
   elsif v_regime is not null and v_regime >= 5 then
     perform public._apply_policy_effect(v_buyer, jsonb_build_object('t', 'Image', 'v', -1));
     v_penalized := true;
@@ -87,7 +86,7 @@ begin
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_buyer, v_p.id, 'economy',
             'The government has imposed trade sanctions on ' || v_tname
-            || case when v_rewarded  then ' — a popular stand against the regime: +1 popularity, +2 Government Confidence.'
+            || case when v_rewarded  then ' — a popular stand against the regime: +1 popularity.'
                     when v_penalized then ' — sanctioning a democracy draws criticism abroad: −1 Image.'
                     else '.' end,
             public.current_game_date());

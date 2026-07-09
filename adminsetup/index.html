@@ -583,7 +583,7 @@
 
     <div class="panel">
       <h2>Game Clock</h2>
-      <p class="sub" style="margin:0 0 12px">Advance the shared clock one month. Any nation whose election is due resolves: seats are reallocated from popularity, a government forms, and Government Confidence is set.</p>
+      <p class="sub" style="margin:0 0 12px">Advance the shared clock one month. Any nation whose election is due resolves: seats are reallocated from popularity and a government forms.</p>
       <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
         <div><div class="who" id="clockDate">—</div><div class="sub" style="margin:0">Tick <span id="clockTick">—</span></div></div>
         <button class="btn btn-solid" id="advanceBtn" type="button">Advance Tick</button>
@@ -2409,9 +2409,9 @@
     // admin overrode the auto-derived tone. The dropdown/target catalogue MIRRORS
     // admin_fire_event in schema/40 — keep the two lists in sync.
     var EV_TGT = { National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Regime'],
-                   Government: ['Government Confidence', 'Party Popularity'],
+                   Government: ['Party Popularity'],
                    Resource: ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy'] };
-    var EV_GOOD_UP = ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Budget', 'Government Confidence', 'Party Popularity', 'Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy'];
+    var EV_GOOD_UP = ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Budget', 'Party Popularity', 'Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy'];
     var EV_BAD_UP = ['Unemployment %', 'Inflation %', 'Debt'];  // up is bad for the nation; Regime is neutral
     var EV = { target: 'Order', value: -2, tone: 'neg', manual: false };
     var evFresh = null;  // id of the just-fired event, for the "New" highlight
@@ -2563,7 +2563,7 @@
     // authoring tab, which DOES apply live. Policies now author against the separate ministry-stat
     // set (POLICY_STATS, imported) ahead of the stat backend, so they no longer read POL_TGT.
     var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Budget','Debt','Income','Regime'],
-                    Government: ['Government Confidence','Party Popularity','Popularity Ceiling'],
+                    Government: ['Party Popularity','Popularity Ceiling'],
                     Resource: ['Energy','Food','Minerals','Goods','Services','Diplomacy'] };
     // Identity tags — metadata describing what a law IS (not a popularity score). A policy option
     // carries any of these. Loaded from public.identity_tags (the ONE source — an admin can add
@@ -2690,7 +2690,7 @@
     // (importMult / tariff / blocked) are the EXTRA fields economy_import reads (schema/
     // 114-115). There's only ever one trade policy; we find it by its special tag and upsert.
     var TP = null, tpId = null, tpSaving = false;
-    var TP_TGT = { National:['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Budget','Debt','Income','Regime'], Production:['Energy','Food','Minerals','Goods','Services'], Government:['Government Confidence'] };
+    var TP_TGT = { National:['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Budget','Debt','Income','Regime'], Production:['Energy','Food','Minerals','Goods','Services'] };
     function tpDefault(){
       function rung(name,desc,mult,tariff,blocked){ return { name:name, desc:desc, importMult:mult, tariff:tariff, blocked:blocked, effects:[] }; }
       return { name:'Trade Policy', desc:'How open the nation is to foreign trade.', type:'spectrum', special:'trade', defaultIdx:2, spectrum:[
@@ -2924,7 +2924,7 @@
       var RES = ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy'];
       // The tradeable on-hand stockpile resources (no Diplomacy; Military is on-hand only).
       var ONHAND_RES = ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Military'];
-      var EFF_TGT = { Crisis: ['Crisis Meter', 'End Crisis'], National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Income', 'Regime'], Government: ['Government Confidence', 'Party Popularity'], Resource: RES, 'On hand': ONHAND_RES.map(function (r) { return r + ' on hand'; }) };
+      var EFF_TGT = { Crisis: ['Crisis Meter', 'End Crisis'], National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Income', 'Regime'], Government: ['Party Popularity'], Resource: RES, 'On hand': ONHAND_RES.map(function (r) { return r + ' on hand'; }) };
 
       // The crisis's custom stats that have a name — ONE source for every dropdown/preview
       // that lists them (effect targets, endIf targets, thresholds, preview).
@@ -2959,7 +2959,7 @@
       function blankCrisis() {
         return {
           name: 'New Crisis', desc: '',
-          triggers: [{ target: 'Government Confidence', op: '<', value: 20 }], triggerMode: 'all',
+          triggers: [{ target: 'Order', op: '<', value: 20 }], triggerMode: 'all',
           endIf: [], endMode: 'any',
           customStats: [], thresholds: [],
           stages: [blankStage(), blankStage(), blankStage(), blankStage(), { descReached: '', reached: [], resolution: 'ends' }]
@@ -3448,14 +3448,13 @@
 
       var REWARD_DEFS = {
         popularity: { label: 'Party Popularity +X',          parts: [{ p: 'amount', t: 'num' }] },
-        confidence: { label: 'Government Confidence +X',      parts: [{ p: 'amount', t: 'num' }] },
         onhand:     { label: '+X [resource] on hand',         parts: [{ p: 'amount', t: 'num' }, { p: 'resource', t: 'sel', opts: OBJ_ONHAND }] },
         budget:     { label: 'Budget +/− X',                  parts: [{ p: 'amount', t: 'num' }] },
         relations:  { label: 'Relations with [nation] +/− X', parts: [{ p: 'nation', t: 'nat' }, { p: 'amount', t: 'num' }] },
         debt:       { label: 'Debt +/− X',                    parts: [{ p: 'amount', t: 'num' }] },
         stat:       { label: '[stat] +X',                     parts: [{ p: 'stat', t: 'sel', opts: REWARD_STATS }, { p: 'amount', t: 'num' }] }
       };
-      var REWARD_ORDER = ['popularity', 'confidence', 'onhand', 'budget', 'relations', 'debt', 'stat'];
+      var REWARD_ORDER = ['popularity', 'onhand', 'budget', 'relations', 'debt', 'stat'];
 
       var OBJ = null, objEditingId = null, objSaving = false, objCache = [], objNations = [], objContinents = [], objHexes = [], objCrises = [];
 
@@ -3858,7 +3857,7 @@
       // resource ON HAND ("X on hand" → the spendable on_hand stockpile). Military lives only on
       // hand, so it appears in that group alone.
       var WE_ONHAND = ['Military', 'Energy', 'Food', 'Minerals', 'Services', 'Goods', 'Diplomacy'];
-      var WE_TGT = { National: POL_TGT.National, Government: ['Government Confidence', 'Party Popularity', 'Popularity Floor'],
+      var WE_TGT = { National: POL_TGT.National, Government: ['Party Popularity', 'Popularity Floor'],
                      'Resource (Production)': POL_TGT.Resource, 'Resource (On Hand)': WE_ONHAND.map(function (r) { return r + ' on hand'; }) };
       // Competitive bid stat — production/national only (on-hand + Military aren't readable via
       // _nation_stat_get, so they can't be bid on).
@@ -4215,9 +4214,6 @@
       { v: 'archetype_pop_floor',   label: 'Archetype Popularity Floor',   target: 'archetype' },
       { v: 'resource_ceiling',      label: 'Resource Ceiling',             target: 'resource' },
       { v: 'resource_floor',        label: 'Resource Floor',               target: 'resource' },
-      { v: 'confidence_ceiling',    label: 'Government Confidence Ceiling', target: 'none' },
-      { v: 'confidence_formation',  label: 'Gov Confidence Penalty/Bonus on Formation', target: 'none' },
-      { v: 'confidence_tick',       label: 'Government Confidence (per tick)', target: 'none' },
       { v: 'coalition_pop_tick',    label: 'Party Popularity (Government Coalition, per tick)', target: 'none' },
       { v: 'stat_ceiling',          label: 'Stat Ceiling',                 target: 'stat' },
       { v: 'stat_floor',            label: 'Stat Floor',                   target: 'stat' },
@@ -4259,9 +4255,6 @@
         case 'resource_ceiling':      return '<b>' + k + '</b> production can’t rise above <b>' + v + '</b>.';
         case 'archetype_pop_ceiling': return '<b>' + k + '</b> parties’ popularity is capped at <b>' + v + '</b>.';
         case 'archetype_pop_floor':   return '<b>' + k + '</b> parties’ popularity is held at or above <b>' + v + '</b>.';
-        case 'confidence_ceiling':    return 'Government Confidence is capped at <b>' + v + '</b>.';
-        case 'confidence_formation':  return 'On forming government: Gov Confidence <b>' + (v >= 0 ? '+' : '') + v + '%</b>.';
-        case 'confidence_tick':       return 'Government Confidence <b>' + (v >= 0 ? '+' : '') + v + '</b> every tick.';
         case 'coalition_pop_tick':    return 'Every governing-coalition party’s popularity <b>' + (v >= 0 ? '+' : '') + v + '</b> every tick.';
         default: return '';
       }
@@ -4369,8 +4362,6 @@
       { v: 'resource_lte',   base: 'resource',   op: 'lte', target: 'resource', label: 'Resource production at or below' },
       { v: 'economy_gte',    base: 'economy',    op: 'gte', target: 'economy',  label: 'Economy at or above' },
       { v: 'economy_lte',    base: 'economy',    op: 'lte', target: 'economy',  label: 'Economy at or below' },
-      { v: 'confidence_gte', base: 'confidence', op: 'gte', target: 'none',     label: 'Gov Confidence at or above' },
-      { v: 'confidence_lte', base: 'confidence', op: 'lte', target: 'none',     label: 'Gov Confidence at or below' },
       { v: 'duration_gte',   base: 'duration',   op: 'gte', target: 'none',     label: 'Months active reaches' }
     ];
     var ECONOMY = ['unemployment', 'inflation', 'budget', 'debt', 'gdp', 'population'];

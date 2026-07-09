@@ -157,12 +157,17 @@ begin
   loop
     select count(*) into v_held from public.government_objectives where government_id = n.gov_id;
     if v_held = 0 then
-      perform public._apply_policy_effect(n.nation_id, jsonb_build_object('t', 'Government Confidence', 'v', -3));
+      -- Keep the −2% Party Popularity; the −3% Government Confidence is retired. Neglect now also
+      -- costs a heart of Coalition Health, which can topple the government at zero (−3% to governing
+      -- parties, snap election next tick — one source: _coalition_health_drop, schema/165). The
+      -- popularity slip and heart loss are separate events (the drop helper fires its own).
       perform public._apply_policy_effect(n.nation_id, jsonb_build_object('t', 'Party Popularity', 'v', -2));
       insert into public.events (nation_id, kind, body, game_date)
         values (n.nation_id, 'government',
-                'The government set no national objectives this year — confidence fell (−3%) and party popularity slipped (−2%).',
+                'The government set no national objectives this year — party popularity slipped (−2%).',
                 public.current_game_date());
+      perform public._coalition_health_drop(n.nation_id, 1, 3,
+        'The government set no national objectives this year and its coalition health suffered', p_tick);
     end if;
   end loop;
 end $$;

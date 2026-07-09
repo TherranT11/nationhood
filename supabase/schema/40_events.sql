@@ -554,12 +554,10 @@ begin
     end if;
 
   elsif v_col = '__gov' then
-    select * into v_gov from public.governments where nation_id = p_nation and status = 'active';
-    if not found then raise exception 'No active government in % to adjust.', v_n.name; end if;
-    update public.governments
-       set confidence = greatest(0, least(100, coalesce(confidence, 0) + p_value))
-     where id = v_gov.id;
-    if p_value < 0 then perform public._confidence_collapse(p_nation); end if;  -- a drop to <=10 forces a snap election
+    -- Government Confidence RETIRED (schema/165): a 'Government Confidence' admin event is accepted
+    -- (so existing authored events don't error) but no longer moves any gauge. Coalition Health is
+    -- the government's stability meter now, and it isn't admin-nudged.
+    null;
 
   elsif v_col = '__party' then
     if p_party is null then raise exception 'Pick a party for a Party Popularity event.'; end if;

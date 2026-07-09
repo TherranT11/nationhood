@@ -39,7 +39,8 @@ returns int language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public._vacant_ministry_count(uuid) from public, anon, authenticated;
 
--- The yearly penalty: −1% Government Confidence per vacant ministry, on every sitting government.
+-- The yearly penalty: −1 Coalition Health (one heart) if ANY ministry sits vacant, on every
+-- sitting government. Flat — a bare cabinet costs one heart, not one per empty seat.
 create or replace function public._resolve_vacant_cabinet(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
 declare n record; v_vacant int;
@@ -53,13 +54,12 @@ begin
   loop
     v_vacant := public._vacant_ministry_count(n.gov_id);
     if v_vacant > 0 then
-      -- One clamp source (schema/91): Government Confidence floors at 0 and fires the collapse hook.
-      perform public._apply_policy_effect(n.nation_id, jsonb_build_object('t', 'Government Confidence', 'v', -v_vacant));
-      insert into public.events (nation_id, kind, body, game_date)
-        values (n.nation_id, 'government',
-          v_vacant || ' cabinet ' || (case when v_vacant = 1 then 'ministry' else 'ministries' end)
-          || ' sat vacant through the year — government confidence fell (−' || v_vacant || '%).',
-          public.current_game_date());
+      -- A cabinet left with empty seats costs the government a heart of Coalition Health for the year.
+      -- At zero hearts the government falls apart (−3% Party Popularity to governing parties, snap
+      -- election next tick). ONE source for the drop + collapse: _coalition_health_drop (schema/165).
+      perform public._coalition_health_drop(n.nation_id, 1, 3,
+        v_vacant || ' cabinet ' || (case when v_vacant = 1 then 'ministry' else 'ministries' end)
+        || ' sat vacant through the year and the government''s coalition health suffered', p_tick);
     end if;
   end loop;
 end $$;
