@@ -53,7 +53,7 @@ begin
     -- what lets the admin name the ruling party directly in the /adminsetup form. The
     -- trade-off is that an admin-set ruling_party persists even if it isn't the largest
     -- party; regime is the switch, this field is the (optional) name. Keep the two
-    -- consistent: a name set while regime is ≥5 will be cleared on the next sync (restore).
+    -- consistent: a name set while the regime is in a multiparty band is cleared on the next sync (restore).
     if v_ruling is null then
       -- The largest party becomes the sole legal party (most seats, then popularity,
       -- then the oldest). No parties yet → the state itself is the ruling party, named

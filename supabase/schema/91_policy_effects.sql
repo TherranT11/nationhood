@@ -128,8 +128,9 @@ begin
       -- An automated effect moves the REFORM level (0..15) within the current type; it never
       -- changes the type. A monarchy is law/admin-only — an effect can neither crown nor move a
       -- crowned nation behind the legislature's back (that's propose_regime_change / admin
-      -- territory). An unset type is treated as a republic (the move is a no-op if the key is
-      -- absent). Reform-bill ownership of this movement is a later pass.
+      -- territory). An unset type is treated as a republic and still moves reform, but that
+      -- reform stays inert until a type is set (nationRegime reads null without one). Reform-bill
+      -- ownership of this movement is a later pass.
       if public._regime_type((select economy from public.nations where id = p_nation)) is distinct from 'monarchy' then
         perform public._nation_stat_add(p_nation, 'economy', 'regime_reform', v_v, 0, 15);
       end if;

@@ -3210,11 +3210,11 @@
         if (!id) return '';
         var n = crisNationById(id);
         if (!n) return '<div class="hint" style="margin-top:8px;color:var(--red)">That nation no longer exists.</div>';
-        var st = n.stats || {}, ec = n.economy || {};
+        var st = n.stats || {}, ec = n.economy || {}, reg = nationRegime(ec);
         var warn = n.dormant ? '' : '<div class="hint" style="color:var(--amber);margin-top:5px">⚠ This nation isn’t dormant — it’s already live, so nothing will spawn.</div>';
         return '<div style="margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:11px 13px">' +
           '<div style="font-weight:800">' + esc(n.name || n.id) + '</div>' +
-          '<div class="hint" style="margin-top:4px">' + (n.legislature_seats || 0) + ' seats · ' + (nationRegime(ec) ? esc(regimeLabel(nationRegime(ec)) || 'regime —') : 'regime —') +
+          '<div class="hint" style="margin-top:4px">' + (n.legislature_seats || 0) + ' seats · ' + (reg ? esc(regimeLabel(reg) || 'regime —') : 'regime —') +
             ' · order ' + (st.order != null ? st.order : '—') + ' · growth ' + (st.growth != null ? st.growth : '—') + '</div>' + warn + '</div>';
       }
       function renderStage5(box) {
