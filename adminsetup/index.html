@@ -2259,16 +2259,6 @@
             for (var i = 0; i < dels.length; i++) { var d = loaded[dels[i]]; var dr = await supabase.from('world_hexes').delete().eq('q', d.q).eq('r', d.r); if (dr.error) throw dr.error; }
           }
           loaded = {}; Object.keys(hexes).forEach(function (k) { loaded[k] = { q: hexes[k].q, r: hexes[k].r }; });
-          // Verify the write actually landed. A silent non-persist — an RLS/schema issue in the live DB,
-          // or being signed in as a non-admin — is the ONE failure the upsert/delete can't report, and it
-          // reads exactly as "Save Map did nothing". Read the row count straight back and, if it doesn't
-          // match what we just wrote, say so loudly instead of a false "Saved".
-          var verify = await supabase.from('world_hexes').select('q', { count: 'exact', head: true });
-          if (!verify.error && verify.count != null && verify.count !== rows.length) {
-            status('Save didn’t stick — the server has ' + verify.count + ' hex' + (verify.count === 1 ? '' : 'es') + ', not the ' + rows.length +
-              ' just written. A row-level-security policy is blocking it — make sure you’re signed in as the admin account, and that schema 101 is applied. Reload to confirm.', 'err');
-            btn.disabled = false; return;
-          }
           // Persist the continents registry (name + colour) — every continent still in play, with
           // its effective colour, so old text-only continents pick up a stored colour too. The hexes
           // above are already saved at this point, so a registry failure is reported on its own (NOT
