@@ -53,6 +53,8 @@
   .regime__pin{position:absolute;top:-24px;left:50%;transform:translateX(-50%);font-family:'Space Mono',monospace;font-weight:700;font-size:12px;color:var(--ink)}
   .regime__cap{margin-top:18px;font-size:15px;font-weight:700;color:var(--ink)}
   .regime__cap b{font-size:20px;font-weight:900;letter-spacing:-.02em}
+  .regime__reform{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--indigo);text-decoration:none;margin-left:8px;white-space:nowrap}
+  .regime__reform:hover{text-decoration:underline}
   @media(max-width:680px){.regime__track{gap:2px}.regime__cell{border-radius:3px}}
 
   /* National Modifiers + Events row — placeholders for now (no live data yet). */
@@ -464,7 +466,9 @@
   // cells take the type's colour and the current reform is highlighted with a caption.
   // One colour per type: red autocracy → green democracy → violet crown.
   var REGIME_TYPE_COLOR = { autocracy: '#c2410c', democracy: '#2f8f4e', monarchy: '#6d3fc4' };
-  function renderRegime(nation) {
+  // own = the player's own nation (not a foreign ?view) — only then is the reform track
+  // actionable, so the "Propose a reform" link is shown for own-nation view only.
+  function renderRegime(nation, own) {
     var box = document.getElementById('regimeGraph');
     if (!box) return;
     var reg = nationRegime(nation.economy || {});
@@ -480,7 +484,8 @@
     box.innerHTML =
       '<div class="regime__scale"><span>' + esc(REGIME_TYPE_LABEL[reg.type]) + '</span><span>Reform &rarr;</span></div>' +
       '<div class="regime__track">' + cells + '</div>' +
-      '<p class="regime__cap"><b>' + esc(regimeLabel(reg) || '') + '</b> &mdash; Reform ' + reg.reform + '/15</p>';
+      '<p class="regime__cap"><b>' + esc(regimeLabel(reg) || '') + '</b> &mdash; Reform ' + reg.reform + '/15' +
+        (own ? ' <a class="regime__reform" href="/play/reform/">Propose a reform &rsaquo;</a>' : '') + '</p>';
   }
   // topbar action budget + toast. setActions is the one place that reflects the
   // action count — it updates the label AND gates every action button (0 →
@@ -1708,7 +1713,7 @@
 
       // Render the regime graph, or show a clear fallback — never leave it stuck on
       // "Loading…" if the nation row failed to load (e.g. a column drift).
-      if (nation) renderRegime(nation);
+      if (nation) renderRegime(nation, true);
       else document.getElementById('regimeGraph').innerHTML = '<p class="empty">Couldn’t load the nation’s regime right now. Refresh to try again.</p>';
       setActions(party.influence != null ? party.influence : 12);
       feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };

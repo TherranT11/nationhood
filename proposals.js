@@ -55,6 +55,15 @@ export async function proposeRegimeChange(target, toFloor) {
 export async function proposeThreshold(pct, toFloor) {
   return unwrap(await supabase.rpc('propose_threshold', { p_pct: pct, p_to_floor: toFloor }));
 }
+// Parliamentary reform bills (schema/167): advance the next reform, or repeal the topmost
+// enacted one. The Influence cost is charged server-side at proposal and not refunded on a
+// failed vote. Returns { id, status, actions, cost } (or { status:'agenda', scheduled_tick } ).
+export async function proposeReformAdvance(toFloor) {
+  return unwrap(await supabase.rpc('propose_reform_advance', { p_to_floor: toFloor }));
+}
+export async function proposeReformRepeal(toFloor) {
+  return unwrap(await supabase.rpc('propose_reform_repeal', { p_to_floor: toFloor }));
+}
 export async function proposalToFloor(id) { return unwrap(await supabase.rpc('proposal_to_floor', { p_proposal: id })); }
 export async function castVote(id, aye) { return unwrap(await supabase.rpc('cast_floor_vote', { p_proposal: id, p_aye: aye })); }
 
