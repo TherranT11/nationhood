@@ -44,27 +44,14 @@
   .empty b{display:block;color:var(--muted);font-size:16px;margin-bottom:5px}
   .muted{color:var(--soft);font-size:13px;font-style:italic}
 
-  /* State of the Nation — identity declarations + cities (folded in from the retired Nation page;
-     the map + nation-browser moved to World; Domestic Economy moved to the Economy page). */
+  /* State of the Nation — identity declarations (folded in from the retired Nation page; the
+     map + nation-browser moved to World; Domestic Economy → Economy page; Cities → Nation page). */
   .decls{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:16px 26px}
   .dgrp__h{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:4px}
   .drow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px}
   .drow:last-child{border-bottom:none}
   .drow .dk{color:var(--muted)}
   .drow .dv{font-weight:700;text-align:right}
-  .citygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(262px,1fr));gap:14px}
-  .citycard{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--field)}
-  .citycard__hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-  .cityname{font-weight:800;font-size:15.5px;letter-spacing:-.01em}
-  .citycap{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border-radius:20px;padding:3px 8px;flex:none}
-  .citypct{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-top:5px}
-  .citypct b{color:var(--ink);font-weight:700}
-  .citydesc{font-size:13px;color:var(--muted);line-height:1.5;margin-top:8px}
-  .citygov{margin-top:9px;padding-top:9px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:5px}
-  .citygov .g{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-  .citygov .gk{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
-  .citygov .gv{font-weight:700;font-size:13px;text-align:right}
-  .citygov .mtag{font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.04em;color:var(--soft);margin-left:2px}
 
   /* State-of-the-Nation ministry stat groups (collapsible; placeholder "--" until the backend lands) */
   .mgroup{margin-top:22px}
@@ -104,7 +91,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
-  import { esc, majority, declaredValue, loadHogTitleSlot, fmtPop, tickToDate } from '/util.js';
+  import { esc, majority, declaredValue, loadHogTitleSlot } from '/util.js';
   import { fetchAdministrations, renderAdministrations } from '/administrations.js';
   import { partyColor, ideologyLabel } from '/archetypes.js';
   import { nationBudgetBalance, nationStatContributions } from '/policies.js';
@@ -168,41 +155,12 @@
 
 
   // ---- State of the Nation (folded in from the retired Nation page): the nation's identity
-  // declarations and its cities. The world map + nation browser moved to World, and Domestic
-  // Economy moved to the Economy page; this is the your-nation summary only. ----
+  // declarations. The world map + nation browser moved to World, Domestic Economy to the Economy
+  // page, and Cities to the Nation page; this is the your-nation summary only. ----
 
-  // Cities roster — capital first, then by population share (desc), then name. The capital is
-  // the one whose name matches the declared capital_name (ONE source — the declaration). Each
-  // city shows its share of the nation's population and the derived headcount. Flavour only.
-  function citiesBox(cities, population, capitalName, mayorAbbr){
-    function isCap(c){ return !!capitalName && !!c.name && c.name.trim().toLowerCase() === String(capitalName).trim().toLowerCase(); }
-    var list = (cities || []).slice().sort(function(a, b){
-      return ((isCap(b) ? 1 : 0) - (isCap(a) ? 1 : 0)) || (Number(b.pop_pct) || 0) - (Number(a.pop_pct) || 0) || ((a.name || '') < (b.name || '') ? -1 : 1);
-    });
-    var body = list.length
-      ? '<div class="citygrid">' + list.map(function(c){
-          var pct = (c.pop_pct == null || c.pop_pct === '') ? null : Number(c.pop_pct);
-          var head = (pct != null && population) ? ' · ' + fmtPop(Math.round(population * pct / 100)) : '';
-          var pctLine = pct != null ? '<div class="citypct"><b>' + pct + '%</b> of population' + head + '</div>' : '';
-          var desc = c.description ? '<div class="citydesc">' + esc(c.description) + '</div>' : '';
-          // Mayor (NPC) + their party tag ([IND] for an unaffiliated seed) + next election date.
-          var govRows = '';
-          if (c.mayor_name) {
-            var mAbbr = (mayorAbbr && c.mayor_party_id && mayorAbbr[c.mayor_party_id]) ? mayorAbbr[c.mayor_party_id] : 'IND';
-            govRows += '<div class="g"><span class="gk">Mayor</span><span class="gv">' + esc(c.mayor_name) + ' <span class="mtag">[' + esc(mAbbr) + ']</span></span></div>';
-          }
-          if (c.mayor_election_tick != null) govRows += '<div class="g"><span class="gk">Next election</span><span class="gv">' + esc(tickToDate(c.mayor_election_tick)) + '</span></div>';
-          var gov = govRows ? '<div class="citygov">' + govRows + '</div>' : '';
-          return '<div class="citycard"><div class="citycard__hd"><span class="cityname">' + esc(c.name || 'City') + '</span>' +
-            (isCap(c) ? '<span class="citycap">Capital</span>' : '') + '</div>' + pctLine + desc + gov + '</div>';
-        }).join('') + '</div>'
-      : '<p class="empty" style="padding:20px">No cities have been added yet.</p>';
-    return '<section class="panel"><h2>Cities</h2>' + body + '</section>';
-  }
-
-  // Assemble the State-of-the-Nation panels (National Identity, Cities) for the given nation,
-  // reading the module-level declaration slots + cities loaded at boot. (Domestic Economy moved
-  // to the Economy page, which already owns production, stockpiles and population.)
+  // Assemble the State-of-the-Nation panel (National Identity) for the given nation, reading the
+  // module-level declaration slots loaded at boot. (Domestic Economy moved to the Economy page;
+  // Cities moved to the Nation page.)
   function stateOfNation(nation){
     var vals = nation.declarations || {};
     var slotBySlug = {}; DECL_SLOTS.forEach(function(s){ slotBySlug[s.slug] = s; });
@@ -218,9 +176,7 @@
           return '<div class="dgrp"><div class="dgrp__h">' + esc(g) + '</div>' + rows + '</div>';
         }).join('') + '</div>'
       : '<p class="muted" style="padding:8px 0">No declarations have been defined yet.</p>';
-    var identityBox = '<section class="panel"><h2>National Identity</h2>' + declHtml + '</section>';
-
-    return identityBox + citiesBox(CITIES, nation.population, declValue('capital_name'), MAYOR_ABBR);
+    return '<section class="panel"><h2>National Identity</h2>' + declHtml + '</section>';
   }
 
   // State-of-the-Nation ministry stats — one collapsible group per ministry cluster. Each cell
@@ -301,7 +257,7 @@
           ? esc(nation.name || 'This nation') + ' is a one-party state — power isn’t shared through a coalition, so there’s no Government Confidence to track here.'
           : 'A government is seated when the nation holds its first general election.') +
         '</span></div></div>' +
-        ministryStats(nation) + stateOfNation(nation);   // stats + economy/identity/cities still apply without a government
+        ministryStats(nation) + stateOfNation(nation);   // stats + national identity still apply without a government
       wireStatGroups(box);
       return;
     }
@@ -341,8 +297,7 @@
         '</div>' +
         '<div class="legend">' + hemiLegend(gov, opp) + '</div>' +
       '</div>' +
-      // 3 — State-of-the-Nation ministry stats (placeholder values until the backend lands),
-      // sitting above the folded-in economy / identity / cities.
+      // 3 — State-of-the-Nation ministry stats, sitting above the folded-in National Identity.
       ministryStats(nation) +
       stateOfNation(nation) +
       // 4 — the collapsible Administration History (past + current governments and their events).
@@ -358,28 +313,17 @@
   // Every other ministry stat = its authored base (ministry_stats) + Σ in-force policy contribution;
   // these hold the inputs so cellVal can compute each one (policies.js is the one source).
   var STAT_POLS = [], STAT_OV = {}, STAT_GDP = null;
-  // State-of-the-Nation data, folded in from the retired Nation page (declaration slots +
-  // cities + mayor party tags). Loaded once at boot; the panels read straight from these.
-  var DECL_SLOTS = [], CITIES = [], MAYOR_ABBR = {};
+  // State-of-the-Nation data — the declaration slots for the National Identity panel. Loaded once
+  // at boot; the panel reads straight from these.
+  var DECL_SLOTS = [];
 
-
-  // State-of-the-Nation data (declaration slots + cities + mayor party tags), folded in from
-  // the retired Nation page. Loaded once at boot; each fetch is non-fatal so a missing/unmigrated
-  // table just leaves the corresponding panel in its empty state rather than failing the page.
+  // Load the declaration slots (National Identity). Non-fatal — a missing/unmigrated table just
+  // leaves the panel in its empty state rather than failing the page.
   async function loadNationState(){
     try {
       const { data: slots } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed, grp, sort_order').order('sort_order').order('created_at');
       DECL_SLOTS = slots || [];
     } catch (e) { DECL_SLOTS = []; }
-    try {
-      var cRes = await supabase.from('cities').select('id, name, pop_pct, description, mayor_name, mayor_election_tick, mayor_party_id').eq('nation_id', NATION_ID);
-      if (cRes.error) cRes = await supabase.from('cities').select('id, name, pop_pct, description, mayor_name, mayor_election_tick').eq('nation_id', NATION_ID);   // mayor_party_id not migrated yet
-      if (!cRes.error) CITIES = cRes.data || [];
-    } catch (e) { CITIES = []; }
-    try {
-      var mpIds = Array.from(new Set(CITIES.map(function(c){ return c.mayor_party_id; }).filter(Boolean)));
-      if (mpIds.length) { var mpRes = await supabase.from('parties').select('id, abbreviation').in('id', mpIds); (mpRes.data || []).forEach(function(p){ MAYOR_ABBR[p.id] = p.abbreviation; }); }
-    } catch (e) {}
   }
 
   // Re-fetch the government + parties and redraw.
@@ -437,7 +381,7 @@
         STAT_POLS = pols || []; STAT_OV = _ov; STAT_GDP = _gdp;
       } catch (e) {}
 
-      await loadNationState();   // declaration slots + cities for the State-of-the-Nation panels
+      await loadNationState();   // declaration slots for the National Identity panel
       await load();
     } catch (e) {
       document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">Couldn’t load the government right now. Refresh to try again.</div></div>';
