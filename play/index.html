@@ -291,6 +291,20 @@
   .snap__row dt{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);flex:none;padding-top:2px}
   .snap__row dd{font-size:14px;font-weight:600;color:var(--ink);text-align:right}
   .ptag{display:inline-block;margin-left:6px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;line-height:1.6;padding:1px 7px;border-radius:6px;color:#fff;vertical-align:middle}
+  /* Cities roster (moved from the Government page) */
+  .citygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:14px}
+  .citycard{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--chip)}
+  .citycard__hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .cityname{font-weight:800;font-size:15.5px;letter-spacing:-.01em}
+  .citycap{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border-radius:20px;padding:3px 8px;flex:none}
+  .citypct{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-top:5px}
+  .citypct b{color:var(--ink);font-weight:700}
+  .citydesc{font-size:13px;color:var(--muted);line-height:1.5;margin-top:8px}
+  .citygov{margin-top:9px;padding-top:9px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:5px}
+  .citygov .g{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .citygov .gk{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
+  .citygov .gv{font-weight:700;font-size:13px;text-align:right}
+  .citygov .mtag{font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.04em;color:var(--soft);margin-left:2px}
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -332,6 +346,12 @@
     <!-- Tutorial-style Nation overview begins here (operational bars stay above). -->
     <div class="stats" id="statCards"></div>
     <div class="terr" id="terrRow"></div>
+
+    <!-- Cities roster (moved from the Government page). Filled by loadCities; hidden if none. -->
+    <section class="panel" id="citiesPanel" hidden>
+      <div class="glance-hd"><span>Cities</span></div>
+      <div id="citiesBody"></div>
+    </section>
 
     <section class="panel" id="cabPanel">
       <div class="glance-hd"><span>Cabinet Ministries</span></div>
@@ -1489,6 +1509,49 @@
     drawTerritory(nationId);
   }
 
+  // Cities roster (moved from the Government page) — capital first, then by population share (desc),
+  // then name. The capital is the city whose name matches the declared capital_name (one source).
+  function citiesGrid(cities, population, capitalName, mayorAbbr) {
+    function isCap(c) { return !!capitalName && !!c.name && c.name.trim().toLowerCase() === String(capitalName).trim().toLowerCase(); }
+    var list = (cities || []).slice().sort(function (a, b) {
+      return ((isCap(b) ? 1 : 0) - (isCap(a) ? 1 : 0)) || (Number(b.pop_pct) || 0) - (Number(a.pop_pct) || 0) || ((a.name || '') < (b.name || '') ? -1 : 1);
+    });
+    return '<div class="citygrid">' + list.map(function (c) {
+      var pct = (c.pop_pct == null || c.pop_pct === '') ? null : Number(c.pop_pct);
+      var head = (pct != null && population) ? ' · ' + fmtPop(Math.round(population * pct / 100)) : '';
+      var pctLine = pct != null ? '<div class="citypct"><b>' + pct + '%</b> of population' + head + '</div>' : '';
+      var desc = c.description ? '<div class="citydesc">' + esc(c.description) + '</div>' : '';
+      var govRows = '';
+      if (c.mayor_name) {
+        var mAbbr = (mayorAbbr && c.mayor_party_id && mayorAbbr[c.mayor_party_id]) ? mayorAbbr[c.mayor_party_id] : 'IND';
+        govRows += '<div class="g"><span class="gk">Mayor</span><span class="gv">' + esc(c.mayor_name) + ' <span class="mtag">[' + esc(mAbbr) + ']</span></span></div>';
+      }
+      if (c.mayor_election_tick != null) govRows += '<div class="g"><span class="gk">Next election</span><span class="gv">' + esc(tickToDate(c.mayor_election_tick)) + '</span></div>';
+      var gov = govRows ? '<div class="citygov">' + govRows + '</div>' : '';
+      return '<div class="citycard"><div class="citycard__hd"><span class="cityname">' + esc(c.name || 'City') + '</span>' +
+        (isCap(c) ? '<span class="citycap">Capital</span>' : '') + '</div>' + pctLine + desc + gov + '</div>';
+    }).join('') + '</div>';
+  }
+
+  // Load + render the Cities panel (non-blocking). Hides the panel when the nation has no cities.
+  async function loadCities(nationId, population, capitalName) {
+    var panel = document.getElementById('citiesPanel'), body = document.getElementById('citiesBody');
+    if (!panel || !body) return;
+    var cities = [], mayorAbbr = {};
+    try {
+      var cRes = await supabase.from('cities').select('id, name, pop_pct, description, mayor_name, mayor_election_tick, mayor_party_id').eq('nation_id', nationId);
+      if (cRes.error) cRes = await supabase.from('cities').select('id, name, pop_pct, description, mayor_name, mayor_election_tick').eq('nation_id', nationId);   // mayor_party_id not migrated yet
+      cities = cRes.error ? [] : (cRes.data || []);
+    } catch (e) { /* leave hidden */ }
+    if (!cities.length) { panel.hidden = true; return; }
+    try {
+      var mpIds = Array.from(new Set(cities.map(function (c) { return c.mayor_party_id; }).filter(Boolean)));
+      if (mpIds.length) { var mpRes = await supabase.from('parties').select('id, abbreviation').in('id', mpIds); (mpRes.data || []).forEach(function (p) { mayorAbbr[p.id] = p.abbreviation; }); }
+    } catch (e) {}
+    body.innerHTML = citiesGrid(cities, population, capitalName, mayorAbbr);
+    panel.hidden = false;
+  }
+
   async function loadOverview(party, nation) {
     nation = nation || {};
     var myLeader = null;
@@ -1533,6 +1596,7 @@
     } catch (e) { /* no trend if the history read fails — the approval number still renders */ }
     renderStatCards(party, myLeader, prevPop, (nation && nation.legislature_seats) || 0);
     renderSnapshotAndMap(nation, parties, govt, decl, party.nation_id, hogName);
+    loadCities(party.nation_id, nation.population, decl('capital_name')).catch(function () {});   // Cities panel — non-blocking
     var formal = decl('formal_state_name');
     if (formal) document.getElementById('kicker').textContent = formal;   // eyebrow → declared formal state name
   }

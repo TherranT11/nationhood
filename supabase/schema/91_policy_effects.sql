@@ -168,7 +168,12 @@ begin
         v_old := r.popularity;
         if v_v >= 0 then v_new := public._mod_cap_raise(p_nation, r.archetype, v_old, v_old + v_v);
         else             v_new := public._mod_floor_drop(p_nation, r.archetype, v_old, v_old + v_v); end if;
-        update public.parties set popularity = public._clamp_pop(v_new) where id = r.id;
+        v_new := public._clamp_pop(v_new);
+        update public.parties set popularity = v_new where id = r.id;
+        -- Spread the move that actually landed across the party's regions, weighted by population,
+        -- so a policy win shows a bigger jump in population centres than in small hexes. Zero-sum
+        -- tilt (national already moved above), late-bound to _distribute_regional_popularity (163).
+        perform public._distribute_regional_popularity(r.id, p_nation, v_new - v_old);
       end loop;
     -- Popularity Ceiling → RETIRED. Party popularity no longer has a reach ceiling (it floats freely
     -- in 0..100), so this effect no longer does anything. Left as an explicit no-op so an authored
