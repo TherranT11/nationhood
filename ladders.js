@@ -46,46 +46,58 @@ export function statBand(stat, value) {
   return value >= 55 ? 'good' : '';
 }
 
-// Regime — a single 1–25 democracy↔autocracy scale. Unlike the ladders above it
-// has named tiers at set thresholds (not one word per number); a value takes the
-// label of the highest tier it reaches. The number is the source (stored on the
-// nation); the words follow it. Listed high→low for the admin dropdown. 21–25 are
-// the monarchy band, sitting above the republic tiers (Constitutional = democratic
-// crown; Absolute = a crown above even that). Constitutional monarchies (21–23) are
-// ordinary multiparty democracies; an Absolute monarchy (24–25) is a one-party state
-// ruled by the monarch's party (schema/98). The royal Head-of-State titles
-// (King/Queen/Emperor) are gated to the monarchy band (isMonarchy, used by the
-// declaration picker).
-export const REGIME_TIERS = [
-  { value: 24, label: 'Absolute Monarchy' },
-  { value: 21, label: 'Constitutional Monarchy' },
-  { value: 20, label: 'Full Democracy' },
-  { value: 17, label: 'Electoral Democracy' },
-  { value: 14, label: 'Flawed Democracy' },
-  { value: 11, label: 'Illiberal Democracy' },
-  { value: 9,  label: 'Competitive Autocracy' },
-  { value: 5,  label: 'Functional Autocracy' },
-  { value: 1,  label: 'One State Autocracy' },
-];
+// Regime — a nation's constitutional form, split into a TYPE and a REFORM level. The old
+// single 1–25 index was retired: `type` is the axis (autocracy / democracy / monarchy) and
+// `reform` (0–15) is how far the nation has liberalised WITHIN that type. The pair is the
+// source (stored as economy.regime_type + economy.regime_reform); the words below follow it.
+// Constitutional monarchies (monarchy, reform ≤ 2) are ordinary multiparty democracies; an
+// Absolute monarchy (monarchy, reform ≥ 3) is a one-party state (schema/98). The royal
+// Head-of-State titles are gated to the monarchy type (isMonarchy, used by the declaration picker).
+export const REGIME_TYPE_LABEL = { autocracy: 'Autocracy', democracy: 'Democracy', monarchy: 'Monarchy' };
 
-export function regimeLabel(value) {
-  const n = Number(value);
-  if (isNaN(n)) return null;
-  for (const t of REGIME_TIERS) if (n >= t.value) return t.label; // tiers are high→low
-  return REGIME_TIERS[REGIME_TIERS.length - 1].label;
+// Per-type reform bands → the tier name (the same nine names as the old scale, re-bucketed by
+// reform level). Each entry is [reform lower bound, label], listed high→low; a reform level takes
+// the label of the highest band it reaches.
+const REGIME_BANDS = {
+  autocracy: [[8, 'Competitive Autocracy'], [4, 'Functional Autocracy'], [0, 'One State Autocracy']],
+  democracy: [[9, 'Full Democracy'], [6, 'Electoral Democracy'], [3, 'Flawed Democracy'], [0, 'Illiberal Democracy']],
+  monarchy:  [[3, 'Absolute Monarchy'], [0, 'Constitutional Monarchy']],
+};
+
+// Reform level normalised to an integer in 0–15.
+function reformOf(regime) { return Math.max(0, Math.min(15, Math.round(Number(regime && regime.reform)) || 0)); }
+
+// Read a nation's regime from its economy jsonb → { type, reform }, or null when no type is
+// set (an un-configured nation). ONE source for turning the stored keys into a regime object,
+// mirrored server-side by _regime_type / _regime_reform (schema/166).
+export function nationRegime(economy) {
+  if (!economy) return null;
+  const type = economy.regime_type;
+  if (type !== 'autocracy' && type !== 'democracy' && type !== 'monarchy') return null;
+  return { type: type, reform: reformOf({ reform: economy.regime_reform }) };
 }
 
-// Is this regime in the monarchy band (21–25 — Constitutional or Absolute)? ONE
-// source for the "is this a monarchy" test, shared by the royal Head-of-State title
-// gate in the declaration picker (and any other crown-only affordance).
-export function isMonarchy(value) {
-  const n = Number(value);
-  return !isNaN(n) && n >= 21;
+// The tier label for a regime object — e.g. "Full Democracy". Null for an unset/invalid regime.
+export function regimeLabel(regime) {
+  if (!regime || !REGIME_BANDS[regime.type]) return null;
+  const r = reformOf(regime);
+  const bands = REGIME_BANDS[regime.type];
+  for (const band of bands) if (r >= band[0]) return band[1];
+  return bands[bands.length - 1][1];
 }
 
-// The player-facing regime line: "Label (N)" for a numeric regime, the stored string
-// for a legacy one, or "—". ONE source for this format — read by the Nation and World
-// pages (the number → label step is regimeLabel above).
+// Is this regime a monarchy? ONE source for the crown-only affordances (royal Head-of-State
+// titles), shared by the declaration picker; mirrors _regime_is_monarchy (schema/166).
+export function isMonarchy(regime) { return !!regime && regime.type === 'monarchy'; }
+
+// Is this an authoritarian-floor regime (the old "≤ 4" band) — an autocracy at reform ≤ 3?
+// These states suppress political fallout and reward a foreign stand against them. ONE source,
+// mirrors _regime_is_authoritarian (schema/166).
+export function isAuthoritarian(regime) { return !!regime && regime.type === 'autocracy' && reformOf(regime) <= 3; }
+
+// The player-facing regime line: "Full Democracy · Reform 9/15", or "—" when unset. ONE source
+// for this format — read by the Nation, World and select screens.
 export function regimeText(regime) {
-  return (typeof regime === 'number') ? (regimeLabel(regime) + ' (' + regime + ')') : (regime || '—');
+  const label = regimeLabel(regime);
+  return label ? (label + ' · Reform ' + reformOf(regime) + '/15') : '—';
 }

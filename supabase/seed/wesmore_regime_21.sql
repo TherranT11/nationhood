@@ -1,18 +1,20 @@
--- Seed: set Wesmore to Regime 21 (Constitutional Monarchy) directly.
+-- Seed: set Wesmore to a Constitutional Monarchy directly.
 --
--- One-off admin grant so Wesmore starts as a constitutional monarchy without
--- having to pass the Form-of-State special law on the floor (propose_regime_change,
--- schema/81). 21 is the bottom of the monarchy band (21–23 = Constitutional; it stays
--- a multiparty democracy — the one-party switch only flips at regime ≤4 or ≥24). Run
--- in the Supabase SQL Editor. Matched loosely (the nation is "Wesmore and Calcordia"),
--- so any "…Wesmore…" name resolves; if more than one matched you'd want to tighten this.
+-- One-off admin grant so Wesmore starts as a constitutional monarchy without having to pass
+-- the Form-of-State special law on the floor (propose_regime_change, schema/81). A monarchy at
+-- reform 0 is a Constitutional Monarchy — it stays a multiparty democracy (the one-party switch
+-- only flips for an absolute monarchy, reform ≥ 3). Run in the Supabase SQL Editor after 166.
+-- Matched loosely (the nation is "Wesmore and Calcordia"), so any "…Wesmore…" name resolves;
+-- if more than one matched you'd want to tighten this.
 update public.nations
-   set economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{regime}', to_jsonb(21), true)
+   set economy = jsonb_set(
+         jsonb_set(coalesce(economy, '{}'::jsonb) - 'regime', '{regime_type}', to_jsonb('monarchy'::text), true),
+         '{regime_reform}', to_jsonb(0), true)
  where name ilike '%wesmore%';
 
--- Reconcile the one-party derivation for the affected nation(s) (no-op at 21 — it stays
--- multiparty — but keeps ruling_party consistent if the regime was previously in a
--- one-party band). _sync_one_party_state is the single source for that transition (schema/98).
+-- Reconcile the one-party derivation for the affected nation(s) (no-op for a Constitutional
+-- Monarchy — it stays multiparty — but keeps ruling_party consistent if the regime was
+-- previously one-party). _sync_one_party_state is the single source for that transition (schema/98).
 do $$
 declare r record;
 begin

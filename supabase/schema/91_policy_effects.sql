@@ -10,10 +10,10 @@
 -- Law enactment (schema/92) calls this with 'once'; the per-tick pass will reuse
 -- the same core with 'tick' later — so the mapping/clamping lives in one spot.
 --
--- Clamp ranges: stats 1..20; regime 1..20 for AUTOMATED effects (policies, crises,
--- convictions all route here) — the monarchy band (21–25) is law/admin-only territory, so
--- an automated effect can neither crown a republic nor drift a crowned nation, see the
--- Regime branch; unemployment/inflation 0..100; budget & income unbounded (deficits
+-- Clamp ranges: stats 1..20; regime REFORM 0..15 for AUTOMATED effects (policies, crises,
+-- convictions all route here) — the monarchy type is law/admin-only territory, so an automated
+-- effect can neither crown a republic nor move a crowned nation's reform, see the Regime
+-- branch; unemployment/inflation 0..100; budget & income unbounded (deficits
 -- allowed); debt >= 0; production resources >= 0; government confidence 0..100; party
 -- popularity 0..100 (through the modifier ceiling/floor).
 -- ===========================================================================
@@ -125,14 +125,13 @@ begin
     -- see nationTaxBurden in policies.js, _option_axis_level in schema/92), so it is never
     -- mutated as a delta here. A legacy effect that still targets it is simply ignored.
     when 'Regime'         then
-      -- Regime moves only within the republic range (1–20) under an automated effect. The
-      -- monarchy band (21–25) is law/admin-only: a republic can't organically cross into it,
-      -- and a nation already in the band is left untouched (so an effect can't crown or
-      -- dethrone a nation behind the legislature's back — that's propose_regime_change /
-      -- admin territory). A null/legacy regime parses to null → treated as a republic.
-      select public._to_num(economy->>'regime') into v_old from public.nations where id = p_nation;
-      if coalesce(v_old, 0) <= 20 then
-        perform public._nation_stat_add(p_nation, 'economy', 'regime', v_v, 1, 20);
+      -- An automated effect moves the REFORM level (0..15) within the current type; it never
+      -- changes the type. A monarchy is law/admin-only — an effect can neither crown nor move a
+      -- crowned nation behind the legislature's back (that's propose_regime_change / admin
+      -- territory). An unset type is treated as a republic (the move is a no-op if the key is
+      -- absent). Reform-bill ownership of this movement is a later pass.
+      if public._regime_type((select economy from public.nations where id = p_nation)) is distinct from 'monarchy' then
+        perform public._nation_stat_add(p_nation, 'economy', 'regime_reform', v_v, 0, 15);
       end if;
     when 'Budget', 'Debt', 'Income' then
       -- Money targets: scale the authored amount by nation size/wealth, then apply to the

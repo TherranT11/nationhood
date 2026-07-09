@@ -89,7 +89,7 @@ begin
   v_gain    := v_newpop - v_p.popularity;
 
   update public.parties set pop_ceiling = v_newceil, popularity = v_newpop, influence = influence - 1 where id = v_p.id;
-  perform public._nation_stat_add(v_p.nation_id, 'economy', 'regime', -1, 1, 25);             -- regime −1 (clamped 1..25)
+  perform public._nation_stat_add(v_p.nation_id, 'economy', 'regime_reform', -1, 0, 15);       -- reform −1 (clamped 0..15)
 
   v_body := 'The ' || public._bare_party(v_p.name)
          || ' has announced the formation of its own paramilitary wing — a show of force on the streets. Popularity '

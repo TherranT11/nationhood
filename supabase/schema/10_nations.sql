@@ -104,14 +104,14 @@ values (
   678,
   280,
   '{"prosperity":70,"welfare":65,"order":65,"image":80,"growth":45}'::jsonb,
-  '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"tax":30,"budget":12.4,"debt":31,"currency":"$"}'::jsonb
+  '{"regime_type":"democracy","regime_reform":6,"inflation":13,"unemployment":9,"tax":30,"budget":12.4,"debt":31,"currency":"$"}'::jsonb
 )
 on conflict (id) do nothing;
 
 -- Backfill on an already-seeded Sessau row (the insert above is a no-op once the
 -- row exists). Each only touches a row that hasn't got the value yet.
 update public.nations
-   set economy = '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"tax":30,"budget":12.4,"debt":31,"currency":"$"}'::jsonb
+   set economy = '{"regime_type":"democracy","regime_reform":6,"inflation":13,"unemployment":9,"tax":30,"budget":12.4,"debt":31,"currency":"$"}'::jsonb
  where id = 'sessau' and (economy is null or economy = '{}'::jsonb);
 update public.nations set economy = economy || '{"currency":"$"}'::jsonb
  where id = 'sessau' and not (economy ? 'currency');

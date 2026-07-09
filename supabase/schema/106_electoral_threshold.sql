@@ -34,10 +34,11 @@ begin
   v_delta   := v_old_pen - v_new_pen;   -- < 0 when the bar rises (regime falls), > 0 when it falls
 
   update public.nations set electoral_threshold = p_pct where id = p_nation;
-  -- _nation_stat_add is the one clamp source (1..25); it skips a non-numeric/absent regime
-  -- silently, so the threshold still changes even on an un-migrated nation.
+  -- _nation_stat_add is the one clamp source (reform 0..15); it skips an absent regime_reform
+  -- silently, so the threshold still changes even on an un-configured nation. The bar's cost is
+  -- charged in reform level (the democratic-openness axis), not the type.
   if v_delta <> 0 then
-    perform public._nation_stat_add(p_nation, 'economy', 'regime', v_delta, 1, 25);
+    perform public._nation_stat_add(p_nation, 'economy', 'regime_reform', v_delta, 0, 15);
   end if;
 
   insert into public.events (nation_id, kind, body, game_date)

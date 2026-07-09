@@ -6,10 +6,10 @@
 --
 -- A sanction by one nation on another bars trade BETWEEN them in BOTH directions,
 -- regardless of either side's trade policy. Sanctioning an authoritarian regime
--- (regime ≤ 4) rallies the home front — +1 popularity to every governing party and
--- +2 Government Confidence — but only once per target until a long cooldown elapses
--- (so a lifted sanction can't be farmed by re-placing it). Sanctioning a democracy
--- (regime ≥ 5) instead costs −1 Image. Lifting is free. Writes are RPC-only.
+-- (an autocracy at the reform floor) rallies the home front — +1 popularity to every
+-- governing party — but only once per target until a long cooldown elapses (so a lifted
+-- sanction can't be farmed by re-placing it). Sanctioning any other regime instead costs
+-- −1 Image. Lifting is free. Writes are RPC-only.
 -- ===========================================================================
 
 create table if not exists public.sanctions (
@@ -37,12 +37,12 @@ $$;
 revoke all on function public._trade_sanctioned(text, text) from public, anon, authenticated;
 grant execute on function public._trade_sanctioned(text, text) to authenticated;
 
--- Impose a sanction. Minister-of-Trade gated, 3 party actions. Rewards a stand against a
--- regime ≤ 4 (once per target per cooldown); penalises sanctioning a regime ≥ 5.
+-- Impose a sanction. Minister-of-Trade gated, 3 party actions. Rewards a stand against an
+-- authoritarian regime (once per target per cooldown); penalises sanctioning any other regime.
 create or replace function public.place_sanction(p_target text)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
-  v_p public.parties%rowtype; v_buyer text; v_tick int; v_regime numeric; v_tname text;
+  v_p public.parties%rowtype; v_buyer text; v_tick int; v_eco jsonb; v_auth boolean; v_open boolean; v_tname text;
   v_ex public.sanctions%rowtype; v_have_ex boolean; v_reward_ok boolean;
   v_rewarded boolean := false; v_penalized boolean := false;
   v_cooldown constant int := 24;   -- ticks before a lifted sanction can reward this target again
@@ -54,9 +54,13 @@ begin
   v_buyer := v_p.nation_id;
   if p_target = v_buyer then raise exception 'You can''t sanction your own nation.'; end if;
 
-  select name, public._to_num(economy->>'regime') into v_tname, v_regime
+  select name, economy into v_tname, v_eco
     from public.nations where id = p_target and not coalesce(dormant, false);
   if not found then raise exception 'No such nation.'; end if;
+  -- A stand is rewarded against an authoritarian target (autocracy at the reform floor) and
+  -- penalised against any other SET regime. _regime_is_authoritarian (schema/166) mirrors malaise.
+  v_auth := public._regime_is_authoritarian(v_eco);
+  v_open := public._regime_type(v_eco) is not null and not v_auth;
   select current_tick into v_tick from public.game_state where id;
 
   select * into v_ex from public.sanctions where by_nation = v_buyer and target_nation = p_target;
@@ -64,7 +68,7 @@ begin
   if v_have_ex and v_ex.active then raise exception '%', v_tname || ' is already under your sanction.'; end if;
 
   -- Reward only for an authoritarian target, and only if this target hasn't rewarded us within the cooldown.
-  v_reward_ok := (v_regime is not null and v_regime <= 4)
+  v_reward_ok := v_auth
              and (not v_have_ex or v_ex.last_reward_tick is null or v_tick >= v_ex.last_reward_tick + v_cooldown);
 
   insert into public.sanctions (by_nation, target_nation, active, last_reward_tick)
@@ -76,7 +80,7 @@ begin
   if v_reward_ok then
     perform public._apply_policy_effect(v_buyer, jsonb_build_object('t', 'Party Popularity', 'v', 1));
     v_rewarded := true;   -- Government Confidence reward retired (schema/165)
-  elsif v_regime is not null and v_regime >= 5 then
+  elsif v_open then
     perform public._apply_policy_effect(v_buyer, jsonb_build_object('t', 'Image', 'v', -1));
     v_penalized := true;
   end if;

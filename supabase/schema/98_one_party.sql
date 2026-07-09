@@ -2,17 +2,18 @@
 -- Depends on: 10 (nations.ruling_party/former_ruling_party, economy.regime), 20
 -- (parties.pop_ceiling), 40 (events, current_game_date). Run after 40.
 --
--- THE RULE: a nation is a one-party state iff its regime is 1–4 (One State / Functional
--- Autocracy's bottom) OR 24–25 (an ABSOLUTE MONARCHY — the monarch's party rules alone).
--- Constitutional monarchies (21–23) are ordinary multiparty democracies. The admin makes a
--- nation one-party by setting the regime into either band; it erodes to the autocratic
--- floor organically through policy effects too. ruling_party is DERIVED from the regime —
--- it's never an independent toggle. _sync_one_party_state() reconciles the two:
---   regime ≤ 4 or ≥ 24, not yet one-party → install the largest party as the ruling party
+-- THE RULE: a nation is a one-party state iff it is an autocracy at the reform floor (reform
+-- ≤ 3) OR an ABSOLUTE MONARCHY (a monarchy at reform ≥ 3 — the monarch's party rules alone).
+-- Constitutional monarchies (monarchy, reform ≤ 2) are ordinary multiparty democracies. The
+-- admin makes a nation one-party by setting the regime into either band; it erodes to the
+-- autocratic floor organically through reform-lowering effects too. ruling_party is DERIVED
+-- from the regime — it's never an independent toggle. _sync_one_party_state() reconciles the
+-- two (_regime_is_one_party, schema/166, is the ONE test):
+--   one-party band, not yet one-party → install the largest party as the ruling party
 --                                      (its name → nations.ruling_party; its ceiling → 100);
 --                                      everyone else is now a faction of it (a faction IS a
 --                                      party row — no data moves).
---   regime 5–23 and currently one-party → restore multiparty: clear ruling_party, name the
+--   multiparty band and currently one-party → restore multiparty: clear ruling_party, name the
 --                                        former ruler in former_ruling_party (for the relaunch
 --                                        copy), and flag every OTHER party awaiting_relaunch so
 --                                        it may relaunch as a full party. The former ruler is
@@ -31,24 +32,22 @@ security definer
 set search_path = public
 as $$
 declare
-  v_raw text; v_regime numeric; v_ruling text; v_nname text;
+  v_eco jsonb; v_ruling text; v_nname text;
   v_ruler_id uuid; v_ruler_name text;
 begin
-  select economy->>'regime', ruling_party, name
-    into v_raw, v_ruling, v_nname
+  select economy, ruling_party, name
+    into v_eco, v_ruling, v_nname
     from public.nations where id = p_nation;
   if not found then return; end if;
 
-  -- Regime is the sole switch, and it must be a number to compare. A legacy free-text
-  -- regime (an un-migrated nation) can't be ranked on the 1–20 scale, so leave the
-  -- nation as-is rather than guess — same defensive stance as _nation_stat_add (schema/91).
-  if v_raw is null or v_raw !~ '^-?[0-9]+(\.[0-9]+)?$' then return; end if;
-  v_regime := v_raw::numeric;
+  -- Regime type is the sole switch. An unset type (an un-configured nation) can't be ranked,
+  -- so leave the nation as-is rather than guess — same defensive stance as _nation_stat_add.
+  if public._regime_type(v_eco) is null then return; end if;
 
-  -- One-party iff the regime is at the autocratic floor (1–4) OR an ABSOLUTE MONARCHY
-  -- (24–25): both are sole-ruler states where players join as factions of the ruling
-  -- party (the monarch's). Constitutional monarchies (21–23) stay multiparty democracies.
-  if v_regime <= 4 or v_regime >= 24 then
+  -- One-party iff the regime is at the autocratic floor OR an ABSOLUTE MONARCHY (both are
+  -- sole-ruler states where players join as factions of the ruling party). Constitutional
+  -- monarchies stay multiparty democracies. _regime_is_one_party (schema/166) is the ONE test.
+  if public._regime_is_one_party(v_eco) then
     -- Becoming a one-party state. No-op if it already is one. NOTE (accepted by design):
     -- a non-null ruling_party is treated as AUTHORITATIVE and never re-derived — this is
     -- what lets the admin name the ruling party directly in the /adminsetup form. The
@@ -74,7 +73,7 @@ begin
 
       insert into public.events (nation_id, party_id, kind, body, game_date)
         values (p_nation, v_ruler_id, 'government',
-                case when v_regime >= 24
+                case when public._regime_is_monarchy(v_eco)
                      then v_nname || ' has been proclaimed an absolute monarchy under the ' || v_ruler_name || '.'
                      else 'With democracy extinguished, ' || v_nname || ' is now a one-party state under the ' || v_ruler_name || '.' end,
                 public.current_game_date());
@@ -102,8 +101,8 @@ end $$;
 -- Internal: only advance_tick (schema/60) and the admin RPC below call it.
 revoke all on function public._sync_one_party_state(text) from public, anon, authenticated;
 
--- The admin's manual lever: after saving a nation (which may have moved its regime
--- across the 4/5 line), the /adminsetup save calls this to apply the transition
+-- The admin's manual lever: after saving a nation (which may have moved it across the
+-- one-party band line), the /adminsetup save calls this to apply the transition
 -- immediately rather than waiting for the next tick. Admin-gated; thin wrapper.
 create or replace function public.admin_sync_one_party(p_nation text)
 returns void

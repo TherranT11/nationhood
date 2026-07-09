@@ -612,7 +612,12 @@
           <!-- Prosperity / Growth / Order / Unemployment / Tax Burden are set once in the Ministry Stats
                grid below (they fed both places before). Welfare, Global Image and Inflation are retired. -->
           <div><label for="f-debt">Starting Debt</label><input id="f-debt" type="number" step="0.1"></div>
-          <div><label for="f-regime">Regime</label><select id="f-regime"></select></div>
+          <div><label for="f-regime-type">Regime type</label><select id="f-regime-type">
+            <option value="autocracy">Autocracy</option>
+            <option value="democracy" selected>Democracy</option>
+            <option value="monarchy">Monarchy</option>
+          </select></div>
+          <div><label for="f-regime-reform">Reform <span class="hint">liberalisation within the type, 0–15</span></label><input id="f-regime-reform" type="number" min="0" max="15" step="1" placeholder="6"></div>
           <div><label for="f-ceiling">Max Party Ceiling <span class="hint">the regime's cap on any party's reach %</span></label><input id="f-ceiling" type="number" min="0" max="100" step="1" placeholder="50"></div>
           <div><label for="f-seats">Legislature Seats</label><input id="f-seats" type="number" min="0" step="1" placeholder="seats"></div>
           <div><label for="f-elecfreq">Election Frequency</label><input id="f-elecfreq" type="number" min="1" step="1" placeholder="months"></div>
@@ -1102,7 +1107,7 @@
     import { supabase, isConfigured, currentTick } from '/supabase.js';
     import { esc, fmtGdp, fmtPop, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel } from '/util.js';
     import * as HM from '/hexmap.js';
-    import { regimeLabel, statName } from '/ladders.js';
+    import { regimeLabel, nationRegime, statName } from '/ladders.js';
     import { SIZES, CATEGORIES, CATEGORY_BONUS, corpMoney } from '/corporations.js';
     import { ARCHETYPES } from '/archetypes.js';
     import { policyOptions, policyDefaultIdx, isMoneyTarget, POLICY_STATS, MINISTRY_STATS, STAT_RANGES, fmtInitiativeCost } from '/policies.js';
@@ -1157,14 +1162,9 @@
       finally { btn.disabled = false; }
     });
 
-    // Regime dropdown: every value 1–25 (high→low), each shown as "N — Tier"
-    // (the tier label comes from regimeLabel; 21–25 are the monarchy band). Defaults to
-    // Electoral Democracy (17).
-    var regimeOpts = '';
-    for (var rv = 25; rv >= 1; rv--) {
-      regimeOpts += '<option value="' + rv + '"' + (rv === 17 ? ' selected' : '') + '>' + rv + ' — ' + esc(regimeLabel(rv)) + '</option>';
-    }
-    document.getElementById('f-regime').innerHTML = regimeOpts;
+    // Regime is a type (autocracy / democracy / monarchy) + a reform level (0–15). The type
+    // dropdown and reform input are authored directly in the form (static markup); the add-form
+    // default is Democracy · Reform 6 (an Electoral Democracy).
 
     // Decide which view to show from the current session.
     async function refresh() {
@@ -1286,7 +1286,9 @@
       // (fillMinistryFields, with a fallback to these legacy values). Welfare/Image/Inflation retired.
       setVal('f-debt', e.debt);
       setVal('f-ceiling', e.party_ceiling);
-      document.getElementById('f-regime').value = (typeof e.regime === 'number') ? String(e.regime) : '17';
+      var reg = nationRegime(e);
+      document.getElementById('f-regime-type').value = reg ? reg.type : 'democracy';
+      setVal('f-regime-reform', reg ? reg.reform : 6);
       setVal('f-seats', n.legislature_seats); setVal('f-elecfreq', n.election_frequency_months);
       setVal('f-energy', pr.energy); setVal('f-food', pr.food); setVal('f-minerals', pr.minerals);
       setVal('f-goods', pr.goods); setVal('f-services', pr.services); setVal('f-diplomacy', pr.diplomacy);
@@ -1316,7 +1318,8 @@
       resetPolFields();
       resetMinistryFields();
       loadRelFields(null);
-      document.getElementById('f-regime').value = '17';
+      document.getElementById('f-regime-type').value = 'democracy';
+      document.getElementById('f-regime-reform').value = '';
       document.getElementById('f-ceiling').value = '';
       setFlag('');
       document.getElementById('formTitle').textContent = 'Add Nation';
@@ -1519,10 +1522,9 @@
         box.innerHTML = list.map(function (n) {
           var s = n.stats || {}, e = n.economy || {}, pr = n.production || {};
           var cur = e.currency || '';
-          // Regime is stored numeric for new nations (show "N — Label"); a legacy
-          // free-text regime is shown as-is.
-          var regimeTxt = e.regime == null ? '—'
-            : (typeof e.regime === 'number' ? e.regime + ' — ' + (regimeLabel(e.regime) || '') : e.regime);
+          // Regime is a type + reform level; show "Tier · R<reform>" (e.g. "Full Democracy · R9").
+          var reg = nationRegime(e);
+          var regimeTxt = reg ? ((regimeLabel(reg) || '') + ' · R' + reg.reform) : '—';
           return '<div class="ncard">' +
             '<div class="ncard__top"><div class="ncard__name">' + esc(n.name || '') + '<span class="ncard__id">' + esc(n.id || '') + '</span></div>' +
             '<button class="ed" type="button" data-id="' + esc(n.id) + '">Edit</button></div>' +
@@ -1602,7 +1604,10 @@
       }
       function _mergeEconomy() {
         var base = _mergeCol('economy');
-        base.regime = parseInt(document.getElementById('f-regime').value, 10);
+        delete base.regime;   // the retired 1–25 index — never written back
+        base.regime_type = document.getElementById('f-regime-type').value;
+        var rrRaw = document.getElementById('f-regime-reform').value.trim();
+        base.regime_reform = rrRaw === '' ? 6 : Math.max(0, Math.min(15, parseInt(rrRaw, 10) || 0));
         base.debt = num('f-debt', true);
         base.party_ceiling = document.getElementById('f-ceiling').value.trim() === '' ? 50 : Math.max(0, Math.min(100, num('f-ceiling')));
         base.currency = (editing && editing.economy && editing.economy.currency) || '$';
@@ -3209,7 +3214,7 @@
         var warn = n.dormant ? '' : '<div class="hint" style="color:var(--amber);margin-top:5px">⚠ This nation isn’t dormant — it’s already live, so nothing will spawn.</div>';
         return '<div style="margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:11px 13px">' +
           '<div style="font-weight:800">' + esc(n.name || n.id) + '</div>' +
-          '<div class="hint" style="margin-top:4px">' + (n.legislature_seats || 0) + ' seats · regime ' + (ec.regime != null ? ec.regime : '—') +
+          '<div class="hint" style="margin-top:4px">' + (n.legislature_seats || 0) + ' seats · ' + (nationRegime(ec) ? esc(regimeLabel(nationRegime(ec)) || 'regime —') : 'regime —') +
             ' · order ' + (st.order != null ? st.order : '—') + ' · growth ' + (st.growth != null ? st.growth : '—') + '</div>' + warn + '</div>';
       }
       function renderStage5(box) {

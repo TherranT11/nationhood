@@ -43,11 +43,11 @@
   .chip__t{font-weight:700;font-size:13.5px;letter-spacing:-.005em;line-height:1.25}
   .chip__t.good{color:var(--green)} .chip__t.warn{color:#c0860a} .chip__t.bad{color:var(--red)}
 
-  /* Regime graph: 25 cells left→right, one per point on the 1–25 scale (ladders.js
-     REGIME_TIERS). The number is the source; each cell takes its tier's colour and the
-     nation's current point is raised + ringed, with a "N — Tier" caption below. */
+  /* Regime graph: 16 cells left→right, one per reform level 0–15 within the nation's type
+     (ladders.js nationRegime). Type + reform are the source; each cell takes the type's
+     colour and the nation's current reform is raised + ringed, with a tier caption below. */
   .regime__scale{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:2px}
-  .regime__track{display:grid;grid-template-columns:repeat(25,1fr);gap:3px;align-items:end;padding-top:24px}
+  .regime__track{display:grid;grid-template-columns:repeat(16,1fr);gap:3px;align-items:end;padding-top:24px}
   .regime__cell{position:relative;height:26px;border-radius:4px;background:color-mix(in srgb,var(--rc) 30%,transparent)}
   .regime__cell.is-cur{height:42px;background:var(--rc);box-shadow:0 0 0 2px var(--surface),0 0 0 3px var(--rc)}
   .regime__pin{position:absolute;top:-24px;left:50%;transform:translateX(-50%);font-family:'Space Mono',monospace;font-weight:700;font-size:12px;color:var(--ink)}
@@ -345,7 +345,7 @@
       <div class="cab__list" id="cabList"><p class="empty">Loading the cabinet&hellip;</p></div>
     </section>
 
-    <!-- Regime — the nation's place on the 1–25 autocracy↔democracy↔monarchy scale. -->
+    <!-- Regime — the nation's constitutional type + its reform level (0–15) within it. -->
     <section class="panel" id="regimePanel">
       <div class="glance-hd"><span>Regime</span><a class="glance-link">Nation &#9656;</a></div>
       <div id="regimeGraph"><p class="empty">Loading the nation&rsquo;s regime&hellip;</p></div>
@@ -447,7 +447,7 @@
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { fetchNationInitiatives, renderNationInitiatives } from '/initiatives.js';
   import { openJointProposer, fetchJointNegotiations, renderJointNegotiations } from '/joint.js';
-  import { statLabel, statBand, regimeLabel, statName, regimeText, REGIME_TIERS } from '/ladders.js';
+  import { statLabel, statBand, regimeLabel, statName, regimeText, nationRegime, REGIME_TYPE_LABEL } from '/ladders.js';
   import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, PRODUCE_COST, PRODUCE_COOLDOWN, declaredValue, fmtPop, fmtGdp, majority } from '/util.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { MINISTRIES } from '/ministries.js';
@@ -459,44 +459,28 @@
 
   var flag = document.getElementById('flag');
 
-  // Regime graph — the nation's place on the single 1–25 autocracy↔democracy↔monarchy
-  // scale (ladders.js REGIME_TIERS). The stored number is the source; each of the 25
-  // cells takes its tier's colour and the current point is highlighted with a caption.
-  var REGIME_MIN = 1, REGIME_MAX = 25;
-  // One colour per tier threshold, walking the scale: red autocracy → green democracy → violet crown.
-  var REGIME_TIER_COLOR = {
-    1: '#b4231f', 5: '#d1521c', 9: '#dd8613', 11: '#c9a30a', 14: '#8faa1b',
-    17: '#4f9d3a', 20: '#2f8f4e', 21: '#4f5bd5', 24: '#7b3fc4'
-  };
-  // The threshold value of the tier a regime point falls in (REGIME_TIERS is high→low).
-  function regimeTierValue(n) {
-    for (var i = 0; i < REGIME_TIERS.length; i++) if (n >= REGIME_TIERS[i].value) return REGIME_TIERS[i].value;
-    return REGIME_TIERS[REGIME_TIERS.length - 1].value;
-  }
+  // Regime graph — the nation's constitutional TYPE plus its REFORM level (0–15) within it
+  // (ladders.js nationRegime / regimeLabel). The type + reform are the source; the 16 reform
+  // cells take the type's colour and the current reform is highlighted with a caption.
+  // One colour per type: red autocracy → green democracy → violet crown.
+  var REGIME_TYPE_COLOR = { autocracy: '#c2410c', democracy: '#2f8f4e', monarchy: '#6d3fc4' };
   function renderRegime(nation) {
     var box = document.getElementById('regimeGraph');
     if (!box) return;
-    var eco = nation.economy || {};
-    // Only numeric regimes plot on the 1–25 scale; a legacy free-text regime shows as text.
-    if (typeof eco.regime !== 'number') {
-      box.innerHTML = eco.regime ? '<p class="regime__cap">' + esc(String(eco.regime)) + '</p>'
-                                 : '<p class="empty">No regime set for this nation yet.</p>';
-      return;
-    }
-    var cur = Math.max(REGIME_MIN, Math.min(REGIME_MAX, Math.round(eco.regime)));
+    var reg = nationRegime(nation.economy || {});
+    if (!reg) { box.innerHTML = '<p class="empty">No regime set for this nation yet.</p>'; return; }
+    var color = REGIME_TYPE_COLOR[reg.type];
     var cells = '';
-    for (var i = REGIME_MIN; i <= REGIME_MAX; i++) {
-      var color = REGIME_TIER_COLOR[regimeTierValue(i)];
-      var isCur = i === cur;
+    for (var i = 0; i <= 15; i++) {
+      var isCur = i === reg.reform;
       cells += '<div class="regime__cell' + (isCur ? ' is-cur' : '') + '" style="--rc:' + color + '"' +
-               ' title="' + i + ' — ' + esc(regimeLabel(i)) + '">' +
+               ' title="Reform ' + i + '">' +
                (isCur ? '<span class="regime__pin">' + i + '</span>' : '') + '</div>';
     }
-    var label = regimeLabel(cur) || String(cur);
     box.innerHTML =
-      '<div class="regime__scale"><span>Autocracy</span><span>Democracy</span><span>Monarchy</span></div>' +
+      '<div class="regime__scale"><span>' + esc(REGIME_TYPE_LABEL[reg.type]) + '</span><span>Reform &rarr;</span></div>' +
       '<div class="regime__track">' + cells + '</div>' +
-      '<p class="regime__cap"><b>' + cur + '</b> &mdash; ' + esc(label) + '</p>';
+      '<p class="regime__cap"><b>' + esc(regimeLabel(reg) || '') + '</b> &mdash; Reform ' + reg.reform + '/15</p>';
   }
   // topbar action budget + toast. setActions is the one place that reflects the
   // action count — it updates the label AND gates every action button (0 →
@@ -1462,7 +1446,7 @@
     var byId = {}; parties.forEach(function (p) { byId[p.id] = p; });
     var formateur = govt ? byId[govt.formateur_party_id] : null;
     var eco = nation.economy || {};
-    var regimeTxt = regimeText(eco.regime);
+    var regimeTxt = regimeText(nationRegime(eco));
     var govType = (govt ? capFirst(govt.type) + ' government' : (nation.ruling_party ? 'One-party state' : 'No government')) + (regimeTxt && regimeTxt !== '—' ? ' · ' + regimeTxt : '');
     function row(k, v) { return v ? '<div class="snap__row"><dt>' + k + '</dt><dd>' + v + '</dd></div>' : ''; }
     function ptag(p) { return p ? ' <span class="ptag" style="background:' + partyColor(p) + '">' + esc((p.abbreviation || p.name.slice(0, 2)).toUpperCase()) + '</span>' : ''; }

@@ -233,7 +233,7 @@
   <div class="tmodal">
     <div class="tm-h"><button class="tclose" id="sancClose">✕</button>
       <div class="tm-mode">Trade sanctions</div><div class="tm-title">Embargo a nation</div>
-      <div class="tm-sub">Bars trade both ways. Sanctioning a regime ≤4 rallies your government (+1 popularity); a democracy costs −1 Image. 3 Influence to enact.</div></div>
+      <div class="tm-sub">Bars trade both ways. Sanctioning an authoritarian regime rallies your government (+1 popularity); any other regime costs −1 Image. 3 Influence to enact.</div></div>
     <div class="tm-body"><div id="sancList"></div></div>
   </div>
 </div>
@@ -259,6 +259,7 @@
   import { mountTopbar } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
+  import { nationRegime, isAuthoritarian } from '/ladders.js';
 
   mountTopbar();
   mountSidenav();
@@ -655,8 +656,6 @@
   document.getElementById('overlay').onclick = function(e){ if (e.target === this) closeImport(); };
 
   /* ===== SANCTIONS MODAL ===== */
-  // Regime can be stored as a number (1–25) or a text label; pull the leading number, mirroring _to_num.
-  function regimeNum(reg){ var m = String(reg == null ? '' : reg).match(/-?\d+(\.\d+)?/); return m ? parseFloat(m[0]) : null; }
   function openSanctions(){ document.getElementById('sancOverlay').classList.add('show'); renderSanctionList(); }
   function closeSanctions(){ document.getElementById('sancOverlay').classList.remove('show'); }
   function renderSanctionList(){
@@ -665,11 +664,11 @@
     var ap = num(STATE.party.influence);
     document.getElementById('sancList').innerHTML = others.map(function(n){
       var byMe = !!STATE.sanctions.byMe[n.id], onMe = !!STATE.sanctions.onMe[n.id];
-      var reg = regimeNum((n.economy || {}).regime), auth = reg != null && reg <= 4;
+      var reg = nationRegime(n.economy), auth = isAuthoritarian(reg);
       var hint = onMe ? 'Has sanctioned you — trade barred'
         : byMe ? 'Under your sanction — trade barred both ways'
         : auth ? 'Authoritarian regime — a stand rallies your government (+1 popularity)'
-        : reg != null ? 'Democracy — sanctioning costs −1 Image'
+        : reg ? 'Not authoritarian — sanctioning costs −1 Image'
         : 'Regime unknown';
       var btn = byMe
         ? '<button class="liftbtn" data-lift="' + esc(n.id) + '">Lift Sanctions</button>'

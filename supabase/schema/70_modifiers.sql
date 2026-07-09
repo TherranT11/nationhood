@@ -260,7 +260,7 @@ begin
   if not found then return false; end if;
   case p_type
     when 'stat'       then v_cur := public._to_num(v_n.stats      ->> p_key);
-    when 'regime'     then v_cur := public._to_num(v_n.economy    ->> 'regime');
+    when 'regime'     then v_cur := public._regime_reform(v_n.economy);   -- reform level 0..15 (schema/166)
     when 'resource'   then v_cur := public._to_num(v_n.production ->> p_key);
     when 'economy'    then
       v_cur := case p_key

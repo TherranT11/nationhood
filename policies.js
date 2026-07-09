@@ -10,8 +10,8 @@
 // policy builder's stat picker. (Distinct from the live world-event target list, which
 // still uses the current backend stat names until the models converge.)
 // The stats a policy effect can target (the policy-builder vocabulary). 'Regime' moves the nation's
-// place on the 1–25 scale — applied server-side by _apply_policy_effect (schema/91, republic range
-// only) — and is shown as the Government page's regime graph rather than a ministry-stat cell.
+// reform level 0–15 within its type — applied server-side by _apply_policy_effect (schema/91,
+// non-monarchy only) — and is shown as the Nation page's regime graph rather than a ministry-stat cell.
 export const POLICY_STATS = [
   'Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Interest Rates',
   'Crime', 'Immigration', 'Extremism', 'Unemployment', 'Poverty', 'Wages',
@@ -37,8 +37,8 @@ export const STAT_RANGES = {
 
 // The admin-typed ministry stats (the Edit Nation "Ministry Stats" grid). Derived from POLICY_STATS
 // — one source — minus stats that are NOT typed in that grid: Budget Balance & Bureaucracy are
-// COMPUTED from policy effects, and Regime lives on economy.regime (its own graph), so it's a
-// policy-effect target but never a typed ministry field.
+// COMPUTED from policy effects, and Regime lives on economy.regime_type/regime_reform (its own
+// graph), so it's a policy-effect target but never a typed ministry field.
 var NON_MINISTRY_STATS = ['Budget Balance', 'Bureaucracy', 'Regime'];
 export const MINISTRY_STATS = POLICY_STATS.filter(function (s) { return NON_MINISTRY_STATS.indexOf(s) < 0; });
 
