@@ -75,6 +75,20 @@
   .hexchips{display:flex;flex-wrap:wrap;gap:6px}
   .hexchip{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;background:var(--field,var(--bg));border:1px solid var(--line);border-radius:7px;padding:4px 8px}
   .hexchip .rk{color:var(--soft);font-weight:400}
+  /* Regional politics block (seats + held-by + regional approval → amalgamated national) */
+  .reg{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+  .reg__h{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:8px}
+  .reg__seats{font-size:15px;color:var(--muted)} .reg__seats b{font-size:22px;font-weight:900;color:var(--ink);letter-spacing:-.01em;margin-right:4px}
+  .reg__sub{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.03em;color:var(--soft)}
+  .reg__held{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .regchip{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--c);border:1px solid color-mix(in srgb,var(--c) 42%,transparent);background:color-mix(in srgb,var(--c) 12%,transparent);border-radius:7px;padding:3px 8px}
+  .reg__ah{margin-top:14px;margin-bottom:2px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .regrow{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .regrow:last-child{border-bottom:none}
+  .regdot{width:9px;height:9px;border-radius:2px;flex:none}
+  .regnm{font-weight:700;color:var(--ink)}
+  .regv{font-family:'Space Mono',monospace;font-weight:700;color:var(--ink);margin-left:auto}
+  .regnat{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);min-width:62px;text-align:right}
 
   /* Edit Party modal */
   .emodal{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:18px}
@@ -260,9 +274,23 @@
   }
 
   // ---- Territory: the nation map with clickable hexes + a detail panel ----
-  var MAP = { cv: null, box: null, none: null, opts: null, hitAt: null, cities: [], natName: {}, mine: null };
+  var MAP = { cv: null, box: null, none: null, opts: null, hitAt: null, cities: [], natName: {}, mine: null,
+              parties: [], totalSeats: 0, heldSeats: 0, myHexes: [], natPop: 0, amalg: {} };
   var HEX_RES = ['energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy'];
   function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+
+  // Deterministic pseudo-random in [0,1) from a string — so each region's numbers are STABLE across
+  // reloads (seeded by hex + party), not re-rolled every open. (xmur3-style hash.)
+  function rand01(str) {
+    var h = 1779033703 ^ str.length;
+    for (var i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+    h = Math.imul(h ^ (h >>> 16), 2246822507); h ^= h >>> 13; h = Math.imul(h, 3266489909); h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+  // A per-region swing of ±(1..5) points on a party's national approval — pure random (no archetype),
+  // symmetric so the population-weighted amalgamation reconciles to the national figure.
+  function regionalLean(q, r, pid) { var k = q + ',' + r + ':' + pid; return (rand01(k + ':s') < 0.5 ? -1 : 1) * (1 + rand01(k) * 4); }
+  function regionalApproval(party, hex) { return Math.max(0, Math.min(100, (Number(party.popularity) || 0) + regionalLean(hex.q, hex.r, party.id))); }
 
   function paintMap() {
     var res = drawNationMiniMap(MAP.cv, MAP.box, MAP.opts);   // truthy object (with hexAt) when land is painted
@@ -292,12 +320,41 @@
         row('Population', hex.population != null ? fmtPop(hex.population) : '') +
         (city ? row('City', esc(city.name)) : '') +
       '</div>' +
-      '<div class="hexres"><div class="hexres__h">Resources</div><div class="hexchips">' + (chips || '<span class="hexpanel__hint">None</span>') + '</div></div>';
+      '<div class="hexres"><div class="hexres__h">Resources</div><div class="hexchips">' + (chips || '<span class="hexpanel__hint">None</span>') + '</div></div>' +
+      (mine ? regionalPolitics(hex) : '');
   }
 
-  async function loadTerritory(party) {
+  // Regional politics for one of your hexes: seats (by population), who holds them (apportioned by
+  // chamber share), and each party's regional approval (national ± a seeded per-region swing) beside
+  // the amalgamated national figure those regions weight to.
+  function regionalPolitics(hex) {
+    if (!MAP.parties.length) return '';
+    var pop = Number(hex.population) || 0;
+    var seatsHere = (MAP.totalSeats > 0 && MAP.natPop > 0) ? Math.round(MAP.totalSeats * pop / MAP.natPop) : 0;
+    var held = MAP.heldSeats > 0 ? MAP.parties.map(function (p) { return { p: p, n: Math.round(seatsHere * (Number(p.seats) || 0) / MAP.heldSeats) }; }).filter(function (x) { return x.n > 0; }) : [];
+    var heldChips = held.length
+      ? held.map(function (x) { return '<span class="regchip" style="--c:' + (partyColor(x.p) || '#8d8d95') + '">' + esc(x.p.abbreviation || x.p.name.slice(0, 3)) + ' ×' + x.n + '</span>'; }).join('')
+      : '<span class="hexpanel__hint">Not enough population for a seat.</span>';
+    var rows = MAP.parties.filter(function (p) { return (Number(p.seats) || 0) > 0 || (Number(p.popularity) || 0) > 0; })
+      .map(function (p) { return { p: p, reg: regionalApproval(p, hex), nat: MAP.amalg[p.id] || 0 }; })
+      .sort(function (a, b) { return b.reg - a.reg; });
+    var apprRows = rows.length ? rows.map(function (x) {
+      return '<div class="regrow"><span class="regdot" style="background:' + (partyColor(x.p) || '#8d8d95') + '"></span>' +
+        '<span class="regnm">' + esc(x.p.abbreviation || x.p.name) + '</span>' +
+        '<span class="regv">' + (Math.round(x.reg * 10) / 10) + '%</span>' +
+        '<span class="regnat">nat’l ' + (Math.round(x.nat * 10) / 10) + '%</span></div>';
+    }).join('') : '<span class="hexpanel__hint">No parties with measurable support.</span>';
+    return '<div class="reg"><div class="reg__h">Regional politics</div>' +
+      '<div class="reg__seats"><b>' + seatsHere + '</b>seat' + (seatsHere === 1 ? '' : 's') + ' <span class="reg__sub">of ' + MAP.totalSeats + ', by population</span></div>' +
+      '<div class="reg__held">' + heldChips + '</div>' +
+      '<div class="reg__ah">Regional approval <span class="reg__sub">here → national</span></div>' + apprRows +
+    '</div>';
+  }
+
+  async function loadTerritory(party, nation) {
     MAP.cv = document.getElementById('natMap'); MAP.box = document.getElementById('mapBox'); MAP.none = document.getElementById('mapNone');
     MAP.mine = party.nation_id;
+    MAP.totalSeats = Number(nation && nation.legislature_seats) || 0;
     var nations = [];
     try {
       var nr = await supabase.from('nations').select('id, name, color').order('name');
@@ -312,6 +369,22 @@
       hexes = hr.data || [];
     } catch (e) {}
     try { var cr = await supabase.from('cities').select('name, q, r').eq('nation_id', party.nation_id).not('q', 'is', null); MAP.cities = cr.error ? [] : (cr.data || []); } catch (e) { MAP.cities = []; }
+    // Your nation's parties (regional seat breakdown + approval) and land hexes (seat apportionment
+    // + amalgamation denominator).
+    try {
+      var pr = await supabase.from('parties').select('id, name, abbreviation, color, seats, popularity').eq('nation_id', party.nation_id);
+      if (pr.error) pr = await supabase.from('parties').select('id, name, abbreviation, seats, popularity').eq('nation_id', party.nation_id);
+      MAP.parties = pr.data || [];
+    } catch (e) { MAP.parties = []; }
+    MAP.heldSeats = MAP.parties.reduce(function (a, p) { return a + (Number(p.seats) || 0); }, 0);
+    MAP.myHexes = hexes.filter(function (h) { return h.terrain === 'land' && h.nation_id === party.nation_id; });
+    MAP.natPop = MAP.myHexes.reduce(function (a, h) { return a + (Number(h.population) || 0); }, 0);
+    // Amalgamated national approval per party = population-weighted average of its regional approvals.
+    MAP.amalg = {};
+    MAP.parties.forEach(function (p) {
+      if (MAP.natPop > 0) { var s = 0; MAP.myHexes.forEach(function (h) { s += regionalApproval(p, h) * (Number(h.population) || 0); }); MAP.amalg[p.id] = s / MAP.natPop; }
+      else MAP.amalg[p.id] = Number(p.popularity) || 0;
+    });
     MAP.opts = { hexes: hexes, natColor: nationColors(nations), viewedId: party.nation_id, mode: 'nation', cities: MAP.cities, selected: null };
     document.getElementById('territory').hidden = false;
     paintMap();
@@ -448,7 +521,7 @@
         if (series.length >= 2) prevPop = series[series.length - 2];   // previous tick's close = the trend baseline
       } catch (e) { /* no history yet → flat approval, no sparkline */ }
       renderStanding(party, nation || {}, series, prevPop);
-      loadTerritory(party).catch(function () { /* map is a non-critical add-on */ });
+      loadTerritory(party, nation).catch(function () { /* map is a non-critical add-on */ });
     } catch (e) { /* chrome still renders */ }
   })();
 </script>
