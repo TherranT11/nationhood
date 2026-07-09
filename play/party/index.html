@@ -275,7 +275,7 @@
 
   // ---- Territory: the nation map with clickable hexes + a detail panel ----
   var MAP = { cv: null, box: null, none: null, opts: null, hitAt: null, cities: [], natName: {}, mine: null,
-              parties: [], totalSeats: 0, heldSeats: 0, myHexes: [], natPop: 0, amalg: {} };
+              parties: [], totalSeats: 0, heldSeats: 0, myHexes: [], natPop: 0, amalg: {}, bias: {} };
   var HEX_RES = ['energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy'];
   function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
@@ -290,7 +290,10 @@
   // A per-region swing of ±(1..5) points on a party's national approval — pure random (no archetype),
   // symmetric so the population-weighted amalgamation reconciles to the national figure.
   function regionalLean(q, r, pid) { var k = q + ',' + r + ':' + pid; return (rand01(k + ':s') < 0.5 ? -1 : 1) * (1 + rand01(k) * 4); }
-  function regionalApproval(party, hex) { return Math.max(0, Math.min(100, (Number(party.popularity) || 0) + regionalLean(hex.q, hex.r, party.id))); }
+  // Stored per-region tilt from policy popularity awards (schema/163) — population-weighted and
+  // zero-sum, so it moves individual hexes without shifting the national amalgamation.
+  function regionalBias(q, r, pid) { var b = MAP.bias[pid]; return (b && b[q + ',' + r]) || 0; }
+  function regionalApproval(party, hex) { return Math.max(0, Math.min(100, (Number(party.popularity) || 0) + regionalLean(hex.q, hex.r, party.id) + regionalBias(hex.q, hex.r, party.id))); }
 
   function paintMap() {
     var res = drawNationMiniMap(MAP.cv, MAP.box, MAP.opts);   // truthy object (with hexAt) when land is painted
@@ -377,6 +380,18 @@
       MAP.parties = pr.data || [];
     } catch (e) { MAP.parties = []; }
     MAP.heldSeats = MAP.parties.reduce(function (a, p) { return a + (Number(p.seats) || 0); }, 0);
+    // Per-region popularity tilt from policy awards (schema/163) → MAP.bias[pid]['q,r'] = points.
+    // Missing table (not migrated) or no rows just leaves every bias at 0 (region = national ± swing).
+    MAP.bias = {};
+    try {
+      var ids = MAP.parties.map(function (p) { return p.id; });
+      if (ids.length) {
+        var br = await supabase.from('party_hex_bias').select('party_id, q, r, bias').in('party_id', ids);
+        (br.error ? [] : (br.data || [])).forEach(function (row) {
+          (MAP.bias[row.party_id] || (MAP.bias[row.party_id] = {}))[row.q + ',' + row.r] = Number(row.bias) || 0;
+        });
+      }
+    } catch (e) { MAP.bias = {}; }
     MAP.myHexes = hexes.filter(function (h) { return h.terrain === 'land' && h.nation_id === party.nation_id; });
     MAP.natPop = MAP.myHexes.reduce(function (a, h) { return a + (Number(h.population) || 0); }, 0);
     // Amalgamated national approval per party = population-weighted average of its regional approvals.
