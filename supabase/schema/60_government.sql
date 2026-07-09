@@ -561,6 +561,12 @@ begin
     begin perform public.resolve_election(v_n); v_count := v_count + 1;
     exception when others then raise warning 'tick %: election failed for nation % — %', v_tick, v_n, sqlerrm; end;
   end loop;
+  -- Coalition governments (schema/164): re-derive each multiparty nation's governing
+  -- coalition from the assembly's live votes and (re)seat the winner when its
+  -- membership changes. Runs right after elections so it reads this tick's freshly
+  -- allocated seats. Isolated — a failure warns and never aborts the tick.
+  begin perform public._resolve_coalitions(v_tick);
+  exception when others then raise warning 'tick %: coalition resolution failed — %', v_tick, sqlerrm; end;
   -- Auto-apply any triggered National Modifier: a modifier with start conditions "fires off"
   -- on every non-dormant nation that now meets them all (schema/70). Runs before the lift so a
   -- nation that both qualifies and has met the end conditions ends up without it.
