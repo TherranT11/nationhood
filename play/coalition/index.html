@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Coalition · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
+<style>
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+
+  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
+
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
+  .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
+  .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
+  .phead p{color:var(--muted);font-size:13px;margin-top:6px;max-width:78ch;line-height:1.55}
+  .phead p b{color:var(--ink);font-weight:700}
+
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-top:18px}
+  .panel h2{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
+
+  /* Projected-outcome banner */
+  .outcome{margin-top:18px;background:var(--chip);border:1px solid var(--line2);border-radius:16px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+  .oc-l .k{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
+  .oc-l .v{font-size:19px;font-weight:800;margin-top:4px;letter-spacing:-.01em}
+  .oc-l .sub{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);margin-top:5px}
+  .oc-score{font-family:'Space Mono',monospace;text-align:right;flex:none}
+  .oc-score .k{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .oc-score .v{font-size:24px;font-weight:700;color:var(--indigo)}
+
+  /* Cast-error banner */
+  .errbar{margin-top:16px;padding:12px 15px;background:var(--red-soft);border:1px solid var(--red);border-radius:12px;color:var(--red);font-size:12.5px;font-weight:600}
+
+  /* Hemicycle — the assembly (geometry mirrors the Government page) */
+  .hemiwrap{position:relative;display:flex;justify-content:center;padding:2px 0 4px}
+  .hemi{width:100%;max-width:440px;height:auto}
+  .seatcall{position:absolute;left:50%;bottom:4px;transform:translateX(-50%);text-align:center;line-height:1.05}
+  .seatcall b{font-weight:900;font-size:26px;letter-spacing:-.02em}
+  .seatcall span{display:block;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;margin-top:10px}
+  .lg{font-size:11.5px;color:var(--muted)} .lg.dim{opacity:.5}
+  .lg b{color:var(--ink);font-weight:700}
+  .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+
+  .sec-h{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);font-weight:700;margin:26px 0 12px}
+
+  /* Coalition card */
+  .coal{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:14px;transition:border-color .2s,box-shadow .2s}
+  .coal.winning{border-color:var(--indigo);box-shadow:0 0 0 1px var(--indigo)}
+  .co-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:12px}
+  .co-name{font-size:16px;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+  .co-crown{color:var(--indigo)}
+  .co-note{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5}
+  .co-tally{text-align:right;flex:none}
+  .co-seats{font-family:'Space Mono',monospace;font-size:14px;font-weight:700}
+  .co-seats small{color:var(--soft);font-weight:400}
+  .co-pct{font-family:'Space Mono',monospace;font-size:9px;color:var(--green);margin-top:2px;letter-spacing:.04em}
+
+  .seatbar{display:flex;height:10px;border-radius:5px;overflow:hidden;border:1px solid var(--line);margin:2px 0 14px}
+  .seatbar .seg{height:100%}
+  .members{display:flex;flex-direction:column;gap:8px}
+  .mem{display:flex;align-items:center;gap:11px;background:var(--field);border:1px solid var(--line);border-radius:11px;padding:10px 12px}
+  .mem-dot{width:10px;height:10px;border-radius:3px;flex:none}
+  .mem-id{flex:1;min-width:0}
+  .mem-name{font-size:13px;font-weight:700}
+  .mem-sub{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);margin-top:2px}
+  .mem-demand{font-size:11px;color:var(--amber);margin-top:4px}
+  .votebadge{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:7px;padding:5px 9px;flex:none;border:1px solid var(--line)}
+  .vb-yes{color:var(--green);background:var(--green-soft)}
+  .vb-yesbut{color:var(--amber);background:var(--amber-soft)}
+  .vb-no{color:var(--red);background:var(--red-soft)}
+  .vb-none{color:var(--soft);background:var(--chip)}
+
+  .youvote{display:flex;gap:6px;flex:none}
+  .vbtn{border:1px solid var(--line2);background:transparent;color:var(--muted);border-radius:8px;padding:6px 11px;font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.03em;cursor:pointer;transition:background .12s,color .12s,border-color .12s}
+  .vbtn:hover{color:var(--ink);border-color:var(--ink)}
+  .vbtn:disabled{opacity:.4;cursor:default;pointer-events:none}
+  .vbtn.on-yes{background:var(--green);border-color:var(--green);color:#fff}
+  .vbtn.on-yesbut{background:var(--amber);border-color:var(--amber);color:#fff}
+  .vbtn.on-no{background:var(--red);border-color:var(--red);color:#fff}
+  .youtag{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.05em;color:var(--indigo);background:var(--indigo-soft);border:1px solid var(--indigo);border-radius:5px;padding:1px 5px;margin-left:5px}
+  .lastnote{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);margin-top:9px;letter-spacing:.02em;line-height:1.5}
+
+  /* Player "Yes, but" demand composer */
+  .demand{margin-top:12px;padding:12px 13px;background:var(--amber-soft);border:1px solid var(--amber);border-radius:12px}
+  .demand-l{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--amber);margin-bottom:8px;font-weight:700}
+  .demand-row{display:flex;gap:8px;flex-wrap:wrap}
+  .demand select{flex:1;min-width:130px;background:var(--field);border:1px solid var(--line2);color:var(--ink);border-radius:9px;padding:8px 10px;font-family:'Archivo',sans-serif;font-size:12.5px;outline:none;cursor:pointer}
+  .demand select:focus{border-color:var(--amber)}
+  .demand .by{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);align-self:center}
+  .demand-actions{display:flex;gap:8px;margin-top:11px}
+  .dbtn{border:1px solid var(--amber);background:var(--amber);color:#fff;border-radius:9px;padding:8px 14px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.04em;cursor:pointer}
+  .dbtn:disabled{opacity:.5;cursor:default;pointer-events:none}
+  .dbtn.ghost{background:transparent;color:var(--muted);border-color:var(--line2)}
+
+  .co-score{display:flex;align-items:center;gap:14px;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+  .co-score .lbl{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
+  .co-score .mini{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-right:auto}
+  .co-score .val{font-family:'Space Mono',monospace;font-size:17px;font-weight:700}
+
+  .empty{text-align:center;padding:44px 20px;color:var(--soft)}
+  .empty b{display:block;color:var(--muted);font-size:16px;margin-bottom:6px}
+
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
+
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <div class="phead">
+      <span class="eye">Government Formation</span>
+      <h1 id="chead">Forming a Coalition</h1>
+      <p id="clede">Loading the assembly…</p>
+    </div>
+    <div id="content"><div class="panel"><div class="empty">Reading the assembly…</div></div></div>
+  </main>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
+  import { esc, majority, tickToDate } from '/util.js';
+  import { partyColor, ideologyLabel, opposes } from '/archetypes.js';
+  import { MINISTRIES } from '/ministries.js';
+  import { MINISTRY_STATS } from '/policies.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+
+  mountTopbar();   // shared top bar into #topbar
+  mountSidenav();  // left rail / bottom bar into #sidenav; active item from the URL
+
+  // Vote weights — ONE source, mirrored by cast_coalition_vote + the tick resolver
+  // (schema/163): Yes = 1, Yes-but = 1.5, No (and not-yet-voted) = 0.
+  var W = { yes: 1, yesbut: 1.5, no: 0, none: 0 };
+
+  // --- state, filled at boot ---
+  var NATION_ID = null, MY_ID = null, MY_PARTY = null, PARTIES = [], byId = {};
+  var TOTAL = 0, MAJ = 0, NEXT_TICK_DATE = '';
+  var COALITIONS = [];      // minimal winning coalitions that include the player
+  var VOTES = {};           // coalition_key -> { partyId: { vote, demand } }, every vote in the nation
+  var composing = {};       // coalition_key -> in-progress demand object while the Yes-but builder is open
+  var busy = false;         // a cast is in flight — locks the vote controls against a double-fire
+  var ERR = '';             // last cast error, shown as a banner until the next action
+
+  function shortName(name) {
+    return (name || '').split(/\s+/).map(function (w) { return w.charAt(0); }).join('').toUpperCase().slice(0, 4) || 'PTY';
+  }
+  function abbr(p) { return (p && (p.abbreviation || shortName(p.name))) || 'PTY'; }
+  function bySeats(a, b) { return (b.seats || 0) - (a.seats || 0) || (a.id < b.id ? -1 : 1); }   // seats desc, id-stable
+
+  // ---- possible coalitions ------------------------------------------------
+  // Every minimal winning coalition that INCLUDES the player: seats ≥ majority and
+  // every member is critical (drop any one and it falls below the line). Because
+  // minimality is symmetric, every member of such a coalition generates the same
+  // set — so all members see, and can vote on, the same cards. If the player is
+  // never pivotal we fall back to the smallest winning coalitions that still
+  // contain the player (redundant partners trimmed), so the page never blanks.
+  function buildCoalitions() {
+    var mySeats = MY_PARTY.seats || 0;
+    var others = PARTIES.filter(function (p) { return p.id !== MY_ID && (p.seats || 0) > 0; }).sort(bySeats);
+    if (others.length > 16) others = others.slice(0, 16);   // 2^16 guard; nations cap at 8 parties
+    var n = others.length, found = [], seen = {};
+
+    for (var mask = 0; mask < (1 << n); mask++) {
+      var mem = [MY_ID], seats = mySeats, arr = [MY_PARTY];
+      for (var i = 0; i < n; i++) if (mask & (1 << i)) { mem.push(others[i].id); seats += others[i].seats || 0; arr.push(others[i]); }
+      if (seats < MAJ) continue;
+      if (!arr.every(function (p) { return seats - (p.seats || 0) < MAJ; })) continue;   // every member critical
+      addCoalition(found, seen, mem, seats);
+    }
+
+    if (!found.length) {   // player not pivotal to any minimal majority — trim to smallest containing them
+      for (var m2 = 0; m2 < (1 << n); m2++) {
+        var extra = [], seats2 = mySeats;
+        for (var j = 0; j < n; j++) if (m2 & (1 << j)) { extra.push(others[j]); seats2 += others[j].seats || 0; }
+        if (seats2 < MAJ) continue;
+        extra.sort(bySeats);
+        var s = seats2, keep = [];
+        extra.forEach(function (p) { if (s - (p.seats || 0) >= MAJ) s -= (p.seats || 0); else keep.push(p); });
+        addCoalition(found, seen, [MY_ID].concat(keep.map(function (p) { return p.id; })),
+          mySeats + keep.reduce(function (a, p) { return a + (p.seats || 0); }, 0));
+      }
+    }
+
+    // Fewest partners first, then the tightest majority; keep the top handful.
+    found.sort(function (a, b) { return a.members.length - b.members.length || a.seats - b.seats; });
+    found = found.slice(0, 6);
+    found.forEach(function (c) { c.name = coalitionName(c); c.note = coalitionNote(c); });
+    return found;
+  }
+  // key = member ids sorted ascending, comma-joined — the canonical id the server
+  // re-derives in cast_coalition_vote, so client and DB always agree on "this coalition".
+  function addCoalition(found, seen, members, seats) {
+    var key = members.slice().sort().join(',');
+    if (seen[key]) return;
+    seen[key] = 1;
+    found.push({ key: key, members: members, seats: seats });
+  }
+
+  function coalitionName(c) {
+    return c.members.map(function (m) { return byId[m]; }).sort(bySeats).map(abbr).join(' + ');
+  }
+  function coalitionNote(c) {
+    var arr = c.members.map(function (m) { return byId[m]; });
+    var clashes = 0;
+    for (var i = 0; i < arr.length; i++) for (var j = i + 1; j < arr.length; j++)
+      if (opposes(arr[i].archetype, arr[j].archetype)) clashes++;
+    var over = c.seats - MAJ;
+    var tone = clashes > 0 ? 'Rival ideologies share the table — a fractious partnership.'
+      : (arr.length === 2 ? 'A natural two-party pact.' : 'A broad but compatible bloc.');
+    var margin = over === 0 ? 'exactly on the majority line.' : over + ' seat' + (over === 1 ? '' : 's') + ' clear of the line.';
+    return tone + ' ' + arr.length + ' parties · ' + margin;
+  }
+
+  // ---- reading the live tally --------------------------------------------
+  function voteOf(key, m) { return (VOTES[key] && VOTES[key][m]) ? VOTES[key][m].vote : 'none'; }
+  function demandOf(key, m) { return (VOTES[key] && VOTES[key][m]) ? VOTES[key][m].demand : null; }
+  function keyMembers(key) { return key.split(','); }
+  // The last-to-vote rule, read from the live tally: the player is last on a
+  // coalition once every OTHER member has already cast — then Yes-but is off.
+  function playerIsLast(members, key) {
+    var others = members.filter(function (m) { return m !== MY_ID; });
+    return others.length > 0 && others.every(function (m) { return voteOf(key, m) !== 'none'; });
+  }
+
+  function demandText(d) {
+    if (!d || !d.type) return null;
+    if (d.type === 'ministry') return 'the ' + (d.ministry || MINISTRIES[0]) + ' ministry';
+    if (d.type === 'influence') return (d.influence || 10) + ' Influence';
+    if (d.type === 'stat') return (d.stat || MINISTRY_STATS[0]) + ' ' + (d.dir || 'increased') + ' by 10';
+    return null;
+  }
+
+  function scoreOf(key, members) { return members.reduce(function (t, m) { return t + W[voteOf(key, m)]; }, 0); }
+  function votesForOf(key, members) { return members.reduce(function (t, m) { var v = voteOf(key, m); return t + ((v === 'yes' || v === 'yesbut') ? 1 : 0); }, 0); }
+  function seatsOf(members) { return members.reduce(function (t, m) { return t + ((byId[m] && byId[m].seats) || 0); }, 0); }
+
+  // The coalition that would form at the next tick, computed over EVERY coalition
+  // the nation has voted on (not just the player's) — the same equation the tick
+  // resolver runs: highest score, then most votes cast, then most seats.
+  function winner() {
+    var keys = Object.keys(VOTES);
+    if (!keys.length) return { voted: false };
+    var best = null;
+    keys.forEach(function (key) {
+      var members = keyMembers(key);
+      var cand = { key: key, members: members, score: scoreOf(key, members), votes: votesForOf(key, members), seats: seatsOf(members) };
+      if (!best) { best = cand; return; }
+      if (cand.score > best.score
+        || (cand.score === best.score && cand.votes > best.votes)
+        || (cand.score === best.score && cand.votes === best.votes && cand.seats > best.seats)) best = cand;
+    });
+    best.voted = true;
+    best.tie = keys.some(function (key) {
+      if (key === best.key) return false;
+      var m = keyMembers(key);
+      return scoreOf(key, m) === best.score && votesForOf(key, m) === best.votes && seatsOf(m) === best.seats;
+    });
+    return best;
+  }
+  function nameForKey(key) {
+    return keyMembers(key).map(function (m) { return byId[m]; }).filter(Boolean).sort(bySeats).map(abbr).join(' + ') || 'Coalition';
+  }
+
+  // ---- hemicycle (assembly), coloured by party; winning coalition at full opacity ----
+  function hemicycleSvg(highlight) {
+    if (!TOTAL) return '';
+    var ROWS = 9, RIN = 86, ROUT = 216, CX = 230, CY = 224, RAD = 3.6;
+    var radii = []; for (var r = 0; r < ROWS; r++) radii.push(RIN + (ROUT - RIN) * r / (ROWS - 1));
+    var totW = radii.reduce(function (a, b) { return a + b; }, 0);
+    var per = radii.map(function (R) { return Math.max(2, Math.round(TOTAL * R / totW)); });
+    var diff = TOTAL - per.reduce(function (a, b) { return a + b; }, 0), ri = ROWS - 1;
+    while (diff !== 0) { per[ri] += Math.sign(diff); diff -= Math.sign(diff); ri = (ri - 1 + ROWS) % ROWS; }
+    var seats = [];
+    for (var r2 = 0; r2 < ROWS; r2++) { var nn = per[r2], R = radii[r2];
+      for (var i = 0; i < nn; i++) { var th = Math.PI * (i + 0.5) / nn; seats.push({ x: CX - R * Math.cos(th), y: CY - R * Math.sin(th), th: th }); } }
+    seats.sort(function (a, b) { return a.th - b.th; });
+    var order = PARTIES.slice().sort(bySeats)
+      .map(function (p) { return { s: p.seats || 0, c: partyColor(p), on: !highlight || !!highlight[p.id] }; })
+      .filter(function (p) { return p.s > 0; });
+    var circles = '', pi = 0, used = 0, boundary = null;
+    seats.forEach(function (s, k) {
+      while (pi < order.length - 1 && used >= order[pi].s) { pi++; used = 0; }
+      used++;
+      var pp = order[pi] || { c: 'var(--chip)', on: true };
+      circles += '<circle cx="' + s.x.toFixed(1) + '" cy="' + s.y.toFixed(1) + '" r="' + RAD + '" fill="' + pp.c + '" opacity="' + (pp.on ? '1' : '.3') + '"/>';
+      if (k === MAJ - 1) boundary = s.th;
+    });
+    var line = '';
+    if (boundary != null) {
+      var bt = boundary - (Math.PI / TOTAL) * 0.5;
+      var x1 = (CX - (RIN - 14) * Math.cos(bt)).toFixed(1), y1 = (CY - (RIN - 14) * Math.sin(bt)).toFixed(1);
+      var x2 = (CX - (ROUT + 16) * Math.cos(bt)).toFixed(1), y2 = (CY - (ROUT + 16) * Math.sin(bt)).toFixed(1);
+      line = '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="var(--ink)" stroke-width="1.4" stroke-dasharray="3 3" opacity=".5"/>' +
+        '<text x="' + x2 + '" y="' + (Number(y2) - 4) + '" fill="var(--ink)" font-family="Space Mono, monospace" font-size="9" text-anchor="middle">' + MAJ + ' maj</text>';
+    }
+    return '<svg class="hemi" viewBox="0 0 460 250" aria-hidden="true">' + circles + line + '</svg>';
+  }
+  function hemiLegend(highlight) {
+    return PARTIES.slice().filter(function (p) { return (p.seats || 0) > 0; }).sort(bySeats)
+      .map(function (p) {
+        var on = !highlight || !!highlight[p.id];
+        return '<span class="lg' + (on ? '' : ' dim') + '"><span class="sw" style="background:' + partyColor(p) + '"></span>' +
+          (on ? '<b>' + esc(p.name) + '</b>' : esc(p.name)) + ' ' + (p.seats || 0) + (p.id === MY_ID ? ' (You)' : '') + '</span>';
+      }).join('');
+  }
+  function assemblyPanel(highlight) {   // ONE source for the assembly card, used by render + the majority branch
+    return '<div class="panel"><h2>The National Assembly</h2><div class="hemiwrap">' + hemicycleSvg(highlight) +
+      '<div class="seatcall"><b>' + TOTAL + '</b><span>seats · majority ' + MAJ + '</span></div></div>' +
+      '<div class="legend">' + hemiLegend(highlight) + '</div></div>';
+  }
+
+  // ---- demand composer (player's "Yes, but") ------------------------------
+  function demandBuilder(key) {
+    var d = composing[key] || {}, type = d.type || 'ministry';
+    var typeSel = '<select data-dtype="' + key + '">' +
+      [['ministry', 'Claim a ministry'], ['influence', 'Demand Influence'], ['stat', 'Move a national stat']]
+        .map(function (o) { return '<option value="' + o[0] + '"' + (type === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+      '</select>';
+    var detail = '';
+    if (type === 'ministry') {
+      detail = '<select data-dministry="' + key + '">' + MINISTRIES.map(function (m) {
+        return '<option' + ((d.ministry || MINISTRIES[0]) === m ? ' selected' : '') + '>' + esc(m) + '</option>'; }).join('') + '</select>';
+    } else if (type === 'influence') {
+      detail = '<select data-dinfluence="' + key + '">' + [10, 15, 20].map(function (nn) {
+        return '<option' + ((d.influence || 10) === nn ? ' selected' : '') + '>' + nn + '</option>'; }).join('') + '</select><span class="by">Influence</span>';
+    } else {
+      detail = '<select data-dstat="' + key + '">' + MINISTRY_STATS.map(function (st) {
+          return '<option' + ((d.stat || MINISTRY_STATS[0]) === st ? ' selected' : '') + '>' + esc(st) + '</option>'; }).join('') + '</select>' +
+        '<select data-ddir="' + key + '">' + ['increased', 'decreased'].map(function (x) {
+          return '<option' + ((d.dir || 'increased') === x ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select><span class="by">by 10</span>';
+    }
+    return '<div class="demand"><div class="demand-l">Your demand for joining — tabled to the coalition</div>' +
+      '<div class="demand-row">' + typeSel + detail + '</div>' +
+      '<div class="demand-actions"><button class="dbtn" data-cast="' + key + '"' + (busy ? ' disabled' : '') + '>Vote “Yes, but”</button>' +
+        '<button class="dbtn ghost" data-cancel="' + key + '"' + (busy ? ' disabled' : '') + '>Cancel</button></div></div>';
+  }
+
+  // ---- render -------------------------------------------------------------
+  function coalitionCard(c, isWin) {
+    var key = c.key, members = c.members;
+    var last = playerIsLast(members, key);
+    var myVote = voteOf(key, MY_ID);
+    var composingHere = Object.prototype.hasOwnProperty.call(composing, key);
+    var seats = c.seats, pct = Math.round(seats / TOTAL * 100), score = scoreOf(key, members);
+    var ordered = members.map(function (m) { return byId[m]; }).filter(Boolean).sort(bySeats);
+
+    var bar = ordered.map(function (p) {
+      return '<div class="seg" style="width:' + ((p.seats || 0) / seats * 100) + '%;background:' + partyColor(p) + '"></div>'; }).join('');
+
+    var mems = ordered.map(function (p) {
+      var m = p.id, isMe = m === MY_ID, v = voteOf(key, m), voteUI;
+      if (isMe) {
+        var opts = last ? ['yes', 'no'] : ['yes', 'yesbut', 'no'];
+        voteUI = '<div class="youvote">' + opts.map(function (opt) {
+          var lbl = opt === 'yes' ? 'Yes' : opt === 'yesbut' ? 'Yes, but' : 'No';
+          var on = (v === opt && !composingHere) ? (' on-' + opt) : '';
+          return '<button class="vbtn' + on + '" data-c="' + key + '" data-v="' + opt + '"' + (busy ? ' disabled' : '') + '>' + lbl + '</button>';
+        }).join('') + '</div>';
+      } else {
+        var cls = v === 'yes' ? 'vb-yes' : v === 'yesbut' ? 'vb-yesbut' : v === 'no' ? 'vb-no' : 'vb-none';
+        var txt = v === 'yes' ? 'Yes' : v === 'yesbut' ? 'Yes, but' : v === 'no' ? 'No' : 'No vote yet';
+        voteUI = '<span class="votebadge ' + cls + '">' + txt + '</span>';
+      }
+      var dt = v === 'yesbut' ? demandText(demandOf(key, m)) : null;
+      var demandLine = dt ? '<div class="mem-demand">▸ demands ' + esc(dt) + '</div>' : '';
+      return '<div class="mem"><span class="mem-dot" style="background:' + partyColor(p) + '"></span>' +
+        '<div class="mem-id"><div class="mem-name">' + esc(p.name) + (isMe ? '<span class="youtag">You</span>' : '') + '</div>' +
+        '<div class="mem-sub">' + (p.seats || 0) + ' seats · ' + esc(ideologyLabel(p)) + '</div>' + demandLine + '</div>' + voteUI + '</div>';
+    }).join('');
+
+    var lastNote = (last && myVote === 'none') ? '<div class="lastnote">Every other party has voted — as the last to cast you can only vote Yes or No, not table a demand.</div>' : '';
+    var composer = composingHere ? demandBuilder(key) : '';
+
+    return '<div class="coal' + (isWin ? ' winning' : '') + '"><div class="co-top">' +
+      '<div><div class="co-name">' + (isWin ? '<span class="co-crown">★</span> ' : '') + esc(c.name) + '</div>' +
+      '<div class="co-note">' + esc(c.note) + '</div></div>' +
+      '<div class="co-tally"><div class="co-seats">' + seats + ' <small>seats</small></div><div class="co-pct">' + pct + '% · majority ' + MAJ + '</div></div></div>' +
+      '<div class="seatbar">' + bar + '</div><div class="members">' + mems + '</div>' + lastNote + composer +
+      '<div class="co-score"><span class="lbl">Coalition score</span>' +
+        '<span class="mini">' + votesForOf(key, members) + ' backing · ' + seats + ' seats</span>' +
+        '<span class="val" style="color:' + (isWin ? 'var(--indigo)' : 'var(--ink)') + '">' + score.toFixed(1) + '</span></div></div>';
+  }
+
+  function render() {
+    var win = winner();
+    var winMembers = null;
+    if (win.voted && !win.tie) { winMembers = {}; win.members.forEach(function (m) { winMembers[m] = true; }); }
+
+    var oc;
+    if (!win.voted) {
+      oc = '<div class="oc-l"><div class="k">Government</div><div class="v" style="color:var(--soft)">Awaiting the first vote</div>' +
+        '<div class="sub">No coalition has been voted on yet. Cast a vote below to project the government.</div></div>';
+    } else if (win.tie) {
+      oc = '<div class="oc-l"><div class="k">Government</div><div class="v" style="color:var(--amber)">Deadlocked — tied</div>' +
+        '<div class="sub">Two coalitions are level on score, votes and seats. A shifted vote breaks it at the tick.</div></div>' +
+        '<div class="oc-score"><div class="k">Top score</div><div class="v">' + win.score.toFixed(1) + '</div></div>';
+    } else {
+      var lead = byId[win.members.slice().sort(function (a, b) { return ((byId[b] && byId[b].seats) || 0) - ((byId[a] && byId[a].seats) || 0); })[0]] || {};
+      oc = '<div class="oc-l"><div class="k">Projected government</div>' +
+        '<div class="v" style="color:' + partyColor(lead) + '">' + esc(nameForKey(win.key)) + '</div>' +
+        '<div class="sub">' + win.seats + ' of ' + TOTAL + ' seats' + (NEXT_TICK_DATE ? ' · forms ' + esc(NEXT_TICK_DATE) + ' (next tick)' : ' · forms at the next tick') + '</div></div>' +
+        '<div class="oc-score"><div class="k">Winning score</div><div class="v">' + win.score.toFixed(1) + '</div></div>';
+    }
+
+    var cards = COALITIONS.map(function (c) { return coalitionCard(c, win.voted && !win.tie && win.key === c.key); }).join('');
+
+    document.getElementById('content').innerHTML =
+      '<div class="outcome">' + oc + '</div>' +
+      (ERR ? '<div class="errbar">' + esc(ERR) + '</div>' : '') +
+      assemblyPanel(winMembers) +
+      '<div class="sec-h">Possible coalitions — cast your vote</div>' +
+      '<div id="coalitions">' + cards + '</div>';
+
+    wire();
+  }
+
+  // ---- casting + wiring ---------------------------------------------------
+  async function castVote(key, vote, demand) {
+    if (busy) return;
+    busy = true; ERR = ''; render();   // lock the controls immediately against a double-fire
+    try {
+      const { error } = await supabase.rpc('cast_coalition_vote', { p_coalition_key: key, p_vote: vote, p_demand: demand || null });
+      if (error) throw error;
+      delete composing[key];
+      await loadVotes();
+    } catch (e) {
+      ERR = (e && e.message) ? e.message : 'Your vote couldn’t be cast. Try again.';
+    } finally {
+      busy = false; render();
+    }
+  }
+
+  function wire() {
+    document.querySelectorAll('[data-v]').forEach(function (b) {
+      b.onclick = function () {
+        if (busy) return;
+        var key = b.getAttribute('data-c'), v = b.getAttribute('data-v');
+        if (v === 'yesbut') {   // open the composer (a demand is required) — don't cast yet
+          composing[key] = composing[key] || demandOf(key, MY_ID) || { type: 'ministry', ministry: MINISTRIES[0] };
+          ERR = ''; render();
+        } else {
+          castVote(key, v, null);
+        }
+      };
+    });
+    document.querySelectorAll('[data-cast]').forEach(function (b) {
+      b.onclick = function () { var key = b.getAttribute('data-cast'); castVote(key, 'yesbut', composing[key]); };
+    });
+    document.querySelectorAll('[data-cancel]').forEach(function (b) {
+      b.onclick = function () { delete composing[b.getAttribute('data-cancel')]; render(); };
+    });
+    function setD(attr, apply) {
+      document.querySelectorAll('[' + attr + ']').forEach(function (s) {
+        s.onchange = function () {
+          var key = s.getAttribute(attr), d = composing[key] = composing[key] || {};
+          apply(d, s.value); render();
+        };
+      });
+    }
+    setD('data-dtype', function (d, val) {
+      d.type = val;
+      if (val === 'ministry' && !d.ministry) d.ministry = MINISTRIES[0];
+      if (val === 'influence' && !d.influence) d.influence = 10;
+      if (val === 'stat') { if (!d.stat) d.stat = MINISTRY_STATS[0]; if (!d.dir) d.dir = 'increased'; }
+    });
+    setD('data-dministry', function (d, val) { d.ministry = val; });
+    setD('data-dinfluence', function (d, val) { d.influence = parseInt(val, 10); });
+    setD('data-dstat', function (d, val) { d.stat = val; });
+    setD('data-ddir', function (d, val) { d.dir = val; });
+  }
+
+  function showMessage(title, body) {
+    document.getElementById('content').innerHTML = '<div class="panel"><div class="empty"><b>' + esc(title) + '</b><span>' + esc(body) + '</span></div></div>';
+  }
+
+  // Re-pull the tally when the player returns to the tab, so other parties' votes
+  // appear. Event-driven (no background timer); skipped while a cast is in flight.
+  async function refresh() {
+    if (busy) return;
+    try { await loadVotes(); render(); } catch (e) { /* leave the last good render up */ }
+  }
+
+  async function loadVotes() {
+    const { data, error } = await supabase.from('coalition_votes')
+      .select('coalition_key, party_id, vote, demand').eq('nation_id', NATION_ID);
+    if (error) throw error;
+    VOTES = {};
+    (data || []).forEach(function (r) {
+      (VOTES[r.coalition_key] = VOTES[r.coalition_key] || {})[r.party_id] = { vote: r.vote, demand: r.demand };
+    });
+  }
+
+  // ---- boot ---------------------------------------------------------------
+  (async () => {
+    if (!isConfigured) { showMessage('Supabase isn’t configured', 'Coalition formation needs the live game backend.'); return; }
+    const user = await requireUser();
+    if (!user) return;   // redirected to login
+    try {
+      const { data: party, error: meErr } = await supabase.from('parties')
+        .select('id, nation_id, name, abbreviation, archetype, influence, seats, color').eq('user_id', user.id).single();
+      if (meErr || !party) { window.location.replace('/nation-select/'); return; }
+
+      // Nation fetch is non-fatal: name/flag/seats each fall back if it returns null.
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats').eq('id', party.nation_id).single();
+      const { data: parties, error: pErr } = await supabase.from('parties')
+        .select('id, name, abbreviation, seats, archetype, color').eq('nation_id', party.nation_id);
+      if (pErr) { showMessage('Couldn’t load the assembly', 'The parties in your nation couldn’t be read. Refresh to try again.'); return; }
+
+      var nationName = (nation && nation.name) || party.nation_id;
+      document.getElementById('pname').textContent = party.name;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
+      if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
+      setTopbarActions(party.influence);
+
+      NATION_ID = party.nation_id;
+      PARTIES = (parties || []).slice();
+      if (!PARTIES.some(function (p) { return p.id === party.id; })) PARTIES.push(party);
+      byId = {}; PARTIES.forEach(function (p) { byId[p.id] = p; });
+      MY_ID = party.id; MY_PARTY = byId[MY_ID];
+
+      var seated = PARTIES.reduce(function (t, p) { return t + (p.seats || 0); }, 0);
+      TOTAL = (nation && nation.legislature_seats) || seated;
+      MAJ = TOTAL ? majority(TOTAL) : 0;
+
+      try { var t = await currentTick(); if (typeof t === 'number') NEXT_TICK_DATE = tickToDate(t + 1); } catch (e) { /* framing only — non-fatal */ }
+
+      if (!TOTAL) {
+        document.getElementById('clede').textContent = 'The assembly hasn’t been elected yet — hold a general election first.';
+        showMessage('No assembly yet', 'Coalitions form after a general election seats the National Assembly.');
+        return;
+      }
+      if ((MY_PARTY.seats || 0) >= MAJ) {
+        document.getElementById('clede').textContent = 'Your party won an outright majority — no coalition is needed to govern.';
+        document.getElementById('content').innerHTML = assemblyPanel(null) +
+          '<div class="panel"><div class="empty"><b>An outright majority</b><span>' + esc(MY_PARTY.name) + ' holds ' +
+          (MY_PARTY.seats || 0) + ' of ' + TOTAL + ' seats and can govern alone — there is no coalition to build.</span></div></div>';
+        return;
+      }
+
+      COALITIONS = buildCoalitions();
+      document.getElementById('clede').innerHTML =
+        'No party holds the <b>' + MAJ + '</b> seats needed to govern the ' + TOTAL + '-seat National Assembly, so the government is decided by coalition. ' +
+        'Every party votes on the coalitions it belongs to — <b>Yes</b>, <b>Yes, but…</b> (with a demand tabled to the others), or <b>No</b>. ' +
+        'Yes counts 1, Yes-but 1.5, No counts 0. At the next tick the highest-scoring coalition forms the government; ties break to the most votes cast, then to the most seats.';
+
+      if (!COALITIONS.length) { showMessage('No majority coalition includes you', 'No combination of parties reaches a majority with ' + esc(MY_PARTY.name) + ' at the table.'); return; }
+
+      // Tolerant of an un-applied migration: if coalition_votes isn't there yet the
+      // page still renders the coalitions (empty tally); casting surfaces a clear
+      // error until 163 lands.
+      try { await loadVotes(); } catch (e) { VOTES = {}; }
+      render();
+      window.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+      window.addEventListener('focus', refresh);
+    } catch (e) {
+      showMessage('Couldn’t load the formation', 'Something went wrong reading the assembly. Refresh to try again.');
+    }
+  })();
+</script>
+</body>
+</html>

@@ -153,12 +153,8 @@ begin
     when 'Goods'     then perform public._nation_stat_add(p_nation, 'production', 'goods',     v_v, 0, null);
     when 'Services'  then perform public._nation_stat_add(p_nation, 'production', 'services',  v_v, 0, null);
     when 'Diplomacy' then perform public._nation_stat_add(p_nation, 'production', 'diplomacy', v_v, 0, null);
-    -- Government Confidence → the active government row (0..100)
-    when 'Government Confidence' then
-      update public.governments
-         set confidence = greatest(0, least(100, confidence + v_v))
-       where nation_id = p_nation and status = 'active';
-      if v_v < 0 then perform public._confidence_collapse(p_nation); end if;  -- a drop to <=10 forces a snap election
+    -- Government Confidence RETIRED — an authored 'Government Confidence' effect is now ignored
+    -- (falls through to the no-op below); Coalition Health is the government gauge (schema/165).
     -- Party Popularity → every party currently IN GOVERNMENT (parties.in_government, set
     -- when the government forms, schema/60), through the canonical archetype ceiling/floor
     -- helpers (same path party actions use), then clamp 0..100. A policy is the government's

@@ -330,6 +330,13 @@
          crises, floor votes, campaign window) + your Influence to spend. Built by renderAttention. -->
     <div class="attn" id="attention" hidden></div>
 
+    <!-- Laws Being Implemented — passed bills counting down to their effect (schema/155). Pinned to
+         the very top of the Nation page; hidden until there's at least one in flight. -->
+    <section class="panel" id="implPanel" hidden>
+      <div class="glance-hd"><span>Laws Being Implemented</span></div>
+      <div id="homeImpl"></div>
+    </section>
+
 
     <!-- World Events sit at the very top — a nation-level prompt above the party + ministry bars. -->
     <section class="panel" id="weventPanel" hidden>
@@ -373,10 +380,6 @@
         <section class="panel">
           <div class="glance-hd"><span>National Initiatives</span></div>
           <div id="homeInitiatives"><p class="empty">No active initiatives.</p></div>
-        </section>
-        <section class="panel" id="implPanel" hidden>
-          <div class="glance-hd"><span>Laws Being Implemented</span></div>
-          <div id="homeImpl"></div>
         </section>
       </div>
       <section class="panel" id="crisisPanel" hidden>

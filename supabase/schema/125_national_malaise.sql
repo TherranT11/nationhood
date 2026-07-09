@@ -49,10 +49,7 @@ begin
       perform public._malaise_event(n.id, 'Due to low Prosperity, party popularity has suffered (−3%).');
     end if;
 
-    if v_wel < 45 and v_open then
-      perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Government Confidence', 'v', -5));
-      perform public._malaise_event(n.id, 'Due to low Welfare, government confidence has suffered (−5%).');
-    end if;
+    -- Low Welfare formerly cost Government Confidence — retired with that gauge (schema/165).
 
     if v_ord < 45 and v_open then
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Party Popularity', 'v', -3));
@@ -105,20 +102,21 @@ begin
         if v_gdp_delta > 0 then update public.nations set gdp = greatest(0, gdp - v_gdp_delta) where id = n.id; end if;
         if v_open then
           perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Prosperity', 'v', -2));
-          perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Government Confidence', 'v', -12));
         end if;
         perform public._malaise_event(n.id,
           'Public debt has passed 200% of GDP — a sovereign debt spiral. Borrowing costs jumped to 15% and growth collapsed (−3)'
-          || (case when v_gdp_delta > 0 then ', GDP shrank 5% (−$' || v_gdp_delta || 'B) as capital fled' else '' end)
-          || (case when v_open then ', and confidence in the government cratered (−12%)' else '' end) || '.');
+          || (case when v_gdp_delta > 0 then ', GDP shrank 5% (−$' || v_gdp_delta || 'B) as capital fled' else '' end) || '.');
+        -- A DEMOCRATIC government loses a heart of Coalition Health to the crisis; if it was the last,
+        -- the government falls apart (−5% Party Popularity to all governing parties, snap election next
+        -- tick). Autocracies are spared. ONE source: _coalition_health_drop (schema/165).
+        if v_open then perform public._coalition_health_drop(n.id, 1, 5,
+          'Public debt passed 200% of GDP and the governing coalition''s health gave way', p_tick); end if;
       elsif v_debt > n.gdp then
         perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Growth', 'v', -2));
-        if v_open then
-          perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Government Confidence', 'v', -5));
-        end if;
         perform public._malaise_event(n.id,
-          'Public debt has passed 100% of GDP — the nation''s credit was downgraded. Borrowing costs doubled to 10% and growth stalled (−2)'
-          || (case when v_open then ', while government confidence slipped (−5%)' else '' end) || '.');
+          'Public debt has passed 100% of GDP — the nation''s credit was downgraded. Borrowing costs doubled to 10% and growth stalled (−2).');
+        if v_open then perform public._coalition_health_drop(n.id, 1, 3,
+          'Public debt passed 100% of GDP and the governing coalition''s health gave way', p_tick); end if;
       end if;
     end if;
   end loop;

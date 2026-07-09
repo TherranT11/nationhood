@@ -58,9 +58,15 @@ create table if not exists public.governments (
 create unique index if not exists governments_one_active_per_nation
   on public.governments (nation_id) where status = 'active';
 alter table public.governments add column if not exists conf_breakdown jsonb;  -- additive: existing deployments get it on re-apply
--- Widen int → numeric so a fractional per-tick effect (e.g. a policy's −0.3 Government
--- Confidence) accumulates instead of rounding straight back to the same integer each tick.
-alter table public.governments alter column confidence type numeric using confidence::numeric;
+-- Coalition Health — the government's stability gauge (hearts), set at formation to
+-- 2 + 1 per 2 coalition parties. Debt-to-GDP crises, a vacant cabinet and a neglected
+-- agenda deplete it (schema/125/138/139); delivering an agenda item restores it; at
+-- zero the government falls apart and a snap election is called (schema/165). This
+-- REPLACES Government Confidence, which is retired — the `confidence`/`conf_breakdown`
+-- columns are kept only so legacy rows and the dropped coalition RPCs still resolve.
+alter table public.governments add column if not exists coalition_health     int;
+alter table public.governments add column if not exists coalition_health_max int;
+alter table public.governments alter column confidence drop not null;
 
 -- The governing agenda: the agreed coalition terms a government has promised to
 -- enact. Inherited from the committed agreement at formation; NOT applied
@@ -106,6 +112,7 @@ declare
   v_seats int; v_form_arch text; v_members uuid[];
   v_govt_seats int; v_contra int; v_maj int; v_crises int := 0; v_conf int; v_gid uuid; v_mod_form numeric; v_ceil numeric; v_obj uuid;
   v_base int := case when p_type = 'minority' then 30 else 50 end;  -- minority govts start lower
+  v_health int;   -- Coalition Health (hearts) at formation — replaces Government Confidence
 begin
   select coalesce(legislature_seats, 0) into v_seats from public.nations where id = p_nation;
   select archetype into v_form_arch from public.parties where id = p_formateur;
@@ -122,35 +129,17 @@ begin
   end if;
   update public.parties set in_government = (id = any(v_members)) where nation_id = p_nation;
 
-  -- Confidence: 50 − 2·(active crises) − 4·(opposite-pole partners) + majority-size
-  -- bonus, then minus the caller's penalty. Crises aren't tracked yet → 0 for now.
-  select coalesce(sum(seats), 0) into v_govt_seats from public.parties where id = any(v_members);
-  select count(*) into v_contra
-    from public.parties p
-    join public.archetype_oppositions o on o.archetype = v_form_arch and o.opposes = p.archetype
-   where p.id = any(v_members) and p.id <> p_formateur;
-  -- Integer parts so the stored breakdown sums exactly to the result: every term
-  -- but the bonus is already an integer, so rounding the bonus alone is identical
-  -- to rounding the whole sum.
-  v_maj := case when v_seats > 0 and (v_govt_seats::numeric / v_seats * 100) > 50
-                then round((v_govt_seats::numeric / v_seats * 100 - 50) / 2)::int else 0 end;
-  -- National modifiers on the nation: a signed formation penalty/bonus, and the
-  -- most-restrictive confidence ceiling (100 if none).
-  v_mod_form := round(public._mod_confidence_formation(p_nation));
-  v_ceil     := public._mod_confidence_ceiling(p_nation);
-  -- Mid-term coalition (a minority PM building a majority between elections): always
-  -- starts at 30, contradiction penalties only — no majority bonus, no national
-  -- formation modifier, no penalty. "Starts at 30% + penalties, no bonuses."
-  if p_midterm then v_base := 30; v_maj := 0; v_mod_form := 0; end if;
-  v_conf := greatest(0, least(v_ceil, v_base - 2 * v_crises - 4 * v_contra + v_maj - p_conf_penalty + v_mod_form))::int;
+  -- Coalition Health at formation: 2 hearts + 1 per 2 governing parties (rounded down) —
+  -- the same figure the Government page shows, now stored so debt / vacant-cabinet /
+  -- agenda-neglect can deplete it and delivering an agenda item can restore it.
+  -- p_conf_penalty / p_midterm are retained on the signature (callers still pass them)
+  -- but no longer alter the starting hearts.
+  v_health := 2 + coalesce(array_length(v_members, 1), 1) / 2;
 
-  -- Retire the sitting government, seat the new one (stamped with the tick it
-  -- formed, plus the Confidence parts for the panel to read back).
+  -- Retire the sitting government, seat the new one (stamped with the tick it formed).
   update public.governments set status = 'replaced' where nation_id = p_nation and status = 'active';
-  insert into public.governments (nation_id, formateur_party_id, type, confidence, formed_tick, source_negotiation_id, conf_breakdown)
-    values (p_nation, p_formateur, p_type, v_conf, (select current_tick from public.game_state where id), p_source,
-            jsonb_build_object('base', v_base, 'crises', -2 * v_crises, 'contradictions', -4 * v_contra,
-                               'majority', v_maj, 'renege', -p_conf_penalty, 'modifier', v_mod_form::int, 'formed', v_conf))
+  insert into public.governments (nation_id, formateur_party_id, type, coalition_health, coalition_health_max, formed_tick, source_negotiation_id)
+    values (p_nation, p_formateur, p_type, v_health, v_health, (select current_tick from public.game_state where id), p_source)
     returning id into v_gid;
   -- A coalition inherits its agreed terms as a pending agenda (not auto-applied).
   if p_source is not null then
@@ -161,7 +150,7 @@ begin
     if v_obj is not null then perform public._agenda_add(v_gid, v_obj); end if;
   end if;
 
-  return v_conf;
+  return v_health;
 end $$;
 revoke all on function public._seat_government(text, uuid, text, uuid, int, boolean) from public, anon, authenticated;
 
@@ -216,8 +205,7 @@ begin
   select current_tick into v_tick from public.game_state where id;
   v_majority := public._majority(v_seats);  -- one source (schema/45)
 
-  -- Outgoing government → the incumbents who get the Confidence seat modifier.
-  select confidence into v_old_conf from public.governments where nation_id = p_nation and status = 'active';
+  -- Outgoing government's incumbents — used only to break formateur ties toward the sitting government.
   select coalesce(array_agg(id), '{}') into v_incumbents from public.parties where nation_id = p_nation and in_government;
 
   -- ---- SEAT ALLOCATION ----------------------------------------------------
@@ -227,10 +215,7 @@ begin
   update public.parties set seats = 0 where nation_id = p_nation;
   with elig as materialized (   -- materialized so each party's random() jitter is computed once
     select id,
-      popularity::numeric * (0.85 + random() * 0.30) *
-        (case when id = any(v_incumbents) then
-           case when v_old_conf < 40 then 0.85 when v_old_conf > 50 then 1.15 else 1.0 end
-         else 1.0 end) as w
+      popularity::numeric * (0.85 + random() * 0.30) as w   -- Government Confidence retired: no incumbency seat modifier
     from public.parties
     where nation_id = p_nation and popularity >= v_threshold
       and last_active_at >= now() - interval '7 days'   -- inactive parties sit out the election (mirrors INACTIVE_DAYS, util.js)
@@ -347,8 +332,8 @@ begin
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (p_nation, v_formateur_id, 'government',
             (case when v_ruling is not null
-                  then 'The ' || v_fname || ' now leads ' || v_ruling || ' (Government Confidence ' || v_conf || '%).'
-                  else 'The ' || v_fname || ' forms a ' || v_type || ' government (Government Confidence ' || v_conf || '%).' end),
+                  then 'The ' || v_fname || ' now leads ' || v_ruling || ' (Coalition Health ' || v_conf || ' heart' || (case when v_conf = 1 then '' else 's' end) || ').'
+                  else 'The ' || v_fname || ' forms a ' || v_type || ' government (Coalition Health ' || v_conf || ' heart' || (case when v_conf = 1 then '' else 's' end) || ').' end),
             public.current_game_date());
 end $$;
 -- Internal only: clients can never call the resolver directly (advance_tick,
@@ -380,46 +365,11 @@ $$;
 revoke all on function public._head_of_government_label(text, uuid) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- _confidence_collapse(nation): when an active government's Confidence falls to
--- <=10 the head of government is forced to resign. The governing parties take a
--- popularity hit (the premier's party −5, other coalition members −3, through the
--- same floor-respecting helper policy effects use), then a snap election runs via
--- the normal resolver — so seat allocation has ONE source. Called ONLY from the two
--- paths that LOWER confidence (admin event, policy effect); never from formation,
--- so a government seated at <=10 doesn't instantly fall and there is no election
--- loop (the resolver never re-enters those lowering paths). Self-guards: no-ops
--- unless there is an active government actually at <=10. INTERNAL.
+-- RETIRED with Government Confidence. The forced-resignation-on-low-confidence path is
+-- gone; Coalition Health (schema/165) is now the stability gauge — a government falls when
+-- its hearts hit zero (debt / vacant cabinet / agenda neglect), not on a confidence figure.
 -- ---------------------------------------------------------------------------
-create or replace function public._confidence_collapse(p_nation text)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_gov public.governments%rowtype;
-  v_reason text;
-begin
-  select * into v_gov from public.governments where nation_id = p_nation and status = 'active';
-  if not found or coalesce(v_gov.confidence, 100) > 10 then return; end if;
-
-  -- Popularity penalty on the governing parties: premier −5, partners −3. Floor-
-  -- respecting (same path as policy effects), then clamp 0..100. Runs BEFORE the
-  -- election so the punished parties carry it into the snap result.
-  update public.parties p
-     set popularity = public._mod_floor_drop(
-           p_nation, p.archetype, p.popularity,
-           p.popularity - (case when p.id = v_gov.formateur_party_id then 5 else 3 end))
-   where p.nation_id = p_nation and p.in_government;
-
-  -- Premier named before the election reseats everything (one source: the helper above).
-  v_reason := 'Following a forced resignation from '
-              || public._head_of_government_label(p_nation, v_gov.formateur_party_id)
-              || ', new elections have been held. ';
-
-  perform public.resolve_election(p_nation, v_reason);
-end $$;
-revoke all on function public._confidence_collapse(text) from public, anon, authenticated;
+drop function if exists public._confidence_collapse(text);
 
 -- ---------------------------------------------------------------------------
 -- The tick. _advance_tick() is the BODY with NO admin gate, so the pg_cron job
@@ -561,6 +511,12 @@ begin
     begin perform public.resolve_election(v_n); v_count := v_count + 1;
     exception when others then raise warning 'tick %: election failed for nation % — %', v_tick, v_n, sqlerrm; end;
   end loop;
+  -- Coalition governments (schema/164): re-derive each multiparty nation's governing
+  -- coalition from the assembly's live votes and (re)seat the winner when its
+  -- membership changes. Runs right after elections so it reads this tick's freshly
+  -- allocated seats. Isolated — a failure warns and never aborts the tick.
+  begin perform public._resolve_coalitions(v_tick);
+  exception when others then raise warning 'tick %: coalition resolution failed — %', v_tick, sqlerrm; end;
   -- Auto-apply any triggered National Modifier: a modifier with start conditions "fires off"
   -- on every non-dormant nation that now meets them all (schema/70). Runs before the lift so a
   -- nation that both qualifies and has met the end conditions ends up without it.
@@ -608,12 +564,8 @@ begin
   -- per-nation / per-crisis isolation lives inside _apply_crisis_tick.
   begin perform public._apply_crisis_tick(v_tick);
   exception when others then raise warning 'tick %: crises failed — %', v_tick, sqlerrm; end;
-  -- Minority-government instability (schema/104): each active minority government bleeds −0.3
-  -- Government Confidence this tick, and falls to a snap election (with a standing penalty on the
-  -- head of government's party) if that erosion takes it below 20%. Runs on this tick's settled
-  -- confidence; its own per-nation isolation lives inside _apply_minority_confidence.
-  begin perform public._apply_minority_confidence(v_tick);
-  exception when others then raise warning 'tick %: minority confidence failed — %', v_tick, sqlerrm; end;
+  -- Minority-government confidence decay (schema/104) is RETIRED with Government Confidence.
+  -- Coalition Health (schema/125/138/139/165) is now the sole government-stability gauge.
   -- World Events (schema/100): resolve any Competitive contest whose 3-tick sealed-bid window
   -- has closed (those where everyone bid early already resolved on the final bid). Isolated.
   begin perform public._resolve_overdue_world_events(v_tick);
@@ -715,14 +667,8 @@ exception when others then
   raise notice 'pg_cron not configured (%): enable it, then run cron.schedule(''nationhood-tick'', ''0 */8 * * *'', ''select public._advance_tick();'').', sqlerrm;
 end $$;
 
--- ONE source for the Government-Confidence gain from delivering an agenda item: a ministry
--- hand-over is a small +0.5 nudge (a cabinet seat, not a headline win), every other promise
--- +3. Read by both agenda_enact and agenda_fulfill_ministry so the rate can't drift.
-create or replace function public._agenda_confidence_delta(p_type text)
-returns numeric language sql immutable as $$
-  select (case when p_type = 'ministry' then 0.5 else 3 end)::numeric;
-$$;
-revoke all on function public._agenda_confidence_delta(text) from public, anon, authenticated;
+-- RETIRED with Government Confidence — agenda delivery now restores Coalition Health (schema/165).
+drop function if exists public._agenda_confidence_delta(text);
 
 -- ---------------------------------------------------------------------------
 -- agenda_enact(item): the PM (the government's formateur) carries out one pending
@@ -742,32 +688,30 @@ set search_path = public
 as $$
 declare
   v_p public.parties%rowtype; v_item public.government_agenda%rowtype; v_gov public.governments%rowtype;
-  v_delta numeric := 3; v_newconf numeric; v_body text;
+  v_hearts int; v_body text;
 begin
   v_p := public._begin_action(0);   -- locks the caller's party, requires >= 1 action
   select * into v_item from public.government_agenda where id = p_item;
   if not found then raise exception 'That agenda item is gone.'; end if;
   if v_item.status = 'done' then raise exception 'That item is already delivered.'; end if;
-  v_delta := public._agenda_confidence_delta(v_item.type);   -- a ministry hand-over is +0.5, like fulfilling it
   select * into v_gov from public.governments where id = v_item.government_id;
   if v_gov.status <> 'active' then raise exception 'That government is no longer in power.'; end if;
   if v_gov.formateur_party_id is distinct from v_p.id then
     raise exception 'Only the leading party of the government can enact its agenda.';
   end if;
 
-  v_newconf := least(public._mod_confidence_ceiling(v_gov.nation_id), v_gov.confidence + v_delta);
-  v_delta := v_newconf - v_gov.confidence;   -- the gain actually applied (so the 100% cap never overstates)
-
   update public.government_agenda set status = 'done' where id = p_item;
-  update public.governments set confidence = v_newconf where id = v_gov.id;
   update public.parties set influence = influence - 1 where id = v_p.id;
+  -- Delivering a promise restores a heart of Coalition Health, capped at the formation max
+  -- (one source: _coalition_health_restore, schema/165). Null-health legacy govts are skipped.
+  v_hearts := public._coalition_health_restore(v_gov.id, 1);
 
-  v_body := 'The ' || v_p.name || ' government delivered on its agenda. Government Confidence +'
-            || v_delta || '% (now ' || v_newconf || '%).';
+  v_body := 'The ' || v_p.name || ' government delivered on its agenda' ||
+            (case when v_hearts is not null then ' — Coalition Health restored to ' || v_hearts || ' heart' || (case when v_hearts = 1 then '' else 's' end) else '' end) || '.';
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_gov.nation_id, v_p.id, 'agenda', v_body, public.current_game_date());
 
-  return jsonb_build_object('delta', v_delta, 'confidence', v_newconf, 'actions', v_p.influence - 1);
+  return jsonb_build_object('coalition_health', v_hearts, 'actions', v_p.influence - 1);
 end $$;
 grant execute on function public.agenda_enact(uuid) to authenticated;
 
@@ -793,7 +737,7 @@ as $$
 declare
   v_p public.parties%rowtype; v_item public.government_agenda%rowtype; v_gov public.governments%rowtype;
   v_recipient uuid; v_pol public.politicians%rowtype; v_min text; v_name text; v_abbr text;
-  v_delta numeric := public._agenda_confidence_delta('ministry'); v_newconf numeric;
+  v_hearts int;
 begin
   v_p := public._lock_party();   -- locks the caller's party (no action cost — staffing the cabinet is free)
   select * into v_item from public.government_agenda where id = p_item;
@@ -826,22 +770,20 @@ begin
   v_name := btrim(v_pol.first_name || ' ' || v_pol.last_name);
   select abbreviation into v_abbr from public.parties where id = v_recipient;
 
-  v_newconf := least(public._mod_confidence_ceiling(v_gov.nation_id), v_gov.confidence + v_delta);
-  v_delta := v_newconf - v_gov.confidence;   -- the gain actually applied (so the cap never overstates)
-
   update public.government_agenda
      set status = 'done',
          params = params || jsonb_build_object('minister_id', p_politician::text, 'minister_name', v_name, 'party_abbr', coalesce(v_abbr, ''))
    where id = p_item;
-  update public.governments set confidence = v_newconf where id = v_gov.id;
+  -- Filling a promised cabinet seat restores a heart of Coalition Health (schema/165).
+  v_hearts := public._coalition_health_restore(v_gov.id, 1);
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_gov.nation_id, v_p.id, 'agenda',
-            v_name || ' was appointed Minister of ' || v_min || '. Government Confidence +'
-            || v_delta || '% (now ' || round(v_newconf, 1) || '%).',
+            v_name || ' was appointed Minister of ' || v_min ||
+            (case when v_hearts is not null then '. Coalition Health restored to ' || v_hearts || ' heart' || (case when v_hearts = 1 then '' else 's' end) else '' end) || '.',
             public.current_game_date());
 
-  return jsonb_build_object('delta', v_delta, 'confidence', v_newconf, 'minister', v_name);
+  return jsonb_build_object('coalition_health', v_hearts, 'minister', v_name);
 end $$;
 grant execute on function public.agenda_fulfill_ministry(uuid, uuid) to authenticated;
 

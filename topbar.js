@@ -7,6 +7,7 @@ import { partyColor } from '/archetypes.js';
 import { liveGameDate, mountGameDate } from '/gamedate.js';
 import { nationBudgetBalance } from '/policies.js';
 import { fetchBudgetInitiatives } from '/initiatives.js';
+import { mountCoalitionBanner } from '/coalition-banner.js';
 
 const CSS = `
 /* Compact chip row, matching the tutorial's .nhbar: Influence (star) · Budget ·
@@ -102,8 +103,9 @@ export function mountTopbar(){
   // elsewhere: on bfcache restore (back/forward) and when a tab is refocused.
   mountGameDate(document.getElementById('tbDate'));
   mountNextTick(document.getElementById('tbNext'));   // live "Next Tick" countdown to the next 8h boundary
-  window.addEventListener('pageshow', refreshTopbarDate);
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshTopbarDate(); });
+  mountCoalitionBanner();   // top-of-page "form a coalition" prompt while the nation has no governing coalition
+  window.addEventListener('pageshow', function () { refreshTopbarDate(); mountCoalitionBanner(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { refreshTopbarDate(); mountCoalitionBanner(); } });
 }
 
 export async function refreshTopbarDate(){

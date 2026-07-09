@@ -70,7 +70,7 @@ end $$;
 grant execute on function public.direct_parliament(uuid, int) to authenticated;
 
 -- Raise a Paramilitary Wing: a hardliner show of force. +3% popularity now, but the
--- Republic turns colder — −1 Regime, −3% popularity ceiling, −1% Government Confidence.
+-- Republic turns colder — −1 Regime, −3% popularity ceiling.
 -- 1 action, no fee. Order honours the invariant: drop the ceiling (held at the floor),
 -- then settle popularity into [floor, effective ceiling] — a lowered ceiling pulls it down.
 create or replace function public.direct_paramilitary(p_member uuid)
@@ -90,12 +90,11 @@ begin
 
   update public.parties set pop_ceiling = v_newceil, popularity = v_newpop, influence = influence - 1 where id = v_p.id;
   perform public._nation_stat_add(v_p.nation_id, 'economy', 'regime', -1, 1, 25);             -- regime −1 (clamped 1..25)
-  update public.governments set confidence = greatest(0, confidence - 1) where nation_id = v_p.nation_id and status = 'active';
 
   v_body := 'The ' || public._bare_party(v_p.name)
          || ' has announced the formation of its own paramilitary wing — a show of force on the streets. Popularity '
          || (case when v_gain >= 0 then '+' else '−' end) || trim(to_char(abs(v_gain), 'FM990.0'))
-         || '%, but the Republic turns colder: −1 Regime, −3% ceiling, −1% Government Confidence.';
+         || '%, but the Republic turns colder: −1 Regime, −3% ceiling.';
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_p.nation_id, v_p.id, 'party', v_body, public.current_game_date());
 

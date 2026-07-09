@@ -184,16 +184,13 @@ begin
     if not v_mil   then perform public._nation_stat_add(v_n.id, 'on_hand', 'military', -1, 0, null); end if;
 
     -- The government answers for the shortfall: for EACH of the four demands it missed, every
-    -- coalition party loses 1% popularity and the government loses 2% confidence. Both ride
-    -- _apply_policy_effect (schema/91) — the one source that scopes Party Popularity to the
-    -- in-government parties (floored) and Government Confidence to the active row (and fires the
-    -- ≤10 confidence-collapse snap election). No government / no coalition → the calls no-op.
+    -- coalition party loses 1% popularity — through _apply_policy_effect (schema/91), which scopes
+    -- Party Popularity to the in-government parties (floored). No government / no coalition → no-op.
+    -- (The Government Confidence penalty here is retired with that gauge — schema/165.)
     v_unmet := (case when v_food then 0 else 1 end) + (case when v_goods then 0 else 1 end)
              + (case when v_serv then 0 else 1 end) + (case when v_mil then 0 else 1 end);
-    v_conf := 2 * v_unmet;   -- confidence penalty magnitude, one source (used by the effect + the event line)
     if v_unmet > 0 then
       perform public._apply_policy_effect(v_n.id, jsonb_build_object('t', 'Party Popularity', 'v', -v_unmet));
-      perform public._apply_policy_effect(v_n.id, jsonb_build_object('t', 'Government Confidence', 'v', -v_conf));
     end if;
 
     -- Reset for the next cycle (next June).
@@ -208,8 +205,7 @@ begin
           || (case when v_goods then '' else 'Goods ran short — Prosperity −1. ' end)
           || (case when v_serv  then '' else 'Services ran short — Welfare −1. ' end)
           || (case when v_mil   then '' else 'Military upkeep went unpaid — the forces shrank. ' end)
-          || (case when v_unmet > 0 then 'The coalition answered for it — Party Popularity −' || v_unmet
-                    || '%, Government Confidence −' || v_conf || '%. ' else '' end);
+          || (case when v_unmet > 0 then 'The coalition answered for it — Party Popularity −' || v_unmet || '%. ' else '' end);
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_n.id, null, 'economy', btrim(v_msg), public.current_game_date());
   end loop;
