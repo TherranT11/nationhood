@@ -47,7 +47,6 @@ export async function getTutorialProgress(userId) {
       floorBill: s.floor_bill || null,
       legislation: s.legislation || null,
       partyPopularity: s.party_popularity ?? 38,
-      confidenceAdj: s.confidence_adj ?? 0,
       nation: s.nation || {}, // accumulated stat deltas from passed bills
       recruits: s.recruits || (s.recruit ? [s.recruit] : []), // politicians recruited on the Party page
       tasks: s.tasks || {}, // per-member active task: { <memberId>: {task, total, elapsed} }
@@ -86,13 +85,6 @@ export async function initSidebar() {
   const p = PARTY[progress.party];
   if (p && partyEl) { partyEl.textContent = p.label; partyEl.style.color = p.color; }
   setWeekLabel(progress.week);
-  // Fill the shared topbar's Confidence (other pages only — home renders its own
-  // inline). Same source as home: formedConfidence from the coalition snapshot.
-  const confV = document.querySelector('.gw-conf__v');
-  if (confV && progress.coalition) {
-    confV.textContent = (formedConfidence(progress.coalition.total, progress.coalition.contra).value + (progress.confidenceAdj || 0)) + '%';
-    const confS = document.querySelector('.gw-conf__s'); if (confS) confS.textContent = 'governing';
-  }
   reveal();
 
   // Let the page react to the player's state (archetype contradictions,
@@ -101,7 +93,6 @@ export async function initSidebar() {
 
   window.nationhoodParty = progress.party;
   window.nationhoodGovernmentFormed = progress.governmentFormed;
-  window.nationhoodConfidenceAdj = progress.confidenceAdj || 0; // bill-driven confidence, read by the confidence renderers
   window.nationhoodWeek = progress.week || DEFAULT_WEEK;        // current week, read by the Legislature to load scheduled bills
   window.nationhoodNation = progress.nation || {};             // accumulated stat deltas, read by liveStat consumers
   setBudget(progress.nation);                                  // topbar/home Budget = live Treasury figure
@@ -820,7 +811,7 @@ export function computeCrisis(vote) {
 // is resolved from its saved snapshot.)
 // Scripted bills, each with the week it reaches the floor, its non-player Aye
 // base, a concise effect string, and the numeric stat deltas it applies if it
-// passes (which both feed the confidence rules and move the live Nation stats).
+// passes (moving the live Nation stats).
 // KNOWN DUPLICATION: name/Aye/effect/seats mirror the rendered bills on the
 // Legislature page; keep in sync until there's a shared bills module.
 const SCRIPTED_BILLS = [
@@ -831,19 +822,10 @@ const SCRIPTED_BILLS = [
 const ASSEMBLY_SEATS = { wp: 40, cu: 50, la: 44, nr: 32 }; // other-party seats (also mirrored on the Legislature page)
 const FRONT_SEATS = 114, MAJORITY = 141;
 
-// Confidence shift from the net Welfare/Prosperity of passed bills (1–100 deltas):
-// Welfare ≤ −5 → −2, ≥ +10 → +1; Prosperity ≤ −5 → −1, ≥ +15 → +1.
-function confidenceFromStats(welfare, prosperity) {
-  let c = 0;
-  if (welfare <= -5) c -= 2; else if (welfare >= 10) c += 1;
-  if (prosperity <= -5) c -= 1; else if (prosperity >= 15) c += 1;
-  return c;
-}
-
 // Resolve the floor bills that are due (week reached) and not already resolved,
 // plus the player's proposed bill. A bill passes if its Aye seats (others + the
 // player's 114 when they vote Aye) reach the 141 majority. Returns
-// { history, popDelta, confAdj, bpResolved } of the NEW results, or null.
+// { history, popDelta, bpResolved } of the NEW results, or null.
 // Party popularity per bill: +1 when the outcome matches your vote (Aye+passed or
 // Nay+failed), -1 when it contradicts it, 0 if you abstained.
 // Bills currently awaiting a vote on the floor: scripted bills that are due this
@@ -885,8 +867,7 @@ export function resolveLegislation(billVotes, floorBill, week, doneIds) {
     bpResolved = true;
   }
   if (!raw.length) return null;
-  // Accumulate the passed bills' stat deltas; confidence reads welfare/prosperity
-  // from the same source (one place).
+  // Accumulate the passed bills' stat deltas to move the live Nation stats.
   const nationDelta = {};
   raw.forEach((r) => { if (r.passed) Object.keys(r.delta).forEach((k) => { nationDelta[k] = (nationDelta[k] || 0) + r.delta[k]; }); });
   // Store only what the UI reads (id/name/passed/vote/pop/effect).
@@ -898,7 +879,6 @@ export function resolveLegislation(billVotes, floorBill, week, doneIds) {
   return {
     history,
     popDelta: history.reduce((s, it) => s + it.pop, 0),
-    confAdj: confidenceFromStats(nationDelta.welfare || 0, nationDelta.prosperity || 0),
     nationDelta,
     bpResolved,
   };
@@ -938,7 +918,6 @@ export async function advanceWeek() {
       if (leg) {
         patch.tutorial_legislation = (progress.legislation || []).concat(leg.history);
         patch.tutorial_party_popularity = (progress.partyPopularity ?? 38) + leg.popDelta;
-        patch.tutorial_confidence_adj = (progress.confidenceAdj || 0) + leg.confAdj;
         // Apply passed bills' stat changes to the live Nation stats (accumulated deltas).
         const nation = { ...(progress.nation || {}) };
         Object.keys(leg.nationDelta).forEach((k) => { nation[k] = (nation[k] || 0) + leg.nationDelta[k]; });
@@ -1031,10 +1010,6 @@ function ensureTopbarStyles() {
   const css = `
   .gw-topbar{display:flex;align-items:center;justify-content:flex-end;gap:13px;flex-wrap:wrap;margin-bottom:20px}
   .gw-topbar .gw-actions{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:20px;padding:9px 15px;white-space:nowrap}
-  .gw-topbar .gw-conf{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);text-align:right;line-height:1.3;display:flex;flex-direction:column;align-items:flex-end}
-  .gw-topbar .gw-conf__v{color:var(--ink);font-size:18px;font-weight:800;font-family:'Archivo',sans-serif;display:flex;align-items:center;gap:2px}
-  .gw-topbar .gw-conf__dash{display:inline-block;width:11px;height:2px;background:currentColor;border-radius:1px}
-  .gw-topbar .gw-conf__s{color:var(--soft);font-size:9px}
   .gw-topbar .gw-budget{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);text-align:right;line-height:1.3;display:flex;flex-direction:column;align-items:flex-end}
   .gw-topbar .gw-budget__v{color:var(--ink);font-size:18px;font-weight:800;font-family:'Archivo',sans-serif}
   .gw-topbar .gw-week{font-family:'Space Mono',monospace;text-align:center;line-height:1.12;display:flex;flex-direction:column;align-items:center;white-space:nowrap}
@@ -1062,7 +1037,6 @@ export function mountTopbar() {
   bar.className = 'gw-topbar';
   bar.innerHTML =
     '<span class="gw-actions"></span>' +
-    '<span class="gw-conf"><span>Confidence</span><span class="gw-conf__v"><span class="gw-conf__dash"></span></span><span class="gw-conf__s">no government</span></span>' +
     '<span class="gw-budget"><span>Budget</span><span class="gw-budget__v" data-budget>₣' + NATION_BASE.budget + 'B</span></span>' +
     '<span class="gw-week"><span class="gw-week__n" data-weeknum>' + weekLabel(DEFAULT_WEEK) + '</span><span class="gw-week__m">May 1980</span></span>' +
     '<button class="gw-next" type="button">Next Week &#9656;</button>';
@@ -1074,21 +1048,3 @@ export function mountTopbar() {
 // logout now lives in the shared client module (used by the online game too).
 // Re-exported so existing tutorial imports keep working.
 export { logout } from '/supabase.js';
-
-// Confidence of the formed government from the actual coalition: base, the
-// three standing crises, a penalty per contradictory partner, and the seat
-// majority bonus. Read by the formed Government screen and the home dashboard
-// (both pass the snapshot's seat total + contra count).
-// KNOWN DUPLICATION: the formation screen's live "Expected Confidence" preview
-// (renderConfidence in government/index.html) reimplements this same formula in
-// its classic script. Keep the two in sync until that page is modularised to
-// import this function.
-export function formedConfidence(totalSeats, contraCount) {
-  const base = 50;
-  const crises = -6;                          // three crises at -2
-  const contra = -4 * (contraCount || 0);     // each contradictory partner
-  const pct = (totalSeats || 0) / 280 * 100;
-  const bonus = pct > 50 ? Math.round((pct - 50) / 2 * 10) / 10 : 0; // seats over 50%, halved
-  const value = Math.round(base + crises + contra + bonus);
-  return { value, base, crises, contra, bonus };
-}

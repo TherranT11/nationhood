@@ -4,7 +4,7 @@
 -- A modifier is a named, coloured container (national_modifiers) that carries
 -- one OR MORE effects (modifier_effects). Each effect is its own row — ONE
 -- SOURCE per effect — so a single modifier (e.g. "War Economy") can raise a
--- militarist popularity ceiling, cap a resource, and dock formation confidence
+-- militarist popularity ceiling, cap a resource, and nudge a stat per tick
 -- all at once.
 --
 -- Stage 1: storage + assignment + admin CRUD (writes go straight to these
@@ -26,16 +26,13 @@ create table if not exists public.modifier_effects (
   id            uuid primary key default gen_random_uuid(),
   modifier_id   uuid not null references public.national_modifiers (id) on delete cascade,
   effect_type   text not null,                   -- see the catalogue below
-  effect_key    text,                            -- target id (archetype / resource / stat); null for confidence & regime
+  effect_key    text,                            -- target id (archetype / resource / stat); null for regime
   effect_value  numeric not null default 0       -- the ceiling / floor / penalty-or-bonus amount
 );
 create index if not exists modifier_effects_modifier_idx on public.modifier_effects (modifier_id);
 -- effect_type catalogue  (✓ = applied in-game; the rest are authored but NOT yet enforced):
 --   archetype_pop_ceiling | archetype_pop_floor   (effect_key = archetype name)              ✓
---   confidence_ceiling                            (no key)                                   ✓
---   confidence_formation                          (no key; signed — penalty < 0, bonus > 0)  ✓
 --   stat_tick                                     (effect_key = nation stat; signed per-tick delta) ✓
---   confidence_tick                               (no key; signed per-tick delta to Government Confidence) ✓
 --   coalition_pop_tick                            (no key; signed per-tick delta to every in-government party's popularity) ✓
 --   resource_ceiling                              (effect_key = production resource)          ✓ (_apply_modifier_bounds)
 --   stat_ceiling | stat_floor                     (effect_key = nation stat)                  ✓ (_apply_modifier_bounds)
@@ -78,9 +75,9 @@ alter table public.nation_modifiers add column if not exists since_tick int not 
 create table if not exists public.modifier_end_conditions (
   id           uuid primary key default gen_random_uuid(),
   modifier_id  uuid not null references public.national_modifiers (id) on delete cascade,
-  cond_type    text not null,                 -- stat | regime | resource | economy | confidence | duration
+  cond_type    text not null,                 -- stat | regime | resource | economy | duration
   cond_op      text not null default 'gte',   -- gte (at or above) | lte (at or below)
-  cond_key     text,                          -- stat / resource / economy metric; null for regime, confidence, duration
+  cond_key     text,                          -- stat / resource / economy metric; null for regime, duration
   cond_value   numeric not null default 0     -- the threshold (rank, raw value, %, or months for duration)
 );
 create index if not exists modifier_end_conditions_modifier_idx on public.modifier_end_conditions (modifier_id);
@@ -93,9 +90,9 @@ create index if not exists modifier_end_conditions_modifier_idx on public.modifi
 create table if not exists public.modifier_start_conditions (
   id           uuid primary key default gen_random_uuid(),
   modifier_id  uuid not null references public.national_modifiers (id) on delete cascade,
-  cond_type    text not null,                 -- stat | regime | resource | economy | confidence
+  cond_type    text not null,                 -- stat | regime | resource | economy
   cond_op      text not null default 'gte',   -- gte (at or above) | lte (at or below)
-  cond_key     text,                          -- stat / resource / economy metric; null for regime, confidence
+  cond_key     text,                          -- stat / resource / economy metric; null for regime
   cond_value   numeric not null default 0     -- the threshold (rank, raw value, or %)
 );
 create index if not exists modifier_start_conditions_modifier_idx on public.modifier_start_conditions (modifier_id);
@@ -156,23 +153,8 @@ create policy "nmod_delete_admin" on public.nation_modifiers for delete using (p
 -- Internal helpers, read straight from the (world-readable) tables.
 -- ===========================================================================
 
--- Government Confidence on formation: penalties/bonuses SUM (signed).
-create or replace function public._mod_confidence_formation(p_nation text)
-returns numeric language sql stable security definer set search_path = public as $$
-  select coalesce(sum(e.effect_value), 0)
-    from public.nation_modifiers nm
-    join public.modifier_effects e on e.modifier_id = nm.modifier_id
-   where nm.nation_id = p_nation and e.effect_type = 'confidence_formation';
-$$;
-
--- Government Confidence ceiling: the most restrictive (min); 100 when uncapped.
-create or replace function public._mod_confidence_ceiling(p_nation text)
-returns numeric language sql stable security definer set search_path = public as $$
-  select coalesce(min(e.effect_value), 100)
-    from public.nation_modifiers nm
-    join public.modifier_effects e on e.modifier_id = nm.modifier_id
-   where nm.nation_id = p_nation and e.effect_type = 'confidence_ceiling';
-$$;
+-- (Government Confidence formation/ceiling modifier readers were retired with the stat —
+-- Coalition Health, schema/165, is not modifier-driven. Dropped in schema/168.)
 
 -- Archetype popularity ceiling for an archetype in a nation: the most restrictive
 -- (min) of any applicable ceiling modifier; null when there is none (uncapped).
@@ -268,9 +250,6 @@ begin
                  when 'population' then v_n.population
                  else public._to_num(v_n.economy ->> p_key)
                end;
-    when 'confidence' then
-      select g.confidence into v_cur from public.governments g
-        where g.nation_id = p_nation and g.status = 'active';
     when 'duration'   then v_cur := case when p_since is null then null else p_tick - p_since end;  -- months active (end only)
     else return false;                                  -- unknown condition → never satisfied
   end case;
@@ -365,17 +344,6 @@ begin
      where e.effect_type = 'stat_tick' and e.effect_key is not null and e.effect_value <> 0
   loop
     perform public._apply_modifier_stat_effect(r.nation_id, r.effect_key, r.effect_value);
-  end loop;
-  -- Government Confidence: signed per-tick delta to the active government. Routed through the effect
-  -- engine (schema/91) so the 0–100 clamp and the confidence-collapse trigger are the one source.
-  for r in
-    select nm.nation_id, sum(e.effect_value) as v
-      from public.nation_modifiers nm
-      join public.modifier_effects e on e.modifier_id = nm.modifier_id
-     where e.effect_type = 'confidence_tick' and e.effect_value <> 0
-     group by nm.nation_id
-  loop
-    perform public._apply_policy_effect(r.nation_id, jsonb_build_object('t', 'Government Confidence', 'v', r.v));
   end loop;
   -- Party Popularity for the governing coalition: signed per-tick delta to every in-government party,
   -- through the same engine (the archetype ceiling/floor clamps every popularity swing uses).

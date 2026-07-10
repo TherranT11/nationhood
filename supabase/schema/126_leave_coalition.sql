@@ -1,15 +1,13 @@
 -- ===========================================================================
 -- 126 · Leave Coalition — a governing party walks out of the government.
 -- Depends on: 40 (_begin_action), 60 (governments, government_agenda, cabinet_appointments,
--- resolve_election), 70 (_mod_floor_drop), 81 (proposals / no_confidence),
--- 91 (_apply_policy_effect). Run after 91.
+-- resolve_election), 70 (_mod_floor_drop), 81 (proposals / no_confidence). Run after 81.
 --
 -- One action, gated to a party that sits in the government (parties.in_government). Two
 -- outcomes, decided by whether the leaver is the premier:
---   • A junior partner walks: −3 their Party Popularity, the government −5 Confidence
---     (via _apply_policy_effect — the one clamp+collapse source), their in_government
---     flag clears, and it GIVES UP EVERY MINISTRY IT OWNS (you can't keep a cabinet seat
---     in a government you've left). The government carries on, smaller, those seats vacant.
+--   • A junior partner walks: −3 their Party Popularity, their in_government flag clears,
+--     and it GIVES UP EVERY MINISTRY IT OWNS (you can't keep a cabinet seat in a government
+--     you've left). The government carries on, smaller, those seats vacant.
 --   • The Head of Government (formateur) walking out IS a resignation: their party −5
 --     Party Popularity, then a snap election reseats everyone. This replaces the old
 --     standalone Resign action (resign_government, dropped below). No ministry release is
@@ -53,9 +51,8 @@ begin
     return jsonb_build_object('left', true, 'resigned', true, 'actions', v_p.influence - 1);
   end if;
 
-  -- A junior partner walks: −3 their Party Popularity (floor-respecting), clear their seat at
-  -- the table, then −5 Government Confidence through the one clamp+collapse source. The leaver
-  -- is out before the confidence hit, so a resulting collapse never double-penalises them.
+  -- A junior partner walks: −3 their Party Popularity (floor-respecting) and clear their
+  -- seat at the table.
   update public.parties
      set popularity = public._mod_floor_drop(v_nation, archetype, popularity, popularity - 3)
    where id = v_p.id;
@@ -75,7 +72,6 @@ begin
      and exists (select 1 from public.politicians p
                   where p.id = nullif(ga.params->>'minister_id', '')::uuid and p.party_id = v_p.id);
 
-  perform public._apply_policy_effect(v_nation, jsonb_build_object('t', 'Government Confidence', 'v', -5));
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_nation, v_p.id, 'declaration',
             v_p.name || ' has walked out of the governing coalition.',

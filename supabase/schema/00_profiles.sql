@@ -17,7 +17,7 @@ create table if not exists public.profiles (
 -- ---------------------------------------------------------------------------
 -- Tutorial state: ONE jsonb blob per player, holding every tutorial field:
 --   party, government_formed, theo_task, party_actions, coalition, bill_votes,
---   week, crisis, floor_bill, legislation, party_popularity, confidence_adj.
+--   week, crisis, floor_bill, legislation, party_popularity.
 -- One column means one migration ever — adding a new tutorial field never needs a
 -- schema change, and a write can never fail on a "missing column". Idempotent.
 -- ---------------------------------------------------------------------------

@@ -5,8 +5,8 @@
 -- five glance stats under 45 fires a tangible penalty and a feed line. The five stats are
 -- read up front (a snapshot), so one year's penalty can't cascade into another the same
 -- pass (Order's −1 Growth / Growth's −1 Prosperity are judged against the year-start values).
--- Effects ride _apply_policy_effect (schema/91) — the one clamp source; Party Popularity /
--- Government Confidence land on the sitting government. An AUTHORITARIAN regime (an autocracy at
+-- Effects ride _apply_policy_effect (schema/91) — the one clamp source; the Party Popularity
+-- penalty lands on the sitting government. An AUTHORITARIAN regime (an autocracy at
 -- the reform floor) is spared the political penalties (Prosperity / Welfare / Order) — it
 -- suppresses that fallout — but still takes the economic + international ones (Growth, Global Image).
 -- Growth also drives GDP directly here — the ONE place GDP moves: it shrinks GDP by (45 − Growth)/5 %
