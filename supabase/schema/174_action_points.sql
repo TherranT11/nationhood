@@ -60,7 +60,8 @@ end $$;
 grant execute on function public.turn_take_action() to authenticated;
 
 -- ── Turn choice 3 of 3: Discard 1 Card, +3 Influence. ──
--- The card leaves the hand for good (status 'discarded'); the party banks +3 Influence (capped 100)
+-- The card leaves the hand and shuffles back into the nation's deck (status 'in_deck'); the party
+-- banks +3 Influence (capped 100)
 -- and gets NO Action Points. A quiet party-actions event records it.
 create or replace function public.card_discard(p_deck_card uuid)
 returns void language plpgsql security definer set search_path = public as $$
@@ -78,10 +79,10 @@ begin
   if not found then raise exception 'No such card.'; end if;
   if v_owner is distinct from v_pid or v_stat <> 'in_hand' then raise exception 'That card is not in your hand.'; end if;
 
-  update public.deck_cards set status = 'discarded' where id = p_deck_card;
+  update public.deck_cards set status = 'in_deck', party_id = null where id = p_deck_card;   -- discard → back into the nation's deck
   update public.parties set influence = least(100, influence + 3), action_points = 0, turn_acted_tick = v_tick where id = v_pid;
   insert into public.events (nation_id, party_id, kind, body, game_date)
-    values (v_nat, v_pid, 'party', v_pname || ' discarded a card for +3 Influence.', public.current_game_date());
+    values (v_nat, v_pid, 'party', v_pname || ' returned a card to the deck for +3 Influence.', public.current_game_date());
 end $$;
 grant execute on function public.card_discard(uuid) to authenticated;
 
@@ -125,7 +126,13 @@ begin
   -- TODO(effects): apply the card's mechanical effects when the resolution engine (Phase 3b) exists.
   update public.parties   set action_points = v_acts, turn_acted_tick = v_tick
    where id = v_party.id;
-  update public.deck_cards set status = 'played' where id = p_deck_card;
+  -- Lifecycle (authored on the card): 'shuffle' returns it to the deck to be won again; otherwise it
+  -- is discarded for good ('played' — a public record that it fired).
+  if coalesce(v_def->>'afterPlay', 'discard') = 'shuffle' then
+    update public.deck_cards set status = 'in_deck', party_id = null where id = p_deck_card;
+  else
+    update public.deck_cards set status = 'played' where id = p_deck_card;
+  end if;
 
   v_name := coalesce(v_def->>'name', 'a card');
   insert into public.events (nation_id, party_id, kind, body, game_date)

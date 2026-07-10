@@ -117,6 +117,7 @@ const CSS = `
 .cc .rq.r{color:var(--rev);background:color-mix(in srgb,var(--rev) 10%,transparent);border:1px solid color-mix(in srgb,var(--rev) 40%,transparent)}
 .cc .rq.cost{color:var(--inf);background:color-mix(in srgb,var(--inf) 10%,transparent);border:1px solid color-mix(in srgb,var(--inf) 40%,transparent)}
 .cc .rq.acts{color:var(--indigo);background:color-mix(in srgb,var(--indigo) 10%,transparent);border:1px solid color-mix(in srgb,var(--indigo) 40%,transparent)}
+.cc .rq.recyc{color:var(--blue);background:color-mix(in srgb,var(--blue) 10%,transparent);border:1px solid color-mix(in srgb,var(--blue) 40%,transparent)}
 .cc .rq.pers{color:var(--nat);background:color-mix(in srgb,var(--nat) 10%,transparent);border:1px solid color-mix(in srgb,var(--nat) 40%,transparent)}
 .cc .choice-banner{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);background:var(--field);border:1px solid var(--line2);border-radius:6px;padding:5px 8px;text-align:center;margin-bottom:9px}
 .cc .fxgroup{margin-bottom:9px}
@@ -188,6 +189,21 @@ const TEMPLATE = `
     <button data-v="oneoff">One-Off Effect</button>
     <button data-v="double">Double Sided</button>
     <button data-v="choice">Government Choice</button>
+  </div>
+
+  <div class="sect">Decision &amp; Lifecycle</div>
+  <div class="frow">
+    <div>
+      <label>Decision Handler — who resolves the card's decision</label>
+      <select id="fHandler"></select>
+    </div>
+    <div>
+      <label>After it's played</label>
+      <div class="seg" id="segAfter">
+        <button data-v="discard">Discard permanently</button>
+        <button data-v="shuffle" class="c-nat">&#8635; Shuffle back to deck</button>
+      </div>
+    </div>
   </div>
 
   <div class="sect">Persistence &amp; Card Chains</div>
@@ -275,7 +291,9 @@ export async function mountCardCreator(mount) {
       d: { txt: '', kind: 'no_conf', p: {} },
       r: { txt: '', kind: 'stat_down', p: { stat: 'Growth', x: 4 } }
     },
-    persistV: 'no', reqCard: '', allowCard: ''
+    persistV: 'no', reqCard: '', allowCard: '',
+    handler: 'player',      // who resolves the card's decision: 'player' (holder decides) or a ministry name
+    afterPlay: 'discard'    // 'discard' (permanent) or 'shuffle' (back into the deck)
   };
   // reflect the seeded defaults into the form fields
   $('fName').value = state.name; $('fCost').value = state.cost; $('fActs').value = state.acts; $('fDesc').value = state.desc;
@@ -297,9 +315,16 @@ export async function mountCardCreator(mount) {
   wireSeg('segMech', 'mech', function () { renderFx(); });
   wireSeg('reqD', 'reqD'); wireSeg('reqR', 'reqR');
   wireSeg('segPersist', 'persistV');
+  wireSeg('segAfter', 'afterPlay');
+  // Decision Handler dropdown: "Player decides" (no ministry) + each ministry.
+  $('fHandler').innerHTML = '<option value="player">Player who plays it decides</option>' +
+    MINISTRIES.map(function (m) { return '<option value="' + esc(m) + '">' + esc(m) + ' Minister handles it</option>'; }).join('');
+  $('fHandler').value = state.handler;
+  $('fHandler').onchange = function () { state.handler = this.value; renderPreview(); };
   // initial "on" states
   markSeg('segType', state.type); markSeg('segLim', state.lim); markSeg('segMech', state.mech);
   markSeg('segPersist', state.persistV); markSeg('reqD', state.reqD); markSeg('reqR', state.reqR);
+  markSeg('segAfter', state.afterPlay);
 
   ['fName', 'fCost', 'fActs', 'fDesc'].forEach(function (id) {
     $(id).oninput = function (e) {
@@ -473,6 +498,7 @@ export async function mountCardCreator(mount) {
     var reqs = '<span class="rq cost">⚡ ' + (state.cost || 0) + '</span>';
     reqs += '<span class="rq acts">▶ ' + (state.acts || 1) + ' action' + ((state.acts || 1) === 1 ? '' : 's') + '</span>';
     if (state.persistV === 'yes') reqs += '<span class="rq pers">∞ Persistent</span>';
+    if (state.afterPlay === 'shuffle') reqs += '<span class="rq recyc">↻ Reshuffles</span>';
     if (state.type !== 'generic') reqs += '<span class="rq d">' + ax.d.ic + ' ' + ax.d.pre + state.reqD + '+</span><span class="rq r">' + ax.r.ic + ' ' + ax.r.pre + state.reqR + '+</span>';
     $('pReqs').innerHTML = reqs;
 
@@ -530,6 +556,12 @@ export async function mountCardCreator(mount) {
       }
     }
     if (state.persistV === 'yes') v.push(['ok', '∞ Persistent — joins the national modifier board when played']);
+    v.push(state.handler === 'player'
+      ? ['ok', 'The player who plays it decides — no ministry gate']
+      : ['ok', esc(state.handler) + ' Minister must resolve the decision']);
+    v.push(state.afterPlay === 'shuffle'
+      ? ['ok', '↻ Shuffles back into the deck after it resolves']
+      : ['ok', 'Discarded for good after it resolves']);
     if (state.reqCard) v.push(['ok', 'Locked until “' + esc(cardName(state.reqCard)) + '” has been played']);
     if (state.allowCard) v.push(['ok', 'Playing this unlocks “' + esc(cardName(state.allowCard)) + '”']);
     if (state.reqCard && state.reqCard === state.allowCard) v.push(['warn', 'Requires and allows the same card — circular chain']);
@@ -605,7 +637,8 @@ export async function mountCardCreator(mount) {
   function buildDefinition() {
     var clone = function (o) { return JSON.parse(JSON.stringify(o)); };
     var d = { name: state.name, cost: state.cost, acts: state.acts, desc: state.desc, type: state.type, lim: state.lim,
-              mech: state.mech, persistV: state.persistV, reqCard: state.reqCard, allowCard: state.allowCard };
+              mech: state.mech, persistV: state.persistV, reqCard: state.reqCard, allowCard: state.allowCard,
+              handler: state.handler, afterPlay: state.afterPlay };
     if (state.lim === 'nation') d.nation = state.nation;              // only meaningful when nation-limited
     if (state.type !== 'generic') { d.reqD = state.reqD; d.reqR = state.reqR; }  // stance gates only for stance cards
     if (state.mech === 'choice') { d.copt = clone(state.copt); d.reward = clone(state.reward); }
