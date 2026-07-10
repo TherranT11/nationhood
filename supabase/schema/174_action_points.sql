@@ -49,7 +49,7 @@ returns void language plpgsql security definer set search_path = public as $$
 declare v_uid uuid; v_pid uuid; v_nat text; v_tick int; v_acted int;
 begin
   v_uid := auth.uid(); if v_uid is null then raise exception 'Not signed in.'; end if;
-  select id, nation_id into v_pid, v_nat from public.parties where user_id = v_uid;
+  select id, nation_id into v_pid, v_nat from public.parties where user_id = v_uid for update;   -- lock: serialise concurrent turn choices
   if v_pid is null then raise exception 'You have no party.'; end if;
   if v_pid is distinct from public.nation_turn(v_nat) then raise exception 'It is not your turn.'; end if;
   select current_tick into v_tick from public.game_state where id;
@@ -67,7 +67,7 @@ returns void language plpgsql security definer set search_path = public as $$
 declare v_uid uuid; v_pid uuid; v_nat text; v_pname text; v_tick int; v_acted int; v_stat text; v_owner uuid;
 begin
   v_uid := auth.uid(); if v_uid is null then raise exception 'Not signed in.'; end if;
-  select id, nation_id, name into v_pid, v_nat, v_pname from public.parties where user_id = v_uid;
+  select id, nation_id, name into v_pid, v_nat, v_pname from public.parties where user_id = v_uid for update;   -- lock: serialise concurrent turn choices
   if v_pid is null then raise exception 'You have no party.'; end if;
   if v_pid is distinct from public.nation_turn(v_nat) then raise exception 'It is not your turn.'; end if;
   select current_tick into v_tick from public.game_state where id;
