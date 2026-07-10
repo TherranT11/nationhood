@@ -1104,7 +1104,7 @@
   </div>
 
   <script type="module">
-    import { supabase, isConfigured, currentTick } from '/supabase.js';
+    import { supabase, isConfigured, currentTick, selectAll } from '/supabase.js';
     import { esc, fmtGdp, fmtPop, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel } from '/util.js';
     import * as HM from '/hexmap.js';
     import { regimeLabel, nationRegime, statName } from '/ladders.js';
@@ -2054,17 +2054,11 @@
       }
       async function load() {
         status('Loading…'); hexes = {}; loaded = {};
-        // Fetch EVERY hex, in pages. PostgREST caps a plain select at ~1000 rows, so once the map
-        // grows past that a single select silently returns only the first 1000 — land painted beyond
-        // it saves fine (the write isn't capped) but reads back "missing", i.e. "the map didn't save".
-        var PAGE = 1000, from = 0, batch;
-        do {
-          var res = await supabase.from('world_hexes').select('*').range(from, from + PAGE - 1);
-          if (res.error) { status('Couldn’t load the map.'); return; }
-          batch = res.data || [];
-          batch.forEach(function (h) { var k = h.q + ',' + h.r; hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, nation_id: h.nation_id, name: h.name, population: h.population, resources: h.resources || {}, continent: h.continent || null }; loaded[k] = { q: h.q, r: h.r }; });
-          from += PAGE;
-        } while (batch.length === PAGE);
+        // selectAll pages past PostgREST's ~1000-row cap so a map grown beyond 1000 hexes loads in
+        // full — otherwise land painted past the cap saves but reads back "missing" (schema/101).
+        var res = await selectAll('world_hexes', '*');
+        if (res.error) { status('Couldn’t load the map.'); return; }
+        (res.data || []).forEach(function (h) { var k = h.q + ',' + h.r; hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, nation_id: h.nation_id, name: h.name, population: h.population, resources: h.resources || {}, continent: h.continent || null }; loaded[k] = { q: h.q, r: h.r }; });
         status('');
       }
       async function loadNations() {

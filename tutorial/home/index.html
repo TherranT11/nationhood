@@ -252,7 +252,7 @@
     </div>
   </div>
 <script type="module">
-  import { supabase, isConfigured } from '/supabase.js';
+  import { supabase, isConfigured, selectAll } from '/supabase.js';
   import { requireUser, mountTutorialChrome, getTutorialProgress, updateProfile, getTutTurn, tutApproval, tutApprovalFactors, TUT_APPROVAL_BASE, TUT_APPROVAL_DROP } from '/tutorial/shell.js';
   import { nationColors, drawNationMiniMap } from '/hexmap.js';
   mountTutorialChrome();             // mobile nav + More sheet + gear dropdown + Exit Tutorial
@@ -273,8 +273,8 @@
       const sessau = nations.find((n) => (n.name || '').trim().toLowerCase() === 'sessau')
                   || nations.find((n) => (n.name || '').toLowerCase().includes('sessau'));
       if (!sessau) { unavailable(); return; }
-      let hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id, continent');
-      if (hr.error) hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id'); // continent not migrated yet
+      let hr = await selectAll('world_hexes', 'q, r, terrain, nation_id, continent');   // paginated: past the 1000-row cap
+      if (hr.error) hr = await selectAll('world_hexes', 'q, r, terrain, nation_id'); // continent not migrated yet
       const opts = { hexes: hr.error ? [] : (hr.data || []), natColor: nationColors(nations), viewedId: sessau.id, mode: 'nation' };
       const paint = () => {
         const ok = drawNationMiniMap(cv, box, opts);
