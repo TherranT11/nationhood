@@ -424,6 +424,11 @@ begin
   -- close — a fed nation grows +1M, each unmet demand drops its stat, then the flags reset.
   begin perform public._resolve_economy_demands(v_tick);
   exception when others then raise warning 'tick %: economy demands failed — %', v_tick, sqlerrm; end;
+  -- Card auctions (schema/172): every tick, each nation's sealed-bid auctions resolve — the top bid on
+  -- each on-block card wins it into that party's hand, losing bids are refunded — then the block is
+  -- topped back up to (parties + 1) from the deck.
+  begin perform public._resolve_card_auctions(v_tick);
+  exception when others then raise warning 'tick %: card auctions failed — %', v_tick, sqlerrm; end;
   -- Every tick: the nation's Budget Balance moves Public Debt by the annual balance / 12 — a surplus
   -- pays it down, a deficit adds to it (symmetric) — _apply_budget_balance (schema/152).
   begin perform public._apply_budget_balance(v_tick);
