@@ -178,10 +178,9 @@ begin
 
   v_n    := v_reform + 1;
   v_cost := public._reform_cost(v_n);
-  if v_influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
+  perform public._spend_action_point(v_party_id);   -- a reform proposal costs 1 Action Point
   v_title := public._reform_name(v_type, v_n) || ' (Reform ' || v_n || ')';
 
-  update public.parties set influence = influence - v_cost where id = v_party_id;   -- charged now, not refunded on a fail
   if not p_to_floor then v_sched := public._next_agenda_slot(v_nation, v_tick); end if;
 
   insert into public.proposals (nation_id, party_id, kind, title, payload, status, opened_tick, scheduled_tick)
@@ -196,11 +195,11 @@ begin
             v_pname || ' proposes a reform: ' || public._reform_name(v_type, v_n) || '.', public.current_game_date());
 
   if not p_to_floor then
-    return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_influence - v_cost, 'cost', v_cost);
+    return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_influence, 'cost', v_cost);
   end if;
   insert into public.proposal_votes (proposal_id, party_id, aye) values (v_pid, v_party_id, true);
   v_res := public._resolve_proposal(v_pid);
-  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_influence - v_cost, 'cost', v_cost);
+  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_influence, 'cost', v_cost);
 end $$;
 grant execute on function public.propose_reform_advance(boolean) to authenticated;
 
@@ -217,11 +216,10 @@ begin
   if v_reform < 1 and v_type <> 'democracy' then raise exception 'There is no reform to repeal.'; end if;
 
   v_cost := public._repeal_cost(greatest(1, v_reform));   -- reform 0 backslide costs the cheapest repeal
-  if v_influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
+  perform public._spend_action_point(v_party_id);   -- a reform proposal costs 1 Action Point
   v_title := case when v_reform < 1 then 'Abolish the Republic'
                   else 'Repeal: ' || public._reform_name(v_type, v_reform) end;
 
-  update public.parties set influence = influence - v_cost where id = v_party_id;   -- charged now, not refunded on a fail
   if not p_to_floor then v_sched := public._next_agenda_slot(v_nation, v_tick); end if;
 
   insert into public.proposals (nation_id, party_id, kind, title, payload, status, opened_tick, scheduled_tick)
@@ -238,11 +236,11 @@ begin
             public.current_game_date());
 
   if not p_to_floor then
-    return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_influence - v_cost, 'cost', v_cost);
+    return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_influence, 'cost', v_cost);
   end if;
   insert into public.proposal_votes (proposal_id, party_id, aye) values (v_pid, v_party_id, true);
   v_res := public._resolve_proposal(v_pid);
-  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_influence - v_cost, 'cost', v_cost);
+  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_influence, 'cost', v_cost);
 end $$;
 grant execute on function public.propose_reform_repeal(boolean) to authenticated;
 

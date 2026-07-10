@@ -46,8 +46,6 @@ begin
          call_election_until_tick = v_tick + v_cooldown
    where id = v_party.nation_id;
 
-  update public.parties set influence = influence - 1 where id = v_party.id;
-
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_party.nation_id, v_party.id, 'election',
             v_party.name || ' called '
@@ -55,7 +53,7 @@ begin
             || '. The nation goes to the polls next tick.',
             public.current_game_date());
 
-  return jsonb_build_object('actions', v_party.influence - 1, 'until', v_tick + v_cooldown);
+  return jsonb_build_object('actions', v_party.influence, 'until', v_tick + v_cooldown);
 end $$;
 grant execute on function public.call_election() to authenticated;
 

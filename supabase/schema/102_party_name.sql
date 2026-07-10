@@ -20,7 +20,7 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_party public.parties%rowtype; v_name text; v_abbr text; v_logo text; v_color text; v_cost constant int := 5;
 begin
   v_party := public._lock_party();
-  if v_party.influence < v_cost then raise exception 'Editing your party costs % Influence.', v_cost; end if;
+  perform public._spend_action_point(v_party.id);   -- editing your party costs 1 Action Point
   v_name := left(btrim(coalesce(p_name, '')), 48);
   v_abbr := upper(btrim(coalesce(p_abbr, '')));
   if v_name = '' then raise exception 'Enter a party name.'; end if;
@@ -32,7 +32,7 @@ begin
   if v_color is not null and v_color !~ '^#[0-9A-Fa-f]{6}$' then raise exception 'Pick a valid colour.'; end if;
 
   update public.parties
-     set name = v_name, abbreviation = v_abbr, logo_url = v_logo, color = v_color, influence = influence - v_cost
+     set name = v_name, abbreviation = v_abbr, logo_url = v_logo, color = v_color
    where id = v_party.id;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
@@ -40,7 +40,7 @@ begin
             case when v_name <> v_party.name then v_party.name || ' has rebranded as ' || v_name || '.'
                  else v_name || ' updated its party branding.' end,
             public.current_game_date());
-  return jsonb_build_object('ok', true, 'actions', v_party.influence - v_cost, 'name', v_name, 'abbreviation', v_abbr, 'logo_url', v_logo, 'color', v_color);
+  return jsonb_build_object('ok', true, 'actions', v_party.influence, 'name', v_name, 'abbreviation', v_abbr, 'logo_url', v_logo, 'color', v_color);
 end $$;
 grant execute on function public.edit_party(text, text, text, text) to authenticated;
 

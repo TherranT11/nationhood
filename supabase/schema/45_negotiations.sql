@@ -241,8 +241,7 @@ begin
   end if;
 
   insert into public.negotiation_parties (negotiation_id, party_id) values (p_neg, p_target);
-  update public.parties set influence = influence - 1 where id = v_host.id;
-  return jsonb_build_object('actions', v_host.influence - 1);
+  return jsonb_build_object('actions', v_host.influence);
 end $$;
 grant execute on function public.coalition_invite(uuid, uuid) to authenticated;
 
@@ -479,7 +478,6 @@ begin
   -- concurrent commits serialize on this row, and the loser must see 'committed' here
   -- so it raises instead of charging a second action for an already-locked deal.
   if (select status from public.negotiations where id = p_neg) <> 'active' then raise exception 'This agreement is already committed.'; end if;
-  if v_host.influence < 1 then raise exception 'You need an action to lock in the agreement.'; end if;
 
   if not exists (select 1 from public.negotiation_parties where negotiation_id = p_neg and status = 'accepted') then
     raise exception 'At least one party must be at the table and have accepted.';
@@ -518,7 +516,7 @@ begin
   end if;
 
   update public.negotiations set status = 'committed' where id = p_neg;
-  update public.parties set influence = influence - 1 where id = v_host.id;   -- the action lands here, on a clean commit
+  perform public._spend_action_point(v_host.id);   -- the action (1 AP) lands here, on a clean commit
 end $$;
 grant execute on function public.coalition_commit(uuid) to authenticated;
 

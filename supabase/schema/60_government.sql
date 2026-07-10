@@ -698,7 +698,6 @@ begin
   end if;
 
   update public.government_agenda set status = 'done' where id = p_item;
-  update public.parties set influence = influence - 1 where id = v_p.id;
   -- Delivering a promise restores a heart of Coalition Health, capped at the formation max
   -- (one source: _coalition_health_restore, schema/165). Null-health legacy govts are skipped.
   v_hearts := public._coalition_health_restore(v_gov.id, 1);
@@ -708,7 +707,7 @@ begin
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_gov.nation_id, v_p.id, 'agenda', v_body, public.current_game_date());
 
-  return jsonb_build_object('coalition_health', v_hearts, 'actions', v_p.influence - 1);
+  return jsonb_build_object('coalition_health', v_hearts, 'actions', v_p.influence);
 end $$;
 grant execute on function public.agenda_enact(uuid) to authenticated;
 
@@ -1039,11 +1038,10 @@ begin
 
   perform public._apply_cabinet_slate(v_gov.id, v_party.nation_id, p_set);   -- one source for the slate write
 
-  update public.parties set influence = influence - 1 where id = v_party.id;
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_party.nation_id, v_party.id, 'government', v_party.name || ' named its cabinet.', public.current_game_date());
 
-  return jsonb_build_object('actions', v_party.influence - 1, 'image_grants', v_grants);
+  return jsonb_build_object('actions', v_party.influence, 'image_grants', v_grants);
 end $$;
 grant execute on function public.cabinet_appoint(jsonb) to authenticated;
 

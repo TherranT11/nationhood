@@ -77,10 +77,9 @@ begin
     return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_party.influence);
   end if;
 
-  update public.parties set influence = influence - 1 where id = v_party.id;
   insert into public.proposal_votes (proposal_id, party_id, aye) values (v_pid, v_party.id, true);
   v_res := public._resolve_proposal(v_pid);
-  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_party.influence - 1);
+  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_party.influence);
 end $$;
 grant execute on function public.propose_threshold(int, boolean) to authenticated;
 

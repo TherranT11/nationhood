@@ -48,7 +48,6 @@ declare
   v_cooldown constant int := 24;   -- ticks before a lifted sanction can reward this target again
 begin
   v_p := public._begin_action(0);
-  if v_p.influence < 3 then raise exception 'Not enough Influence (need 3).'; end if;
   if not public._party_holds_ministry(v_p.id, 'Trade') then
     raise exception 'Only the Minister of Trade can impose sanctions.'; end if;
   v_buyer := v_p.nation_id;
@@ -85,7 +84,6 @@ begin
     v_penalized := true;
   end if;
 
-  update public.parties set influence = influence - 3 where id = v_p.id;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_buyer, v_p.id, 'economy',
@@ -96,7 +94,7 @@ begin
             public.current_game_date());
 
   return jsonb_build_object('target', v_tname, 'rewarded', v_rewarded, 'penalized', v_penalized,
-    'actions', v_p.influence - 3);
+    'actions', v_p.influence);
 end $$;
 grant execute on function public.place_sanction(text) to authenticated;
 

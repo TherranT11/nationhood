@@ -67,15 +67,14 @@ begin
   if exists (select 1 from public.committee_endorsements where proposal_id = p_proposal and party_id = v_party.id) then
     raise exception 'Your party has already endorsed this bill.';
   end if;
-  if v_party.influence < v_cost then raise exception 'Endorsing costs % Influence.', v_cost; end if;
+  perform public._spend_action_point(v_party.id);   -- endorsing costs 1 Action Point
 
   insert into public.committee_endorsements (proposal_id, party_id) values (p_proposal, v_party.id);
-  update public.parties set influence = influence - v_cost where id = v_party.id;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_prop.nation_id, v_party.id, 'declaration',
             v_party.name || ' endorsed the bill "' || v_prop.title || '" in committee.', public.current_game_date());
-  return jsonb_build_object('ok', true, 'actions', v_party.influence - v_cost);
+  return jsonb_build_object('ok', true, 'actions', v_party.influence);
 end $$;
 grant execute on function public.committee_endorse(uuid) to authenticated;
 
@@ -101,16 +100,14 @@ begin
   select legislature_seats into v_total from public.nations where id = v_prop.nation_id;
   v_has_majority := coalesce(v_total, 0) > 0 and coalesce(v_party.seats, 0) >= public._majority(v_total);
   v_free := v_endorsed or v_has_majority;
-  if not v_free then
-    v_cost := 5;
-    if v_party.influence < v_cost then raise exception 'Pushing an unendorsed bill to the floor costs 5 Influence.'; end if;
-  end if;
+  -- An unendorsed push (no committee backing, no majority) still costs an Action Point + Popularity;
+  -- an endorsed or majority push is free, as before.
 
   select current_tick into v_tick from public.game_state where id;
   update public.proposals set status = 'voting', opened_tick = v_tick where id = p_proposal;
 
   if not v_free then
-    update public.parties set influence = influence - v_cost where id = v_party.id;   -- 5 Influence …
+    perform public._spend_action_point(v_party.id);   -- 1 Action Point …
     perform public._apply_party_effect(v_party.id, v_party.nation_id, jsonb_build_object('t', 'Party Popularity', 'v', -2));  -- … and −2 Popularity
   end if;
 
@@ -119,7 +116,7 @@ begin
   v_res := public._resolve_proposal(p_proposal);
   -- {id, status, actions} — the same shape the other proposal RPCs return (actions feeds the topbar
   -- pill). The endorsed/majority flags were dropped: nothing reads them, so they were dead payload.
-  return jsonb_build_object('id', p_proposal, 'status', v_res, 'actions', v_party.influence - v_cost);
+  return jsonb_build_object('id', p_proposal, 'status', v_res, 'actions', v_party.influence);
 end $$;
 grant execute on function public.committee_push(uuid) to authenticated;
 

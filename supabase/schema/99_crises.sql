@@ -487,7 +487,6 @@ declare
   v_c jsonb; v_res text; v_amt numeric;
 begin
   v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
-  if v_p.influence < 2 then raise exception 'Not enough Influence (need 2).'; end if;
 
   select * into v_nc from public.nation_crises where id = p_id and status = 'active';
   if not found then raise exception 'That crisis is no longer active.'; end if;
@@ -564,7 +563,6 @@ begin
     perform public._apply_crisis_effect(p_id, v_nc.nation_id, v_eff);
   end loop;
 
-  update public.parties set influence = influence - 2 where id = v_p.id;
   insert into public.events (nation_id, party_id, kind, body, game_date, tone)
   values (v_nc.nation_id, v_p.id, 'crisis', v_body, public.current_game_date(), v_tone);
 
@@ -572,7 +570,7 @@ begin
   return jsonb_build_object('ok', v_ok, 'type', v_type, 'mech', v_mech,
     'roll', v_roll, 'stat', v_stat, 'total', v_total, 'needed', v_needed,
     'meter', v_nc.meter, 'stage', v_nc.stage, 'body', v_body,
-    'actions', v_p.influence - 2);
+    'actions', v_p.influence);
 end $$;
 grant execute on function public.crisis_act(uuid, int, int) to authenticated;
 
