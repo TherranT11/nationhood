@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="/theme.js"></script>
-<title>Card Market · Nationhood</title>
+<title>Home · Nationhood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -18,13 +18,41 @@
 
   /* scoped accents (theme-aware via tokens + color-mix) */
   .cm{--gen:var(--blue);--rev:var(--red);--auto:#9159c9;--nat:var(--amber);--inf:var(--amber)}
-  .cm .layout{display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:start;margin-top:18px}
-  @media(max-width:1020px){.cm .layout{grid-template-columns:1fr}}
   .cm .sect{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--soft);margin:0 0 12px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
   .cm .sect.gap{margin-top:26px}
   .cm .sect .note{letter-spacing:.03em;font-size:9.5px;text-transform:none;color:var(--soft)}
   .cm .inf{color:var(--inf);font-weight:700}
 
+  /* twin timelines */
+  .cm .toprow{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:18px}
+  @media(max-width:900px){.cm .toprow{grid-template-columns:1fr}}
+  .cm .tlcard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px 14px}
+  .cm .tl{margin-top:6px;max-height:300px;overflow-y:auto;padding-right:6px}
+  .cm .tle{position:relative;padding:0 0 14px 18px;border-left:1px solid var(--line);margin-left:4px}
+  .cm .tle:last-child{border-left-color:transparent;padding-bottom:2px}
+  .cm .tle .tdot{position:absolute;left:-5px;top:4px;width:9px;height:9px;border-radius:50%;background:var(--soft);border:2px solid var(--surface)}
+  .cm .tle.world .tdot{background:var(--blue)}
+  .cm .tle .when{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;color:var(--soft);letter-spacing:.08em;text-transform:uppercase}
+  .cm .tle .ntag{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.06em;color:var(--blue);margin-left:6px}
+  .cm .tle .tt{font-size:12.5px;color:var(--ink);margin:2px 0 1px;line-height:1.35}
+  .cm .tlempty{color:var(--soft);font-size:12.5px;padding:6px 0}
+  .cm .err{color:var(--red);font-size:12.5px;padding:8px 0}
+
+  /* card queue — the live turn rotation */
+  .cm .queuecard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 18px 12px}
+  .cm .qrow{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+  .cm .qtick{flex:none;min-width:132px;background:var(--field);border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+  .cm .qtick.now{border-color:var(--inf);background:color-mix(in srgb,var(--inf) 8%,var(--field))}
+  .cm .qtick.me{border-color:var(--indigo)}
+  .cm .qtick.now.me{border-color:var(--inf)}
+  .cm .qmo{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.08em;color:var(--soft);display:flex;align-items:center;gap:6px;text-transform:uppercase}
+  .cm .qtick.now .qmo{color:var(--inf)}
+  .cm .qsw{width:8px;height:8px;border-radius:2px;flex:none}
+  .cm .qp{font-size:12.5px;font-weight:800;color:var(--ink);margin-top:5px;line-height:1.25}
+  .cm .qyou{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.08em;color:var(--indigo)}
+  .cm .qtick.now .qyou{color:var(--inf)}
+
+  /* market + hand grids */
   .cm .market{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px}
   .cm .hand{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px}
   .cm .cardc{background:var(--surface);border:1px solid var(--line);border-radius:13px;overflow:hidden;display:flex;flex-direction:column}
@@ -54,21 +82,11 @@
   .cm .act.cancel:hover{color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,transparent)}
   .cm .act.play{width:calc(100% - 24px);margin:0 12px 12px;text-align:center;color:#fff;background:var(--indigo);border-color:var(--indigo);padding:9px 0}
   .cm .act.play:hover{filter:brightness(1.08)}
+  .cm .act.play.wait{color:var(--soft);background:var(--field);border-color:var(--line);cursor:not-allowed}
   .cm .act:disabled{opacity:.55;cursor:not-allowed;filter:none}
 
   .cm .empty{background:var(--surface);border:1px dashed var(--line);border-radius:13px;padding:26px 20px;text-align:center;color:var(--soft);font-size:13px}
   .cm .empty b{display:block;color:var(--muted);font-size:14px;margin-bottom:5px}
-
-  /* nation timeline */
-  .cm .tlcard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px 14px}
-  .cm .tl{margin-top:6px;max-height:520px;overflow-y:auto;padding-right:6px}
-  .cm .tle{position:relative;padding:0 0 14px 18px;border-left:1px solid var(--line);margin-left:4px}
-  .cm .tle:last-child{border-left-color:transparent;padding-bottom:2px}
-  .cm .tle .tdot{position:absolute;left:-5px;top:4px;width:9px;height:9px;border-radius:50%;background:var(--soft);border:2px solid var(--surface)}
-  .cm .tle .when{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;color:var(--soft);letter-spacing:.08em;text-transform:uppercase}
-  .cm .tle .tt{font-size:12.5px;color:var(--ink);margin:2px 0 1px;line-height:1.35}
-  .cm .tlempty{color:var(--soft);font-size:12.5px;padding:6px 0}
-  .cm .err{color:var(--red);font-size:12.5px;padding:8px 0}
 </style>
 </head>
 <body>
@@ -78,26 +96,35 @@
   <main class="main">
     <div class="topbar" id="topbar"></div>
     <div class="phead">
-      <span class="eye">The Party</span>
-      <h1>Card Market</h1>
-      <p id="marketSub">Bid Influence on your nation's cards — the highest sealed bid wins each card at the tick. Play the cards in your hand to move the game.</p>
+      <span class="eye" id="eye">The Party</span>
+      <h1>Home</h1>
+      <p>Your nation and the world at a glance — the turn queue, the card market, and the cards in your hand. You play cards on your party's turn.</p>
     </div>
 
     <div class="cm">
-      <div class="layout">
-        <div>
-          <div class="sect">The Market <span class="note" id="marketNote"></span></div>
-          <div class="market" id="market"><div class="empty"><b>Loading…</b></div></div>
-
-          <div class="sect gap">Your Hand <span class="note" id="handNote"></span></div>
-          <div class="hand" id="hand"></div>
-        </div>
-
-        <div>
+      <!-- twin timelines -->
+      <div class="toprow">
+        <div class="tlcard">
           <div class="sect">Nation Timeline <span class="note" id="tlNat"></span></div>
-          <div class="tlcard"><div class="tl" id="timeline"><div class="tlempty">Loading…</div></div></div>
+          <div class="tl" id="timeline"><div class="tlempty">Loading…</div></div>
+        </div>
+        <div class="tlcard">
+          <div class="sect">World Timeline <span class="note">beyond the borders</span></div>
+          <div class="tl" id="worldline"><div class="tlempty">Loading…</div></div>
         </div>
       </div>
+
+      <!-- turn queue -->
+      <div class="sect gap">Turn Queue <span class="note">your nation's rotation · one party acts each tick</span></div>
+      <div class="queuecard"><div class="qrow" id="queue"><div class="tlempty">Loading…</div></div></div>
+
+      <!-- market -->
+      <div class="sect gap">The Market <span class="note" id="marketNote"></span></div>
+      <div class="market" id="market"><div class="empty"><b>Loading…</b></div></div>
+
+      <!-- hand -->
+      <div class="sect gap">Your Hand <span class="note" id="handNote"></span></div>
+      <div class="hand" id="hand"></div>
     </div>
   </main>
 </div>
@@ -106,14 +133,22 @@
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { esc } from '/util.js';
-  import { ideologyLabel } from '/archetypes.js';
+  import { esc, tickToDate } from '/util.js';
+  import { ideologyLabel, partyColor } from '/archetypes.js';
 
   mountTopbar();
   mountSidenav();
 
   var PARTY = null, NATION_ID = null, NATION_NAME = '', BUSY = false;
-  var draft = {};   // per-market-card intended bid amount
+  var draft = {};                 // per-market-card intended bid amount
+  var CUR_TICK = 1;               // for month labels on the queue + eyebrow
+  var TURN_PARTY = null;          // id of the party whose turn it is now (nation_turn)
+  var NATIONS = {};               // nation id → name, for the world timeline tags
+  // Party micro-actions stay off the World Timeline — it's for nation-scale news.
+  var LOCAL_KINDS = { rally:1, fundraise:1, attack:1, adblitz:1, recruit:1, party:1 };
+
+  function myTurn() { return TURN_PARTY != null && PARTY && TURN_PARTY === PARTY.id; }
+  function shortMonth(tick) { return tickToDate(tick).split(',')[0].slice(0, 3); }
 
   // Card kind → label + colour class, from the stored definition (one source: the Card Creator's fields).
   function kindOf(def) {
@@ -138,6 +173,27 @@
       '<div class="c-fx">' + (def.desc ? esc(def.desc) : '<span style="color:var(--soft)">No description.</span>') + '</div>';
   }
 
+  // ---- turn queue: walk the rotation forward from whoever's up now ----
+  function renderQueue(roster) {
+    var el = document.getElementById('queue');
+    if (!roster.length) { el.innerHTML = '<div class="tlempty">No parties in this nation yet.</div>'; return; }
+    var idx = 0;
+    for (var i = 0; i < roster.length; i++) { if (roster[i].id === TURN_PARTY) { idx = i; break; } }
+    var n = Math.min(12, Math.max(roster.length, 5));   // at least a few months out, at most one screenful
+    var out = '';
+    for (var j = 0; j < n; j++) {
+      var p = roster[(idx + j) % roster.length];
+      var now = j === 0, me = p.id === (PARTY && PARTY.id);
+      out += '<div class="qtick' + (now ? ' now' : '') + (me ? ' me' : '') + '">' +
+        '<div class="qmo"><span class="qsw" style="background:' + esc(partyColor(p)) + '"></span>' +
+          esc(shortMonth(CUR_TICK + j)) + (now ? ' · NOW' : '') + '</div>' +
+        '<div class="qp">' + esc(p.abbreviation || p.name || '—') + '</div>' +
+        (me ? '<div class="qyou">You</div>' : '') +
+      '</div>';
+    }
+    el.innerHTML = out;
+  }
+
   function renderMarket(cards, myBids) {
     var el = document.getElementById('market');
     document.getElementById('marketNote').innerHTML = 'sealed bids · you have <span class="inf">⚡' + (PARTY.influence || 0) + '</span> · highest bid wins at the next tick';
@@ -145,7 +201,7 @@
     el.innerHTML = cards.map(function (c) {
       var def = c.definition || {};
       var cost = Math.max(1, Number(def.cost) || 0);
-      var mine = myBids[c.id] || 0;              // sealed: only your own bid
+      var mine = myBids[c.id] || 0;                // sealed: only your own bid
       var afford = (PARTY.influence || 0) + mine;  // raising refunds the old bid first, so it's spendable
       if (draft[c.id] == null) draft[c.id] = Math.max(cost, mine);
       var v = draft[c.id];
@@ -173,22 +229,28 @@
 
   function renderHand(cards) {
     var el = document.getElementById('hand');
-    document.getElementById('handNote').textContent = cards.length + ' held';
+    var mine = myTurn();
+    document.getElementById('handNote').innerHTML = cards.length + ' held · ' +
+      (mine ? '<span class="inf">your turn</span> — play a card' : 'not your turn — you play on your party’s turn');
     if (!cards.length) { el.innerHTML = '<div class="empty"><b>Your hand is empty.</b>Win cards at auction to hold them here.</div>'; return; }
     el.innerHTML = cards.map(function (c) {
       var def = c.definition || {};
+      var cost = Math.max(0, Number(def.cost) || 0);
       return '<div class="cardc">' + cardHead(def) + '</div>' +
-        '<button class="act play" data-play="' + c.id + '">Play · ⚡' + (Math.max(0, Number(def.cost) || 0)) + '</button></div>';
+        (mine
+          ? '<button class="act play" data-play="' + c.id + '">Play · ⚡' + cost + '</button></div>'
+          : '<button class="act play wait" disabled title="You can only play on your party’s turn">Wait for your turn</button></div>');
     }).join('');
     el.querySelectorAll('[data-play]').forEach(function (b) { b.onclick = function () { playCard(b.dataset.play); }; });
   }
 
-  function renderTimeline(events) {
-    var el = document.getElementById('timeline');
+  function renderTimeline(elId, events, world) {
+    var el = document.getElementById(elId);
     if (!events.length) { el.innerHTML = '<div class="tlempty">No events yet.</div>'; return; }
     el.innerHTML = events.map(function (e) {
-      return '<div class="tle"><span class="tdot"></span>' +
-        '<div class="when">' + esc((e.game_date || '').replace(',', '')) + '</div>' +
+      var tag = world && e.nation_id ? '<span class="ntag">' + esc(NATIONS[e.nation_id] || e.nation_id) + '</span>' : '';
+      return '<div class="tle' + (world ? ' world' : '') + '"><span class="tdot"></span>' +
+        '<div class="when">' + esc((e.game_date || '').replace(',', '')) + tag + '</div>' +
         '<div class="tt">' + esc(e.body || '') + '</div></div>';
     }).join('');
   }
@@ -208,16 +270,31 @@
       alert((e && e.message) || 'That action failed.');
     } finally { BUSY = false; setDisabled(false); }
   }
-  function setDisabled(on) { document.querySelectorAll('.cm .act, .cm .bbtn').forEach(function (b) { b.disabled = on; }); }
+  function setDisabled(on) { document.querySelectorAll('.cm .act, .cm .bbtn').forEach(function (b) { if (!b.classList.contains('wait')) b.disabled = on; }); }
+
+  function setEye() {
+    var name = TURN_PARTY && PARTY && TURN_PARTY === PARTY.id ? 'Your Turn'
+             : (function () { var p = (window.__roster || []).find(function (x) { return x.id === TURN_PARTY; }); return p ? esc(p.abbreviation || p.name) + '’s Turn' : '—'; })();
+    document.getElementById('eye').innerHTML = esc(NATION_NAME) + ' · ' + esc(tickToDate(CUR_TICK)) + ' · ' + name;
+  }
 
   async function loadAll() {
-    // Refresh the party (influence changes with bids/plays), then market / hand / timeline.
+    // Refresh the party (influence changes with bids/plays), then rotation / market / hand / timelines.
     try {
       const { data: p } = await supabase.from('parties').select('id, name, archetype, nation_id, influence').eq('user_id', PARTY.user_id).single();
       if (p) { PARTY = Object.assign(PARTY, p); setTopbarActions(PARTY.influence); }
     } catch (e) { /* keep the last known party */ }
 
-    var market = [], hand = [], bids = {}, events = [];
+    var roster = [], market = [], hand = [], bids = {}, events = [], world = [];
+    try {
+      const { data } = await supabase.rpc('nation_turn', { p_nation: NATION_ID });
+      TURN_PARTY = data || null;
+    } catch (e) { TURN_PARTY = null; }
+    try {
+      const { data } = await supabase.from('parties').select('id, name, abbreviation, archetype, color, turn_seq').eq('nation_id', NATION_ID).order('turn_seq', { ascending: true }).order('id', { ascending: true });
+      roster = data || [];
+    } catch (e) {}
+    window.__roster = roster;
     try {
       const { data } = await supabase.from('deck_cards').select('id, cards(definition)').eq('nation_id', NATION_ID).eq('status', 'on_block');
       market = (data || []).map(function (r) { return { id: r.id, definition: (r.cards && r.cards.definition) || {} }; });
@@ -234,10 +311,24 @@
       const { data } = await supabase.from('events').select('kind, body, game_date, created_at').eq('nation_id', NATION_ID).order('created_at', { ascending: false }).limit(25);
       events = data || [];
     } catch (e) {}
+    try {
+      // World Timeline: nation-scale news from OTHER nations, party micro-actions filtered out,
+      // deduped by body (a global event lands one row per nation).
+      const { data } = await supabase.from('events').select('kind, body, game_date, created_at, nation_id').neq('nation_id', NATION_ID).order('created_at', { ascending: false }).limit(60);
+      var seen = {};
+      world = (data || []).filter(function (e) {
+        if (LOCAL_KINDS[e.kind]) return false;
+        if (seen[e.body]) return false;
+        seen[e.body] = 1; return true;
+      }).slice(0, 15);
+    } catch (e) {}
 
+    setEye();
+    renderQueue(roster);
     renderMarket(market, bids);
     renderHand(hand);
-    renderTimeline(events);
+    renderTimeline('timeline', events, false);
+    renderTimeline('worldline', world, true);
   }
 
   (async () => {
@@ -250,15 +341,23 @@
       PARTY = Object.assign({ user_id: user.id }, party);
       NATION_ID = party.nation_id;
       setTopbarActions(party.influence);
+      try {
+        const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle();
+        CUR_TICK = (gs && gs.current_tick) || 1;
+      } catch (e) {}
+      try {
+        const { data: nats } = await supabase.from('nations').select('id, name');
+        (nats || []).forEach(function (n) { NATIONS[n.id] = n.name; });
+      } catch (e) {}
       const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', NATION_ID).single();
-      NATION_NAME = (nation && nation.name) || NATION_ID;
+      NATION_NAME = (nation && nation.name) || NATIONS[NATION_ID] || NATION_ID;
       document.getElementById('tlNat').textContent = NATION_NAME;
       document.getElementById('pname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + NATION_NAME;
       if (nation && nation.flag) { const f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
       await loadAll();
     } catch (e) {
-      document.getElementById('market').innerHTML = '<div class="err">Couldn’t load the market. Refresh to try again.</div>';
+      document.getElementById('market').innerHTML = '<div class="err">Couldn’t load Home. Refresh to try again.</div>';
     }
   })();
 </script>

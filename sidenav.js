@@ -11,12 +11,12 @@ import { hasUnvotedFloorMeasure } from '/proposals.js';
 
 // The nav items — the single source for both the rail and the bottom bar. href:null
 // marks a section that isn't built yet (shown disabled).
-// Market (the card market — bid on your nation's cards, play your hand) leads as the landing page you see on login;
+// Home (the nation-and-world dashboard — turn queue, card market, and your hand) leads as the landing page you see on login;
 // Party sits right after it, then the tutorial spine (Nation · Government · Legislature ·
 // Elections · Trade · World · Conflict · Forum · Wiki); the real-game extras (Policies,
 // Corporations) slot next to their siblings, and "Trade" is the Economy page.
 const NAV = [
-  { href: '/play/news/',        label: 'Market',       svg: '<rect x="4" y="6" width="12" height="14" rx="2"/><path d="M8 3h10a2 2 0 012 2v12"/><path d="M7 10h6M7 13h6"/>' },
+  { href: '/play/news/',        label: 'Home',         svg: '<path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/>' },
   { href: '/play/party/',       label: 'Party',        svg: '<path d="M4 21V4"/><path d="M4 4c3-2 6 2 9 0s6-2 9 0v9c-3 2-6-2-9 0s-6 2-9 0"/>' },
   { href: '/play/',             label: 'Nation',       svg: '<path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/>' },
   { href: '/play/government/',  label: 'Government',   svg: '<path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/>' },
@@ -32,7 +32,7 @@ const NAV = [
   { href: '/play/wiki/',        label: 'Wiki',         svg: '<path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/>' },
 ];
 // Destinations pinned to the mobile bottom bar; everything else falls into the More sheet.
-// Market leads (the login landing); Elections lives in the More sheet, being a periodic stop.
+// Home leads (the login landing); Elections lives in the More sheet, being a periodic stop.
 const PRIMARY = ['/play/news/', '/play/', '/play/government/', '/play/legislature/'];
 
 const CSS = `
@@ -86,7 +86,7 @@ const CSS = `
 function svgEl(inner) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + inner + '</svg>'; }
 
 // Active = the item whose href matches the current path. The /play/ index (Nation) matches
-// only itself; every other section — the Market (/play/news/) included — also matches its sub-pages
+// only itself; every other section — Home (/play/news/) included — also matches its sub-pages
 // (e.g. /play/legislature/bill/).
 function isActive(path, href) {
   if (!href) return false;
