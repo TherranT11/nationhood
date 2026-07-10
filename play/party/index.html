@@ -54,25 +54,25 @@
   .chamber__fill--maj{background:var(--green,#16915a)}
   .chamber__maj{position:absolute;top:-3px;height:12px;width:2px;background:var(--ink);opacity:.5;border-radius:1px}
 
-  /* Stance — the party's method of pursuing power (Democracy nations only): a read-only ladder from
-     Democratic (work the chamber) to Revolutionary (take the street). Only the Opportunist notch —
-     the universal starting stance — is detailed for now; the rest show locked. Party-colour marks
-     "you are here"; a scoped blue↔red spectrum reads independently of the party's own colour. */
-  .pstance{margin-top:16px;--dem:#3f7fbf;--rev:var(--red)}
+  /* Stance — a read-only ladder of how a party/faction pursues power, one track per regime type
+     (Democracy: Democratic↔Revolutionary · Autocracy: Autocratic↔Reform). Only the centre notch is
+     detailed for now; the rest show locked. Party-colour marks "you are here"; the two spectrum
+     colours --spec-a (left pole) / --spec-b (right pole) are set per track in renderStance. */
+  .pstance{margin-top:16px;--spec-a:#3f7fbf;--spec-b:var(--red)}
   .stance__card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px}
   .stance__lead{font-size:13px;color:var(--muted);line-height:1.55;margin-bottom:18px}
   .stance__lead b{color:var(--ink);font-weight:700}
   .stance__poles{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:9px}
-  .stance__poles .d{color:var(--dem)} .stance__poles .r{color:var(--rev)}
+  .stance__poles .left{color:var(--spec-a)} .stance__poles .right{color:var(--spec-b)}
   .stance__ladder{position:relative;padding:6px 0 2px}
   .stance__notches{position:relative;display:flex;justify-content:space-between;gap:4px}
   .stance__notches::before{content:'';position:absolute;left:7%;right:7%;top:23px;height:3px;border-radius:2px;
-    background:linear-gradient(90deg,var(--dem),color-mix(in srgb,var(--dem) 28%,var(--surface)) 34%,var(--line) 50%,color-mix(in srgb,var(--rev) 28%,var(--surface)) 66%,var(--rev))}
+    background:linear-gradient(90deg,var(--spec-a),color-mix(in srgb,var(--spec-a) 28%,var(--surface)) 34%,var(--line) 50%,color-mix(in srgb,var(--spec-b) 28%,var(--surface)) 66%,var(--spec-b))}
   .notchbox{position:relative;z-index:1;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center}
   .notchbox .pip{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;font-size:20px;border:1px solid var(--line);background:var(--field,var(--bg))}
   .notchbox .lab{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin-top:8px;color:var(--soft);line-height:1.35}
-  .notchbox.d .lab{color:color-mix(in srgb,var(--dem) 65%,var(--soft))}
-  .notchbox.r .lab{color:color-mix(in srgb,var(--rev) 65%,var(--soft))}
+  .notchbox.left .lab{color:color-mix(in srgb,var(--spec-a) 65%,var(--soft))}
+  .notchbox.right .lab{color:color-mix(in srgb,var(--spec-b) 65%,var(--soft))}
   .notchbox.locked{opacity:.5} .notchbox.locked .pip{filter:grayscale(.35)}
   .notchbox.cur .pip{border-color:var(--pc,var(--indigo));background:color-mix(in srgb,var(--pc,var(--indigo)) 12%,var(--surface));box-shadow:0 0 0 3px color-mix(in srgb,var(--pc,var(--indigo)) 20%,transparent)}
   .notchbox.cur .lab{color:var(--ink)}
@@ -208,16 +208,17 @@
       </div>
     </section>
 
-    <!-- Stance — how the party pursues power (Democracy nations only), filled by renderStance().
-         Read-only for now: every party starts Opportunist and the Party Congress shift isn't built yet. -->
+    <!-- Stance — how a party/faction pursues power, one ladder per regime type (Democracy /
+         Autocracy), filled by renderStance(). Read-only for now: every party/faction starts at the
+         centre and the shift (Party Congress / Plenum) isn't built yet. Hidden on monarchy/unset. -->
     <section class="pstance" id="stance" hidden>
       <div class="pstand__h">Stance</div>
       <div class="stance__card">
         <div class="stance__lead" id="stanceLead"></div>
-        <div class="stance__poles"><span class="d">🏛 Democratic</span><span class="r">Revolutionary ✊</span></div>
+        <div class="stance__poles"><span class="left" id="stancePoleL"></span><span class="right" id="stancePoleR"></span></div>
         <div class="stance__ladder"><div class="stance__notches" id="stanceNotches"></div></div>
         <div class="stance__detail" id="stanceDetail"></div>
-        <div class="stance__congress">Party Congress — move your stance along the ladder · <b>coming soon</b></div>
+        <div class="stance__congress" id="stanceCongress"></div>
       </div>
     </section>
 
@@ -335,41 +336,78 @@
       '<circle cx="' + pts[n - 1][0].toFixed(1) + '" cy="' + pts[n - 1][1].toFixed(1) + '" r="2.6" fill="var(--indigo, #6b5cff)"/>';
   }
 
-  // ---- Stance: how the party pursues power (Democracy nations only) ----
-  // The full Democratic↔Revolutionary ladder, shown read-only. Every party starts as an
-  // Opportunist (the centre) and the shift mechanic (Party Congress) isn't built yet, so only
-  // that notch is detailed; the rest render locked. Autocracy/monarchy nations get their own
-  // track later, so this section stays hidden for them.
-  // Each notch is its own source. Only Opportunist (the universal start) carries a detail
-  // (creed/tools/passive) for now; the rest are just ladder pips until the shift mechanic and
-  // their own toolkits are built. The detail card reads straight off the current notch — no
-  // second copy of its name/icon to drift out of sync.
-  var STANCE_NOTCHES = [
-    { id: 'D3', side: 'd', ic: '🏛', short: 'Constitutionalist' },
-    { id: 'D2', side: 'd', ic: '🗳', short: 'Parliamentarian' },
-    { id: 'D1', side: 'd', ic: '📣', short: 'Reformer' },
-    { id: 'N',  side: 'n', ic: '⚖', short: 'Opportunist', creed: '“We’ll see.”',
-      tools: [{ n: 'Parliamentary Basics', d: 'Vote, propose bills, and make statements — the moves every party has.' }],
-      passive: '<b>No stance bonus, no stance penalty.</b> Optionality is the point: you sit one step from either side’s first tools. But camp here too long and voters read you as unprincipled. A corridor, not a home.' },
-    { id: 'R1', side: 'r', ic: '✊', short: 'Agitator' },
-    { id: 'R2', side: 'r', ic: '🔥', short: 'Militant' },
-    { id: 'R3', side: 'r', ic: '⚔', short: 'Insurrectionist' }
-  ];
-  var STANCE_CUR = 3;   // Opportunist — every party starts here (shifting isn't built yet)
+  // ---- Stance: how a party pursues power / what a faction believes the Party is for ----
+  // A read-only ladder per regime type. Democracy runs Democratic↔Revolutionary; autocracy runs
+  // Autocratic↔Reform. Every party/faction starts at the CENTRE (Opportunist / Apparatchik) and the
+  // shift mechanic (Party Congress / Plenum) isn't built yet, so only the centre notch carries a
+  // detail (creed/tools/passive) — the rest render locked and can't be moved to. Monarchy has no
+  // track yet, so the section stays hidden there. Each notch is its own source and the detail card
+  // reads straight off the current notch. ONE render path drives both tracks — they differ only in
+  // the data below and the two spectrum colours (--spec-a left pole / --spec-b right pole).
+  var STANCE_TRACKS = {
+    democracy: {
+      specA: '#3f7fbf', specB: 'var(--red)',
+      poleL: '🏛 Democratic', poleR: 'Revolutionary ✊',
+      congress: 'Party Congress — move your party’s stance along the ladder · <b>coming soon</b>',
+      lead: function (reform) {
+        return 'How your party pursues power — from working the chamber to taking the street. Every party starts as an ' +
+          '<b>Opportunist</b> and moves along the ladder at a Party Congress. Your nation sits at <b>Reform ' + reform +
+          '/15</b>: revolutionary stances open up as reform falls and the state loosens its grip (<b>latitude ' +
+          Math.round(reform / 15 * 100) + '%</b>).';
+      },
+      cur: 3,
+      notches: [
+        { id: 'D3', side: 'left', ic: '🏛', short: 'Constitutionalist' },
+        { id: 'D2', side: 'left', ic: '🗳', short: 'Parliamentarian' },
+        { id: 'D1', side: 'left', ic: '📣', short: 'Reformer' },
+        { id: 'N',  side: 'mid',  ic: '⚖', short: 'Opportunist', creed: '“We’ll see.”',
+          tools: [{ n: 'Parliamentary Basics', d: 'Vote, propose bills, and make statements — the moves every party has.' }],
+          passive: '<b>No stance bonus, no stance penalty.</b> Optionality is the point: you sit one step from either side’s first tools. But camp here too long and voters read you as unprincipled. A corridor, not a home.' },
+        { id: 'R1', side: 'right', ic: '✊', short: 'Agitator' },
+        { id: 'R2', side: 'right', ic: '🔥', short: 'Militant' },
+        { id: 'R3', side: 'right', ic: '⚔', short: 'Insurrectionist' }
+      ]
+    },
+    autocracy: {
+      specA: '#9159c9', specB: 'var(--green,#16915a)',
+      poleL: '👁 Autocratic', poleR: 'Reform 📈',
+      congress: 'Party Plenum — move your faction’s stance along the ladder · <b>coming soon</b>',
+      lead: function (reform) {
+        return 'What your faction believes the Party is for — from tightening the grip to opening it up. Every faction starts as an ' +
+          '<b>Apparatchik</b> and moves at a Party Plenum. Your nation sits at <b>Reform ' + reform +
+          '/15</b>: reform stances ripen and autocratic tools die as the state opens (<b>Party Monopoly ' +
+          Math.round((1 - reform / 15) * 100) + '%</b>).';
+      },
+      cur: 3,
+      notches: [
+        { id: 'A3', side: 'left', ic: '👁', short: 'Vozhd' },
+        { id: 'A2', side: 'left', ic: '🕶', short: 'Securocrat' },
+        { id: 'A1', side: 'left', ic: '🧱', short: 'Hardliner' },
+        { id: 'N',  side: 'mid',  ic: '🏵', short: 'Apparatchik', creed: '“I serve the Party.” (Which faction? “The Party.”)',
+          tools: [{ n: 'Congress Basics', d: 'Vote, hold ministries, and keep your head down — quiet competence earns a little standing each uneventful tick.' }],
+          passive: '<b>Purge-resistant.</b> Hardliners don’t fear you and reformists don’t hate you. But you’re succession-invisible: when the Leader dies, apparatchiks are never on the shortlist. A corridor, not a home.' },
+        { id: 'Ref1', side: 'right', ic: '📈', short: 'Technocrat' },
+        { id: 'Ref2', side: 'right', ic: '📰', short: 'Glasnostik' },
+        { id: 'Ref3', side: 'right', ic: '🕊', short: 'Transitioner' }
+      ]
+    }
+  };
 
   function renderStance(party, nation) {
     var regime = nationRegime(nation && nation.economy);
-    if (!regime || regime.type !== 'democracy') return;   // section stays hidden for autocracy/monarchy/unset
+    var track = regime && STANCE_TRACKS[regime.type];
+    if (!track) return;   // democracy + autocracy have tracks; monarchy/unset stay hidden
     var sec = document.getElementById('stance');
-    sec.style.setProperty('--pc', PCOLOR);   // tie the "you are here" highlight to the party's colour
-    var reform = regime.reform, latitude = Math.round(reform / 15 * 100);
-    document.getElementById('stanceLead').innerHTML =
-      'How your party pursues power — from working the chamber to taking the street. Every party starts as an ' +
-      '<b>Opportunist</b> and moves along the ladder at a Party Congress. Your nation sits at <b>Reform ' + reform +
-      '/15</b>: revolutionary stances open up as reform falls and the state loosens its grip (<b>latitude ' + latitude + '%</b>).';
+    sec.style.setProperty('--pc', PCOLOR);           // "you are here" = the party's colour
+    sec.style.setProperty('--spec-a', track.specA);  // left pole  (Democratic / Autocratic)
+    sec.style.setProperty('--spec-b', track.specB);  // right pole (Revolutionary / Reform)
+    document.getElementById('stancePoleL').textContent = track.poleL;
+    document.getElementById('stancePoleR').textContent = track.poleR;
+    document.getElementById('stanceCongress').innerHTML = track.congress;
+    document.getElementById('stanceLead').innerHTML = track.lead(regime.reform);
 
-    document.getElementById('stanceNotches').innerHTML = STANCE_NOTCHES.map(function (n, i) {
-      var cur = i === STANCE_CUR;
+    document.getElementById('stanceNotches').innerHTML = track.notches.map(function (n, i) {
+      var cur = i === track.cur;
       return '<div class="notchbox ' + n.side + (cur ? ' cur' : ' locked') + '">' +
         '<span class="pip">' + n.ic + '</span>' +
         '<span class="lab">' + n.id + '<span class="labname"><br>' + n.short + '</span></span>' +
@@ -377,7 +415,7 @@
         '</div>';
     }).join('');
 
-    var d = STANCE_NOTCHES[STANCE_CUR];
+    var d = track.notches[track.cur];
     document.getElementById('stanceDetail').innerHTML =
       '<div class="stdet__h"><span class="stdet__ic">' + d.ic + '</span><div>' +
         '<div class="stdet__nm">' + d.short + '</div><div class="stdet__creed">' + d.creed + '</div></div>' +
