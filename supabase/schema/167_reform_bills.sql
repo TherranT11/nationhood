@@ -61,12 +61,14 @@ create or replace function public._reform_digestion_ticks()
 returns int language sql immutable as $$ select 3; $$;
 
 -- Apply a passed reform bill. Advance moves the reform level +1 (or converts at 15); repeal
--- moves it −1 (the topmost enacted reform). Either sets the digestion lock and announces the
--- change. Re-validated against the current regime so a stale bill can't apply an illegal move
--- (silently dropped). Only _resolve_proposal calls it (the floor vote is the gate).
+-- moves it −1 (the topmost enacted reform), or — for a democracy already at reform 0 — abolishes
+-- the republic and backslides to an autocracy (the mirror of the Handover). Either sets the
+-- digestion lock and announces the change. Re-validated against the current regime so a stale bill
+-- can't apply an illegal move (silently dropped). Only _resolve_proposal calls it (the vote is the gate).
 create or replace function public._apply_reform(p_nation text, p_dir text)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_eco jsonb; v_type text; v_reform int; v_nname text; v_tick int; v_name text; v_converted boolean := false;
+declare v_eco jsonb; v_type text; v_reform int; v_nname text; v_tick int; v_name text;
+        v_converted boolean := false; v_backslid boolean := false;
 begin
   select economy, name into v_eco, v_nname from public.nations where id = p_nation;
   if not found then return; end if;
@@ -87,10 +89,19 @@ begin
     else
       perform public._nation_stat_add(p_nation, 'economy', 'regime_reform', 1, 0, 15);
     end if;
-  else  -- repeal the topmost enacted reform
-    if v_reform < 1 then return; end if;
-    v_name := public._reform_name(v_type, v_reform);
-    perform public._nation_stat_add(p_nation, 'economy', 'regime_reform', -1, 0, 15);
+  else  -- repeal
+    if v_reform < 1 then
+      -- Backslide: a democracy at the reform floor (Illiberal Democracy) that repeals its last
+      -- protections collapses into a Competitive Autocracy (reform 9) — the mirror of the Handover.
+      -- Only democracies can backslide; an autocracy/monarchy at reform 0 has nothing to repeal.
+      if v_type <> 'democracy' then return; end if;
+      perform public._set_regime(p_nation, 'autocracy', 9);
+      perform public._sync_one_party_state(p_nation);
+      v_backslid := true;
+    else
+      v_name := public._reform_name(v_type, v_reform);   -- repeal the topmost enacted reform
+      perform public._nation_stat_add(p_nation, 'economy', 'regime_reform', -1, 0, 15);
+    end if;
   end if;
 
   -- Digestion lock: the chamber can't take up another reform for a few ticks.
@@ -104,6 +115,8 @@ begin
             case when v_converted
                  then v_nname || ' completed its reform track with ' || coalesce(v_name, 'the final reform')
                       || ' — the old order gives way to a full democracy.'
+                 when v_backslid
+                 then v_nname || ' has abolished the republic — its last democratic protections repealed, the nation collapses into an autocracy.'
                  when p_dir = 'advance'
                  then v_nname || ' enacted a reform: ' || coalesce(v_name, 'a constitutional change') || '.'
                  else v_nname || ' repealed a reform: ' || coalesce(v_name, 'a constitutional change') || '.' end,
@@ -199,11 +212,14 @@ declare
 begin
   select * into v_party_id, v_nation, v_influence, v_pname, v_type, v_reform, v_tick
     from public._reform_precheck(p_to_floor);
-  if v_reform < 1 then raise exception 'There is no reform to repeal.'; end if;
+  -- A democracy at reform 0 can still "repeal" — that's the backslide (abolish the republic →
+  -- autocracy, applied in _apply_reform). Any other type at reform 0 has nothing to repeal.
+  if v_reform < 1 and v_type <> 'democracy' then raise exception 'There is no reform to repeal.'; end if;
 
-  v_cost := public._repeal_cost(v_reform);
+  v_cost := public._repeal_cost(greatest(1, v_reform));   -- reform 0 backslide costs the cheapest repeal
   if v_influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
-  v_title := 'Repeal: ' || public._reform_name(v_type, v_reform);
+  v_title := case when v_reform < 1 then 'Abolish the Republic'
+                  else 'Repeal: ' || public._reform_name(v_type, v_reform) end;
 
   update public.parties set influence = influence - v_cost where id = v_party_id;   -- charged now, not refunded on a fail
   if not p_to_floor then v_sched := public._next_agenda_slot(v_nation, v_tick); end if;
@@ -217,7 +233,9 @@ begin
     returning id into v_pid;
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_nation, v_party_id, 'government',
-            v_pname || ' moves to repeal ' || public._reform_name(v_type, v_reform) || '.', public.current_game_date());
+            v_pname || case when v_reform < 1 then ' moves to abolish the republic and impose an autocracy.'
+                            else ' moves to repeal ' || public._reform_name(v_type, v_reform) || '.' end,
+            public.current_game_date());
 
   if not p_to_floor then
     return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_influence - v_cost, 'cost', v_cost);

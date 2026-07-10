@@ -209,7 +209,10 @@
 
   function footer(type, reform, pending) {
     const infl = Number(ST.party.influence) || 0;
-    const advN = reform + 1, advCost = reformCost(advN), repCost = repealCost(reform);
+    // A democracy at reform 0 can still "repeal" — that's the backslide (abolish the republic →
+    // autocracy). Its cost is the cheapest repeal (reform 0 → repealCost(1)).
+    const canBackslide = reform < 1 && type === 'democracy';
+    const advN = reform + 1, advCost = reformCost(advN), repCost = repealCost(Math.max(1, reform));
     const fatigued = ST.tick < ST.lock;
 
     // Advance button state
@@ -219,9 +222,9 @@
     else if (fatigued) { advDis = 'disabled'; }
     else if (infl < advCost) { advDis = 'disabled'; advHint = 'Need ⚡' + advCost + ' — you have ⚡' + infl; }
 
-    // Repeal button state
+    // Repeal button state — hidden only at the floor of a type that CAN'T backslide.
     let repDis = '';
-    if (reform < 1) { repDis = 'hidden'; }
+    if (reform < 1 && !canBackslide) { repDis = 'hidden'; }
     else if (pending) { repDis = 'disabled'; }
     else if (fatigued) { repDis = 'disabled'; }
     else if (infl < repCost) { repDis = 'disabled'; }
@@ -231,10 +234,11 @@
     else if (fatigued) hint = '<div class="hint warn">Constitutional fatigue — the chamber can’t take up another reform until tick ' + ST.lock + '.</div>';
     else if (reform >= 15) hint = '<div class="hint">The reform track is complete.</div>';
     else if (advHint) hint = '<div class="hint warn">' + advHint + '</div>';
+    else if (canBackslide) hint = '<div class="hint warn">At Illiberal Democracy, a repeal abolishes the republic — the nation backslides into a Competitive Autocracy.</div>';
 
     return '<div class="actions">' +
       (advDis === 'hidden' ? '' : '<button class="btn primary" id="advBtn"' + (advDis === 'disabled' ? ' disabled' : '') + '>Propose Next Reform <span class="cost">⚡' + advCost + '</span></button>') +
-      (repDis === 'hidden' ? '' : '<button class="btn danger" id="repBtn"' + (repDis === 'disabled' ? ' disabled' : '') + '>Propose Repeal <span class="cost">⚡' + repCost + '</span></button>') +
+      (repDis === 'hidden' ? '' : '<button class="btn danger" id="repBtn"' + (repDis === 'disabled' ? ' disabled' : '') + '>' + (canBackslide ? 'Abolish the Republic' : 'Propose Repeal') + ' <span class="cost">⚡' + repCost + '</span></button>') +
       hint + '</div>';
   }
 
@@ -250,14 +254,21 @@
   function openSheet(mode) {
     sheetMode = mode;
     const reg = ST.regime, reform = reg.reform;
-    const n = mode === 'advance' ? reform + 1 : reform;
-    const cost = mode === 'advance' ? reformCost(n) : repealCost(n);
-    const name = reformName(reg.type, n) || ('Reform ' + n);
-    document.getElementById('shTitle').textContent = (mode === 'advance' ? 'Propose: ' : 'Repeal: ') + name;
-    document.getElementById('shSub').textContent = mode === 'advance'
-      ? 'Enact the next reform on the track (Reform ' + n + ').'
-      : 'Undo the topmost enacted reform (Reform ' + n + ').';
-    document.getElementById('shCost').textContent = '⚡' + cost;
+    const backslide = mode === 'repeal' && reform < 1;   // democracy-only; the footer only offers it then
+    if (backslide) {
+      document.getElementById('shTitle').textContent = 'Abolish the Republic';
+      document.getElementById('shSub').textContent = 'Repeal the last protections — the republic collapses into an autocracy (Competitive Autocracy). This changes the regime type.';
+      document.getElementById('shCost').textContent = '⚡' + repealCost(1);
+    } else {
+      const n = mode === 'advance' ? reform + 1 : reform;
+      const cost = mode === 'advance' ? reformCost(n) : repealCost(n);
+      const name = reformName(reg.type, n) || ('Reform ' + n);
+      document.getElementById('shTitle').textContent = (mode === 'advance' ? 'Propose: ' : 'Repeal: ') + name;
+      document.getElementById('shSub').textContent = mode === 'advance'
+        ? 'Enact the next reform on the track (Reform ' + n + ').'
+        : 'Undo the topmost enacted reform (Reform ' + n + ').';
+      document.getElementById('shCost').textContent = '⚡' + cost;
+    }
     document.getElementById('shHave').textContent = '⚡' + (Number(ST.party.influence) || 0);
     document.getElementById('shNote').textContent = '';
     overlay.classList.add('show');
