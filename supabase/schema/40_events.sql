@@ -473,7 +473,7 @@ grant execute on function public.party_recruit_hire(text) to authenticated;
 --   stats (rank 1–100, integer): Prosperity, Welfare, Growth, Order, Image
 --   economy: Unemployment %, Inflation % (≥0) · Budget (any) · Debt (≥0) · Regime (rank 1–20)
 --   production (≥0): Energy, Food, Minerals, Goods, Services, Diplomacy
---   Government Confidence → the nation's active government (0–100); errors if none
+--   Government Confidence → RETIRED (schema/168): accepted as a no-op for any legacy authored event
 --   Party Popularity      → the chosen party in this nation (0–100); p_party required
 -- ---------------------------------------------------------------------------
 create or replace function public.admin_fire_event(

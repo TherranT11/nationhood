@@ -100,8 +100,6 @@ begin
     when 'Goods'          then select production->>'goods'        into v_raw from public.nations where id = p_nation;
     when 'Services'       then select production->>'services'    into v_raw from public.nations where id = p_nation;
     when 'Diplomacy'      then select production->>'diplomacy'    into v_raw from public.nations where id = p_nation;
-    when 'Government Confidence' then
-      select confidence::text into v_raw from public.governments where nation_id = p_nation and status = 'active';
     else return null;   -- unknown or derived target → unevaluable
   end case;
   if v_raw is null or v_raw !~ '^-?[0-9]+(\.[0-9]+)?$' then return null; end if;
@@ -227,7 +225,7 @@ revoke all on function public._nation_onhand_add(text, text, numeric) from publi
 -- Apply ONE crisis effect {t,v}. 'Crisis Meter' adjusts THIS instance's meter (floored at 0);
 -- every other target — stats, economy, production, and "<Resource> on hand" stockpiles — rides
 -- _apply_policy_effect (schema/91), the single source for stat mapping, clamping, money scaling,
--- on-hand routing, the confidence-collapse hook and popularity floors.
+-- on-hand routing and popularity floors.
 create or replace function public._apply_crisis_effect(p_id uuid, p_nation text, p_eff jsonb)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_key text;

@@ -3533,7 +3533,7 @@
       // 'Budget, Diplomacy, …' the spec names). Read straight off POL_TGT (the one source for
       // these lists, line ~1545) rather than re-listing them. Government-internal targets are
       // out of scope for a nation-facing world event, so only these two groups are exposed.
-      // Effect targets: national stats, GOVERNMENT (Government Confidence + Party Popularity, both
+      // Effect targets: national stats, GOVERNMENT (Party Popularity / Popularity Floor,
       // handled by _apply_policy_effect), resource PRODUCTION (bare names → production.*), and
       // resource ON HAND ("X on hand" → the spendable on_hand stockpile). Military lives only on
       // hand, so it appears in that group alone.
@@ -3920,7 +3920,8 @@
     }
     // One-line plain-English read of an effect, MIRRORING the backend semantics in
     // schema/70: bounds are ABSOLUTE (a ceiling caps at the value, a floor holds at it);
-    // confidence_formation is a signed delta. Drives the per-effect echo + the live summary.
+    // the per-tick nudges (stat_tick / coalition_pop_tick) are signed deltas. Drives the
+    // per-effect echo + the live summary.
     function effEcho(e) {
       var v = (e.effect_value == null || isNaN(e.effect_value)) ? 0 : e.effect_value;
       var k = esc(keyLabel(e.effect_type, e.effect_key));

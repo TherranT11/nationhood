@@ -140,9 +140,8 @@ end $$;
 grant execute on function public.coalition_set_objective(uuid, uuid) to authenticated;
 
 -- The yearly cost of an empty agenda: each January, a sitting government holding NO objectives
--- loses −3% Government Confidence and −2% Party Popularity, through the single _apply_policy_effect
--- clamp (schema/91; confidence 0–100 with the collapse hook, popularity on the in-government
--- parties). Called from _advance_tick (schema/60); self-filters to January, a no-op otherwise.
+-- loses −2% Party Popularity (through _apply_policy_effect, schema/91) and a heart of Coalition
+-- Health (schema/165). Called from _advance_tick (schema/60); self-filters to January, a no-op otherwise.
 -- (Note: an objective past its deadline still counts as held — expiry/scoring is a later slice.)
 create or replace function public._resolve_agenda_neglect(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$

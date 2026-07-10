@@ -36,8 +36,8 @@ export function ideologyLabel(party) {
 }
 
 // Hard ideological oppositions. Two archetypes are "opposite poles" when their
-// core commitments contradict — a coalition partner on the opposite pole costs
-// the forming government confidence (see the government-formation design). Listed
+// core commitments contradict — an uneasy coalition pairing (see the
+// government-formation design). Listed
 // ONCE as unordered pairs of archetype NAMES; the lookup is derived from these so
 // the relation is always symmetric. Agrarian, Globalist, and Social Democratic
 // appear in no pair — they pay no contradiction penalty with anyone (the universal

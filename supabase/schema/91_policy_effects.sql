@@ -1,7 +1,7 @@
 -- ===========================================================================
 -- 91 · Policy effects engine.
 -- Depends on: 10 (nations: stats/economy/production jsonb, population), 20
--- (parties.popularity/archetype), 60 (governments.confidence, status='active'),
+-- (parties.popularity/archetype), 60 (governments, status='active'),
 -- 70 (_mod_cap_raise/_mod_floor_drop popularity clamps, _to_num safe parse), 90 (policies). Run after 90.
 --
 -- ONE place a policy option's effects are applied. _apply_policy_effect maps a
@@ -13,8 +13,9 @@
 -- Clamp ranges: stats 1..20; the regime is no longer an automated-effect target at all (the
 -- reform level is owned by the reform bills, schema/167 — the 'Regime' branch is a retired
 -- no-op); unemployment/inflation 0..100; budget & income unbounded (deficits
--- allowed); debt >= 0; production resources >= 0; government confidence 0..100; party
--- popularity 0..100 (through the modifier ceiling/floor).
+-- allowed); debt >= 0; production resources >= 0; party popularity 0..100
+-- (through the modifier ceiling/floor). Government Confidence is retired (schema/168),
+-- so an authored 'Government Confidence' target is now an accepted no-op.
 -- ===========================================================================
 
 -- Money scaling for Budget/Debt/Income — MUST mirror polMoney() in adminsetup's authoring
