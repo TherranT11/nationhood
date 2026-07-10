@@ -593,6 +593,21 @@ export async function mountCardCreator(mount) {
     fillCardSelect('fReqCard', 'reqCard'); fillCardSelect('fAllowCard', 'allowCard'); renderPool();
   }
 
+  // The card definition to persist — ONLY the fields that matter for this card, so an inactive
+  // mechanic's data (or a nation on an All-Nations card) never rides along as phantom state.
+  // card_create reads `lim`/`nation`; Phase 3 reads `mech` + the matching effect field.
+  function buildDefinition() {
+    var clone = function (o) { return JSON.parse(JSON.stringify(o)); };
+    var d = { name: state.name, cost: state.cost, desc: state.desc, type: state.type, lim: state.lim,
+              mech: state.mech, persistV: state.persistV, reqCard: state.reqCard, allowCard: state.allowCard };
+    if (state.lim === 'nation') d.nation = state.nation;              // only meaningful when nation-limited
+    if (state.type !== 'generic') { d.reqD = state.reqD; d.reqR = state.reqR; }  // stance gates only for stance cards
+    if (state.mech === 'choice') { d.copt = clone(state.copt); d.reward = clone(state.reward); }
+    else if (state.mech === 'double') d.dside = clone(state.dside);
+    else d.fx = clone(state.fx);
+    return d;
+  }
+
   /* ── save → card_create (inserts + shuffles). Locked during the call (no double-shuffle). ── */
   var saving = false;
   $('ccSave').onclick = async function () {
@@ -603,8 +618,7 @@ export async function mountCardCreator(mount) {
     saving = true; renderPreview();
     var btn = $('ccSave'); btn.textContent = 'Shuffling…'; msg.className = 'savemsg'; msg.textContent = '';
     try {
-      var def = JSON.parse(JSON.stringify(state));   // the card definition = the whole builder state
-      var res = await supabase.rpc('card_create', { p_definition: def });
+      var res = await supabase.rpc('card_create', { p_definition: buildDefinition() });
       if (res.error) throw res.error;
       msg.className = 'savemsg ok';
       msg.textContent = state.lim === 'nation'
