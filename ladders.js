@@ -34,6 +34,30 @@ export function statName(key) {
   return key ? key.charAt(0).toUpperCase() + key.slice(1) : '';
 }
 
+// Crime — the reader-facing inverse of the internal `order` stat (high order = low crime).
+// The number stays `order` (ONE source); Crime just flips its framing to crime ≈ 101 − order
+// and buckets it into five plain bands (1–20 … 81–100). Used on the nation-select cards.
+const CRIME_BANDS = ['Safe streets', 'Low crime', 'Moderate crime', 'High crime', 'Rampant crime'];
+function crimeFromOrder(order) {
+  const num = Number(order);
+  if (!Number.isFinite(num)) return null;
+  return Math.max(1, Math.min(100, 101 - Math.round(num)));
+}
+export function crimeLabel(order) {
+  const c = crimeFromOrder(order);
+  if (c === null) return null;
+  return CRIME_BANDS[Math.min(4, Math.floor((c - 1) / 20))];
+}
+// Colour band for Crime: high crime is bad (red), low crime good (green) — the inverse of the
+// order thresholds in statBand (order < 45 fails), so crime ≥ 56 fails and crime ≤ 46 is good.
+export function crimeBand(order) {
+  const c = crimeFromOrder(order);
+  if (c === null) return '';
+  if (c >= 56) return 'bad';
+  if (c <= 46) return 'good';
+  return '';
+}
+
 // Colour band for a stat value (1–100) — the single source for how a number maps to
 // good/warn/bad, shared by every nation view. Growth has its own thresholds (contracting
 // → bad, around the flat ~50 midpoint → warn, strong → good); the other ladders just turn
