@@ -429,6 +429,11 @@ begin
   -- topped back up to (parties + 1) from the deck.
   begin perform public._resolve_card_auctions(v_tick);
   exception when others then raise warning 'tick %: card auctions failed — %', v_tick, sqlerrm; end;
+  -- Turn rotation (schema/173): after the auction hands out cards, advance each nation's turn cursor
+  -- by one party (the next slot by turn_seq, wrapping). This is the new month's active party — whose
+  -- turn it now is, and the only party that may play a card until the next tick.
+  begin perform public._advance_turns();
+  exception when others then raise warning 'tick %: turn rotation failed — %', v_tick, sqlerrm; end;
   -- Every tick: the nation's Budget Balance moves Public Debt by the annual balance / 12 — a surplus
   -- pays it down, a deficit adds to it (symmetric) — _apply_budget_balance (schema/152).
   begin perform public._apply_budget_balance(v_tick);
