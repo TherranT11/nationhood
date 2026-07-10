@@ -2054,9 +2054,17 @@
       }
       async function load() {
         status('Loading…'); hexes = {}; loaded = {};
-        var res = await supabase.from('world_hexes').select('*');
-        if (res.error) { status('Couldn’t load the map.'); return; }
-        (res.data || []).forEach(function (h) { var k = h.q + ',' + h.r; hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, nation_id: h.nation_id, name: h.name, population: h.population, resources: h.resources || {}, continent: h.continent || null }; loaded[k] = { q: h.q, r: h.r }; });
+        // Fetch EVERY hex, in pages. PostgREST caps a plain select at ~1000 rows, so once the map
+        // grows past that a single select silently returns only the first 1000 — land painted beyond
+        // it saves fine (the write isn't capped) but reads back "missing", i.e. "the map didn't save".
+        var PAGE = 1000, from = 0, batch;
+        do {
+          var res = await supabase.from('world_hexes').select('*').range(from, from + PAGE - 1);
+          if (res.error) { status('Couldn’t load the map.'); return; }
+          batch = res.data || [];
+          batch.forEach(function (h) { var k = h.q + ',' + h.r; hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, nation_id: h.nation_id, name: h.name, population: h.population, resources: h.resources || {}, continent: h.continent || null }; loaded[k] = { q: h.q, r: h.r }; });
+          from += PAGE;
+        } while (batch.length === PAGE);
         status('');
       }
       async function loadNations() {
