@@ -36,15 +36,15 @@ export function statName(key) {
 
 // Crime — the reader-facing inverse of the internal `order` stat (high order = low crime).
 // The number stays `order` (ONE source); Crime just flips its framing to crime ≈ 101 − order
-// and buckets it into five plain bands (1–20 … 81–100). Used on the nation-select cards.
+// and buckets it into five plain bands (1–20 … 81–100). Used on the nation-select + World cards.
 const CRIME_BANDS = ['Safe streets', 'Low crime', 'Moderate crime', 'High crime', 'Rampant crime'];
-function crimeFromOrder(order) {
+export function crimeValue(order) {
   const num = Number(order);
   if (!Number.isFinite(num)) return null;
   return Math.max(1, Math.min(100, 101 - Math.round(num)));
 }
 export function crimeLabel(order) {
-  const c = crimeFromOrder(order);
+  const c = crimeValue(order);
   if (c === null) return null;
   return CRIME_BANDS[Math.min(4, Math.floor((c - 1) / 20))];
 }
@@ -52,7 +52,7 @@ export function crimeLabel(order) {
 // statBand('order') so a number never disagrees with itself. statBand fails at order < 45
 // (crime ≥ 57) and turns good at order ≥ 55 (crime ≤ 46).
 export function crimeBand(order) {
-  const c = crimeFromOrder(order);
+  const c = crimeValue(order);
   if (c === null) return '';
   if (c >= 57) return 'bad';
   if (c <= 46) return 'good';

@@ -79,7 +79,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { esc, fmtGdp, fmtPop, declaredValue, loadHogTitleSlot } from '/util.js';
-  import { regimeText, nationRegime, statLabel, statName, statBand } from '/ladders.js';
+  import { regimeText, nationRegime, statLabel, statName, statBand, crimeLabel, crimeBand, crimeValue } from '/ladders.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
@@ -144,12 +144,19 @@
 
       // The five qualitative stats — the number is the source, the word follows it
       // (statLabel) and the colour band reads good/warn/bad (statBand) — shared ladders.js.
+      // 'order' is shown as Crime, its reader-facing inverse (crime ≈ 101 − order, high crime bad),
+      // matching the nation-select cards. Same source number, flipped framing — all from ladders.js.
       var st = n.stats || {};
       var statsHtml = STATS.map(function (k) {
         var raw = st[k], num = (raw != null && raw !== '') ? Number(raw) : NaN;
-        if (isNaN(num)) return '<div class="srow"><span class="sk">' + esc(statName(k)) + '</span><span class="sv">—</span></div>';
-        return '<div class="srow"><span class="sk">' + esc(statName(k)) + '</span>' +
-          '<span class="sv ' + statBand(k, num) + '">' + esc(statLabel(k, num) || '—') + ' <small>' + num + '</small></span></div>';
+        var crime = k === 'order';
+        var name = crime ? 'Crime' : statName(k);
+        if (isNaN(num)) return '<div class="srow"><span class="sk">' + esc(name) + '</span><span class="sv">—</span></div>';
+        var band = crime ? crimeBand(num) : statBand(k, num);
+        var word = crime ? crimeLabel(num) : statLabel(k, num);
+        var shown = crime ? crimeValue(num) : num;
+        return '<div class="srow"><span class="sk">' + esc(name) + '</span>' +
+          '<span class="sv ' + band + '">' + esc(word || '—') + ' <small>' + shown + '</small></span></div>';
       }).join('');
 
       var relVal = (relMap && relMap[n.id] != null) ? relMap[n.id] : 5;
