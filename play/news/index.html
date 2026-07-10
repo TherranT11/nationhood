@@ -14,7 +14,7 @@
 
   /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
 
-  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0;display:flex;flex-direction:column}
   .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
   .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
   .phead p{color:var(--muted);font-size:13.5px;margin-top:5px;max-width:620px}
@@ -57,12 +57,12 @@
      share one scroll cap so the columns are even in height and each scrolls on its own; neither can
      run away and dominate the page. Below this the feeds stack (own nation first) and flow naturally. */
   @media(min-width:1150px){
-    .phead,.feeds{max-width:1040px}
-    /* Equal-height columns: stretch both panels to the same (capped) height, and let each feed fill
-       and scroll inside its own panel — so a taller header (World Press carries the nation filter) or
-       a longer feed can't make one column taller than the other. */
-    .feeds{grid-template-columns:1fr 1fr;gap:22px;align-items:stretch}
-    .feeds .panel{display:flex;flex-direction:column;max-height:min(64vh,540px)}
+    .phead{max-width:1040px}
+    /* Fill the content area: the two panels span the full width as equal columns and stretch to
+       the same height (the feeds grid grows to fill the page via flex:1), with each feed scrolling
+       inside its own panel — so neither a taller header nor a longer feed unbalances the columns. */
+    .feeds{max-width:none;flex:1;min-height:0;grid-template-columns:1fr 1fr;gap:22px;align-items:stretch}
+    .feeds .panel{display:flex;flex-direction:column;min-height:0}
     #own,#world{flex:1;min-height:0;overflow-y:auto;padding-right:6px}
   }
   /* Mobile refresh — a tappable filter, tighter panels, and drop the descriptive subtext for room. */
