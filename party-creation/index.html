@@ -92,7 +92,7 @@
   </div>
 
   <script type="module">
-    import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
+    import { supabase, isConfigured, requireUser, currentTick, logout } from '/supabase.js';
     import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES, COMPETENCIES } from '/util.js';
     import { mountGameDate } from '/gamedate.js';
 
@@ -124,13 +124,36 @@
     });
     pdesc.addEventListener('input', function () { descCount.textContent = pdesc.value.length; });
 
+    var cooldownLock = false;   // set when the delete cooldown (schema/169) blocks founding
     function abbrOk() { return /^[A-Z]{2,4}$/.test(pabbr.value.trim()); }
     function refresh() {
       var name = pname.value.trim();
       var ready = name.length > 0 && abbrOk() && !saving;
-      join.disabled = !ready;
+      join.disabled = !ready || cooldownLock;
       if (name && abbrOk()) { picked.className = 'picked'; picked.innerHTML = '<b>' + esc(name) + '</b> (' + esc(pabbr.value.trim()) + ')'; }
       else { picked.className = 'picked'; picked.textContent = 'Add a name and a 2–4 letter abbreviation to continue.'; }
+    }
+
+    // Ticks left on the delete cooldown (schema/169) for a user, or 0 if none. ONE source, read by
+    // the load-time gate and the submit-time race check. If the read fails, returns 0 — the server
+    // RLS INSERT gate still guards creation, so a failed check can't let a spammer through.
+    async function cooldownTicksLeft(userId) {
+      try {
+        const { data: prof } = await supabase.from('profiles').select('party_new_until_tick').eq('id', userId).maybeSingle();
+        if (!prof || prof.party_new_until_tick == null) return 0;
+        return Math.max(0, prof.party_new_until_tick - await currentTick());
+      } catch (e) { return 0; }
+    }
+
+    // Delete cooldown (schema/169): the 2nd voluntary party deletion locks founding for 6 ticks.
+    // Show how long is left and hold the form disabled (the server RLS gate enforces it regardless).
+    function showCooldown(ticksLeft) {
+      var b = document.getElementById('onepartyBanner');
+      b.innerHTML = 'You recently deleted a party. To prevent spam, founding a new one is briefly on cooldown — you can start again in <b>' + ticksLeft + ' tick' + (ticksLeft === 1 ? '' : 's') + '</b>.';
+      b.hidden = false;
+      cooldownLock = true;
+      join.textContent = 'On cooldown';
+      refresh();
     }
 
     // Decide the page's mode from the player's party + the nation's state:
@@ -174,7 +197,14 @@
           return;
         }
 
-        // No party yet: a one-party nation means you join as a faction of its ruling party.
+        // No party yet. If a delete cooldown (schema/169) is still in force, lock the form and show
+        // the countdown before anything else — the RLS INSERT gate blocks creation server-side too.
+        if (user) {
+          const left = await cooldownTicksLeft(user.id);
+          if (left > 0) { showCooldown(left); return; }
+        }
+
+        // A one-party nation means you join as a faction of its ruling party.
         if (nat && nat.ruling_party) {
           rulingName = nat.ruling_party; noun = 'faction';
           var b = document.getElementById('onepartyBanner');
@@ -265,7 +295,13 @@
         const { data: created, error } = await supabase.from('parties')
           .upsert({ user_id: user.id, nation_id: nationId, name: name, abbreviation: abbr, description: pdesc.value.trim() || null }, { onConflict: 'user_id' })
           .select('id').single();
-        if (error || !created) { fail('That name or abbreviation is already taken in this nation.'); return; }
+        if (error || !created) {
+          // The insert can fail on a name/abbr clash OR the delete cooldown (RLS gate, schema/169)
+          // if it started between load and submit — re-check the cooldown to give the right message.
+          const left = await cooldownTicksLeft(user.id);
+          if (left > 0) { saving = false; showCooldown(left); return; }
+          fail('That name or abbreviation is already taken in this nation.'); return;
+        }
         if (refound) { try { await supabase.rpc('party_relaunch'); } catch (e) { /* flag clears on next relaunch attempt */ } }  // retire the relaunch prompt
         else await seedLeader(created.id);  // a brand-new party gets its Party Leader (a relaunch already has one)
         window.location.href = '/play/news/';

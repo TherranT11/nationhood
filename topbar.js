@@ -33,13 +33,21 @@ const CSS = `
 .gearmenu__item:hover{background:var(--chip)}
 .gearmenu__item--danger{color:var(--red);font-weight:700}
 .gearmenu__item--danger:hover{background:var(--red-soft,#FBEAE9)}
-.gearmenu__warn{font-size:12.5px;line-height:1.5;color:var(--muted);padding:8px 10px 4px;margin:0}
-.gearmenu__row{display:flex;gap:8px;padding:8px 6px 4px}
-.gearmenu__btn{flex:1;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:9px 10px;font-family:inherit;font-size:12.5px;font-weight:700;color:var(--ink);cursor:pointer}
-.gearmenu__btn:hover{background:var(--chip)}
-.gearmenu__btn--danger{background:var(--red);border-color:var(--red);color:#fff}
-.gearmenu__btn--danger:hover{filter:brightness(1.05);background:var(--red)}
-.gearmenu__btn:disabled{opacity:.6;cursor:not-allowed}
+/* Delete-Party confirm modal (shared, opened from the gear menu). Centered overlay. */
+.delmodal{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:18px}
+.delmodal[hidden]{display:none}
+.delmodal__panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px 24px;width:100%;max-width:440px;box-shadow:0 24px 60px -20px rgba(0,0,0,.5)}
+.delmodal__title{font-size:17px;font-weight:900;letter-spacing:-.01em;color:var(--ink);margin-bottom:12px}
+.delmodal__body{font-size:13.5px;line-height:1.55;color:var(--ink);margin:0 0 10px}
+.delmodal__sub{font-size:12px;line-height:1.5;color:var(--muted);margin:0 0 16px}
+.delmodal__err{font-size:12.5px;color:var(--red);margin:0 0 12px}
+.delmodal__err[hidden]{display:none}
+.delmodal__row{display:flex;gap:10px;justify-content:flex-end}
+.delmodal__btn{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:10px 18px;font-family:inherit;font-size:13px;font-weight:700;color:var(--ink);cursor:pointer}
+.delmodal__btn:hover{background:var(--chip)}
+.delmodal__btn--danger{background:var(--red);border-color:var(--red);color:#fff}
+.delmodal__btn--danger:hover{filter:brightness(1.05)}
+.delmodal__btn:disabled{opacity:.6;cursor:not-allowed}
 @media(max-width:560px){.topbar{gap:10px;margin-bottom:16px}}
 `;
 
@@ -58,12 +66,18 @@ const HTML = `
       <button class="gearmenu__item" id="logoutBtn" type="button">Log out</button>
       <button class="gearmenu__item gearmenu__item--danger" id="delPartyBtn" type="button">Delete Party</button>
     </div>
-    <div id="gearConfirm" hidden>
-      <p class="gearmenu__warn" id="gearWarn">Delete your party? This permanently removes your seats, politicians, and funds. This can&rsquo;t be undone.</p>
-      <div class="gearmenu__row">
-        <button class="gearmenu__btn gearmenu__btn--danger" id="delYes" type="button">Yes, delete</button>
-        <button class="gearmenu__btn" id="delNo" type="button">Cancel</button>
-      </div>
+  </div>
+</div>
+
+<div class="delmodal" id="delModal" hidden>
+  <div class="delmodal__panel" role="dialog" aria-modal="true" aria-labelledby="delModalTitle">
+    <div class="delmodal__title" id="delModalTitle">Delete Party</div>
+    <p class="delmodal__body"><b>Warning:</b> Deleting a party one time has no penalty. The second time you delete a party, there is a 6&nbsp;tick cooldown on starting a new party to prevent spam.</p>
+    <p class="delmodal__sub">This permanently removes your party&rsquo;s seats, politicians, and funds &mdash; it can&rsquo;t be undone.</p>
+    <p class="delmodal__err" id="delModalErr" hidden></p>
+    <div class="delmodal__row">
+      <button class="delmodal__btn" id="delCancel" type="button">Cancel</button>
+      <button class="delmodal__btn delmodal__btn--danger" id="delConfirm" type="button">Confirm</button>
     </div>
   </div>
 </div>
