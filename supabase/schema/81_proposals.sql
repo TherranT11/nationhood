@@ -38,7 +38,7 @@ create table if not exists public.proposals (
   id          uuid primary key default gen_random_uuid(),
   nation_id   text not null references public.nations (id) on delete cascade,
   party_id    uuid not null references public.parties (id) on delete cascade,  -- proposer
-  kind        text not null default 'declaration',   -- declaration | law | regime | threshold | no_confidence
+  kind        text not null default 'declaration',   -- declaration | law | regime | threshold | reform | no_confidence
   title       text not null,                          -- e.g. "Capital Name → Seyonne"
   payload     jsonb not null default '{}'::jsonb,     -- declaration: {slug, label, value}
   status      text not null default 'voting',         -- agenda | voting | passed | failed
@@ -94,30 +94,33 @@ returns void language sql security definer set search_path = public as $$
    where id = p_nation;
 $$;
 
--- Apply a passed monarchy special law — the only measure that crosses the republic/monarchy
--- line on the regime scale (which automated effects can't cross; see schema/91). It moves the
--- regime between 20 (Full Democracy — a republic) and 21 (Constitutional Monarchy) only. The
--- band above (22–25) is admin-set, and an Absolute monarchy (24–25) is one-party, so the floor
--- never reaches there. p_target was validated against the current regime in propose_regime_change;
--- it's re-checked here so a stale measure (regime moved by admin since) can't apply an illegal
--- jump — an out-of-range crossing is silently dropped (the generic "measure passed" line still
--- fires, but the regime is left as-is). Announces the change as a government event.
+-- Apply a passed monarchy special law — the only measure that crosses the regime TYPE line
+-- (an automated effect can't; see schema/91). p_target 21 proclaims a Constitutional Monarchy
+-- (type → monarchy, reform 10 — a constrained, multiparty crown); p_target 20 abolishes it and
+-- restores Full Democracy (type → democracy, reform 9). p_target was validated against the current
+-- type in propose_regime_change; it's re-checked here so a stale measure (type moved by admin since)
+-- can't apply an illegal crossing — an out-of-range one is silently dropped (the generic "measure
+-- passed" line still fires, but the regime is left as-is). Announces the change as a government event.
 create or replace function public._apply_regime_change(p_nation text, p_target int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_raw text; v_cur numeric; v_nname text;
+declare v_eco jsonb; v_type text; v_reform int; v_nname text;
 begin
   if p_target not in (20, 21) then return; end if;
-  select economy->>'regime', name into v_raw, v_nname from public.nations where id = p_nation;
+  select economy, name into v_eco, v_nname from public.nations where id = p_nation;
   if not found then return; end if;
-  v_cur := public._to_num(v_raw);
-  if v_cur is null then return; end if;
-  -- Proclaim (→21) only from a republic (≤20); abolish (→20) only from a Constitutional
-  -- monarchy (21–23). Anything else (already there, or an Absolute monarchy) is a no-op.
-  if p_target = 21 and v_cur > 20 then return; end if;
-  if p_target = 20 and (v_cur < 21 or v_cur > 23) then return; end if;
+  v_type := public._regime_type(v_eco);
+  if v_type is null then return; end if;
+  v_reform := public._regime_reform(v_eco);
+  -- Proclaim (→21) only from a non-monarchy; abolish (→20) only from a MULTIPARTY monarchy
+  -- (reform ≥ 5 — an Absolute monarchy is one-party/crown territory, no floor abolition).
+  -- Anything else is a no-op.
+  if p_target = 21 and v_type = 'monarchy' then return; end if;
+  if p_target = 20 and not (v_type = 'monarchy' and v_reform >= 5) then return; end if;
 
-  -- One clamp source: _nation_stat_add applies the delta that lands exactly on p_target.
-  perform public._nation_stat_add(p_nation, 'economy', 'regime', p_target - v_cur, 1, 25);
+  -- _set_regime is the one writer of a type change (both keys at once, reform clamped).
+  if p_target = 21 then perform public._set_regime(p_nation, 'monarchy', 10);  -- Constitutional Monarchy
+  else                  perform public._set_regime(p_nation, 'democracy', 9);  -- Full Democracy
+  end if;
   insert into public.events (nation_id, kind, body, game_date)
     values (p_nation, 'government',
             case when p_target = 21
@@ -240,6 +243,8 @@ begin
       perform public._apply_regime_change(v_p.nation_id, (v_p.payload->>'target')::int);
     elsif v_p.kind = 'threshold' then
       perform public._apply_threshold(v_p.nation_id, (v_p.payload->>'pct')::int);   -- writer lives in schema/106
+    elsif v_p.kind = 'reform' then
+      perform public._apply_reform(v_p.nation_id, v_p.payload->>'dir');              -- writer lives in schema/167
     end if;
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_p.nation_id, v_p.party_id, 'declaration',
@@ -365,12 +370,11 @@ begin
 end $$;
 grant execute on function public.propose_declaration(text, text, boolean) to authenticated;
 
--- Propose the monarchy special law — the only measure that crosses the republic/monarchy
--- line on the regime scale. p_target is 21 (proclaim a Constitutional Monarchy, legal from a
--- republic ≤20) or 20 (abolish it, legal from a Constitutional Monarchy 21–23). Absolute
--- monarchies (24–25) are admin/one-party territory and have no floor measure. Mirrors
--- propose_declaration: queue on the agenda (free) or open a floor vote now (1 action),
--- proposer auto-votes Aye, then tally.
+-- Propose the monarchy special law — the only measure that crosses the regime TYPE line.
+-- p_target is 21 (proclaim a Constitutional Monarchy, legal from any non-monarchy) or 20
+-- (abolish it, legal from a MULTIPARTY monarchy — reform ≥ 5). An Absolute monarchy is
+-- one-party/crown territory and has no floor measure. Mirrors propose_declaration: queue on the
+-- agenda (free) or open a floor vote now (1 action), proposer auto-votes Aye, then tally.
 create or replace function public.propose_regime_change(p_target int, p_to_floor boolean)
 returns jsonb
 language plpgsql
@@ -378,7 +382,7 @@ security definer
 set search_path = public
 as $$
 declare
-  v_party public.parties%rowtype; v_cur numeric; v_title text;
+  v_party public.parties%rowtype; v_eco jsonb; v_type text; v_title text;
   v_pid uuid; v_res text; v_curtick int; v_sched int;
 begin
   if p_target not in (20, 21) then raise exception 'Unknown regime measure.'; end if;
@@ -393,13 +397,14 @@ begin
     v_party := public._lock_party();
   end if;
 
-  v_cur := public._to_num((select economy->>'regime' from public.nations where id = v_party.nation_id));
-  if v_cur is null then raise exception 'This nation''s regime is not a numeric rank — an admin must set it first.'; end if;
+  select economy into v_eco from public.nations where id = v_party.nation_id;
+  v_type := public._regime_type(v_eco);
+  if v_type is null then raise exception 'This nation''s regime is not set — an admin must set it first.'; end if;
   if p_target = 21 then
-    if v_cur > 20 then raise exception 'This nation is already a monarchy.'; end if;
+    if v_type = 'monarchy' then raise exception 'This nation is already a monarchy.'; end if;
     v_title := 'Proclaim a Constitutional Monarchy';
   else
-    if v_cur < 21 or v_cur > 23 then raise exception 'Only a constitutional monarchy can be abolished on the floor.'; end if;
+    if v_type <> 'monarchy' or public._regime_reform(v_eco) < 5 then raise exception 'Only a reformed (multiparty) monarchy can be abolished on the floor — an absolute crown holds the floor.'; end if;
     v_title := 'Abolish the Monarchy';
   end if;
 

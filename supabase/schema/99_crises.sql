@@ -90,7 +90,7 @@ begin
     when 'Image'          then select stats->>'image'           into v_raw from public.nations where id = p_nation;
     when 'Unemployment %' then select economy->>'unemployment'  into v_raw from public.nations where id = p_nation;
     when 'Inflation %'    then select economy->>'inflation'     into v_raw from public.nations where id = p_nation;
-    when 'Regime'         then select economy->>'regime'        into v_raw from public.nations where id = p_nation;
+    when 'Regime'         then select economy->>'regime_reform' into v_raw from public.nations where id = p_nation;
     when 'Budget'         then select economy->>'budget'        into v_raw from public.nations where id = p_nation;
     when 'Debt'           then select economy->>'debt'          into v_raw from public.nations where id = p_nation;
     when 'Income'         then select economy->>'income'        into v_raw from public.nations where id = p_nation;

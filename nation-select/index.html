@@ -100,7 +100,7 @@
 
   <script type="module">
     import { supabase, isConfigured, logout, currentParty } from '/supabase.js';
-    import { statLabel, statBand, statName, regimeLabel } from '/ladders.js';
+    import { statLabel, statBand, statName, regimeLabel, nationRegime } from '/ladders.js';
     import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES, fmtGdp, fmtPop } from '/util.js';
     import { mountGameDate } from '/gamedate.js';
     import { ideologyLabel } from '/archetypes.js';
@@ -129,11 +129,11 @@
       return rows; // Active Parties is rendered as the collapsible roster header (renderRoster)
     }
 
-    // The ruling-power badge for a sole-ruler nation: an absolute monarchy (regime
-    // 24–25) gets its own framing; any other one-party state gets the plain badge.
+    // The ruling-power badge for a sole-ruler nation: an absolute monarchy gets its own
+    // framing; any other one-party state gets the plain badge.
     function rulerBadge(n) {
       if (!n.ruling_party) return '';
-      var r = n.economy && n.economy.regime;
+      var r = nationRegime(n.economy);
       if (regimeLabel(r) === 'Absolute Monarchy') {
         return '<div class="monarchy"><span class="onep abs" title="' + esc(n.ruling_party) + '">Absolute monarchy</span>' +
           '<p>This nation is an absolute monarchy ruled by the ' + esc(n.ruling_party) +

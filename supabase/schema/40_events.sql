@@ -521,7 +521,7 @@ begin
     when 'Inflation %'    then v_col := 'economy'; v_key := 'inflation';    v_min := 0;
     when 'Budget'         then v_col := 'economy'; v_key := 'budget';
     when 'Debt'           then v_col := 'economy'; v_key := 'debt';         v_min := 0;
-    when 'Regime'         then v_col := 'economy'; v_key := 'regime';       v_min := 1; v_max := 20; v_int := true;
+    when 'Regime'         then v_col := 'economy'; v_key := 'regime_reform'; v_min := 0; v_max := 15; v_int := true;
     when 'Energy'    then v_col := 'production'; v_key := 'energy';    v_min := 0;
     when 'Food'      then v_col := 'production'; v_key := 'food';      v_min := 0;
     when 'Minerals'  then v_col := 'production'; v_key := 'minerals';  v_min := 0;
@@ -536,7 +536,7 @@ begin
   if v_col in ('stats', 'economy', 'production') then
     v_cur := public._to_num((case v_col when 'stats' then v_n.stats when 'economy' then v_n.economy else v_n.production end) ->> v_key);
     if p_target = 'Regime' and v_cur is null then
-      raise exception 'Regime is not a numeric rank for this nation — set it on the Nations tab first.';
+      raise exception 'The regime is not set for this nation — set it on the Nations tab first.';
     end if;
     v_cur := coalesce(v_cur, 0);
     if p_target = 'Budget' then

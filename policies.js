@@ -9,9 +9,9 @@
 // the stat backend, so effects are stored but not yet applied live. ONE source for the
 // policy builder's stat picker. (Distinct from the live world-event target list, which
 // still uses the current backend stat names until the models converge.)
-// The stats a policy effect can target (the policy-builder vocabulary). 'Regime' moves the nation's
-// place on the 1–25 scale — applied server-side by _apply_policy_effect (schema/91, republic range
-// only) — and is shown as the Government page's regime graph rather than a ministry-stat cell.
+// The stats a policy effect can target (the policy-builder vocabulary). The regime is NOT here —
+// the reform level is moved only by the parliamentary reform bills (schema/167), so a policy can
+// no longer nudge it.
 export const POLICY_STATS = [
   'Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Interest Rates',
   'Crime', 'Immigration', 'Extremism', 'Unemployment', 'Poverty', 'Wages',
@@ -20,7 +20,7 @@ export const POLICY_STATS = [
   'Rule of Law', 'Standard of Living', 'Housing Affordability',
   'Pension Quality', 'Equity Between Generations', 'Demographic Pressure', 'Birth Rate',
   'Education', 'Health', 'Innovation', 'Environment', 'Infrastructure',
-  'National Pride', 'Corruption', 'Religious Influence', 'Civil Liberties', 'Minority Rights', 'Regime'
+  'National Pride', 'Corruption', 'Religious Influence', 'Civil Liberties', 'Minority Rights'
 ];
 
 // The valid input range for a ministry stat, where one is defined — used to bound the admin
@@ -37,9 +37,9 @@ export const STAT_RANGES = {
 
 // The admin-typed ministry stats (the Edit Nation "Ministry Stats" grid). Derived from POLICY_STATS
 // — one source — minus stats that are NOT typed in that grid: Budget Balance & Bureaucracy are
-// COMPUTED from policy effects, and Regime lives on economy.regime (its own graph), so it's a
-// policy-effect target but never a typed ministry field.
-var NON_MINISTRY_STATS = ['Budget Balance', 'Bureaucracy', 'Regime'];
+// COMPUTED from policy effects. (The regime is set on its own controls, not the ministry grid, and
+// is no longer in POLICY_STATS at all.)
+var NON_MINISTRY_STATS = ['Budget Balance', 'Bureaucracy'];
 export const MINISTRY_STATS = POLICY_STATS.filter(function (s) { return NON_MINISTRY_STATS.indexOf(s) < 0; });
 
 // A policy's vote-popularity reaction: how a party's popularity moves for how it votes on a

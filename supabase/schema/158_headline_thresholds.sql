@@ -66,7 +66,7 @@ begin
                                           then round(public._to_num(p_economy->>'debt') / n.gdp * 100, 1) end
                                 from public.nations n where n.id = p_nation)
     when 'Income'       then public._to_num(p_economy->>'income')
-    when 'Regime'       then public._to_num(p_economy->>'regime')
+    when 'Regime'       then public._regime_reform(p_economy)   -- reform level 0..15 (schema/166)
     when 'Tax Burden'   then public._nation_tax_burden(p_nation)
     else null
   end;

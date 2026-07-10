@@ -10,10 +10,9 @@
 -- Law enactment (schema/92) calls this with 'once'; the per-tick pass will reuse
 -- the same core with 'tick' later — so the mapping/clamping lives in one spot.
 --
--- Clamp ranges: stats 1..20; regime 1..20 for AUTOMATED effects (policies, crises,
--- convictions all route here) — the monarchy band (21–25) is law/admin-only territory, so
--- an automated effect can neither crown a republic nor drift a crowned nation, see the
--- Regime branch; unemployment/inflation 0..100; budget & income unbounded (deficits
+-- Clamp ranges: stats 1..20; the regime is no longer an automated-effect target at all (the
+-- reform level is owned by the reform bills, schema/167 — the 'Regime' branch is a retired
+-- no-op); unemployment/inflation 0..100; budget & income unbounded (deficits
 -- allowed); debt >= 0; production resources >= 0; government confidence 0..100; party
 -- popularity 0..100 (through the modifier ceiling/floor).
 -- ===========================================================================
@@ -124,16 +123,12 @@ begin
     -- Tax Burden % is DERIVED (base economy.tax + each policy's in-force option contribution;
     -- see nationTaxBurden in policies.js, _option_axis_level in schema/92), so it is never
     -- mutated as a delta here. A legacy effect that still targets it is simply ignored.
-    when 'Regime'         then
-      -- Regime moves only within the republic range (1–20) under an automated effect. The
-      -- monarchy band (21–25) is law/admin-only: a republic can't organically cross into it,
-      -- and a nation already in the band is left untouched (so an effect can't crown or
-      -- dethrone a nation behind the legislature's back — that's propose_regime_change /
-      -- admin territory). A null/legacy regime parses to null → treated as a republic.
-      select public._to_num(economy->>'regime') into v_old from public.nations where id = p_nation;
-      if coalesce(v_old, 0) <= 20 then
-        perform public._nation_stat_add(p_nation, 'economy', 'regime', v_v, 1, 20);
-      end if;
+    -- 'Regime' RETIRED as a policy effect — the reform level is moved only by the parliamentary
+    -- reform bills (schema/167), so an authored 'Regime' effect is now ignored. Left as an
+    -- explicit no-op (like Government Confidence / Popularity Ceiling above) so a legacy policy
+    -- carrying it doesn't drift the reform level or fall through to the '<X> on hand' catch-all.
+    when 'Regime' then
+      null;
     when 'Budget', 'Debt', 'Income' then
       -- Money targets: scale the authored amount by nation size/wealth, then apply to the
       -- matching economy key. Budget can never go below 0 — a shortfall rolls into Debt

@@ -79,7 +79,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { esc, fmtGdp, fmtPop, declaredValue, loadHogTitleSlot } from '/util.js';
-  import { regimeText, statLabel, statName, statBand } from '/ladders.js';
+  import { regimeText, nationRegime, statLabel, statName, statBand } from '/ladders.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
@@ -115,11 +115,11 @@
       var eco = n.economy || {};
       var currency = eco.currency || '$';
 
-      // Government type: the seated government's form PLUS the nation's regime
-      // (regimeText → "Label (N)"), e.g. "Coalition Government — Flawed Democracy (17)".
+      // Government type: the seated government's form PLUS the nation's regime (regimeText →
+      // "Flawed Democracy · Reform 4/15"), e.g. "Coalition Government — Flawed Democracy · Reform 4/15".
       // No seated government → just the regime. Unknown regime → just the form.
       var g = govByNation[n.id];
-      var regimeTxt = regimeText(eco.regime);
+      var regimeTxt = regimeText(nationRegime(eco));
       var govType = g ? (cap(g.type) + ' Government' + (regimeTxt !== '—' ? ' — ' + regimeTxt : '')) : regimeTxt;
 
       var leader = (g && g.formateur_party_id) ? leaderByParty[g.formateur_party_id] : null;

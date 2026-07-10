@@ -6,9 +6,9 @@
 -- read up front (a snapshot), so one year's penalty can't cascade into another the same
 -- pass (Order's −1 Growth / Growth's −1 Prosperity are judged against the year-start values).
 -- Effects ride _apply_policy_effect (schema/91) — the one clamp source; Party Popularity /
--- Government Confidence land on the sitting government. An AUTHORITARIAN regime (1–4) is spared
--- the political penalties (Prosperity / Welfare / Order) — it suppresses that fallout — but still
--- takes the economic + international ones (Growth, Global Image).
+-- Government Confidence land on the sitting government. An AUTHORITARIAN regime (an autocracy at
+-- the reform floor) is spared the political penalties (Prosperity / Welfare / Order) — it
+-- suppresses that fallout — but still takes the economic + international ones (Growth, Global Image).
 -- Growth also drives GDP directly here — the ONE place GDP moves: it shrinks GDP by (45 − Growth)/5 %
 -- when Growth < 45, and grows it by (Growth − 55)/5 % when Growth ≥ 55 (a healthy-growth dividend, the
 -- one positive effect in this pass). A stalling Growth (< 45) additionally freezes the +1M
@@ -29,7 +29,7 @@ returns void language plpgsql security definer set search_path = public as $$
 declare
   n record;
   v_pro numeric; v_wel numeric; v_gro numeric; v_ord numeric; v_img numeric; v_bud numeric; v_inc numeric;
-  v_regime numeric; v_open boolean; v_gdp_delta numeric; v_debt numeric; v_pct numeric;
+  v_open boolean; v_gdp_delta numeric; v_debt numeric; v_pct numeric;
 begin
   if (p_tick - 1) % 12 <> 0 then return; end if;   -- January only (tick 1, 13, 25, …)
   for n in select id, stats, economy, gdp from public.nations where not coalesce(dormant, false) loop
@@ -38,11 +38,11 @@ begin
     v_gro := coalesce((n.stats->>'growth')::numeric, 0);
     v_ord := coalesce((n.stats->>'order')::numeric, 0);
     v_img := coalesce((n.stats->>'image')::numeric, 0);
-    -- An authoritarian regime (1–4) suppresses the POLITICAL fallout — the Prosperity, Welfare
-    -- and Order penalties (popularity / confidence) only bite an open regime (5+). Growth and
-    -- Global Image (economic / international) still land on everyone. (_to_num mirrors sanctions.)
-    v_regime := public._to_num(n.economy->>'regime');
-    v_open := (v_regime is null or v_regime >= 5);
+    -- An authoritarian regime (autocracy at the reform floor) suppresses the POLITICAL fallout —
+    -- the Prosperity, Welfare and Order penalties only bite an OPEN regime (everything else).
+    -- Growth and Global Image (economic / international) still land on everyone. _regime_is_authoritarian
+    -- (schema/166) is the ONE test, shared with sanctions; a null/unset type reads as open.
+    v_open := not public._regime_is_authoritarian(n.economy);
 
     if v_pro < 45 and v_open then
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Party Popularity', 'v', -3));

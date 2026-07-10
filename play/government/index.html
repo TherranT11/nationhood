@@ -218,6 +218,12 @@
         var n = Number(ec.debt);
         return (ec.debt == null || ec.debt === '' || !isFinite(n)) ? '--' : esc(cur) + Math.abs(n) + 'bn';
       }
+      if (s === 'Tax Burden'){
+        // Tax Burden auto-generates from policy — the sum of every in-force policy's Tax Burden effect,
+        // with NO authored base (a nation's base tax RATE lives on economy.tax and feeds the corporations
+        // business climate, a separate figure). ONE source with the /play/tax-burden/ detail page.
+        return esc(String(Math.round(nationStatContributions(STAT_POLS, STAT_OV, STAT_GDP, 'Tax Burden').total * 10) / 10));
+      }
       // Every other ministry stat: its authored base (ministry_stats) + the cumulative contribution of
       // in-force policies (policies.js) — the same model as Budget Balance/Bureaucracy. "--" only when
       // there's no base and no policy touches it.
