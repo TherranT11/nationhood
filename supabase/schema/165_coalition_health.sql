@@ -5,12 +5,11 @@
 --   • a debt-to-GDP crisis in January — over 100% of GDP: −1 heart; over 200%: −1
 --     heart (schema/125). DEMOCRATIC governments only (autocracies are spared).
 --   • a vacant cabinet through the year: −1 heart (schema/138).
---   • a neglected agenda (no national objectives): −1 heart (schema/139).
 -- and restored (capped at the formation max) by delivering an agenda item / filling
 -- a promised cabinet seat (schema/60).
 --
 -- When the LAST heart goes, the government falls apart: every governing party loses
--- Party Popularity (−3% for the 100%-debt / vacant / agenda causes, −5% for the
+-- Party Popularity (−3% for the 100%-debt / vacant causes, −5% for the
 -- 200%-debt cause), an event fires, and a snap election is scheduled for the NEXT
 -- tick. There is no partial state — zero hearts = a fallen government.
 --

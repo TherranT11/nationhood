@@ -122,8 +122,8 @@ begin
   update public.parties set in_government = (id = any(v_members)) where nation_id = p_nation;
 
   -- Coalition Health at formation: 2 hearts + 1 per 2 governing parties (rounded down) —
-  -- the same figure the Government page shows, now stored so debt / vacant-cabinet /
-  -- agenda-neglect can deplete it and delivering an agenda item can restore it.
+  -- the same figure the Government page shows, now stored so debt / a vacant cabinet
+  -- can deplete it and delivering an agenda item can restore it.
   -- p_conf_penalty / p_midterm are retained on the signature (callers still pass them)
   -- but no longer alter the starting hearts.
   v_health := 2 + coalesce(array_length(v_members, 1), 1) / 2;
@@ -358,7 +358,7 @@ revoke all on function public._head_of_government_label(text, uuid) from public,
 -- ---------------------------------------------------------------------------
 -- RETIRED with Government Confidence. The forced-resignation-on-low-confidence path is
 -- gone; Coalition Health (schema/165) is now the stability gauge — a government falls when
--- its hearts hit zero (debt / vacant cabinet / agenda neglect), not on a confidence figure.
+-- its hearts hit zero (debt / vacant cabinet), not on a confidence figure.
 -- ---------------------------------------------------------------------------
 drop function if exists public._confidence_collapse(text);
 
@@ -475,10 +475,8 @@ begin
   -- government a heart of Coalition Health. Self-filters to January, a no-op the other eleven months.
   begin perform public._resolve_vacant_cabinet(v_tick);
   exception when others then raise warning 'tick %: vacant-cabinet penalty failed — %', v_tick, sqlerrm; end;
-  -- Empty agenda (schema/139): each January, a government holding no national objectives loses
-  -- −2% Party Popularity and a heart of Coalition Health. Self-filters to January.
-  begin perform public._resolve_agenda_neglect(v_tick);
-  exception when others then raise warning 'tick %: agenda-neglect penalty failed — %', v_tick, sqlerrm; end;
+  -- (An empty national-objectives agenda used to cost Party Popularity + Coalition Health here;
+  -- that penalty was retired — setting no objectives now carries no yearly cost.)
   -- Passive Per-Year modifier effects (schema/70): each January, a modifier's yearly stat nudges
   -- land. Self-filters to January.
   begin perform public._apply_modifier_year_effects(v_tick);

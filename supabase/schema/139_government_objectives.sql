@@ -139,37 +139,9 @@ begin
 end $$;
 grant execute on function public.coalition_set_objective(uuid, uuid) to authenticated;
 
--- The yearly cost of an empty agenda: each January, a sitting government holding NO objectives
--- loses −2% Party Popularity (through _apply_policy_effect, schema/91) and a heart of Coalition
--- Health (schema/165). Called from _advance_tick (schema/60); self-filters to January, a no-op otherwise.
--- (Note: an objective past its deadline still counts as held — expiry/scoring is a later slice.)
-create or replace function public._resolve_agenda_neglect(p_tick int)
-returns void language plpgsql security definer set search_path = public as $$
-declare n record; v_held int;
-begin
-  if (p_tick - 1) % 12 <> 0 then return; end if;   -- January only (tick 1, 13, 25, …)
-  for n in
-    select g.id as gov_id, g.nation_id
-      from public.governments g
-      join public.nations nat on nat.id = g.nation_id
-     where g.status = 'active' and not coalesce(nat.dormant, false)
-  loop
-    select count(*) into v_held from public.government_objectives where government_id = n.gov_id;
-    if v_held = 0 then
-      -- Keep the −2% Party Popularity; the −3% Government Confidence is retired. Neglect now also
-      -- costs a heart of Coalition Health, which can topple the government at zero (−3% to governing
-      -- parties, snap election next tick — one source: _coalition_health_drop, schema/165). The
-      -- popularity slip and heart loss are separate events (the drop helper fires its own).
-      perform public._apply_policy_effect(n.nation_id, jsonb_build_object('t', 'Party Popularity', 'v', -2));
-      insert into public.events (nation_id, kind, body, game_date)
-        values (n.nation_id, 'government',
-                'The government set no national objectives this year — party popularity slipped (−2%).',
-                public.current_game_date());
-      perform public._coalition_health_drop(n.nation_id, 1, 3,
-        'The government set no national objectives this year and its coalition health suffered', p_tick);
-    end if;
-  end loop;
-end $$;
-revoke all on function public._resolve_agenda_neglect(int) from public, anon, authenticated;
+-- RETIRED — the empty-agenda yearly penalty is gone. Setting no national objectives used to cost
+-- −2% Party Popularity (and, earlier, −3% Government Confidence) plus a heart of Coalition Health;
+-- it now carries no yearly cost. The tick step in _advance_tick (schema/60) was removed too.
+drop function if exists public._resolve_agenda_neglect(int);
 
 notify pgrst, 'reload schema';
