@@ -48,14 +48,15 @@ returns boolean language sql immutable as $$
   select coalesce(public._regime_type(p_economy) = 'autocracy' and public._regime_reform(p_economy) <= 3, false);
 $$;
 
--- One-party state — the old "regime ≤ 4 OR ≥ 24": an autocracy at reform ≤ 3, or an ABSOLUTE
--- monarchy (a monarchy at reform ≥ 3). Both are sole-ruler states. ONE source for the
--- one-party switch (schema/98). Total boolean (false for an unset regime).
+-- One-party state — an autocracy at the reform floor (reform ≤ 3), or an ABSOLUTE monarchy (an
+-- UNREFORMED crown, reform ≤ 4). Both are sole-ruler states where the crown/party rules alone; a
+-- monarchy that has reformed past that (Crowned Parliament and up) is multiparty. ONE source for
+-- the one-party switch (schema/98). Total boolean (false for an unset regime).
 create or replace function public._regime_is_one_party(p_economy jsonb)
 returns boolean language sql immutable as $$
   select coalesce(
        (public._regime_type(p_economy) = 'autocracy' and public._regime_reform(p_economy) <= 3)
-    or (public._regime_type(p_economy) = 'monarchy'  and public._regime_reform(p_economy) >= 3), false);
+    or (public._regime_type(p_economy) = 'monarchy'  and public._regime_reform(p_economy) <= 4), false);
 $$;
 
 -- Monarchy band — the old "regime ≥ 21". ONE source for the crown-only affordances
@@ -106,7 +107,9 @@ update public.nations set economy =
        case
          when economy->>'regime' ~ '^-?[0-9]+(\.[0-9]+)?$' then
            greatest(0, least(15,
-             case when (economy->>'regime')::numeric >= 21 then round((economy->>'regime')::numeric) - 21
+             -- Monarchy INVERTS: the old scale ran 21 (Constitutional) → 25 (Absolute), but a low
+             -- reform is now the unreformed/Absolute crown. So old 25 → reform 0, old 21 → reform 10.
+             case when (economy->>'regime')::numeric >= 21 then round((25 - (economy->>'regime')::numeric) * 2.5)
                   when (economy->>'regime')::numeric >= 11 then round((economy->>'regime')::numeric) - 11
                   else greatest(1, round((economy->>'regime')::numeric)) - 1 end))::int
          else 4

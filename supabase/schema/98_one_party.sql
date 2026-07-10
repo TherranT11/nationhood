@@ -3,8 +3,8 @@
 -- (parties.pop_ceiling), 40 (events, current_game_date). Run after 40.
 --
 -- THE RULE: a nation is a one-party state iff it is an autocracy at the reform floor (reform
--- ≤ 3) OR an ABSOLUTE MONARCHY (a monarchy at reform ≥ 3 — the monarch's party rules alone).
--- Constitutional monarchies (monarchy, reform ≤ 2) are ordinary multiparty democracies. The
+-- ≤ 3) OR an ABSOLUTE MONARCHY (an unreformed crown, reform ≤ 4 — the monarch's party rules alone).
+-- A monarchy that has reformed past that (reform ≥ 5) is an ordinary multiparty democracy. The
 -- admin makes a nation one-party by setting the regime into either band; it erodes to the
 -- autocratic floor organically through reform-lowering effects too. ruling_party is DERIVED
 -- from the regime — it's never an independent toggle. _sync_one_party_state() reconciles the

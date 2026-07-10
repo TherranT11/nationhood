@@ -96,11 +96,11 @@ $$;
 
 -- Apply a passed monarchy special law — the only measure that crosses the regime TYPE line
 -- (an automated effect can't; see schema/91). p_target 21 proclaims a Constitutional Monarchy
--- (type → monarchy, reform 0); p_target 20 abolishes it and restores Full Democracy (type →
--- democracy, reform 9). p_target was validated against the current type in propose_regime_change;
--- it's re-checked here so a stale measure (type moved by admin since) can't apply an illegal
--- crossing — an out-of-range one is silently dropped (the generic "measure passed" line still
--- fires, but the regime is left as-is). Announces the change as a government event.
+-- (type → monarchy, reform 10 — a constrained, multiparty crown); p_target 20 abolishes it and
+-- restores Full Democracy (type → democracy, reform 9). p_target was validated against the current
+-- type in propose_regime_change; it's re-checked here so a stale measure (type moved by admin since)
+-- can't apply an illegal crossing — an out-of-range one is silently dropped (the generic "measure
+-- passed" line still fires, but the regime is left as-is). Announces the change as a government event.
 create or replace function public._apply_regime_change(p_nation text, p_target int)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_eco jsonb; v_type text; v_reform int; v_nname text;
@@ -111,13 +111,14 @@ begin
   v_type := public._regime_type(v_eco);
   if v_type is null then return; end if;
   v_reform := public._regime_reform(v_eco);
-  -- Proclaim (→21) only from a non-monarchy; abolish (→20) only from a CONSTITUTIONAL monarchy
-  -- (reform ≤ 2 — an Absolute monarchy is admin/one-party territory). Anything else is a no-op.
+  -- Proclaim (→21) only from a non-monarchy; abolish (→20) only from a MULTIPARTY monarchy
+  -- (reform ≥ 5 — an Absolute monarchy is one-party/crown territory, no floor abolition).
+  -- Anything else is a no-op.
   if p_target = 21 and v_type = 'monarchy' then return; end if;
-  if p_target = 20 and not (v_type = 'monarchy' and v_reform <= 2) then return; end if;
+  if p_target = 20 and not (v_type = 'monarchy' and v_reform >= 5) then return; end if;
 
   -- _set_regime is the one writer of a type change (both keys at once, reform clamped).
-  if p_target = 21 then perform public._set_regime(p_nation, 'monarchy', 0);   -- Constitutional Monarchy
+  if p_target = 21 then perform public._set_regime(p_nation, 'monarchy', 10);  -- Constitutional Monarchy
   else                  perform public._set_regime(p_nation, 'democracy', 9);  -- Full Democracy
   end if;
   insert into public.events (nation_id, kind, body, game_date)
@@ -371,8 +372,8 @@ grant execute on function public.propose_declaration(text, text, boolean) to aut
 
 -- Propose the monarchy special law — the only measure that crosses the regime TYPE line.
 -- p_target is 21 (proclaim a Constitutional Monarchy, legal from any non-monarchy) or 20
--- (abolish it, legal from a Constitutional Monarchy — reform ≤ 2). An Absolute monarchy is
--- admin/one-party territory and has no floor measure. Mirrors propose_declaration: queue on the
+-- (abolish it, legal from a MULTIPARTY monarchy — reform ≥ 5). An Absolute monarchy is
+-- one-party/crown territory and has no floor measure. Mirrors propose_declaration: queue on the
 -- agenda (free) or open a floor vote now (1 action), proposer auto-votes Aye, then tally.
 create or replace function public.propose_regime_change(p_target int, p_to_floor boolean)
 returns jsonb
@@ -403,7 +404,7 @@ begin
     if v_type = 'monarchy' then raise exception 'This nation is already a monarchy.'; end if;
     v_title := 'Proclaim a Constitutional Monarchy';
   else
-    if v_type <> 'monarchy' or public._regime_reform(v_eco) > 2 then raise exception 'Only a constitutional monarchy can be abolished on the floor.'; end if;
+    if v_type <> 'monarchy' or public._regime_reform(v_eco) < 5 then raise exception 'Only a reformed (multiparty) monarchy can be abolished on the floor — an absolute crown holds the floor.'; end if;
     v_title := 'Abolish the Monarchy';
   end if;
 

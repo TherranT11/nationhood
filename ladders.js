@@ -50,18 +50,20 @@ export function statBand(stat, value) {
 // single 1–25 index was retired: `type` is the axis (autocracy / democracy / monarchy) and
 // `reform` (0–15) is how far the nation has liberalised WITHIN that type. The pair is the
 // source (stored as economy.regime_type + economy.regime_reform); the words below follow it.
-// Constitutional monarchies (monarchy, reform ≤ 2) are ordinary multiparty democracies; an
-// Absolute monarchy (monarchy, reform ≥ 3) is a one-party state (schema/98). The royal
-// Head-of-State titles are gated to the monarchy type (isMonarchy, used by the declaration picker).
+// A monarchy LIBERALISES as its reform rises, like the other types: an unreformed crown is an
+// Absolute Monarchy (reform ≤ 4, a one-party state — schema/98) and each reform strips the crown's
+// power (Crowned Parliament → Constitutional → Ceremonial Crown), until the 15th (the Abolition)
+// turns it into a republic. The royal Head-of-State titles are gated to the monarchy type
+// (isMonarchy, used by the declaration picker).
 export const REGIME_TYPE_LABEL = { autocracy: 'Autocracy', democracy: 'Democracy', monarchy: 'Monarchy' };
 
-// Per-type reform bands → the tier name (the same nine names as the old scale, re-bucketed by
-// reform level). Each entry is [reform lower bound, label], listed high→low; a reform level takes
-// the label of the highest band it reaches.
+// Per-type reform bands → the tier name. Advancing (higher reform) is always MORE liberal; each
+// entry is [reform lower bound, label], listed high→low, and a reform level takes the label of the
+// highest band it reaches.
 const REGIME_BANDS = {
   autocracy: [[8, 'Competitive Autocracy'], [4, 'Functional Autocracy'], [0, 'One State Autocracy']],
   democracy: [[9, 'Full Democracy'], [6, 'Electoral Democracy'], [3, 'Flawed Democracy'], [0, 'Illiberal Democracy']],
-  monarchy:  [[3, 'Absolute Monarchy'], [0, 'Constitutional Monarchy']],
+  monarchy:  [[14, 'Ceremonial Crown'], [10, 'Constitutional Monarchy'], [5, 'Crowned Parliament'], [0, 'Absolute Monarchy']],
 };
 
 // Reform level normalised to an integer in 0–15.

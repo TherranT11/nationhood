@@ -459,11 +459,11 @@
     document.querySelector('.phead p').textContent = 'The crown is the one change of TYPE the chamber itself can make — a republic may proclaim a constitutional monarchy, and a constitutional monarchy may abolish it. Everything else about the regime moves elsewhere.';
     var grid = document.getElementById('proposeGrid');
     // The single legal crossing from here (target value + framing), or null if none. Proclaim from
-    // any non-monarchy; abolish only from a CONSTITUTIONAL monarchy (reform ≤ 2). The server re-validates.
+    // any non-monarchy; abolish only from a MULTIPARTY monarchy (reform ≥ 5). The server re-validates.
     var move = !regime ? null
              : regime.type !== 'monarchy' ? { target: 21, title: 'Proclaim a Constitutional Monarchy', desc: 'The head of state becomes a monarch. The crown is ceremonial — the chamber keeps its powers and the nation stays a multiparty democracy.' }
-             : regime.reform <= 2 ? { target: 20, title: 'Abolish the Monarchy', desc: 'The crown is dissolved and the nation returns to a republic (Full Democracy).' }
-             : null;  // Absolute monarchy — no floor measure
+             : regime.reform >= 5 ? { target: 20, title: 'Abolish the Monarchy', desc: 'The crown is dissolved and the nation returns to a republic (Full Democracy).' }
+             : null;  // Absolute (unreformed) monarchy — no floor measure
 
     grid.innerHTML =
       '<div><section class="mod"><div class="mod__hd"><span>Form of State</span><span class="hint">a constitutional change</span></div>' +
@@ -478,7 +478,7 @@
           '<button class="btn" id="r-agenda" type="button"' + (move ? '' : ' disabled') + '>Add to Upcoming Agenda <span class="ac">Free</span></button>' +
           '<div class="proposed-note" id="r-note">' +
             (move ? 'A simple majority of the chamber carries it.'
-                  : (regime && regime.type === 'monarchy' && regime.reform >= 3 ? 'An absolute monarchy’s form of state rests with the crown, not the floor.'
+                  : (regime && regime.type === 'monarchy' && regime.reform <= 4 ? 'An absolute monarchy’s form of state rests with the crown, not the floor — reform it first.'
                              : 'There is no form-of-state change available here.')) +
           '</div>' +
         '</div></div></div>';

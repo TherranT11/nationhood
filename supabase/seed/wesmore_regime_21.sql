@@ -1,15 +1,15 @@
 -- Seed: set Wesmore to a Constitutional Monarchy directly.
 --
--- One-off admin grant so Wesmore starts as a constitutional monarchy without having to pass
--- the Form-of-State special law on the floor (propose_regime_change, schema/81). A monarchy at
--- reform 0 is a Constitutional Monarchy — it stays a multiparty democracy (the one-party switch
--- only flips for an absolute monarchy, reform ≥ 3). Run in the Supabase SQL Editor after 166.
--- Matched loosely (the nation is "Wesmore and Calcordia"), so any "…Wesmore…" name resolves;
--- if more than one matched you'd want to tighten this.
+-- One-off admin grant so Wesmore starts as a constitutional monarchy without having to pass the
+-- Form-of-State special law on the floor (propose_regime_change, schema/81). Reform 10 is a
+-- Constitutional Monarchy — a constrained, MULTIPARTY crown (the one-party switch only flips for an
+-- unreformed/absolute monarchy, reform ≤ 4). Run in the Supabase SQL Editor after 166. Matched
+-- loosely (the nation is "Wesmore and Calcordia"), so any "…Wesmore…" name resolves; if more than
+-- one matched you'd want to tighten this. Safe to re-run to correct an earlier reform-0 seeding.
 update public.nations
    set economy = jsonb_set(
          jsonb_set(coalesce(economy, '{}'::jsonb) - 'regime', '{regime_type}', to_jsonb('monarchy'::text), true),
-         '{regime_reform}', to_jsonb(0), true)
+         '{regime_reform}', to_jsonb(10), true)
  where name ilike '%wesmore%';
 
 -- Reconcile the one-party derivation for the affected nation(s) (no-op for a Constitutional
