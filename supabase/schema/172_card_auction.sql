@@ -97,6 +97,7 @@ begin
         from public.deck_cards dc join public.cards cd on cd.id = dc.card_id
        where dc.nation_id = n.id and dc.status = 'on_block'
          and exists (select 1 from public.card_bids b where b.deck_card_id = dc.id)
+       for update of dc   -- lock the card so a bid can't land mid-resolution (it'd lose its escrow)
     loop
       select party_id, amount into w from public.card_bids
         where deck_card_id = c.id order by amount desc, created_at asc limit 1;   -- top bid, tie → earliest
