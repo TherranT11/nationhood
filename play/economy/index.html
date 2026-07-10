@@ -18,8 +18,10 @@
   .treasury b{color:var(--ink)}
 
   .stats{display:flex;flex-wrap:wrap;gap:7px;margin-top:16px}
-  .stat{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:7px 11px;font-family:'Space Mono',monospace;font-size:10px;color:var(--soft)}
-  .stat b{display:block;color:var(--ink);font-size:15px;font-weight:700;margin-top:1px}
+  /* Each tile is colour-coded by its resource via the inline --c custom property (a left accent
+     bar + faint tint + coloured label); the value stays high-contrast for readability. */
+  .stat{background:color-mix(in srgb, var(--c, var(--line)) 9%, var(--surface));border:1px solid var(--line);border-left:3px solid var(--c, var(--line));border-radius:9px;padding:7px 11px 7px 9px;font-family:'Space Mono',monospace;font-size:10px;color:var(--c, var(--soft));font-weight:700;letter-spacing:.02em}
+  .stat b{display:block;color:var(--ink);font-size:15px;font-weight:700;margin-top:1px;letter-spacing:0}
 
   .panel{background:var(--surface);border:1px solid var(--line);border-radius:15px;margin-top:18px;overflow:hidden}
   .panel-h{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
@@ -297,10 +299,22 @@
   }
 
   function renderStats(n){
-    var st = n.stats || {}, ec = n.economy || {};
-    var rows = [['GDP', STATE.currency + fmtGdp(n.gdp)], ['Population', fmt(n.population) + 'M'], ['Prosperity', num(st.prosperity)], ['Welfare', num(st.welfare)],
-      ['Order', num(st.order)], ['Growth', num(st.growth)], ['Unemploy.', num(ec.unemployment) + '%'], ['Inflation', num(ec.inflation) + '%']];
-    return '<div class="stats">' + rows.map(function(r){ return '<div class="stat">' + r[0] + '<b>' + r[1] + '</b></div>'; }).join('') + '</div>';
+    var oh = n.on_hand || {};
+    // GDP + the spendable on-hand stockpiles (energy/food/minerals/services/goods/military). Each
+    // container is colour-coded by resource (a left accent bar + tint + coloured label) for quick
+    // identification. [label, value, colour].
+    var rows = [
+      ['GDP',      STATE.currency + fmtGdp(n.gdp), '#5546E8'],
+      ['Energy',   fmt(num(oh.energy)),   '#e0a91e'],
+      ['Food',     fmt(num(oh.food)),     '#16915a'],
+      ['Minerals', fmt(num(oh.minerals)), '#8b93a7'],
+      ['Services', fmt(num(oh.services)), '#1f86d6'],
+      ['Goods',    fmt(num(oh.goods)),    '#e0820e'],
+      ['Military', fmt(num(oh.military)), '#c42b2b']
+    ];
+    return '<div class="stats">' + rows.map(function(r){
+      return '<div class="stat" style="--c:' + r[2] + '">' + r[0] + '<b>' + r[1] + '</b></div>';
+    }).join('') + '</div>';
   }
 
   function demandRow(d){
