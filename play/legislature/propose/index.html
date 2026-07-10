@@ -498,17 +498,15 @@
   }
 
   // ---- Electoral Threshold mode: pick the minimum vote share a party must clear to win any
-  // seats (0/3/5/8/10/15%). Raising the bar weakens the democracy — a 5–10% floor costs one
-  // rank of regime, 15% costs two; the preview shows the move's regime cost before proposing.
-  // The penalty here is a display MIRROR of _apply_threshold (schema/106 stays authoritative).
+  // seats (0/3/5/8/10/15%). The bar shuts out parties below it and redistributes their seats;
+  // it no longer costs the regime anything (reform is owned by the reform bills, schema/167).
   var THRESH_OPTS = [0, 3, 5, 8, 10, 15];
-  function thrPenalty(p) { return p >= 15 ? 2 : p >= 5 ? 1 : 0; }
   var thrBusy = false;
   function renderThresholdMode(nation) {
     var cur = Number((nation && nation.electoral_threshold) || 0);
     document.querySelector('.phead .eye').textContent = 'Legislature · Electoral Threshold';
     document.querySelector('.phead h1').textContent = 'Set the Electoral Threshold';
-    document.querySelector('.phead p').textContent = 'The minimum share of the vote a party must win to take any seats. Parties below it are shut out and their seats fall to those who cleared the bar. Raising it weakens the democracy — a 5–10% floor costs one rank of regime, 15% costs two.';
+    document.querySelector('.phead p').textContent = 'The minimum share of the vote a party must win to take any seats. Parties below it are shut out and their seats fall to those who cleared the bar.';
     var grid = document.getElementById('proposeGrid');
     grid.innerHTML =
       '<div><section class="mod"><div class="mod__hd"><span>Electoral Threshold</span><span class="hint">a constitutional change</span></div>' +
@@ -529,8 +527,8 @@
     function renderLadder() {
       var lad = document.getElementById('t-ladder');
       lad.innerHTML = THRESH_OPTS.map(function (p) {
-        var isCur = p === cur, isProp = p === sel.pct, pen = thrPenalty(p);
-        var meta = p === 0 ? 'no threshold' : (pen ? '−' + pen + ' regime' : 'no regime cost');
+        var isCur = p === cur, isProp = p === sel.pct;
+        var meta = p === 0 ? 'no threshold' : 'a vote floor';
         var badge = isCur ? '<span class="rbadge cur">In force</span>' : isProp ? '<span class="rbadge prop">Proposed</span>' : '';
         return '<button type="button" class="rung' + (isCur ? ' current' : '') + (isProp ? ' proposed' : '') + '" data-p="' + p + '"' + (isCur ? ' disabled' : '') + '>' +
           '<span><span class="rn">' + p + '%</span><span class="rmeta">' + meta + '</span></span>' + badge + '</button>';
@@ -546,12 +544,7 @@
         pv.textContent = 'Choose a threshold'; pv.classList.add('empty'); effs.innerHTML = '<p class="none">—</p>';
       } else {
         pv.textContent = 'Electoral Threshold → ' + sel.pct + '%'; pv.classList.remove('empty');
-        var delta = thrPenalty(cur) - thrPenalty(sel.pct);   // < 0 when the bar rises (regime falls)
-        var rows = ['<div class="eff"><b>' + (sel.pct === 0 ? 'No threshold — every party keeps the seats it wins' : 'Parties under ' + sel.pct + '% win no seats') + '</b><span class="cad">on election</span></div>'];
-        if (delta < 0) rows.push('<div class="eff neg"><b>Regime ' + delta + ' — the democracy weakens</b><span class="cad">on enactment</span></div>');
-        else if (delta > 0) rows.push('<div class="eff pos"><b>Regime +' + delta + ' — the democracy strengthens</b><span class="cad">on enactment</span></div>');
-        else rows.push('<div class="eff"><b>No change to regime</b><span class="cad">on enactment</span></div>');
-        effs.innerHTML = rows.join('');
+        effs.innerHTML = '<div class="eff"><b>' + (sel.pct === 0 ? 'No threshold — every party keeps the seats it wins' : 'Parties under ' + sel.pct + '% win no seats') + '</b><span class="cad">on election</span></div>';
       }
       var ok = sel.pct != null && sel.pct !== cur && !thrBusy;
       floorBtn.disabled = !ok; agendaBtn.disabled = !ok;

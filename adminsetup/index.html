@@ -2668,8 +2668,12 @@
 
     // The policy effect stat picker — the ministry-stat vocabulary (POLICY_STATS, one source
     // in policies.js). A flat list (no optgroups): a policy effect is a plain stat delta.
+    // A stored target no longer in the vocabulary (e.g. a legacy 'Regime' effect, retired when
+    // reform bills took over) is preserved as its own option so editing an old policy can't
+    // silently rewrite it to the first stat.
     function polTgtSelect(sel, cls){
-      return '<select class="'+(cls||'et')+'">'+POLICY_STATS.map(function(t){ return '<option value="'+esc(t)+'"'+(t===sel?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>';
+      var opts = (sel && POLICY_STATS.indexOf(sel) < 0) ? [sel].concat(POLICY_STATS) : POLICY_STATS;
+      return '<select class="'+(cls||'et')+'">'+opts.map(function(t){ return '<option value="'+esc(t)+'"'+(t===sel?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>';
     }
     // One effect row: stat · Increase/Decrease · amount. v carries the sign; the row shows the
     // magnitude and a direction select, so the stored value is signed but the admin picks up/down.

@@ -10,10 +10,9 @@
 -- Law enactment (schema/92) calls this with 'once'; the per-tick pass will reuse
 -- the same core with 'tick' later — so the mapping/clamping lives in one spot.
 --
--- Clamp ranges: stats 1..20; regime REFORM 0..15 for AUTOMATED effects (policies, crises,
--- convictions all route here) — the monarchy type is law/admin-only territory, so an automated
--- effect can neither crown a republic nor move a crowned nation's reform, see the Regime
--- branch; unemployment/inflation 0..100; budget & income unbounded (deficits
+-- Clamp ranges: stats 1..20; the regime is no longer an automated-effect target at all (the
+-- reform level is owned by the reform bills, schema/167 — the 'Regime' branch is a retired
+-- no-op); unemployment/inflation 0..100; budget & income unbounded (deficits
 -- allowed); debt >= 0; production resources >= 0; government confidence 0..100; party
 -- popularity 0..100 (through the modifier ceiling/floor).
 -- ===========================================================================
@@ -124,16 +123,12 @@ begin
     -- Tax Burden % is DERIVED (base economy.tax + each policy's in-force option contribution;
     -- see nationTaxBurden in policies.js, _option_axis_level in schema/92), so it is never
     -- mutated as a delta here. A legacy effect that still targets it is simply ignored.
-    when 'Regime'         then
-      -- An automated effect moves the REFORM level (0..15) within the current type; it never
-      -- changes the type. A monarchy is law/admin-only — an effect can neither crown nor move a
-      -- crowned nation behind the legislature's back (that's propose_regime_change / admin
-      -- territory). An unset type is treated as a republic and still moves reform, but that
-      -- reform stays inert until a type is set (nationRegime reads null without one). Reform-bill
-      -- ownership of this movement is a later pass.
-      if public._regime_type((select economy from public.nations where id = p_nation)) is distinct from 'monarchy' then
-        perform public._nation_stat_add(p_nation, 'economy', 'regime_reform', v_v, 0, 15);
-      end if;
+    -- 'Regime' RETIRED as a policy effect — the reform level is moved only by the parliamentary
+    -- reform bills (schema/167), so an authored 'Regime' effect is now ignored. Left as an
+    -- explicit no-op (like Government Confidence / Popularity Ceiling above) so a legacy policy
+    -- carrying it doesn't drift the reform level or fall through to the '<X> on hand' catch-all.
+    when 'Regime' then
+      null;
     when 'Budget', 'Debt', 'Income' then
       -- Money targets: scale the authored amount by nation size/wealth, then apply to the
       -- matching economy key. Budget can never go below 0 — a shortfall rolls into Debt
