@@ -52,6 +52,23 @@
   .cm .qyou{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.08em;color:var(--indigo)}
   .cm .qtick.now .qyou{color:var(--inf)}
 
+  /* action container — the three turn choices */
+  .cm .actbox{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .cm .actbox.off{opacity:.75}
+  .cm .actbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .cm .apbadge{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--inf);background:color-mix(in srgb,var(--inf) 12%,transparent);border:1px solid color-mix(in srgb,var(--inf) 40%,transparent);border-radius:8px;padding:6px 11px}
+  .cm .actstat{font-size:13px;color:var(--muted)}
+  .cm .actstat b{color:var(--ink)}
+  .cm .actrow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:820px){.cm .actrow{grid-template-columns:1fr}}
+  .cm .actopt{background:var(--field);border:1px solid var(--line);border-radius:12px;padding:15px 15px 13px;text-align:left;cursor:pointer;transition:border-color .15s;color:inherit;font:inherit}
+  .cm .actopt:hover:not(:disabled){border-color:var(--indigo)}
+  .cm .actopt:disabled{opacity:.45;cursor:not-allowed}
+  .cm .actopt .an{font-size:14px;font-weight:800;color:var(--ink);margin-bottom:5px}
+  .cm .actopt .ad{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);letter-spacing:.03em;line-height:1.6}
+  .cm .actopt.info{cursor:default}
+  .cm .actopt.info:hover{border-color:var(--line)}
+
   /* market + hand grids */
   .cm .market{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px}
   .cm .hand{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px}
@@ -81,8 +98,11 @@
   .cm .act.cancel{color:var(--muted);background:var(--surface);border-color:var(--line)}
   .cm .act.cancel:hover{color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,transparent)}
   .cm .act.play{width:calc(100% - 24px);margin:0 12px 12px;text-align:center;color:#fff;background:var(--indigo);border-color:var(--indigo);padding:9px 0}
-  .cm .act.play:hover{filter:brightness(1.08)}
-  .cm .act.play.wait{color:var(--soft);background:var(--field);border-color:var(--line);cursor:not-allowed}
+  .cm .act.play:hover:not(:disabled){filter:brightness(1.08)}
+  .cm .handbtns{display:flex;gap:8px;padding:0 12px 12px}
+  .cm .handbtns .act{flex:1;width:auto;margin:0;text-align:center;padding:9px 0}
+  .cm .act.disc{color:var(--muted);background:var(--surface);border-color:var(--line)}
+  .cm .act.disc:hover:not(:disabled){color:var(--inf);border-color:color-mix(in srgb,var(--inf) 45%,transparent)}
   .cm .act:disabled{opacity:.55;cursor:not-allowed;filter:none}
 
   .cm .empty{background:var(--surface);border:1px dashed var(--line);border-radius:13px;padding:26px 20px;text-align:center;color:var(--soft);font-size:13px}
@@ -118,6 +138,10 @@
       <div class="sect gap">Turn Queue <span class="note">your nation's rotation · one party acts each tick</span></div>
       <div class="queuecard"><div class="qrow" id="queue"><div class="tlempty">Loading…</div></div></div>
 
+      <!-- action container -->
+      <div class="sect gap">Your Turn <span class="note" id="actNote"></span></div>
+      <div id="actions"></div>
+
       <!-- market -->
       <div class="sect gap">The Market <span class="note" id="marketNote"></span></div>
       <div class="market" id="market"><div class="empty"><b>Loading…</b></div></div>
@@ -148,6 +172,8 @@
   var LOCAL_KINDS = { rally:1, fundraise:1, attack:1, adblitz:1, recruit:1, party:1 };
 
   function myTurn() { return TURN_PARTY != null && PARTY && TURN_PARTY === PARTY.id; }
+  function hasChosen() { return PARTY && Number(PARTY.turn_acted_tick) === Number(CUR_TICK); }   // one choice per turn
+  function apLeft() { return (PARTY && Number(PARTY.action_points)) || 0; }
   function shortMonth(tick) { return tickToDate(tick).split(',')[0].slice(0, 3); }
 
   // Card kind → label + colour class, from the stored definition (one source: the Card Creator's fields).
@@ -229,19 +255,48 @@
 
   function renderHand(cards) {
     var el = document.getElementById('hand');
-    var mine = myTurn();
+    var canAct = myTurn() && !hasChosen();   // play/discard IS your turn choice — only before you've chosen
     document.getElementById('handNote').innerHTML = cards.length + ' held · ' +
-      (mine ? '<span class="inf">your turn</span> — play a card' : 'not your turn — you play on your party’s turn');
+      (myTurn()
+        ? (hasChosen() ? 'turn taken — you hold <span class="inf">' + apLeft() + ' AP</span>' : '<span class="inf">your turn</span> — play or discard a card')
+        : 'not your turn — you act on your party’s turn');
     if (!cards.length) { el.innerHTML = '<div class="empty"><b>Your hand is empty.</b>Win cards at auction to hold them here.</div>'; return; }
     el.innerHTML = cards.map(function (c) {
       var def = c.definition || {};
-      var cost = Math.max(0, Number(def.cost) || 0);
+      var acts = Math.max(1, Math.min(6, Number(def.acts) || 1));
       return '<div class="cardc">' + cardHead(def) + '</div>' +
-        (mine
-          ? '<button class="act play" data-play="' + c.id + '">Play · ⚡' + cost + '</button></div>'
-          : '<button class="act play wait" disabled title="You can only play on your party’s turn">Wait for your turn</button></div>');
+        '<div class="handbtns">' +
+          '<button class="act play" data-play="' + c.id + '"' + (canAct ? '' : ' disabled') + '>Play · +' + acts + ' AP</button>' +
+          '<button class="act disc" data-disc="' + c.id + '"' + (canAct ? '' : ' disabled') + ' title="Discard for +3 Influence">Discard · +3⚡</button>' +
+        '</div></div>';
     }).join('');
     el.querySelectorAll('[data-play]').forEach(function (b) { b.onclick = function () { playCard(b.dataset.play); }; });
+    el.querySelectorAll('[data-disc]').forEach(function (b) { b.onclick = function () { discardCard(b.dataset.disc); }; });
+  }
+
+  function renderActions() {
+    var el = document.getElementById('actions'), note = document.getElementById('actNote');
+    if (!myTurn()) {
+      var who = (window.__roster || []).find(function (x) { return x.id === TURN_PARTY; });
+      note.textContent = 'waiting';
+      el.innerHTML = '<div class="actbox off"><div class="actbar"><span class="actstat">It’s <b>' +
+        esc(who ? (who.abbreviation || who.name) : 'another party') + '</b>’s turn — your turn comes round the rotation above.</span></div></div>';
+      return;
+    }
+    if (hasChosen()) {
+      note.innerHTML = '<span class="inf">turn taken</span>';
+      el.innerHTML = '<div class="actbox"><div class="actbar"><span class="apbadge">▶ ' + apLeft() + ' AP</span>' +
+        '<span class="actstat">Turn taken. Spend Action Points on moves across the game — each costs <b>1 AP</b>.</span></div></div>';
+      return;
+    }
+    note.textContent = 'choose one';
+    el.innerHTML = '<div class="actbox"><div class="actbar"><span class="actstat">It’s your turn — <b>choose one</b>. Actions cost <b>1 AP</b> each, no Influence.</span></div>' +
+      '<div class="actrow">' +
+        '<button class="actopt" id="optTake"><div class="an">Take 1 Action</div><div class="ad">Bank 1 AP · spend it on one move this turn</div></button>' +
+        '<div class="actopt info"><div class="an">Play a Card</div><div class="ad">Use ▸ Play on a hand card below · banks that card’s AP</div></div>' +
+        '<div class="actopt info"><div class="an">Discard a Card</div><div class="ad">Use ▸ Discard on a hand card below · +3 Influence</div></div>' +
+      '</div></div>';
+    var t = document.getElementById('optTake'); if (t) t.onclick = function () { takeAction(); };
   }
 
   function renderTimeline(elId, events, world) {
@@ -259,6 +314,8 @@
   async function placeBid(id, amount) { await run(function () { return supabase.rpc('card_bid', { p_deck_card: id, p_amount: amount }); }); }
   async function cancelBid(id) { await run(function () { return supabase.rpc('card_bid_cancel', { p_deck_card: id }); }); }
   async function playCard(id) { await run(function () { return supabase.rpc('card_play', { p_deck_card: id }); }); }
+  async function discardCard(id) { if (!confirm('Discard this card for +3 Influence? It leaves your hand for good.')) return; await run(function () { return supabase.rpc('card_discard', { p_deck_card: id }); }); }
+  async function takeAction() { await run(function () { return supabase.rpc('turn_take_action'); }); }
   async function run(fn) {
     if (BUSY) return; BUSY = true; setDisabled(true);
     try {
@@ -270,7 +327,7 @@
       alert((e && e.message) || 'That action failed.');
     } finally { BUSY = false; setDisabled(false); }
   }
-  function setDisabled(on) { document.querySelectorAll('.cm .act, .cm .bbtn').forEach(function (b) { if (!b.classList.contains('wait')) b.disabled = on; }); }
+  function setDisabled(on) { document.querySelectorAll('.cm .act, .cm .bbtn, .cm .actopt').forEach(function (b) { b.disabled = on; }); }
 
   function setEye() {
     var name = TURN_PARTY && PARTY && TURN_PARTY === PARTY.id ? 'Your Turn'
@@ -281,7 +338,7 @@
   async function loadAll() {
     // Refresh the party (influence changes with bids/plays), then rotation / market / hand / timelines.
     try {
-      const { data: p } = await supabase.from('parties').select('id, name, archetype, nation_id, influence').eq('user_id', PARTY.user_id).single();
+      const { data: p } = await supabase.from('parties').select('id, name, archetype, nation_id, influence, action_points, turn_acted_tick').eq('user_id', PARTY.user_id).single();
       if (p) { PARTY = Object.assign(PARTY, p); setTopbarActions(PARTY.influence); }
     } catch (e) { /* keep the last known party */ }
 
@@ -325,6 +382,7 @@
 
     setEye();
     renderQueue(roster);
+    renderActions();
     renderMarket(market, bids);
     renderHand(hand);
     renderTimeline('timeline', events, false);
@@ -336,7 +394,7 @@
     const user = await requireUser();
     if (!user) return;
     try {
-      const { data: party } = await supabase.from('parties').select('id, name, archetype, nation_id, influence').eq('user_id', user.id).maybeSingle();
+      const { data: party } = await supabase.from('parties').select('id, name, archetype, nation_id, influence, action_points, turn_acted_tick').eq('user_id', user.id).maybeSingle();
       if (!party) { window.location.replace('/nation-select/'); return; }
       PARTY = Object.assign({ user_id: user.id }, party);
       NATION_ID = party.nation_id;
