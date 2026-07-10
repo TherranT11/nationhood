@@ -254,7 +254,7 @@
   function openSheet(mode) {
     sheetMode = mode;
     const reg = ST.regime, reform = reg.reform;
-    const backslide = mode === 'repeal' && reform < 1;   // democracy-only; the footer only offers it then
+    const backslide = mode === 'repeal' && reform < 1 && reg.type === 'democracy';   // matches footer's canBackslide
     if (backslide) {
       document.getElementById('shTitle').textContent = 'Abolish the Republic';
       document.getElementById('shSub').textContent = 'Repeal the last protections — the republic collapses into an autocracy (Competitive Autocracy). This changes the regime type.';
