@@ -48,12 +48,13 @@ export function crimeLabel(order) {
   if (c === null) return null;
   return CRIME_BANDS[Math.min(4, Math.floor((c - 1) / 20))];
 }
-// Colour band for Crime: high crime is bad (red), low crime good (green) — the inverse of the
-// order thresholds in statBand (order < 45 fails), so crime ≥ 56 fails and crime ≤ 46 is good.
+// Colour band for Crime: high crime is bad (red), low crime good (green) — the EXACT inverse of
+// statBand('order') so a number never disagrees with itself. statBand fails at order < 45
+// (crime ≥ 57) and turns good at order ≥ 55 (crime ≤ 46).
 export function crimeBand(order) {
   const c = crimeFromOrder(order);
   if (c === null) return '';
-  if (c >= 56) return 'bad';
+  if (c >= 57) return 'bad';
   if (c <= 46) return 'good';
   return '';
 }
