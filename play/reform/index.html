@@ -139,7 +139,8 @@
     ST.party = party;
     setTopbarActions(party.influence);
 
-    const nRes = await supabase.from('nations').select('name, flag, declarations, economy').eq('id', party.nation_id).single();
+    const nRes = await supabase.from('nations').select('name, declarations, economy').eq('id', party.nation_id).single();
+    if (nRes.error) throw nRes.error;   // a load failure is distinct from "no regime set" (handled in render)
     const nation = nRes.data || {};
     ST.regime = nationRegime(nation.economy);
     ST.lock = Number((nation.economy || {}).reform_lock_tick) || 0;
