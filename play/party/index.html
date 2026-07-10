@@ -340,23 +340,22 @@
   // Opportunist (the centre) and the shift mechanic (Party Congress) isn't built yet, so only
   // that notch is detailed; the rest render locked. Autocracy/monarchy nations get their own
   // track later, so this section stays hidden for them.
+  // Each notch is its own source. Only Opportunist (the universal start) carries a detail
+  // (creed/tools/passive) for now; the rest are just ladder pips until the shift mechanic and
+  // their own toolkits are built. The detail card reads straight off the current notch — no
+  // second copy of its name/icon to drift out of sync.
   var STANCE_NOTCHES = [
     { id: 'D3', side: 'd', ic: '🏛', short: 'Constitutionalist' },
     { id: 'D2', side: 'd', ic: '🗳', short: 'Parliamentarian' },
     { id: 'D1', side: 'd', ic: '📣', short: 'Reformer' },
-    { id: 'N',  side: 'n', ic: '⚖', short: 'Opportunist' },
+    { id: 'N',  side: 'n', ic: '⚖', short: 'Opportunist', creed: '“We’ll see.”',
+      tools: [{ n: 'Parliamentary Basics', d: 'Vote, propose bills, and make statements — the moves every party has.' }],
+      passive: '<b>No stance bonus, no stance penalty.</b> Optionality is the point: you sit one step from either side’s first tools. But camp here too long and voters read you as unprincipled. A corridor, not a home.' },
     { id: 'R1', side: 'r', ic: '✊', short: 'Agitator' },
     { id: 'R2', side: 'r', ic: '🔥', short: 'Militant' },
     { id: 'R3', side: 'r', ic: '⚔', short: 'Insurrectionist' }
   ];
   var STANCE_CUR = 3;   // Opportunist — every party starts here (shifting isn't built yet)
-  // The one coded notch. Its toolkit is the moves every party already has; the passive spells out
-  // why the centre is a corridor, not a home (the future decay that nudges you to pick a side).
-  var OPP_DETAIL = {
-    ic: '⚖', name: 'Opportunist', creed: '“We’ll see.”',
-    tools: [{ n: 'Parliamentary Basics', d: 'Vote, propose bills, and make statements — the moves every party has.' }],
-    passive: '<b>No stance bonus, no stance penalty.</b> Optionality is the point: you sit one step from either side’s first tools. But camp here too long and voters read you as unprincipled. A corridor, not a home.'
-  };
 
   function renderStance(party, nation) {
     var regime = nationRegime(nation && nation.economy);
@@ -378,10 +377,10 @@
         '</div>';
     }).join('');
 
-    var d = OPP_DETAIL;
+    var d = STANCE_NOTCHES[STANCE_CUR];
     document.getElementById('stanceDetail').innerHTML =
       '<div class="stdet__h"><span class="stdet__ic">' + d.ic + '</span><div>' +
-        '<div class="stdet__nm">' + d.name + '</div><div class="stdet__creed">' + d.creed + '</div></div>' +
+        '<div class="stdet__nm">' + d.short + '</div><div class="stdet__creed">' + d.creed + '</div></div>' +
         '<span class="stdet__tag">Current stance</span></div>' +
       '<div class="stgrp">Toolkit</div>' +
       d.tools.map(function (t) {
