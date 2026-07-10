@@ -170,18 +170,18 @@
       var free = endorseCount > 0 || hasMajority;
       var b = document.createElement('button');
       b.className = 'btn btn--push' + (free ? '' : ' warn');
-      b.textContent = 'Push to the Floor · ' + (free ? 'Free' : '5 Influence');
+      b.textContent = 'Push to the Floor · ' + (free ? 'Free' : '1 AP');
       b.onclick = doPush;
       btns.appendChild(b);
       note.textContent = hasMajority
         ? 'Your party holds a majority — you can carry this bill alone, so pushing it to the floor is free.'
         : endorseCount > 0
           ? 'This bill has an endorsement — pushing it to the floor is free.'
-          : 'No endorsement yet — pushing now costs 5 Influence and −2 Party Popularity.';
+          : 'No endorsement yet — pushing now costs 1 AP and −2 Party Popularity.';
     } else {
       var e = document.createElement('button');
       e.className = 'btn btn--end';
-      e.textContent = ENDORSED_BY_ME ? 'Endorsed ✓' : 'Endorse · 5 Influence';
+      e.textContent = ENDORSED_BY_ME ? 'Endorsed ✓' : 'Endorse · 1 AP';
       e.disabled = ENDORSED_BY_ME;
       e.onclick = doEndorse;
       btns.appendChild(e);

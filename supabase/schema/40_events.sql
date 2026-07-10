@@ -102,15 +102,13 @@ begin
   return v_p;
 end $$;
 
--- The action cost of a Party Standing action (Rally / Fundraise / Attack / Ad Blitz) — the
--- one source for that cost. The per-tick budget is 12 (schema/20), so this caps standing
--- moves at 3 a tick while leaving room for the cheaper organizational actions (cost 1 each).
-create or replace function public._standing_cost()
-returns int language sql immutable as $$ select 3 $$;
+-- _standing_cost() is retired: Party Standing actions (Rally / Fundraise / Attack / Ad Blitz) now
+-- cost 1 Action Point like every other move, so the old 3-Influence standing cost is gone.
+drop function if exists public._standing_cost();
 
--- Lock the player's party (via _lock_party) and confirm it has an action to spend
--- and can afford p_cost. Returns the locked row; raises on failure. Standing actions
--- additionally gate on >= _standing_cost() before spending it.
+-- Lock the player's party (via _lock_party) and spend 1 Action Point on the move
+-- (_spend_action_point, schema/174), then confirm it can afford p_cost in funds. Returns the
+-- locked row; raises on failure. This is the ONE gate every player action routes through.
 create or replace function public._begin_action(p_cost bigint)
 returns public.parties
 language plpgsql
