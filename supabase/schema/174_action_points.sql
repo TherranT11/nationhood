@@ -6,11 +6,12 @@
 --   • Play a Card, take N actions → the card's event resolves + N Action Points (N = definition.acts)
 --   • Discard 1 Card, +3 Influence → the card leaves the hand, the party banks +3 Influence, 0 AP
 --
--- An Action Point is then spent by any operation that costs Influence (Produce, Industrialize, call an
--- election, …): each such operation now ALSO costs 1 AP and may only run on the party's own turn.
--- That per-operation charge is _spend_action_point(), wired into each operation RPC in a follow-up
--- pass (Phase B) — this migration lays the spine: the balance, the one-choice guard, the gate, and
--- the three choice RPCs. Until Phase B wires them, the gate exists but nothing calls it.
+-- An Action Point is then spent by any operation that used to cost Influence (Produce, Industrialize,
+-- call an election, …): each such operation now costs 1 AP INSTEAD of Influence. AP is banked on your
+-- turn and spendable AT ANY TIME until your NEXT turn, when any unspent AP expires (cleared as the
+-- rotation cursor lands back on you — see the _advance_turns override below). So there is no turn
+-- check on spending — holding an AP is the gate. That per-operation charge is _spend_action_point(),
+-- wired into each operation RPC in a follow-up pass (Phase B); this migration lays the spine.
 --
 -- One choice per turn is enforced by turn_acted_tick: a party's turn is the single tick its cursor is
 -- up (nation_turn, schema/173), so "already chose" is turn_acted_tick = current_tick. A choice
@@ -26,17 +27,18 @@
 alter table public.parties add column if not exists action_points   int not null default 0;
 alter table public.parties add column if not exists turn_acted_tick int not null default 0;
 
--- The gate every influence-costed operation calls (Phase B). Spends one Action Point: the party must
--- be up (nation_turn) and hold at least one AP. Security definer, internal — operation RPCs (also
--- security definer) call it directly, so it stays revoked from clients.
+-- The gate every (formerly-)influence-costed operation calls (Phase B). Spends one Action Point: the
+-- party need only hold at least one AP — AP is spendable any time until it expires at the party's next
+-- turn, so there is NO turn check here (the turn check lives on the three CHOICES below, not on
+-- spending). Security definer, internal — operation RPCs (also security definer) call it directly, so
+-- it stays revoked from clients.
 create or replace function public._spend_action_point(p_party uuid)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_nat text; v_ap int;
+declare v_ap int;
 begin
-  select nation_id, action_points into v_nat, v_ap from public.parties where id = p_party for update;
+  select action_points into v_ap from public.parties where id = p_party for update;
   if not found then raise exception 'No such party.'; end if;
-  if p_party is distinct from public.nation_turn(v_nat) then raise exception 'You can only act on your party''s turn.'; end if;
-  if coalesce(v_ap, 0) < 1 then raise exception 'No Action Points left — play a card or wait for your next turn.'; end if;
+  if coalesce(v_ap, 0) < 1 then raise exception 'No Action Points left — take your turn to bank more.'; end if;
   update public.parties set action_points = action_points - 1 where id = p_party;
 end $$;
 revoke all on function public._spend_action_point(uuid) from public, anon, authenticated;
@@ -133,5 +135,29 @@ begin
           public.current_game_date());
 end $$;
 grant execute on function public.card_play(uuid) to authenticated;
+
+-- Supersedes schema/173's _advance_turns: same rotation, but as the cursor lands on a party (its new
+-- turn begins) we clear that party's Action Points — unspent AP lasts only until your next turn, then
+-- the fresh turn choice banks new AP. (Lives here, not in 173, because action_points is added above,
+-- and 173 runs first.) Still tick-only.
+create or replace function public._advance_turns()
+returns void language plpgsql security definer set search_path = public as $$
+declare n record; v_cur uuid; v_seq double precision; v_next uuid;
+begin
+  for n in select id from public.nations where not coalesce(dormant, false) loop
+    v_cur := public.nation_turn(n.id);
+    if v_cur is null then continue; end if;
+    select turn_seq into v_seq from public.parties where id = v_cur;
+    select id into v_next from public.parties
+      where nation_id = n.id and (turn_seq, id) > (v_seq, v_cur)
+      order by turn_seq, id limit 1;
+    if v_next is null then
+      select id into v_next from public.parties where nation_id = n.id order by turn_seq, id limit 1;
+    end if;
+    update public.nations set turn_party_id = v_next where id = n.id;
+    update public.parties set action_points = 0 where id = v_next;   -- new turn → last turn's unspent AP expires
+  end loop;
+end $$;
+revoke all on function public._advance_turns() from public, anon, authenticated;
 
 notify pgrst, 'reload schema';
