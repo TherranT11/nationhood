@@ -195,7 +195,7 @@
 </div>
 
 <script type="module">
-  import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
+  import { supabase, isConfigured, requireUser, currentTick, selectAll } from '/supabase.js';
   import { esc, majority, fmtPop, tickToDate } from '/util.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { nationColors, drawNationMiniMap } from '/hexmap.js';
@@ -367,8 +367,8 @@
     nations.forEach(function (n) { MAP.natName[n.id] = n.name; });
     var hexes = [];
     try {
-      var hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id, continent, name, population, resources');
-      if (hr.error) hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id, continent');   // detail cols not migrated
+      var hr = await selectAll('world_hexes', 'q, r, terrain, nation_id, continent, name, population, resources');   // paginated: past the 1000-row cap
+      if (hr.error) hr = await selectAll('world_hexes', 'q, r, terrain, nation_id, continent');   // detail cols not migrated
       hexes = hr.data || [];
     } catch (e) {}
     try { var cr = await supabase.from('cities').select('name, q, r').eq('nation_id', party.nation_id).not('q', 'is', null); MAP.cities = cr.error ? [] : (cr.data || []); } catch (e) { MAP.cities = []; }

@@ -75,6 +75,24 @@ export async function currentTick() {
   }
 }
 
+// Fetch EVERY row of a table, paging past PostgREST's ~1000-row response cap. A plain select
+// silently returns only the first ~1000 rows, which reads as missing data on a large table (e.g. a
+// world map grown past 1000 hexes: painted land saves but reloads "gone"). Returns the familiar
+// { data, error } shape — the error from the first failing page — so callers keep any column
+// fallback. ONE source for a whole-table read; used by the world-map readers.
+export async function selectAll(table, columns) {
+  const PAGE = 1000;
+  let from = 0, all = [], batch;
+  do {
+    const res = await supabase.from(table).select(columns).range(from, from + PAGE - 1);
+    if (res.error) return res;
+    batch = res.data || [];
+    all = all.concat(batch);
+    from += PAGE;
+  } while (batch.length === PAGE);
+  return { data: all, error: null };
+}
+
 // Delete the signed-in player's party and everything that cascades from it —
 // politicians, the recruit drive, and its events (the DB FKs handle the cascade;
 // seats/funds/popularity are columns on the party row). RLS lets a player delete
