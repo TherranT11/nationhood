@@ -100,7 +100,8 @@ end $$;
 create or replace function public._is_newsworthy(p_kind text)
 returns boolean language sql immutable as $$
   select p_kind in ('law','no_confidence','declaration','government','agenda','ministry','regime',
-                    'election','world_event','world_broadcast','economy','crisis');
+                    'election','world_event','world_broadcast','economy','crisis',
+                    'admin');   -- an admin-fired event is a hand-authored news story, so it prints
 $$;
 
 -- Turn every newsworthy event into a headline. The event body IS the headline text — events
