@@ -116,6 +116,7 @@ const CSS = `
 .cc .rq.d{color:var(--dem);background:color-mix(in srgb,var(--dem) 10%,transparent);border:1px solid color-mix(in srgb,var(--dem) 40%,transparent)}
 .cc .rq.r{color:var(--rev);background:color-mix(in srgb,var(--rev) 10%,transparent);border:1px solid color-mix(in srgb,var(--rev) 40%,transparent)}
 .cc .rq.cost{color:var(--inf);background:color-mix(in srgb,var(--inf) 10%,transparent);border:1px solid color-mix(in srgb,var(--inf) 40%,transparent)}
+.cc .rq.acts{color:var(--indigo);background:color-mix(in srgb,var(--indigo) 10%,transparent);border:1px solid color-mix(in srgb,var(--indigo) 40%,transparent)}
 .cc .rq.pers{color:var(--nat);background:color-mix(in srgb,var(--nat) 10%,transparent);border:1px solid color-mix(in srgb,var(--nat) 40%,transparent)}
 .cc .choice-banner{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);background:var(--field);border:1px solid var(--line2);border-radius:6px;padding:5px 8px;text-align:center;margin-bottom:9px}
 .cc .fxgroup{margin-bottom:9px}
@@ -151,9 +152,12 @@ const CSS = `
 const TEMPLATE = `
 <div class="form">
   <div class="sect">Identity</div>
-  <div class="frow">
+  <div class="frow single">
     <div><label>Card Name</label><input type="text" id="fName" maxlength="40"></div>
+  </div>
+  <div class="frow">
     <div><label>Influence Cost (base auction value)</label><input type="number" id="fCost" min="0" max="20" style="width:100%"></div>
+    <div><label>Number of Actions (1–6 — granted when played)</label><input type="number" id="fActs" min="1" max="6" style="width:100%"></div>
   </div>
   <div class="frow single">
     <div><label>Description (flavor — shown on card)</label><textarea id="fDesc"></textarea></div>
@@ -254,7 +258,7 @@ export async function mountCardCreator(mount) {
   const $ = function (id) { return root.querySelector('#' + id); };
 
   var state = {
-    name: '', cost: 4, desc: '',
+    name: '', cost: 4, acts: 2, desc: '',
     type: 'dr', lim: 'all', nation: '', mech: 'oneoff',
     reqD: 2, reqR: 2,
     fx: [
@@ -274,7 +278,7 @@ export async function mountCardCreator(mount) {
     persistV: 'no', reqCard: '', allowCard: ''
   };
   // reflect the seeded defaults into the form fields
-  $('fName').value = state.name; $('fCost').value = state.cost; $('fDesc').value = state.desc;
+  $('fName').value = state.name; $('fCost').value = state.cost; $('fActs').value = state.acts; $('fDesc').value = state.desc;
 
   function markSeg(id, v) { root.querySelectorAll('#' + id + ' button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === String(v)); }); }
   function wireSeg(id, key, cb) {
@@ -297,10 +301,11 @@ export async function mountCardCreator(mount) {
   markSeg('segType', state.type); markSeg('segLim', state.lim); markSeg('segMech', state.mech);
   markSeg('segPersist', state.persistV); markSeg('reqD', state.reqD); markSeg('reqR', state.reqR);
 
-  ['fName', 'fCost', 'fDesc'].forEach(function (id) {
+  ['fName', 'fCost', 'fActs', 'fDesc'].forEach(function (id) {
     $(id).oninput = function (e) {
       if (id === 'fName') state.name = e.target.value;
       if (id === 'fCost') state.cost = +e.target.value;
+      if (id === 'fActs') state.acts = Math.max(1, Math.min(6, +e.target.value || 1));
       if (id === 'fDesc') state.desc = e.target.value;
       renderPreview();
     };
@@ -466,6 +471,7 @@ export async function mountCardCreator(mount) {
     var pk = $('pKind'); pk.textContent = kindTxt; pk.style.color = kindCol;
 
     var reqs = '<span class="rq cost">⚡ ' + (state.cost || 0) + '</span>';
+    reqs += '<span class="rq acts">▶ ' + (state.acts || 1) + ' action' + ((state.acts || 1) === 1 ? '' : 's') + '</span>';
     if (state.persistV === 'yes') reqs += '<span class="rq pers">∞ Persistent</span>';
     if (state.type !== 'generic') reqs += '<span class="rq d">' + ax.d.ic + ' ' + ax.d.pre + state.reqD + '+</span><span class="rq r">' + ax.r.ic + ' ' + ax.r.pre + state.reqR + '+</span>';
     $('pReqs').innerHTML = reqs;
@@ -598,7 +604,7 @@ export async function mountCardCreator(mount) {
   // card_create reads `lim`/`nation`; Phase 3 reads `mech` + the matching effect field.
   function buildDefinition() {
     var clone = function (o) { return JSON.parse(JSON.stringify(o)); };
-    var d = { name: state.name, cost: state.cost, desc: state.desc, type: state.type, lim: state.lim,
+    var d = { name: state.name, cost: state.cost, acts: state.acts, desc: state.desc, type: state.type, lim: state.lim,
               mech: state.mech, persistV: state.persistV, reqCard: state.reqCard, allowCard: state.allowCard };
     if (state.lim === 'nation') d.nation = state.nation;              // only meaningful when nation-limited
     if (state.type !== 'generic') { d.reqD = state.reqD; d.reqR = state.reqR; }  // stance gates only for stance cards
