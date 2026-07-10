@@ -22,8 +22,11 @@ create table if not exists public.cards (
 alter table public.cards enable row level security;
 drop policy if exists "cards_select_all"   on public.cards;
 create policy "cards_select_all"   on public.cards for select using (true);      -- readable in play
-drop policy if exists "cards_insert_admin" on public.cards;
-create policy "cards_insert_admin" on public.cards for insert with check (public.is_admin());
+-- No direct INSERT policy: cards are created ONLY through card_create() (security definer), so a card
+-- can never enter the pool without also being shuffled into decks. Admins may still edit/delete an
+-- existing card — a delete cascades it out of every deck; an edit that changes the Limiter must
+-- re-shuffle, which the Phase 2 edit flow does via an RPC (not a raw update).
+drop policy if exists "cards_insert_admin" on public.cards;   -- retire any direct-insert grant (bypassed the shuffle)
 drop policy if exists "cards_update_admin" on public.cards;
 create policy "cards_update_admin" on public.cards for update using (public.is_admin()) with check (public.is_admin());
 drop policy if exists "cards_delete_admin" on public.cards;
@@ -46,6 +49,8 @@ alter table public.deck_cards enable row level security;
 drop policy if exists "deck_cards_select_all" on public.deck_cards;
 create policy "deck_cards_select_all" on public.deck_cards for select using (true);
 -- No client insert/update/delete: the shuffle + (later) draw/play RPCs are security definer.
+-- select-all is fine now — deck membership is open info, like the rest of the game. When the runtime
+-- adds an 'in_hand' state, revisit this so a player's hand isn't readable by opponents.
 
 -- card_create(definition): author a card AND shuffle it into decks in one admin action — this is what
 -- "Save to Card Pool" calls. Reads the Limiter from the definition: 'nation' → the one nation named in
