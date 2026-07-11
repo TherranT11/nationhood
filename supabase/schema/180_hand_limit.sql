@@ -46,6 +46,11 @@ begin
   v_base := coalesce((v_dc.definition->>'cost')::int, 0);
   if p_amount < v_base then raise exception 'The minimum bid is % Influence.', v_base; end if;
 
+  -- Lock the party row FIRST: it serialises this party's concurrent bids, so the reservation count
+  -- below can't be raced by a second bid on a different card each seeing an empty count and both
+  -- slipping under the cap. (Same lock also guards the escrow.)
+  select influence into v_inf from public.parties where id = v_pid for update;
+
   -- Reservation gate: this bid needs a free slot. Held cards + bids on OTHER cards must be < 4, leaving
   -- room for this one. (A raise on this card is already reserved, so it's excluded from the count.)
   v_reserved := public._hand_count(v_pid)
@@ -54,8 +59,7 @@ begin
     raise exception 'You can hold at most 4 cards — play or discard one to bid on another.';
   end if;
 
-  -- Escrow the net move (refund the old bid, charge the new). Lock the party row to serialise bids.
-  select influence into v_inf from public.parties where id = v_pid for update;
+  -- Escrow the net move (refund the old bid, charge the new).
   select amount into v_old from public.card_bids where deck_card_id = p_deck_card and party_id = v_pid;
   v_net := p_amount - coalesce(v_old, 0);
   if v_inf < v_net then raise exception 'Not enough Influence for that bid.'; end if;
