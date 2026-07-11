@@ -96,11 +96,13 @@
   .cm .c-cost{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);margin-top:9px;letter-spacing:.04em}
   .cm .c-cost b{color:var(--inf)}
 
-  /* bid footer (sealed — only your own bid) */
-  .cm .c-bid{border-top:1px solid var(--line);background:var(--field);padding:9px 11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  /* bid footer (sealed — only your own bid): label + Cancel on top, stepper + Bid below */
+  .cm .c-bid{border-top:1px solid var(--line);background:var(--field);padding:10px 11px;display:flex;flex-direction:column;gap:9px}
+  .cm .bidtop{display:flex;align-items:center;justify-content:space-between;gap:8px}
   .cm .mybid{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft)}
   .cm .mybid b{color:var(--inf);font-size:12px}
-  .cm .bidctrl{margin-left:auto;display:flex;align-items:center;gap:6px}
+  .cm .bidctrl{display:flex;align-items:center;gap:6px}
+  .cm .bidctrl .bid{margin-left:auto}
   .cm .bbtn{width:24px;height:24px;border-radius:6px;background:var(--chip);border:1px solid var(--line);color:var(--muted);font-family:'Space Mono',monospace;font-weight:700;cursor:pointer;font-size:13px;line-height:1}
   .cm .bbtn:hover{color:var(--ink);border-color:var(--soft)}
   .cm .bval{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--inf);min-width:22px;text-align:center}
@@ -278,9 +280,11 @@
       return '<div class="cardc">' + cardHead(def) +
         '<div class="c-cost">Base ⚡<b>' + cost + '</b></div></div>' +
         '<div class="c-bid">' +
-          '<span class="mybid">' + (mine ? 'Your bid <b>⚡' + mine + '</b>' : (noRoom ? 'Hand full' : 'No bid')) + '</span>' +
-          '<div class="bidctrl">' +
+          '<div class="bidtop">' +
+            '<span class="mybid">' + (mine ? 'Your bid <b>⚡' + mine + '</b>' : (noRoom ? 'Hand full' : 'No bid')) + '</span>' +
             (mine ? '<button class="act cancel" data-cancel="' + c.id + '">Cancel</button>' : '') +
+          '</div>' +
+          '<div class="bidctrl">' +
             '<button class="bbtn" data-dec="' + c.id + '">−</button>' +
             '<span class="bval">' + v + '</span>' +
             '<button class="bbtn" data-inc="' + c.id + '">+</button>' +
