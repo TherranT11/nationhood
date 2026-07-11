@@ -132,13 +132,13 @@ begin
   v_def := v_dc.definition;
   v_acts := greatest(1, least(6, coalesce((v_def->>'acts')::int, 1)));   -- the card's Action Points
 
-  -- A hex_pop effect needs a hex picked on play. If the card carries one (generic, or a 'both'-sided
-  -- stance effect) but no hex was chosen, stop before consuming the card. The hex is validated against
-  -- the nation's land in _apply_card_hex (schema/176); an atomic play rolls back on a bad hex.
+  -- A hex_pop / hex_el effect needs a hex picked on play. If the card carries one (generic, or a
+  -- 'both'-sided stance effect) but no hex was chosen, stop before consuming the card. The hex is
+  -- validated against the nation's land downstream (schema/176/181); an atomic play rolls back on a bad hex.
   if coalesce(v_def->>'persistV', 'no') <> 'yes'
      and (p_hex_q is null or p_hex_r is null)
      and exists (select 1 from jsonb_array_elements(coalesce(v_def->'fx', '[]'::jsonb)) e
-                  where e.value->>'kind' = 'hex_pop'
+                  where e.value->>'kind' in ('hex_pop', 'hex_el')
                     and (v_def->>'type' = 'generic' or coalesce(e.value->>'side', 'both') = 'both')) then
     raise exception 'Pick a hex on the map to play this card.';
   end if;

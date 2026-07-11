@@ -30,7 +30,7 @@ const KINDS = {
   res_add:    { label: 'Add X [resource] to on-hand' },
   res_remove: { label: 'Remove X [resource] from on-hand' },
   appoint:    { label: 'HoG must appoint you [Ministry], or…', nested: true },
-  hex_el:     { label: 'Carry out election in Hex X' },
+  hex_el:     { label: 'Carry out an election in a chosen hex' },
   nat_el:     { label: 'Carry out national election' },
   no_conf:    { label: 'Put forth motion of no confidence' },
   mob_add:    { label: 'Add Armed Mob to Hex X' },
@@ -378,7 +378,7 @@ export async function mountCardCreator(mount) {
     if (f.kind === 'hex_pop') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">hex &amp; side chosen on play</span>';
     if (f.kind === 'res_add' || f.kind === 'res_remove') h = '<span class="lbl">' + (f.kind === 'res_add' ? 'add' : 'remove') + '</span>' + num(f.p.x, 'x') +
       '<select data-i="' + i + '" data-f="res">' + RESOURCES.map(function (rz) { return '<option value="' + rz + '"' + (rz === f.p.res ? ' selected' : '') + '>' + cap(rz) + '</option>'; }).join('') + '</select><span class="lbl">on hand</span>';
-    if (f.kind === 'hex_el') h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px">';
+    if (f.kind === 'hex_el') h = '<span class="lbl">hex chosen on play · 12-tick cooldown</span>';
     if (f.kind === 'mob_add' || f.kind === 'mob_rem' || f.kind === 'mil_add' || f.kind === 'mil_rem')
       h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px"><span class="lbl">' + ((f.kind === 'mob_add' || f.kind === 'mob_rem') ? '⚠ armed mob — nobody’s soldiers' : '⚑ militia — belongs to a party') + '</span>';
     if (f.kind === 'cond') h = '<span class="lbl">if</span>' + statSel(f.p.stat, 'stat') +
@@ -498,7 +498,7 @@ export async function mountCardCreator(mount) {
       case 'res_remove': return 'Remove <b>' + (p.x || 0) + ' ' + esc(cap(p.res || 'food')) + '</b> from on-hand';
       case 'no_conf': return 'Put forth a <b>motion of no confidence</b>';
       case 'nat_el': return 'Carry out a <b>national election</b>';
-      case 'hex_el': return 'Carry out an <b>election in hex ' + esc(p.hex || '?') + '</b>';
+      case 'hex_el': return 'Carry out an <b>election in a chosen hex</b> (reapportions its seats)';
       case 'mob_add': return 'An <b>Armed Mob</b> rises in <b>hex ' + esc(p.hex || '?') + '</b>';
       case 'mob_rem': return 'The <b>Armed Mob</b> in <b>hex ' + esc(p.hex || '?') + '</b> disperses';
       case 'mil_add': return 'Deploy a <b>Militia</b> to <b>hex ' + esc(p.hex || '?') + '</b>';

@@ -490,9 +490,14 @@
     if (!MAP.parties.length) return '';
     var pop = Number(hex.population) || 0;
     var seatsHere = (MAP.totalSeats > 0 && MAP.natPop > 0) ? Math.round(MAP.totalSeats * pop / MAP.natPop) : 0;
-    var held = MAP.heldSeats > 0 ? MAP.parties.map(function (p) { return { p: p, n: Math.round(seatsHere * (Number(p.seats) || 0) / MAP.heldSeats) }; }).filter(function (x) { return x.n > 0; }) : [];
+    // An elected hex (schema/181) shows its real makeup; otherwise seats are projected by national share.
+    var elected = (MAP.hexSeats && MAP.hexSeats[hex.q + ',' + hex.r]) || null;
+    var held = elected
+      ? elected.map(function (row) { return { p: MAP.parties.find(function (q) { return q.id === row.party_id; }), n: row.seats }; }).filter(function (x) { return x.p && x.n > 0; })
+      : (MAP.heldSeats > 0 ? MAP.parties.map(function (p) { return { p: p, n: Math.round(seatsHere * (Number(p.seats) || 0) / MAP.heldSeats) }; }).filter(function (x) { return x.n > 0; }) : []);
     var heldChips = held.length
       ? held.map(function (x) { return '<span class="regchip" style="--c:' + (partyColor(x.p) || '#8d8d95') + '">' + esc(x.p.abbreviation || x.p.name.slice(0, 3)) + ' ×' + x.n + '</span>'; }).join('')
+        + (elected ? '<span class="hexpanel__hint"> · elected</span>' : '')
       : '<span class="hexpanel__hint">Not enough population for a seat.</span>';
     var rows = MAP.parties.filter(function (p) { return (Number(p.seats) || 0) > 0 || (Number(p.popularity) || 0) > 0; })
       .map(function (p) { return { p: p, reg: regionalApproval(p, hex), nat: MAP.amalg[p.id] || 0 }; })
@@ -548,6 +553,15 @@
         });
       }
     } catch (e) { MAP.bias = {}; }
+    // Elected regional seats (schema/181) → MAP.hexSeats['q,r'] = [{party_id, seats}]. A hex that has
+    // held an election shows its real result; one that hasn't falls back to the national-share projection.
+    MAP.hexSeats = {};
+    try {
+      var sr = await supabase.from('hex_seats').select('q, r, party_id, seats').eq('nation_id', party.nation_id);
+      (sr.error ? [] : (sr.data || [])).forEach(function (row) {
+        (MAP.hexSeats[row.q + ',' + row.r] || (MAP.hexSeats[row.q + ',' + row.r] = [])).push({ party_id: row.party_id, seats: Number(row.seats) || 0 });
+      });
+    } catch (e) { MAP.hexSeats = {}; }
     MAP.myHexes = hexes.filter(function (h) { return h.terrain === 'land' && h.nation_id === party.nation_id; });
     MAP.natPop = MAP.myHexes.reduce(function (a, h) { return a + (Number(h.population) || 0); }, 0);
     // Amalgamated national approval per party = population-weighted average of its regional approvals.
