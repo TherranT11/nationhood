@@ -23,6 +23,7 @@ const KINDS = {
   coal_down:  { label: 'Coalition health −1' },
   stat_up:    { label: 'Stat goes up by X' },
   stat_down:  { label: 'Stat goes down by X' },
+  hex_pop:    { label: 'Swing X approval at a chosen hex (you +X, or a rival −X)' },
   appoint:    { label: 'HoG must appoint you [Ministry], or…', nested: true },
   hex_el:     { label: 'Carry out election in Hex X' },
   nat_el:     { label: 'Carry out national election' },
@@ -359,6 +360,7 @@ export async function mountCardCreator(mount) {
     function num(v, field) { return '<input type="number" value="' + (v || 0) + '" data-i="' + i + '" data-f="' + field + '" min="0" max="99">'; }
     if (f.kind === 'stat_up' || f.kind === 'stat_down') h = '<span class="lbl">stat</span>' + statSel(f.p.stat, 'stat') + '<span class="lbl">by</span>' + num(f.p.x, 'x');
     if (f.kind === 'party_gain' || f.kind === 'party_lose') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">target chosen on play</span>';
+    if (f.kind === 'hex_pop') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">hex &amp; side chosen on play</span>';
     if (f.kind === 'hex_el') h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px">';
     if (f.kind === 'mob_add' || f.kind === 'mob_rem' || f.kind === 'mil_add' || f.kind === 'mil_rem')
       h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px"><span class="lbl">' + ((f.kind === 'mob_add' || f.kind === 'mob_rem') ? '⚠ armed mob — nobody’s soldiers' : '⚑ militia — belongs to a party') + '</span>';
@@ -473,6 +475,7 @@ export async function mountCardCreator(mount) {
       case 'coal_down': return 'Coalition health <b>−1</b>';
       case 'stat_up': return '<b>' + esc(p.stat || '?') + ' +' + (p.x || 0) + '</b>';
       case 'stat_down': return '<b>' + esc(p.stat || '?') + ' −' + (p.x || 0) + '</b>';
+      case 'hex_pop': return 'At a chosen hex: <b>you +' + (p.x || 0) + '</b>, or <b>a rival −' + (p.x || 0) + '</b> approval';
       case 'no_conf': return 'Put forth a <b>motion of no confidence</b>';
       case 'nat_el': return 'Carry out a <b>national election</b>';
       case 'hex_el': return 'Carry out an <b>election in hex ' + esc(p.hex || '?') + '</b>';

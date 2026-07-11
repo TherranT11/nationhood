@@ -76,21 +76,49 @@ begin
 end $$;
 revoke all on function public._apply_card_effect(text, uuid, text, jsonb, int) from public, anon, authenticated;
 
+-- A hex-scoped Party Popularity swing: ±p_delta to a party's regional tilt at one land hex, reusing
+-- the schema/163 store (party_hex_bias) that the Party page already reads as national ± lean ± bias.
+-- So this needs no new source and no new UI on the Party page. The hex must be land in p_nation
+-- (guards a spoofed q,r); accumulated bias is capped at ±40 exactly as the policy distributor (163).
+create or replace function public._apply_card_hex(p_party uuid, p_nation text, p_q int, p_r int, p_delta numeric)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if p_party is null or p_q is null or p_r is null or coalesce(p_delta, 0) = 0 then return; end if;
+  if not exists (select 1 from public.world_hexes
+                  where nation_id = p_nation and q = p_q and r = p_r and terrain = 'land') then
+    raise exception 'That hex is not land in this nation.';
+  end if;
+  insert into public.party_hex_bias (party_id, q, r, bias) values (p_party, p_q, p_r, p_delta)
+  on conflict (party_id, q, r) do update
+     set bias = greatest(-40, least(40, public.party_hex_bias.bias + excluded.bias));
+end $$;
+revoke all on function public._apply_card_hex(uuid, text, int, int, numeric) from public, anon, authenticated;
+
 -- Resolve a played card's IMMEDIATE effects. One-Off: apply every effect on a generic card, and only
 -- the 'both'-sided effects on a stance card (the d/r sides wait for party stance). Government Choice:
 -- apply the reward to the player now (the options are a decision — Phase 3b-2). Double-Sided: both
--- sides are stance-gated, so nothing fires yet.
-drop function if exists public._resolve_card_effects(text, uuid, jsonb, int);   -- old form (no target)
-create or replace function public._resolve_card_effects(p_nation text, p_party uuid, p_target uuid, p_def jsonb, p_tick int)
+-- sides are stance-gated, so nothing fires yet. p_q/p_r are the hex chosen on play (for a 'hex_pop'
+-- effect): with a chosen rival (p_target) it's −x on that rival there, otherwise +x on the player there.
+drop function if exists public._resolve_card_effects(text, uuid, jsonb, int);        -- pre-target form
+drop function if exists public._resolve_card_effects(text, uuid, uuid, jsonb, int);   -- pre-hex form
+create or replace function public._resolve_card_effects(p_nation text, p_party uuid, p_target uuid, p_q int, p_r int, p_def jsonb, p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_mech text; v_generic boolean; e jsonb; v_rk text;
+declare v_mech text; v_generic boolean; e jsonb; v_rk text; v_x numeric;
 begin
   v_mech := coalesce(p_def->>'mech', 'oneoff');
   v_generic := (p_def->>'type' = 'generic');
   if v_mech = 'oneoff' then
     for e in select value from jsonb_array_elements(coalesce(p_def->'fx', '[]'::jsonb)) loop
       if v_generic or coalesce(e->>'side', 'both') = 'both' then
-        perform public._apply_card_effect(p_nation, p_target, e->>'kind', e->'p', p_tick);   -- party effects hit the chosen target
+        if e->>'kind' = 'hex_pop' then
+          v_x := coalesce(public._to_num(e->'p'->>'x'), 0);   -- hex-scoped popularity: you +x, or a rival −x
+          if p_target is not null
+            then perform public._apply_card_hex(p_target, p_nation, p_q, p_r, -v_x);
+            else perform public._apply_card_hex(p_party,  p_nation, p_q, p_r,  v_x);
+          end if;
+        else
+          perform public._apply_card_effect(p_nation, p_target, e->>'kind', e->'p', p_tick);   -- party effects hit the chosen target
+        end if;
       end if;
     end loop;
   elsif v_mech = 'choice' then
@@ -100,6 +128,6 @@ begin
     end if;
   end if;
 end $$;
-revoke all on function public._resolve_card_effects(text, uuid, uuid, jsonb, int) from public, anon, authenticated;
+revoke all on function public._resolve_card_effects(text, uuid, uuid, int, int, jsonb, int) from public, anon, authenticated;
 
 notify pgrst, 'reload schema';

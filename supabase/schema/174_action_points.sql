@@ -93,8 +93,9 @@ grant execute on function public.card_discard(uuid) to authenticated;
 -- auction (schema/172), and actions don't cost Influence. Immediate effects resolve at the end via
 -- _resolve_card_effects (schema/176). p_target is the rival party a party-scoped effect (party_gain/
 -- party_lose) lands on — chosen in the Home target picker; NULL when the card targets no party. ──
-drop function if exists public.card_play(uuid);   -- retire the 1-arg overload so p_target isn't ambiguous
-create or replace function public.card_play(p_deck_card uuid, p_target uuid default null)
+drop function if exists public.card_play(uuid);         -- retire the 1-arg overload so p_target isn't ambiguous
+drop function if exists public.card_play(uuid, uuid);   -- retire the pre-hex 2-arg overload
+create or replace function public.card_play(p_deck_card uuid, p_target uuid default null, p_hex_q int default null, p_hex_r int default null)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_uid uuid; v_dc record; v_party record; v_def jsonb; v_name text; v_tick int; v_acts int; v_tgt_nat text;
 begin
@@ -131,6 +132,17 @@ begin
   v_def := v_dc.definition;
   v_acts := greatest(1, least(6, coalesce((v_def->>'acts')::int, 1)));   -- the card's Action Points
 
+  -- A hex_pop effect needs a hex picked on play. If the card carries one (generic, or a 'both'-sided
+  -- stance effect) but no hex was chosen, stop before consuming the card. The hex is validated against
+  -- the nation's land in _apply_card_hex (schema/176); an atomic play rolls back on a bad hex.
+  if coalesce(v_def->>'persistV', 'no') <> 'yes'
+     and (p_hex_q is null or p_hex_r is null)
+     and exists (select 1 from jsonb_array_elements(coalesce(v_def->'fx', '[]'::jsonb)) e
+                  where e.value->>'kind' = 'hex_pop'
+                    and (v_def->>'type' = 'generic' or coalesce(e.value->>'side', 'both') = 'both')) then
+    raise exception 'Pick a hex on the map to play this card.';
+  end if;
+
   -- Deferred (purchase-by-stance): once parties can hold a stance, gate the playable side on reqD/reqR here.
   update public.parties   set action_points = v_acts, turn_acted_tick = v_tick
    where id = v_party.id;
@@ -155,11 +167,11 @@ begin
   if coalesce(v_def->>'persistV', 'no') = 'yes' then
     perform public._mint_card_modifier(v_dc.nation_id, v_party.id, v_def, v_tick);
   else
-    perform public._resolve_card_effects(v_dc.nation_id, v_party.id, p_target, v_def, v_tick);
+    perform public._resolve_card_effects(v_dc.nation_id, v_party.id, p_target, p_hex_q, p_hex_r, v_def, v_tick);
     perform public._create_card_decision(v_dc.nation_id, v_party.id, p_deck_card, v_def, v_tick);
   end if;
 end $$;
-grant execute on function public.card_play(uuid, uuid) to authenticated;
+grant execute on function public.card_play(uuid, uuid, integer, integer) to authenticated;
 
 -- Supersedes schema/173's _advance_turns: same rotation, but as the cursor lands on a party (its new
 -- turn begins) we clear that party's Action Points — unspent AP lasts only until your next turn, then
