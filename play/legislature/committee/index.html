@@ -30,6 +30,14 @@
   .chg__arr{color:var(--soft);font-weight:800}
   .desc{color:var(--muted);font-size:13.5px;line-height:1.55}
   .intro{font-size:14px;line-height:1.6;color:var(--ink);font-style:italic;border-left:3px solid var(--line2,#D9D6D0);padding-left:14px;margin-top:12px}
+  .billfx{display:flex;flex-wrap:wrap;gap:10px}
+  .billfx__g{flex:1 1 200px;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .billfx__g.pass{border-left:3px solid var(--green)}
+  .billfx__g.fail{border-left:3px solid var(--red)}
+  .billfx__h{display:block;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:6px}
+  .billfx__l{font-size:13px;color:var(--ink);line-height:1.55}
+  .billfx__l.dim{color:var(--muted);font-style:italic}
+  .billfx__l b{color:var(--indigo)}
 
   .endr{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
   .endr__chip{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;padding:5px 10px;border-radius:20px;border:1px solid;background:var(--surface)}
@@ -71,7 +79,8 @@
 
       <div class="card" id="billCard" hidden>
         <h2>The Bill</h2>
-        <div class="chg"><span class="chg__o" id="billFrom">—</span><span class="chg__arr">→</span><span class="chg__o to" id="billTo">—</span></div>
+        <div class="chg" id="billChg"><span class="chg__o" id="billFrom">—</span><span class="chg__arr">→</span><span class="chg__o to" id="billTo">—</span></div>
+        <div class="billfx" id="billFx" hidden></div>
         <p class="desc" id="billDesc"></p>
         <div class="intro" id="billIntro" hidden></div>
       </div>
@@ -104,6 +113,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { policyOptions, policyOptionIdx } from '/policies.js';
   import { committeeEndorse, committeePush, committeePost } from '/proposals.js';
+  import { cardEffectText } from '/card-effect-text.js';   // one source for a Committee Bill's effect text
 
   mountTopbar();
   mountSidenav();
@@ -133,6 +143,19 @@
   function renderBill() {
     var pl = PROP.payload || {};
     document.getElementById('cTitle').textContent = PROP.title || 'Bill';
+    // A Committee Bill card (schema/183): show its authored pass/fail effects instead of a law From→To.
+    if (PROP.kind === 'card_bill') {
+      document.getElementById('billChg').hidden = true;
+      document.getElementById('billDesc').hidden = true;
+      var list = function (arr) { return (Array.isArray(arr) ? arr : []).map(function (e) { return '<div class="billfx__l">' + cardEffectText(e.kind, e.p) + '</div>'; }).join(''); };
+      var pass = list(pl.pass), fail = list(pl.fail);
+      document.getElementById('billFx').innerHTML =
+        '<div class="billfx__g pass"><span class="billfx__h">If it passes</span>' + (pass || '<div class="billfx__l dim">no effects</div>') + '</div>' +
+        (fail ? '<div class="billfx__g fail"><span class="billfx__h">If it fails</span>' + fail + '</div>' : '');
+      document.getElementById('billFx').hidden = false;
+      document.getElementById('billCard').hidden = false;
+      return;
+    }
     var toName = pl.option_name || (DEF && (policyOptions(DEF)[pl.option_idx] || {}).name) || '—';
     var fromName = '—';
     if (DEF) { var ci = policyOptionIdx(DEF, NAT_POLICIES, pl.policy_id); fromName = (policyOptions(DEF)[ci] || {}).name || '—'; }

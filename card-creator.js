@@ -9,6 +9,7 @@
 // so the panel works in both light and dark themes.
 import { supabase } from '/supabase.js';
 import { esc } from '/util.js';   // shared HTML-escape (one source)
+import { cardEffectText, resLabel } from '/card-effect-text.js';   // one source for effect → text (shared with the legislature pages)
 const cap = function (s) { return (s || '').charAt(0).toUpperCase() + (s || '').slice(1); };   // Title-case a word (one source)
 
 // ---- effect vocabulary (Phase 3 interprets these; the creator only authors them) ----
@@ -19,8 +20,6 @@ const MINISTRIES = ['Defence', 'Treasury', 'Interior', 'Foreign Affairs', 'Trade
 // The nation's on-hand stockpile keys (server source: nations.on_hand, schema/113). Stored lowercase.
 // food/goods/services/military/energy are consumed by the economy; the rest are held stockpiles a card can move.
 const RESOURCES = ['food', 'goods', 'services', 'military', 'energy', 'minerals', 'diplomacy', 'army', 'navy', 'air_wings'];
-const RES_LABEL = { air_wings: 'Air Wings' };            // multi-word display overrides; the rest use cap()
-const resLabel = function (k) { return RES_LABEL[k] || cap(k); };
 // The resources a Produce cycle outputs (server source: economy_produce, schema/113) — the ones a
 // timed production modifier can boost/cut. A subset of RESOURCES (no army/navy/air_wings, which aren't produced).
 const PROD_RESOURCES = ['energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy'];
@@ -650,36 +649,9 @@ export async function mountCardCreator(mount) {
   };
 
   /* ── preview ── */
-  function fxText(kind, p) {
-    switch (kind) {
-      case 'party_gain': return 'Targeted party <b>gains ' + (p.x || 0) + ' approval</b>';
-      case 'party_lose': return 'Targeted party <b>loses ' + (p.x || 0) + ' approval</b>';
-      case 'decider_gain': return 'The deciding party <b>gains ' + (p.x || 0) + ' approval</b>';
-      case 'decider_lose': return 'The deciding party <b>loses ' + (p.x || 0) + ' approval</b>';
-      case 'coal_up': return 'Coalition health <b>+1</b>';
-      case 'coal_down': return 'Coalition health <b>−1</b>';
-      case 'stat_up': return '<b>' + esc(p.stat || '?') + ' +' + (p.x || 0) + '</b>';
-      case 'stat_down': return '<b>' + esc(p.stat || '?') + ' −' + (p.x || 0) + '</b>';
-      case 'hex_pop': return 'At a chosen hex: <b>you +' + (p.x || 0) + '</b>, or <b>a rival −' + (p.x || 0) + '</b> approval';
-      case 'res_add': return 'Add <b>' + (p.x || 0) + ' ' + esc(resLabel(p.res || 'food')) + '</b> to on-hand';
-      case 'res_remove': return 'Remove <b>' + (p.x || 0) + ' ' + esc(resLabel(p.res || 'food')) + '</b> from on-hand';
-      case 'rel_up': return 'Relations with <b>' + esc(nationName(p.nation) || 'a nation') + '</b> rise by <b>' + (p.x || 0) + '</b>';
-      case 'rel_down': return 'Relations with <b>' + esc(nationName(p.nation) || 'a nation') + '</b> fall by <b>' + (p.x || 0) + '</b>';
-      case 'prod_up': return '<b>' + esc(resLabel(p.res || 'energy')) + '</b> production <b>+' + (p.x || 0) + '</b> for <b>' + (p.ticks || 12) + '</b> ticks';
-      case 'prod_down': return '<b>' + esc(resLabel(p.res || 'energy')) + '</b> production <b>−' + (p.x || 0) + '</b> for <b>' + (p.ticks || 12) + '</b> ticks';
-      case 'no_conf': return 'Put forth a <b>motion of no confidence</b>';
-      case 'nat_el': return 'Carry out a <b>national election</b>';
-      case 'hex_el': return 'Carry out an <b>election in a chosen hex</b> (reapportions its seats)';
-      case 'mob_add': return 'An <b>Armed Mob</b> rises in <b>hex ' + esc(p.hex || '?') + '</b>';
-      case 'mob_rem': return 'The <b>Armed Mob</b> in <b>hex ' + esc(p.hex || '?') + '</b> disperses';
-      case 'mil_add': return 'Deploy a <b>Militia</b> to <b>hex ' + esc(p.hex || '?') + '</b>';
-      case 'mil_rem': return 'The <b>Militia</b> in <b>hex ' + esc(p.hex || '?') + '</b> stands down';
-      case 'appoint': return 'Head of Government must <b>appoint you to ' + esc(p.min || '?') + '</b>, or: ' + fxText(p.nk || 'party_lose', p.np || {});
-      case 'cond': return 'IF <b>' + esc(p.stat || '?') + '</b> is ' + (p.dir || 'above') + ' <b>' + (p.x || 0) + '</b>, then: ' + fxText(p.nk || 'party_lose', p.np || {});
-      case 'event': return '<b>Decision:</b> “' + esc(p.txt || '…') + '” → ' + fxText(p.nk || 'party_lose', p.np || {});
-    }
-    return '';
-  }
+  // One source for effect text (card-effect-text.js), threaded with this creator's nation-name lookup
+  // so a relations effect reads the picked nation's name in the preview.
+  function fxText(kind, p) { return cardEffectText(kind, p, nationName); }
   function renderPreview() {
     var ax = axisLabels();
     $('pName').textContent = state.name || 'Untitled Card';

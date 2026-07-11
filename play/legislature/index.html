@@ -55,6 +55,15 @@
   .lawchg__k{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
   .lawchg__v{font-weight:700;font-size:14px;color:var(--ink);text-align:right}
   .lawchg__v.hl{color:var(--indigo)}
+  /* Committee Bill — the authored "if passes / if fails" effect lists */
+  .billfx{display:flex;flex-wrap:wrap;gap:9px;margin:11px 0 3px}
+  .billfx__g{flex:1 1 180px;border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+  .billfx__g.pass{border-left:3px solid var(--green)}
+  .billfx__g.fail{border-left:3px solid var(--red)}
+  .billfx__h{display:block;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:5px}
+  .billfx__l{font-size:12.5px;color:var(--ink);line-height:1.5}
+  .billfx__l.dim{color:var(--soft);font-style:italic}
+  .billfx__l b{color:var(--indigo)}
   /* vote bar + the outright-majority threshold marker (tutorial's tally shape) */
   .votewrap{position:relative;margin:11px 0 7px}
   .votebar{display:flex;height:9px;border-radius:6px;overflow:hidden;background:var(--chip)}
@@ -155,6 +164,7 @@
   import { fetchProposals, fetchVotes, proposalToFloor, castVote, tallyVotes, proposalOutcome, proposalLocked, fetchPolicies } from '/proposals.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { policyOptions, policyOptionIdx } from '/policies.js';
+  import { cardEffectText } from '/card-effect-text.js';   // one source for a Committee Bill's effect text
 
   mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -227,6 +237,16 @@
       '<div class="lawchg__row"><span class="lawchg__k">Current Law</span><span class="lawchg__v">' + esc(current) + '</span></div>' +
       '<div class="lawchg__row"><span class="lawchg__k">Proposed Change</span><span class="lawchg__v hl">' + esc(proposed) + '</span></div></div>';
   }
+  // A Committee Bill card's authored effects (schema/183) — what fires if it passes, and if it fails —
+  // so parties vote knowing what the bill does. Shares the card-creator's describer (card-effect-text.js).
+  function billEffects(p){
+    if (p.kind !== 'card_bill' || !p.payload) return '';
+    var list = function(arr){ return (Array.isArray(arr) ? arr : []).map(function(e){ return '<div class="billfx__l">' + cardEffectText(e.kind, e.p) + '</div>'; }).join(''); };
+    var pass = list(p.payload.pass), fail = list(p.payload.fail);
+    return '<div class="billfx">' +
+      '<div class="billfx__g pass"><span class="billfx__h">If it passes</span>' + (pass || '<div class="billfx__l dim">no effects</div>') + '</div>' +
+      (fail ? '<div class="billfx__g fail"><span class="billfx__h">If it fails</span>' + fail + '</div>' : '') + '</div>';
+  }
   // The full bill (sponsor's introduction, the policy spectrum, projected impact, division) now
   // lives on its own page — /play/legislature/bill/?id=… — reached via the "View full bill" link.
   // It reuses the same shared calc/fetch modules, so a bill reads there exactly as it does here.
@@ -253,7 +273,7 @@
     // Law measures open into their own full bill page (sponsor's introduction, the policy
     // spectrum, projected impact, division). Other kinds keep the compact card here.
     var isLaw = p.kind === 'law';
-    var top = introLine(p) + lawChange(p);
+    var top = introLine(p) + lawChange(p) + billEffects(p);
     var toggle = isLaw ? '<a class="billtoggle" href="/play/legislature/bill/?id=' + encodeURIComponent(p.id) + '">View full bill ▸</a>' : '';
     return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + top + toggle +
       '<div class="votewrap"><div class="votebar"><span class="va" style="width:' + ayePct + '%"></span><span class="vn" style="width:' + nayPct + '%"></span></div>' +
@@ -272,7 +292,7 @@
   function agendaCard(p){
     var mine = p.party_id === ST.party.id;
     var when = p.scheduled_tick != null ? tickToDate(p.scheduled_tick) : '—';
-    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + introLine(p) + lawChange(p) +
+    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + introLine(p) + lawChange(p) + billEffects(p) +
       (p.kind === 'law' ? '<a class="billtoggle" href="/play/legislature/bill/?id=' + encodeURIComponent(p.id) + '">View full bill ▸</a>' : '') +
       '<div class="agwhen">Reaches the floor · <b>' + esc(when) + '</b></div>' +
       '<div class="mrow">' + (mine ? '<button class="sendfloor" data-send="' + esc(p.id) + '" type="button">Send to the floor now (1 action)</button>' : '<span class="youvote">Awaiting its scheduled month</span>') + '</div></div>';
@@ -280,7 +300,7 @@
   // A law bill sitting in committee (schema/154) — links to its own page (chat + endorse + push).
   function committeeCard(p){
     var left = Math.max(0, FLOOR_WINDOW - (ST.tick - (p.opened_tick || ST.tick)));
-    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + introLine(p) + lawChange(p) +
+    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + introLine(p) + lawChange(p) + billEffects(p) +
       '<div class="agwhen">In committee · <b>' + left + ' tick' + (left === 1 ? '' : 's') + ' left</b></div>' +
       '<div class="mrow"><a class="sendfloor" href="/play/legislature/committee/?id=' + encodeURIComponent(p.id) + '" style="text-decoration:none">Open committee ▸</a></div></div>';
   }
