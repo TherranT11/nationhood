@@ -9,6 +9,7 @@
 // so the panel works in both light and dark themes.
 import { supabase } from '/supabase.js';
 import { esc } from '/util.js';   // shared HTML-escape (one source)
+const cap = function (s) { return (s || '').charAt(0).toUpperCase() + (s || '').slice(1); };   // Title-case a word (one source)
 
 // ---- effect vocabulary (Phase 3 interprets these; the creator only authors them) ----
 const STATS = ['Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Public Debt', 'Interest Rates', 'Crime', 'Immigration', 'Extremism', 'Birth Rates', 'Unemployment', 'Poverty', 'Wages', 'Innovation', 'Infrastructure', 'Prosperity', 'Press Freedom', 'Social Integration', 'Health', 'Education', 'Pension Quality', 'Rule of Law', 'Standard of Living', 'Housing Affordability', 'Equity Between Generations', 'Armed Forces Funding', 'Military Research', 'Cybersecurity', 'CO2 Emissions', 'Energy Prices', 'Environment', 'National Pride', 'Civil Liberties', 'Minority Rights', 'Corruption', 'Religious Influence'];
@@ -376,7 +377,7 @@ export async function mountCardCreator(mount) {
     if (f.kind === 'party_gain' || f.kind === 'party_lose') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">target chosen on play</span>';
     if (f.kind === 'hex_pop') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">hex &amp; side chosen on play</span>';
     if (f.kind === 'res_add' || f.kind === 'res_remove') h = '<span class="lbl">' + (f.kind === 'res_add' ? 'add' : 'remove') + '</span>' + num(f.p.x, 'x') +
-      '<select data-i="' + i + '" data-f="res">' + RESOURCES.map(function (rz) { return '<option value="' + rz + '"' + (rz === f.p.res ? ' selected' : '') + '>' + rz.charAt(0).toUpperCase() + rz.slice(1) + '</option>'; }).join('') + '</select><span class="lbl">on hand</span>';
+      '<select data-i="' + i + '" data-f="res">' + RESOURCES.map(function (rz) { return '<option value="' + rz + '"' + (rz === f.p.res ? ' selected' : '') + '>' + cap(rz) + '</option>'; }).join('') + '</select><span class="lbl">on hand</span>';
     if (f.kind === 'hex_el') h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px">';
     if (f.kind === 'mob_add' || f.kind === 'mob_rem' || f.kind === 'mil_add' || f.kind === 'mil_rem')
       h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px"><span class="lbl">' + ((f.kind === 'mob_add' || f.kind === 'mob_rem') ? '⚠ armed mob — nobody’s soldiers' : '⚑ militia — belongs to a party') + '</span>';
@@ -493,8 +494,8 @@ export async function mountCardCreator(mount) {
       case 'stat_up': return '<b>' + esc(p.stat || '?') + ' +' + (p.x || 0) + '</b>';
       case 'stat_down': return '<b>' + esc(p.stat || '?') + ' −' + (p.x || 0) + '</b>';
       case 'hex_pop': return 'At a chosen hex: <b>you +' + (p.x || 0) + '</b>, or <b>a rival −' + (p.x || 0) + '</b> approval';
-      case 'res_add': return 'Add <b>' + (p.x || 0) + ' ' + esc((p.res || 'food').charAt(0).toUpperCase() + (p.res || 'food').slice(1)) + '</b> to on-hand';
-      case 'res_remove': return 'Remove <b>' + (p.x || 0) + ' ' + esc((p.res || 'food').charAt(0).toUpperCase() + (p.res || 'food').slice(1)) + '</b> from on-hand';
+      case 'res_add': return 'Add <b>' + (p.x || 0) + ' ' + esc(cap(p.res || 'food')) + '</b> to on-hand';
+      case 'res_remove': return 'Remove <b>' + (p.x || 0) + ' ' + esc(cap(p.res || 'food')) + '</b> from on-hand';
       case 'no_conf': return 'Put forth a <b>motion of no confidence</b>';
       case 'nat_el': return 'Carry out a <b>national election</b>';
       case 'hex_el': return 'Carry out an <b>election in hex ' + esc(p.hex || '?') + '</b>';
