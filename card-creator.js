@@ -25,6 +25,8 @@ const KINDS = {
   cond:       { label: 'IF [stat] is above/below X, then…', nested: true },
   party_gain: { label: 'Targeted party gains X approval' },
   party_lose: { label: 'Targeted party loses X approval' },
+  decider_gain: { label: 'Deciding party gains X approval' },   // choice cards: the party that resolves it
+  decider_lose: { label: 'Deciding party loses X approval' },
   coal_up:    { label: 'Coalition health +1' },
   coal_down:  { label: 'Coalition health −1' },
   stat_up:    { label: 'Stat goes up by X' },
@@ -453,6 +455,7 @@ export async function mountCardCreator(mount) {
     function num(v, field) { return '<input type="number" value="' + (v || 0) + '" data-i="' + i + '" data-f="' + field + '" min="0" max="99">'; }
     if (f.kind === 'stat_up' || f.kind === 'stat_down') h = '<span class="lbl">stat</span>' + statSel(f.p.stat, 'stat') + '<span class="lbl">by</span>' + num(f.p.x, 'x');
     if (f.kind === 'party_gain' || f.kind === 'party_lose') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">target chosen on play</span>';
+    if (f.kind === 'decider_gain' || f.kind === 'decider_lose') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">for the party that decides</span>';
     if (f.kind === 'hex_pop') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">hex &amp; side chosen on play</span>';
     if (f.kind === 'res_add' || f.kind === 'res_remove') h = '<span class="lbl">' + (f.kind === 'res_add' ? 'add' : 'remove') + '</span>' + num(f.p.x, 'x') +
       '<select data-i="' + i + '" data-f="res">' + RESOURCES.map(function (rz) { return '<option value="' + rz + '"' + (rz === f.p.res ? ' selected' : '') + '>' + resLabel(rz) + '</option>'; }).join('') + '</select><span class="lbl">on hand</span>';
@@ -546,7 +549,7 @@ export async function mountCardCreator(mount) {
         var special = sr ? sr.s.fx[sr.i] : (or ? or.o.fx[or.j] : null);
         if (special) {
           var r = special;
-          if (fd === 'kind') { r.kind = v; if (v !== 'none') r.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_gain', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : { stat: STATS[1], x: 2 }; renderFx(); }
+          if (fd === 'kind') { r.kind = v; if (v !== 'none') r.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_gain', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 2 }; renderFx(); }
           else if (fd === 'nk') { r.p.nk = v; r.p.np = r.p.np || {}; renderFx(); }
           else if (fd === 'nstat') { r.p.np = r.p.np || {}; r.p.np.stat = v; }
           else if (fd === 'nx') { r.p.np = r.p.np || {}; r.p.np.x = +v; }
@@ -555,7 +558,7 @@ export async function mountCardCreator(mount) {
         }
         var f = activeArr()[+el.dataset.i];
         if (fd === 'txt' && state.mech === 'choice') { f.txt = v; renderPreview(); return; }
-        if (fd === 'kind') { f.kind = v; f.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : { stat: STATS[1], x: 3 }; renderFx(); }
+        if (fd === 'kind') { f.kind = v; f.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 3 }; renderFx(); }
         else if (fd === 'nk') { f.p.nk = v; f.p.np = f.p.np || {}; renderFx(); }
         else if (fd === 'nstat') { f.p.np = f.p.np || {}; f.p.np.stat = v; }
         else if (fd === 'nx') { f.p.np = f.p.np || {}; f.p.np.x = +v; }
@@ -592,6 +595,8 @@ export async function mountCardCreator(mount) {
     switch (kind) {
       case 'party_gain': return 'Targeted party <b>gains ' + (p.x || 0) + ' approval</b>';
       case 'party_lose': return 'Targeted party <b>loses ' + (p.x || 0) + ' approval</b>';
+      case 'decider_gain': return 'The deciding party <b>gains ' + (p.x || 0) + ' approval</b>';
+      case 'decider_lose': return 'The deciding party <b>loses ' + (p.x || 0) + ' approval</b>';
       case 'coal_up': return 'Coalition health <b>+1</b>';
       case 'coal_down': return 'Coalition health <b>−1</b>';
       case 'stat_up': return '<b>' + esc(p.stat || '?') + ' +' + (p.x || 0) + '</b>';

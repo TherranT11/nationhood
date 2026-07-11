@@ -53,8 +53,10 @@ begin
   case p_kind
     when 'stat_up'   then perform public._apply_card_stat(p_nation, p_p->>'stat',  v_x);
     when 'stat_down' then perform public._apply_card_stat(p_nation, p_p->>'stat', -v_x);
-    when 'party_gain' then if p_target is not null then perform public._apply_party_effect(p_target, p_nation, jsonb_build_object('t', 'Party Popularity', 'v',  v_x)); end if;
-    when 'party_lose' then if p_target is not null then perform public._apply_party_effect(p_target, p_nation, jsonb_build_object('t', 'Party Popularity', 'v', -v_x)); end if;
+    -- party_gain/lose hit the play-time chosen party; decider_gain/lose hit the party resolving a
+    -- Government-Choice decision (card_decide passes it as p_target). Same write, different target source.
+    when 'party_gain', 'decider_gain' then if p_target is not null then perform public._apply_party_effect(p_target, p_nation, jsonb_build_object('t', 'Party Popularity', 'v',  v_x)); end if;
+    when 'party_lose', 'decider_lose' then if p_target is not null then perform public._apply_party_effect(p_target, p_nation, jsonb_build_object('t', 'Party Popularity', 'v', -v_x)); end if;
     when 'coal_up' then
       select id into v_gov from public.governments where nation_id = p_nation and status = 'active';
       if v_gov is not null then perform public._coalition_health_restore(v_gov, 1); end if;

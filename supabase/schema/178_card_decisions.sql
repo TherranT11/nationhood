@@ -108,11 +108,14 @@ begin
   v_opt := v_d.options -> p_option;
   select current_tick into v_tick from public.game_state where id;
   -- Apply every effect on the chosen option (an option carries up to 3). Nation/coalition effects land;
-  -- a party-targeted option is left untargeted for now (target-picker is a later pass), consistent with
-  -- the immediate engine. Supports the legacy single-effect shape ({kind,p}) too via coalesce.
+  -- decider_gain/decider_lose target the resolving party (v_resolver); a play-time party-targeted effect
+  -- (party_gain/lose) is still left untargeted here — no target-picker on a decision. Supports the legacy
+  -- single-effect shape ({kind,p}) too via coalesce.
   for e in select value from jsonb_array_elements(
              case when jsonb_typeof(v_opt->'fx') = 'array' then v_opt->'fx' else jsonb_build_array(v_opt) end) loop
-    perform public._apply_card_effect(v_d.nation_id, null, e->>'kind', e->'p', v_tick);
+    perform public._apply_card_effect(v_d.nation_id,
+      case when e->>'kind' in ('decider_gain', 'decider_lose') then v_resolver else null end,
+      e->>'kind', e->'p', v_tick);
   end loop;
 
   update public.card_decisions set status = 'resolved', chosen_idx = p_option where id = p_decision;
