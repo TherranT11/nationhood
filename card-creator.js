@@ -17,7 +17,10 @@ const STATS = ['Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Public 
 // Handler routes to an actual minister.
 const MINISTRIES = ['Defence', 'Treasury', 'Interior', 'Foreign Affairs', 'Trade', 'Labour', 'Justice', 'Health', 'Education', 'Energy', 'Economic Development'];
 // The nation's on-hand stockpile keys (server source: nations.on_hand, schema/113). Stored lowercase.
-const RESOURCES = ['food', 'goods', 'services', 'military'];
+// food/goods/services/military are consumed by the economy; the rest are held stockpiles a card can move.
+const RESOURCES = ['food', 'goods', 'services', 'military', 'minerals', 'diplomacy', 'army', 'navy', 'air_wings'];
+const RES_LABEL = { air_wings: 'Air Wings' };            // multi-word display overrides; the rest use cap()
+const resLabel = function (k) { return RES_LABEL[k] || cap(k); };
 const KINDS = {
   cond:       { label: 'IF [stat] is above/below X, then…', nested: true },
   party_gain: { label: 'Targeted party gains X approval' },
@@ -113,7 +116,8 @@ const CSS = `
 /* preview column */
 .cc .prevcol{position:sticky;top:16px}
 .cc .prevlabel{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--soft);margin-bottom:12px}
-.cc .cardc{background:var(--surface);border:1px solid var(--line2);border-radius:13px;overflow:hidden}
+.cc .cardc{background:var(--surface);border:1px solid var(--line2);border-radius:13px;overflow:hidden;position:relative}
+.cc .c-flag{position:absolute;top:10px;right:10px;width:26px;height:17px;object-fit:cover;border-radius:3px;border:1px solid var(--line);box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .cc .stripe{height:4px}
 .cc .c-body{padding:14px 15px 13px}
 .cc .c-kind{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
@@ -145,6 +149,8 @@ const CSS = `
 .cc .savebtn{width:100%;margin-top:14px;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#fff;background:var(--indigo);border:1px solid var(--indigo);border-radius:10px;padding:13px 0;cursor:pointer}
 .cc .savebtn:hover{filter:brightness(1.08)}
 .cc .savebtn:disabled{opacity:.55;cursor:not-allowed}
+.cc .newbtn{width:100%;margin-top:8px;font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:var(--field);border:1px dashed var(--line2);border-radius:10px;padding:10px 0;cursor:pointer}
+.cc .newbtn:hover{color:var(--ink);border-color:var(--soft)}
 .cc .savemsg{font-family:'Space Mono',monospace;font-size:9.5px;text-align:center;margin-top:9px;min-height:12px;line-height:1.5}
 .cc .savemsg.ok{color:var(--green)} .cc .savemsg.err{color:var(--red)}
 .cc .seedbtn{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:var(--field);border:1px dashed var(--line2);border-radius:9px;padding:9px 12px;cursor:pointer;margin-bottom:8px}
@@ -156,8 +162,10 @@ const CSS = `
 .cc .poolrow:first-child{border-top:none}
 .cc .poolrow .pn{font-weight:700;color:var(--ink)}
 .cc .poolrow .pm{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);text-transform:uppercase;letter-spacing:.04em}
-.cc .poolrow .pdel{margin-left:auto;border:1px solid var(--line2);background:var(--field);color:var(--soft);border-radius:7px;padding:5px 9px;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;cursor:pointer}
+.cc .poolrow .pdel{border:1px solid var(--line2);background:var(--field);color:var(--soft);border-radius:7px;padding:5px 9px;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;cursor:pointer}
 .cc .poolrow .pdel:hover{color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,transparent)}
+.cc .poolrow .pedit{margin-left:auto;border:1px solid var(--line2);background:var(--field);color:var(--soft);border-radius:7px;padding:5px 9px;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;cursor:pointer}
+.cc .poolrow .pedit:hover{color:var(--indigo);border-color:color-mix(in srgb,var(--indigo) 45%,transparent)}
 .cc .poolempty{color:var(--soft);font-size:12px;padding:8px 0}
 `;
 
@@ -262,6 +270,7 @@ const TEMPLATE = `
   <div class="prevlabel">Live Preview</div>
   <div class="cardc">
     <div class="stripe" id="pStripe"></div>
+    <img class="c-flag" id="pFlag" alt="" hidden>
     <div class="c-body">
       <div class="c-kind" id="pKind"></div>
       <div class="c-name" id="pName"></div>
@@ -273,6 +282,7 @@ const TEMPLATE = `
   </div>
   <div class="valid" id="pValid"></div>
   <button class="savebtn" id="ccSave">Save to Card Pool</button>
+  <button class="newbtn" id="ccNew" style="display:none">+ New card</button>
   <div class="savemsg" id="ccMsg"></div>
 </div>
 `;
@@ -290,27 +300,33 @@ export async function mountCardCreator(mount) {
   mount.appendChild(root);
   const $ = function (id) { return root.querySelector('#' + id); };
 
-  var state = {
-    name: '', cost: 4, acts: 2, desc: '',
-    type: 'dr', lim: 'all', nation: '', mech: 'oneoff',
-    stanceReq: 'none', reqD: 2, reqR: 2,   // stanceReq 'none' = anyone can buy/play; 'gated' = reqD/reqR levels apply
-    fx: [
-      { side: 'd', kind: 'no_conf', p: {} },
-      { side: 'r', kind: 'stat_down', p: { stat: 'Growth', x: 4 } },
-      { side: 'both', kind: 'cond', p: { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } }
-    ],
-    copt: [
-      { txt: '', fx: [{ kind: 'stat_up', p: { stat: 'Immigration', x: 8 } }] },
-      { txt: '', fx: [{ kind: 'stat_down', p: { stat: 'Minority Rights', x: 4 } }] }
-    ],
-    dside: {
-      d: { txt: '', fx: [{ kind: 'no_conf', p: {} }] },
-      r: { txt: '', fx: [{ kind: 'stat_down', p: { stat: 'Growth', x: 4 } }] }
-    },
-    persistV: 'no', reqCard: '', allowCard: '',
-    handler: 'player',      // who resolves the card's decision: 'player' (holder decides) or a ministry name
-    afterPlay: 'discard'    // 'discard' (permanent) or 'shuffle' (back into the deck)
-  };
+  // The default state for a brand-new card. A function (not a literal) so "New card" and the initial
+  // paint both start from a clean, independent copy — the Edit flow mutates state in place.
+  function freshState() {
+    return {
+      name: '', cost: 4, acts: 2, desc: '',
+      type: 'dr', lim: 'all', nation: '', mech: 'oneoff',
+      stanceReq: 'none', reqD: 2, reqR: 2,   // stanceReq 'none' = anyone can buy/play; 'gated' = reqD/reqR levels apply
+      fx: [
+        { side: 'd', kind: 'no_conf', p: {} },
+        { side: 'r', kind: 'stat_down', p: { stat: 'Growth', x: 4 } },
+        { side: 'both', kind: 'cond', p: { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } }
+      ],
+      copt: [
+        { txt: '', fx: [{ kind: 'stat_up', p: { stat: 'Immigration', x: 8 } }] },
+        { txt: '', fx: [{ kind: 'stat_down', p: { stat: 'Minority Rights', x: 4 } }] }
+      ],
+      dside: {
+        d: { txt: '', fx: [{ kind: 'no_conf', p: {} }] },
+        r: { txt: '', fx: [{ kind: 'stat_down', p: { stat: 'Growth', x: 4 } }] }
+      },
+      persistV: 'no', reqCard: '', allowCard: '',
+      handler: 'player',      // who resolves the card's decision: 'player' (holder decides) or a ministry name
+      afterPlay: 'discard'    // 'discard' (permanent) or 'shuffle' (back into the deck)
+    };
+  }
+  var state = freshState();
+  var editingId = null;   // set to a card id while editing an existing card (Save → card_update); null = new card
   // reflect the seeded defaults into the form fields
   $('fName').value = state.name; $('fCost').value = state.cost; $('fActs').value = state.acts; $('fDesc').value = state.desc;
 
@@ -333,8 +349,9 @@ export async function mountCardCreator(mount) {
   wireSeg('reqD', 'reqD'); wireSeg('reqR', 'reqR');
   wireSeg('segPersist', 'persistV');
   wireSeg('segAfter', 'afterPlay');
-  // Decision Handler dropdown: "Player decides" (no ministry) + each ministry.
+  // Decision Handler dropdown: "Player decides", "Head of Government decides" (no ministry) + each ministry.
   $('fHandler').innerHTML = '<option value="player">Player who plays it decides</option>' +
+    '<option value="hog">Head of Government decides it</option>' +
     MINISTRIES.map(function (m) { return '<option value="' + esc(m) + '">' + esc(m) + ' Minister handles it</option>'; }).join('');
   $('fHandler').value = state.handler;
   $('fHandler').onchange = function () { state.handler = this.value; renderPreview(); };
@@ -347,6 +364,70 @@ export async function mountCardCreator(mount) {
   // nations load, so rendering here would read NATIONS before it exists.)
   function syncStance() { $('reqGrid').style.display = state.stanceReq === 'gated' ? '' : 'none'; }
   syncStance();
+
+  // Reflect the whole `state` object back into every form control — the inverse of the input handlers.
+  // Called after loadCard() (edit an existing card) or "New card" (reset) so the UI mirrors the data.
+  function syncForm() {
+    $('fName').value = state.name; $('fCost').value = state.cost; $('fActs').value = state.acts; $('fDesc').value = state.desc;
+    markSeg('segType', state.type); markSeg('segLim', state.lim); markSeg('segMech', state.mech);
+    markSeg('segPersist', state.persistV); markSeg('reqD', state.reqD); markSeg('reqR', state.reqR);
+    markSeg('segStance', state.stanceReq); markSeg('segAfter', state.afterPlay);
+    $('fHandler').value = state.handler;
+    $('fNation').style.display = state.lim === 'nation' ? 'block' : 'none';
+    $('fNation').value = state.nation;
+    syncAxis(); syncStance();
+    fillCardSelect('fReqCard', 'reqCard'); fillCardSelect('fAllowCard', 'allowCard');
+    renderFx(); renderPreview();
+  }
+
+  // Load an existing card's definition into the editor. Normalizes older shapes so the form can host
+  // every stored card: choice options / double sides may carry a single {kind,p} instead of an fx[]
+  // array (legacy authored shape), and a stored reqD/reqR means the card was Stance-gated.
+  function loadCard(id) {
+    var c = POOL.find(function (x) { return x.id === id; });
+    if (!c) return;
+    var d = c.def || {};
+    var s = freshState();
+    s.name = d.name || ''; s.cost = Number(d.cost) || 0; s.acts = Math.max(1, Math.min(6, Number(d.acts) || 1)); s.desc = d.desc || '';
+    s.type = d.type || 'dr'; s.lim = d.lim || 'all'; s.nation = d.nation || '';
+    s.mech = d.mech || 'oneoff';
+    s.persistV = d.persistV === 'yes' ? 'yes' : 'no';
+    s.reqCard = d.reqCard || ''; s.allowCard = d.allowCard || '';
+    s.handler = d.handler || 'player';
+    s.afterPlay = d.afterPlay === 'shuffle' ? 'shuffle' : 'discard';
+    // A stance card with stored reqD/reqR was gated; otherwise no stance was required.
+    if (d.type !== 'generic' && (d.reqD != null || d.reqR != null)) {
+      s.stanceReq = 'gated'; s.reqD = Number(d.reqD) || 2; s.reqR = Number(d.reqR) || 2;
+    } else { s.stanceReq = 'none'; }
+    // Effect payloads — keep the defaults for whichever mechanic isn't in use, load the one that is.
+    var normFx = function (arr) { return (Array.isArray(arr) ? arr : []).map(function (f) { return { kind: f.kind || 'stat_up', p: f.p || {}, side: f.side }; }); };
+    var normSlot = function (o) {   // a choice option / double side → { txt, fx:[…] }, tolerating a legacy single {kind,p}
+      if (o && Array.isArray(o.fx)) return { txt: o.txt || '', fx: normFx(o.fx) };
+      if (o && o.kind) return { txt: o.txt || '', fx: [{ kind: o.kind, p: o.p || {} }] };
+      return { txt: (o && o.txt) || '', fx: [{ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }] };
+    };
+    if (s.mech === 'choice' && Array.isArray(d.copt) && d.copt.length) {
+      s.copt = d.copt.map(normSlot);
+    } else if (s.mech === 'double' && d.dside) {
+      s.dside = { d: normSlot(d.dside.d), r: normSlot(d.dside.r) };
+    } else if (s.mech === 'oneoff' && Array.isArray(d.fx)) {
+      s.fx = d.fx.map(function (f) { return { side: f.side || 'both', kind: f.kind || 'stat_up', p: f.p || {} }; });
+    }
+    state = s; editingId = id;
+    syncForm();
+    updateSaveMode();
+    root.scrollIntoView && root.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Reset the editor to a blank new card (leaves the pool untouched).
+  function newCard() { state = freshState(); editingId = null; syncForm(); updateSaveMode(); }
+
+  // Reflect edit-vs-create in the Save button + a "New card" affordance. Kept in one place so the
+  // label never drifts from what Save actually does.
+  function updateSaveMode() {
+    var btn = $('ccSave'); if (btn && !saving) btn.textContent = editingId ? 'Update card' : 'Save to Card Pool';
+    var nb = $('ccNew'); if (nb) nb.style.display = editingId ? 'inline-block' : 'none';
+  }
 
   ['fName', 'fCost', 'fActs', 'fDesc'].forEach(function (id) {
     $(id).oninput = function (e) {
@@ -381,7 +462,7 @@ export async function mountCardCreator(mount) {
     if (f.kind === 'party_gain' || f.kind === 'party_lose') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">target chosen on play</span>';
     if (f.kind === 'hex_pop') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">hex &amp; side chosen on play</span>';
     if (f.kind === 'res_add' || f.kind === 'res_remove') h = '<span class="lbl">' + (f.kind === 'res_add' ? 'add' : 'remove') + '</span>' + num(f.p.x, 'x') +
-      '<select data-i="' + i + '" data-f="res">' + RESOURCES.map(function (rz) { return '<option value="' + rz + '"' + (rz === f.p.res ? ' selected' : '') + '>' + cap(rz) + '</option>'; }).join('') + '</select><span class="lbl">on hand</span>';
+      '<select data-i="' + i + '" data-f="res">' + RESOURCES.map(function (rz) { return '<option value="' + rz + '"' + (rz === f.p.res ? ' selected' : '') + '>' + resLabel(rz) + '</option>'; }).join('') + '</select><span class="lbl">on hand</span>';
     if (f.kind === 'hex_el') h = '<span class="lbl">hex chosen on play · 12-tick cooldown</span>';
     if (f.kind === 'mob_add' || f.kind === 'mob_rem' || f.kind === 'mil_add' || f.kind === 'mil_rem')
       h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px"><span class="lbl">' + ((f.kind === 'mob_add' || f.kind === 'mob_rem') ? '⚠ armed mob — nobody’s soldiers' : '⚑ militia — belongs to a party') + '</span>';
@@ -523,8 +604,8 @@ export async function mountCardCreator(mount) {
       case 'stat_up': return '<b>' + esc(p.stat || '?') + ' +' + (p.x || 0) + '</b>';
       case 'stat_down': return '<b>' + esc(p.stat || '?') + ' −' + (p.x || 0) + '</b>';
       case 'hex_pop': return 'At a chosen hex: <b>you +' + (p.x || 0) + '</b>, or <b>a rival −' + (p.x || 0) + '</b> approval';
-      case 'res_add': return 'Add <b>' + (p.x || 0) + ' ' + esc(cap(p.res || 'food')) + '</b> to on-hand';
-      case 'res_remove': return 'Remove <b>' + (p.x || 0) + ' ' + esc(cap(p.res || 'food')) + '</b> from on-hand';
+      case 'res_add': return 'Add <b>' + (p.x || 0) + ' ' + esc(resLabel(p.res || 'food')) + '</b> to on-hand';
+      case 'res_remove': return 'Remove <b>' + (p.x || 0) + ' ' + esc(resLabel(p.res || 'food')) + '</b> from on-hand';
       case 'no_conf': return 'Put forth a <b>motion of no confidence</b>';
       case 'nat_el': return 'Carry out a <b>national election</b>';
       case 'hex_el': return 'Carry out an <b>election in a chosen hex</b> (reapportions its seats)';
@@ -544,6 +625,8 @@ export async function mountCardCreator(mount) {
     $('pDesc').textContent = state.desc || '';
     var stripe = state.type === 'generic' ? 'var(--gen)' : state.type === 'ar' ? 'var(--auto)' : 'var(--rev)';
     $('pStripe').style.background = state.lim === 'nation' ? 'var(--nat)' : stripe;
+    var pFlag = $('pFlag'), pfSrc = state.lim === 'nation' ? nationFlag(state.nation) : '';
+    if (pfSrc) { pFlag.src = pfSrc; pFlag.hidden = false; } else { pFlag.hidden = true; pFlag.removeAttribute('src'); }
     var natName = nationName(state.nation);
     var kindTxt = state.lim === 'nation' ? 'Nation · ' + (natName || '—') : state.type === 'generic' ? 'Generic' : 'Stance · ' + ax.d.name + ' / ' + ax.r.name;
     var kindCol = state.lim === 'nation' ? 'var(--nat)' : state.type === 'generic' ? 'var(--gen)' : state.type === 'ar' ? 'var(--auto)' : 'var(--rev)';
@@ -612,6 +695,8 @@ export async function mountCardCreator(mount) {
     if (state.persistV === 'yes') v.push(['ok', '∞ Persistent — joins the national modifier board when played']);
     v.push(state.handler === 'player'
       ? ['ok', 'The player who plays it decides — no ministry gate']
+      : state.handler === 'hog'
+      ? ['ok', 'The Head of Government must resolve the decision']
       : ['ok', esc(state.handler) + ' Minister must resolve the decision']);
     v.push(state.afterPlay === 'shuffle'
       ? ['ok', '↻ Shuffles back into the deck after it resolves']
@@ -632,12 +717,13 @@ export async function mountCardCreator(mount) {
   var NATIONS = [];   // {id, name}
   var POOL = [];      // {id, name, def}
   function nationName(id) { var n = NATIONS.find(function (x) { return x.id === id; }); return n ? n.name : ''; }
+  function nationFlag(id) { var n = NATIONS.find(function (x) { return x.id === id; }); return (n && n.flag) || ''; }
   function cardName(id) { var c = POOL.find(function (x) { return x.id === id; }); return c ? c.name : id; }
 
   async function loadNations() {
     try {
-      var res = await supabase.from('nations').select('id, name').eq('dormant', false).order('name');
-      NATIONS = (res.data || []).map(function (n) { return { id: n.id, name: n.name || n.id }; });
+      var res = await supabase.from('nations').select('id, name, flag').eq('dormant', false).order('name');
+      NATIONS = (res.data || []).map(function (n) { return { id: n.id, name: n.name || n.id, flag: n.flag || '' }; });
     } catch (e) { NATIONS = []; }
     var sel = $('fNation');
     sel.innerHTML = NATIONS.length
@@ -662,8 +748,12 @@ export async function mountCardCreator(mount) {
       var d = c.def || {};
       var meta = (d.lim === 'nation' ? (nationName(d.nation) || 'One nation') : 'All nations') + ' · ' + (d.mech || 'oneoff');
       return '<div class="poolrow"><span class="pn">' + esc(c.name) + '</span><span class="pm">' + esc(meta) + '</span>' +
+        '<button class="pedit" data-id="' + esc(c.id) + '">Edit</button>' +
         '<button class="pdel" data-id="' + esc(c.id) + '">Delete</button></div>';
     }).join('');
+    el.querySelectorAll('.pedit').forEach(function (b) {
+      b.onclick = function () { loadCard(b.dataset.id); };
+    });
     el.querySelectorAll('.pdel').forEach(function (b) {
       b.onclick = async function () {
         if (!confirm('Delete this card? It is removed from every deck it was shuffled into.')) return;
@@ -702,7 +792,7 @@ export async function mountCardCreator(mount) {
     return d;
   }
 
-  /* ── save → card_create (inserts + shuffles). Locked during the call (no double-shuffle). ── */
+  /* ── save → card_create (new) or card_update (editing). Locked during the call (no double-shuffle). ── */
   var saving = false;
   $('ccSave').onclick = async function () {
     if (saving) return;
@@ -710,21 +800,32 @@ export async function mountCardCreator(mount) {
     if (!state.name.trim()) { msg.className = 'savemsg err'; msg.textContent = 'The card needs a name.'; return; }
     if (state.lim === 'nation' && !state.nation) { msg.className = 'savemsg err'; msg.textContent = 'Pick a nation for a Specific-Nation card.'; return; }
     saving = true; renderPreview();
-    var btn = $('ccSave'); btn.textContent = 'Shuffling…'; msg.className = 'savemsg'; msg.textContent = '';
+    var btn = $('ccSave'); btn.textContent = editingId ? 'Saving…' : 'Shuffling…'; msg.className = 'savemsg'; msg.textContent = '';
     try {
-      var res = await supabase.rpc('card_create', { p_definition: buildDefinition() });
+      var res = editingId
+        ? await supabase.rpc('card_update', { p_card: editingId, p_definition: buildDefinition() })
+        : await supabase.rpc('card_create', { p_definition: buildDefinition() });
       if (res.error) throw res.error;
       msg.className = 'savemsg ok';
-      msg.textContent = state.lim === 'nation'
-        ? 'Shuffled into ' + (nationName(state.nation) || state.nation) + '’s deck.'
-        : 'Shuffled into every nation’s deck.';
-      await loadPool();
+      msg.textContent = editingId
+        ? 'Card updated.'
+        : state.lim === 'nation'
+          ? 'Shuffled into ' + (nationName(state.nation) || state.nation) + '’s deck.'
+          : 'Shuffled into every nation’s deck.';
+      if (!editingId) { await loadPool(); }
+      else {
+        // Refresh the pool (name/meta may have changed) but STAY on this card so the editor keeps its state.
+        var keep = editingId; await loadPool(); editingId = keep;
+      }
     } catch (e) {
       msg.className = 'savemsg err'; msg.textContent = 'Save failed: ' + (e.message || e);
     } finally {
-      saving = false; btn.textContent = 'Save to Card Pool'; renderPreview();
+      saving = false; updateSaveMode(); renderPreview();
     }
   };
+
+  // Reset to a blank card.
+  $('ccNew').onclick = function () { newCard(); var msg = $('ccMsg'); msg.className = 'savemsg'; msg.textContent = ''; };
 
   /* ── seed all markets → seed_card_markets (fills every nation's block up to target). ── */
   var seeding = false;
