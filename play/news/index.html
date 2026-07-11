@@ -243,7 +243,12 @@
 
   function renderMarket(cards, myBids) {
     var el = document.getElementById('market');
-    document.getElementById('marketNote').innerHTML = 'sealed bids · you have <span class="inf">⚡' + (PARTY.influence || 0) + '</span> · highest bid wins at the next tick';
+    // A bid reserves a hand slot (server: schema/180). Held cards + cards you're already bidding on
+    // fill toward the cap of 4; at the cap you can't bid on a NEW card until you play or discard one.
+    var reserved = (window.__hand || []).length + Object.keys(myBids).length;
+    var full = reserved >= 4;
+    document.getElementById('marketNote').innerHTML = 'sealed bids · you have <span class="inf">⚡' + (PARTY.influence || 0) + '</span> · ' +
+      (full ? '<span class="inf">hand full (4/4)</span> — play or discard to bid on a new card' : 'highest bid wins at the next tick');
     if (!cards.length) { el.innerHTML = '<div class="empty"><b>The market is quiet.</b>No cards are up for auction here yet.</div>'; return; }
     el.innerHTML = cards.map(function (c) {
       var def = c.definition || {};
@@ -252,16 +257,19 @@
       var afford = (PARTY.influence || 0) + mine;  // raising refunds the old bid first, so it's spendable
       if (draft[c.id] == null) draft[c.id] = Math.max(cost, mine);
       var v = draft[c.id];
+      var noRoom = !mine && full;                  // a bid on a NEW card, but no free slot
+      var bidDis = noRoom || v > afford;
+      var bidTitle = noRoom ? ' title="Hand full — play or discard a card first"' : (v > afford ? ' title="Not enough Influence"' : '');
       return '<div class="cardc">' + cardHead(def) +
         '<div class="c-cost">Base ⚡<b>' + cost + '</b></div></div>' +
         '<div class="c-bid">' +
-          '<span class="mybid">' + (mine ? 'Your bid <b>⚡' + mine + '</b>' : 'No bid') + '</span>' +
+          '<span class="mybid">' + (mine ? 'Your bid <b>⚡' + mine + '</b>' : (noRoom ? 'Hand full' : 'No bid')) + '</span>' +
           '<div class="bidctrl">' +
             (mine ? '<button class="act cancel" data-cancel="' + c.id + '">Cancel</button>' : '') +
             '<button class="bbtn" data-dec="' + c.id + '">−</button>' +
             '<span class="bval">' + v + '</span>' +
             '<button class="bbtn" data-inc="' + c.id + '">+</button>' +
-            '<button class="act bid" data-bid="' + c.id + '"' + (v > afford ? ' disabled title="Not enough Influence"' : '') + '>' + (mine ? 'Raise' : 'Bid') + '</button>' +
+            '<button class="act bid" data-bid="' + c.id + '"' + (bidDis ? ' disabled' : '') + bidTitle + '>' + (mine ? 'Raise' : 'Bid') + '</button>' +
           '</div>' +
         '</div></div>';
     }).join('');
@@ -277,7 +285,7 @@
   function renderHand(cards) {
     var el = document.getElementById('hand');
     var canAct = myTurn() && !hasChosen();   // play/discard IS your turn choice — only before you've chosen
-    document.getElementById('handNote').innerHTML = cards.length + ' held · ' +
+    document.getElementById('handNote').innerHTML = cards.length + '/4 held · ' +
       (myTurn()
         ? (hasChosen() ? 'turn taken — you hold <span class="inf">' + apLeft() + ' AP</span>' : '<span class="inf">your turn</span> — play or discard a card')
         : 'not your turn — you act on your party’s turn');
