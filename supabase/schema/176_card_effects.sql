@@ -105,6 +105,12 @@ begin
           case when p_kind = 'prod_up' then v_x else -v_x end,
           (public._to_num(p_p->>'ticks'))::int, p_tick);
       end if;
+    -- Summon a dormant card into a chosen nation's deck (schema/184). The card ('card') and nation
+    -- ('nation') are authored on the effect. Guarded against a malformed uuid so a bad param can't abort.
+    when 'deck_add' then
+      if p_p->>'card' ~ '^[0-9a-fA-F-]{36}$' then
+        perform public._card_enter_deck((p_p->>'card')::uuid, p_p->>'nation');
+      end if;
     when 'cond' then
       v_live := public._nation_live_stat(p_nation, p_p->>'stat');
       if (p_p->>'dir' = 'above' and v_live >  v_x)

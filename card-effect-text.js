@@ -2,18 +2,20 @@
 // Used by the Card Creator preview (card-creator.js) AND the legislature pages that surface a Committee
 // Bill's pass/fail effects (so voters see what a bill does). Returns an HTML string (with <b> emphasis).
 //
-// `nationName` is an optional (id → name) lookup for the two relations effects; anywhere it isn't known
-// the effect reads "a nation". Everything else is self-contained.
+// `nationName` (id → name) and `cardName` (id → name) are optional lookups: relations effects name the
+// nation, and a deck_add effect names the card + nation. Anywhere a lookup isn't given, the effect reads
+// "a nation" / "A card". Everything else is self-contained.
 import { esc } from '/util.js';
 
 const RES_LABEL = { air_wings: 'Air Wings' };                 // multi-word display overrides; the rest Title-case
 const cap = function (s) { return (s || '').charAt(0).toUpperCase() + (s || '').slice(1); };
 export const resLabel = function (k) { return RES_LABEL[k] || cap(k); };
 
-export function cardEffectText(kind, p, nationName) {
+export function cardEffectText(kind, p, nationName, cardName) {
   p = p || {};
   var nn = typeof nationName === 'function' ? nationName : function () { return ''; };
-  var t = function (k, pp) { return cardEffectText(k, pp, nationName); };   // nested-effect recursion (appoint/cond/event)
+  var cn = typeof cardName === 'function' ? cardName : function () { return ''; };
+  var t = function (k, pp) { return cardEffectText(k, pp, nationName, cardName); };   // nested-effect recursion (appoint/cond/event)
   switch (kind) {
     case 'party_gain': return 'Targeted party <b>gains ' + (p.x || 0) + ' approval</b>';
     case 'party_lose': return 'Targeted party <b>loses ' + (p.x || 0) + ' approval</b>';
@@ -30,6 +32,7 @@ export function cardEffectText(kind, p, nationName) {
     case 'rel_down': return 'Relations with <b>' + esc(nn(p.nation) || 'a nation') + '</b> fall by <b>' + (p.x || 0) + '</b>';
     case 'prod_up': return '<b>' + esc(resLabel(p.res || 'energy')) + '</b> production <b>+' + (p.x || 0) + '</b> for <b>' + (p.ticks || 12) + '</b> ticks';
     case 'prod_down': return '<b>' + esc(resLabel(p.res || 'energy')) + '</b> production <b>−' + (p.x || 0) + '</b> for <b>' + (p.ticks || 12) + '</b> ticks';
+    case 'deck_add': return '<b>' + esc(cn(p.card) || 'A card') + '</b> enters <b>' + esc(nn(p.nation) || 'a nation') + '</b>’s deck';
     case 'no_conf': return 'Put forth a <b>motion of no confidence</b>';
     case 'nat_el': return 'Carry out a <b>national election</b>';
     case 'hex_el': return 'Carry out an <b>election in a chosen hex</b> (reapportions its seats)';

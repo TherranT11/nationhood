@@ -41,6 +41,7 @@ const KINDS = {
   rel_down:   { label: 'Relations with a nation decrease by X' },
   prod_up:    { label: 'Increase production of [resource] by X for N ticks' },
   prod_down:  { label: 'Decrease production of [resource] by X for N ticks' },
+  deck_add:   { label: 'A dormant card enters a nation’s deck' },
   appoint:    { label: 'HoG must appoint you [Ministry], or…', nested: true },
   hex_el:     { label: 'Carry out an election in a chosen hex' },
   nat_el:     { label: 'Carry out national election' },
@@ -207,6 +208,7 @@ const TEMPLATE = `
       <div class="seg" id="segLim">
         <button data-v="all">All Nations</button>
         <button data-v="nation" class="c-nat">Specific Nation</button>
+        <button data-v="dormant">Dormant</button>
       </div>
       <select id="fNation" style="margin-top:8px;display:none"></select>
     </div>
@@ -483,6 +485,13 @@ export async function mountCardCreator(mount) {
       '<select data-i="' + i + '" data-f="nation"><option value=""' + (f.p.nation ? '' : ' selected') + '>— select nation —</option>' +
       NATIONS.map(function (n) { return '<option value="' + esc(n.id) + '"' + (n.id === f.p.nation ? ' selected' : '') + '>' + esc(n.name) + '</option>'; }).join('') + '</select>' +
       '<span class="lbl">by</span>' + num(f.p.x, 'x');
+    if (f.kind === 'deck_add') {
+      var dorm = POOL.filter(function (c) { return c.def && c.def.lim === 'dormant'; });
+      h = '<span class="lbl">card</span><select data-i="' + i + '" data-f="card"><option value="">' + (dorm.length ? '— dormant card —' : '— none authored yet —') + '</option>' +
+        dorm.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === f.p.card ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') + '</select>' +
+        '<span class="lbl">enters</span><select data-i="' + i + '" data-f="nation"><option value=""' + (f.p.nation ? '' : ' selected') + '>— nation —</option>' +
+        NATIONS.map(function (n) { return '<option value="' + esc(n.id) + '"' + (n.id === f.p.nation ? ' selected' : '') + '>' + esc(n.name) + '</option>'; }).join('') + '</select><span class="lbl">deck</span>';
+    }
     if (f.kind === 'hex_el') h = '<span class="lbl">hex chosen on play · 12-tick cooldown</span>';
     if (f.kind === 'mob_add' || f.kind === 'mob_rem' || f.kind === 'mil_add' || f.kind === 'mil_rem')
       h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px"><span class="lbl">' + ((f.kind === 'mob_add' || f.kind === 'mob_rem') ? '⚠ armed mob — nobody’s soldiers' : '⚑ militia — belongs to a party') + '</span>';
@@ -517,6 +526,7 @@ export async function mountCardCreator(mount) {
       : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 }
       : (v === 'prod_up' || v === 'prod_down') ? { res: 'energy', x: 2, ticks: 12 }
       : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 }
+      : v === 'deck_add' ? { card: '', nation: '' }
       : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 }
       : { stat: STATS[1], x: 3 };
   }
@@ -651,7 +661,7 @@ export async function mountCardCreator(mount) {
   /* ── preview ── */
   // One source for effect text (card-effect-text.js), threaded with this creator's nation-name lookup
   // so a relations effect reads the picked nation's name in the preview.
-  function fxText(kind, p) { return cardEffectText(kind, p, nationName); }
+  function fxText(kind, p) { return cardEffectText(kind, p, nationName, cardName); }
   function renderPreview() {
     var ax = axisLabels();
     $('pName').textContent = state.name || 'Untitled Card';
@@ -661,7 +671,9 @@ export async function mountCardCreator(mount) {
     var pFlag = $('pFlag'), pfSrc = state.lim === 'nation' ? nationFlag(state.nation) : '';
     if (pfSrc) { pFlag.src = pfSrc; pFlag.hidden = false; } else { pFlag.hidden = true; pFlag.removeAttribute('src'); }
     var natName = nationName(state.nation);
-    var kindTxt = state.lim === 'nation' ? 'Nation · ' + (natName || '—') : state.type === 'generic' ? 'Generic' : 'Stance · ' + ax.d.name + ' / ' + ax.r.name;
+    var kindTxt = state.lim === 'dormant' ? 'Dormant · summoned by a card'
+      : state.lim === 'nation' ? 'Nation · ' + (natName || '—')
+      : state.type === 'generic' ? 'Generic' : 'Stance · ' + ax.d.name + ' / ' + ax.r.name;
     var kindCol = state.lim === 'nation' ? 'var(--nat)' : state.type === 'generic' ? 'var(--gen)' : state.type === 'ar' ? 'var(--auto)' : 'var(--rev)';
     var pk = $('pKind'); pk.textContent = kindTxt; pk.style.color = kindCol;
 
@@ -737,6 +749,8 @@ export async function mountCardCreator(mount) {
     }
     if (arr.some(function (f) { return (f.kind === 'rel_up' || f.kind === 'rel_down') && !(f.p && f.p.nation); }))
       v.push(['warn', 'A relations effect has no nation picked — it will do nothing']);
+    if (arr.some(function (f) { return f.kind === 'deck_add' && !(f.p && f.p.card && f.p.nation); }))
+      v.push(['warn', 'A “card enters deck” effect needs both a dormant card and a nation picked']);
     if (state.persistV === 'yes') v.push(['ok', '∞ Persistent — joins the national modifier board when played']);
     v.push(state.handler === 'player'
       ? ['ok', 'The player who plays it decides — no ministry gate']
@@ -751,6 +765,7 @@ export async function mountCardCreator(mount) {
     if (state.reqCard && state.reqCard === state.allowCard) v.push(['warn', 'Requires and allows the same card — circular chain']);
     v.push(state.name ? ['ok', 'Named'] : ['warn', 'Card needs a name']);
     if (state.lim === 'nation') v.push(state.nation ? ['ok', 'Enters ' + esc(nationName(state.nation) || state.nation) + '’s deck only'] : ['warn', 'Pick a nation for a Specific-Nation card']);
+    if (state.lim === 'dormant') v.push(['ok', 'Dormant — dealt to no deck until a “card enters deck” effect summons it']);
     $('pValid').innerHTML = v.map(function (x) { return '<div class="vline ' + x[0] + '">' + x[1] + '</div>'; }).join('');
 
     // Save is blocked while any hard requirement is unmet (a name, and a nation when nation-limited).
