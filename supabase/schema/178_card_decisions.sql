@@ -49,6 +49,7 @@ begin
   if p_handler is null or p_handler = 'player' then return p_played_by; end if;
   select * into v_gov from public.governments where nation_id = p_nation and status = 'active';
   if not found then return p_played_by; end if;
+  if p_handler = 'hog' then return coalesce(v_gov.formateur_party_id, p_played_by); end if;   -- Head of Government
   select p.id into v_pid
     from public.cabinet_appointments ca
     join public.politicians pol on pol.id = ca.politician_id
@@ -76,7 +77,9 @@ begin
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (p_nation, p_played_by, 'party',
             v_name || ' forces a decision — awaiting ' ||
-              case when v_handler = 'player' then 'the party that played it' else 'the ' || v_handler || ' minister' end || '.',
+              case when v_handler = 'player' then 'the party that played it'
+                   when v_handler = 'hog'    then 'the Head of Government'
+                   else 'the ' || v_handler || ' minister' end || '.',
             public.current_game_date());
 end $$;
 revoke all on function public._create_card_decision(text, uuid, uuid, jsonb, int) from public, anon, authenticated;
