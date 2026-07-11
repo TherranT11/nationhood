@@ -84,11 +84,38 @@ begin
 end $$;
 grant execute on function public.card_bid_cancel(uuid) to authenticated;
 
+-- The auction block size for a nation: one card per ACTIVE party (acted within 7 days — INACTIVE_DAYS,
+-- mirroring resolve_election, schema/60), plus one. A dormant nation → block of 1, so there's always a
+-- card on offer. The ONE source for the block target, read by the refiller and card_create's auto-draw.
+create or replace function public._card_block_target(p_nation text)
+returns int language sql stable security definer set search_path = public as $$
+  select (select count(*) from public.parties
+           where nation_id = p_nation and last_active_at >= now() - interval '7 days')::int + 1;
+$$;
+revoke all on function public._card_block_target(text) from public, anon, authenticated;
+
+-- Top a nation's on-block up to its target by drawing random cards from the deck. No-op if already
+-- full (or the deck is empty). The ONE refiller — the tick resolver and the admin seed both call it.
+create or replace function public._refill_card_block(p_nation text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_draw int;
+begin
+  v_draw := public._card_block_target(p_nation)
+            - (select count(*) from public.deck_cards where nation_id = p_nation and status = 'on_block');
+  if v_draw > 0 then
+    update public.deck_cards set status = 'on_block'
+     where id in (select id from public.deck_cards
+                   where nation_id = p_nation and status = 'in_deck'
+                   order by random() limit v_draw);
+  end if;
+end $$;
+revoke all on function public._refill_card_block(text) from public, anon, authenticated;
+
 -- Resolve every nation's auctions for the tick, then refill each block. Called from advance_tick.
 -- Security definer; runs with no auth context (bypasses RLS) like the rest of the tick.
 create or replace function public._resolve_card_auctions(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
-declare n record; c record; w record; v_target int; v_have int; v_draw int; v_pname text; v_cname text;
+declare n record; c record; w record; v_pname text; v_cname text;
 begin
   for n in select id from public.nations where not coalesce(dormant, false) loop
     -- 1) award each on-block card that drew bids
@@ -114,19 +141,8 @@ begin
                 public.current_game_date());
     end loop;
 
-    -- 2) top the block up to (active parties + 1) by drawing from the deck. "Active" mirrors the
-    -- election rule (resolve_election, schema/60): a party that has acted within 7 days (INACTIVE_DAYS,
-    -- util.js). A dormant nation contributes 0 → block of 1, so there's always a card on offer.
-    v_target := (select count(*) from public.parties
-                  where nation_id = n.id and last_active_at >= now() - interval '7 days') + 1;
-    select count(*) into v_have from public.deck_cards where nation_id = n.id and status = 'on_block';
-    v_draw := v_target - v_have;
-    if v_draw > 0 then
-      update public.deck_cards set status = 'on_block'
-       where id in (select id from public.deck_cards
-                     where nation_id = n.id and status = 'in_deck'
-                     order by random() limit v_draw);
-    end if;
+    -- 2) top the block back up (active parties + 1) — shared refiller.
+    perform public._refill_card_block(n.id);
   end loop;
 end $$;
 revoke all on function public._resolve_card_auctions(int) from public, anon, authenticated;
