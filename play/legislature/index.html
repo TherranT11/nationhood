@@ -262,9 +262,12 @@
       '<div class="reso ' + (carry ? 'pass' : 'fail') + '">' + reso + (locked ? ' · resolves next tick' : ticksLeft(p)) + '</div>' +
       '<div class="rolltitle">' + (noConf ? 'Roll call · the government must vote No to survive' : 'Roll call · carries on a simple majority (more Aye than Nay), or ' + ST.maj + '+ Aye outright') + '</div>' +
       rollCall(p.id) +
-      '<div class="mrow"><button class="vb aye' + (t.myVote === 'aye' ? ' on' : '') + '" data-v="aye" type="button">Vote Aye</button>' +
-        '<button class="vb nay' + (t.myVote === 'nay' ? ' on' : '') + '" data-v="nay" type="button">Vote Nay</button>' +
-        (t.myVote ? '<span class="youvote">You voted ' + t.myVote + '</span>' : '') + '</div></div>';
+      // A vote is final: offer the buttons only until you've voted, then show the locked result.
+      (t.myVote
+        ? '<div class="mrow"><span class="youvote">You voted <b>' + t.myVote.toUpperCase() + '</b> · votes are final</span></div></div>'
+        : '<div class="mrow"><button class="vb aye" data-v="aye" type="button">Vote Aye</button>' +
+          '<button class="vb nay" data-v="nay" type="button">Vote Nay</button>' +
+          '<span class="youvote">Your vote is final once cast</span></div></div>');
   }
   function agendaCard(p){
     var mine = p.party_id === ST.party.id;
@@ -320,9 +323,10 @@
     content.querySelectorAll('.measure .vb').forEach(function (btn) {
       btn.onclick = function () {
         if (ST.busy) return;
-        var card = btn.closest('.measure');
+        var card = btn.closest('.measure'), aye = btn.dataset.v === 'aye';
+        if (!confirm('Cast your vote ' + (aye ? 'AYE' : 'NAY') + '?\n\nYour vote is final — it cannot be changed.')) return;
         ST.busy = true; card.querySelectorAll('.vb').forEach(function (b) { b.disabled = true; });
-        castVote(card.dataset.id, btn.dataset.v === 'aye').then(loadProposals)
+        castVote(card.dataset.id, aye).then(loadProposals)
           .catch(function (e) { alert(e.message || 'Couldn’t record your vote.'); card.querySelectorAll('.vb').forEach(function (b) { b.disabled = false; }); })
           .then(function () { ST.busy = false; });
       };

@@ -64,7 +64,7 @@ alter table public.proposals add column if not exists scheduled_tick int;
 -- on still-open measures and on any resolved before this column existed.
 alter table public.proposals add column if not exists resolved_tick int;
 
--- One vote per party per proposal (changeable while voting is open).
+-- One vote per party per proposal — final once cast (cast_floor_vote rejects a second vote).
 create table if not exists public.proposal_votes (
   proposal_id uuid not null references public.proposals (id) on delete cascade,
   party_id    uuid not null references public.parties (id) on delete cascade,
@@ -453,8 +453,9 @@ begin
 end $$;
 grant execute on function public.proposal_to_floor(uuid) to authenticated;
 
--- Cast (or change) this party's vote on an open floor measure. No action cost —
--- voting is the chamber's job, not a leader action. Tallies live afterward.
+-- Cast this party's vote on an open floor measure. No action cost — voting is the chamber's job, not a
+-- leader action. A vote is FINAL: once cast it cannot be changed (the on-conflict insert is a no-op and
+-- the call is rejected, so a stale client can't overwrite it). Tallies live afterward.
 create or replace function public.cast_floor_vote(p_proposal uuid, p_aye boolean)
 returns jsonb
 language plpgsql
@@ -470,7 +471,8 @@ begin
   if v_p.status <> 'voting' then raise exception 'Voting on that measure has closed.'; end if;
 
   insert into public.proposal_votes (proposal_id, party_id, aye) values (p_proposal, v_party.id, p_aye)
-    on conflict (proposal_id, party_id) do update set aye = excluded.aye;
+    on conflict (proposal_id, party_id) do nothing;
+  if not found then raise exception 'You have already voted on this measure — votes are final.'; end if;
   v_res := public._resolve_proposal(p_proposal);
   return jsonb_build_object('status', v_res);
 end $$;

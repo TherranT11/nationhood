@@ -267,16 +267,18 @@
     if (locked) verdict += ' · resolves next tick';
     var rule = noConf ? 'Carries unless the government votes No · ' + ST.total + ' seats'
       : 'Carries on a simple majority (more Aye than Nay), or ' + ST.maj + '+ Aye outright · ' + ST.total + ' seats';
-    var canVote = p.status === 'voting';
+    // A vote is final: offer the buttons only while voting is open AND you haven't voted yet.
+    var canVote = p.status === 'voting' && !myVote;
     return '<div class="card"><div class="card-h">Division</div>' +
       '<div class="tallybar"><div class="aye" style="width:' + ayeP + '%"></div><div class="nay" style="width:' + nayP + '%"></div><div class="nv" style="width:' + nvP + '%"></div></div>' +
       '<div class="counts">Aye <b class="ca">' + t.aye + '</b> · Nay <b class="cn">' + t.nay + '</b> · Not voted <b>' + nv + '</b> · <b>' + cast + '</b> / ' + ST.total + ' cast</div>' +
       '<div class="verdict ' + (carry ? 'pass' : 'fail') + '">' + verdict + '</div>' +
       '<div class="rule">' + rule + '</div>' +
       '<table><thead><tr><th>Party</th><th class="r">Seats</th><th class="r">Vote</th></tr></thead><tbody>' + rollRows() + '</tbody></table>' +
-      (canVote ? '<div class="votebtns"><button class="vbtn aye' + (myVote === 'aye' ? ' on' : '') + '" data-v="aye" type="button">Vote Aye</button>' +
-        '<button class="vbtn nay' + (myVote === 'nay' ? ' on' : '') + '" data-v="nay" type="button">Vote Nay</button>' +
-        (myVote ? '<span class="voted">You voted ' + myVote.toUpperCase() + '</span>' : '') + '</div>'
+      (canVote ? '<div class="votebtns"><button class="vbtn aye" data-v="aye" type="button">Vote Aye</button>' +
+        '<button class="vbtn nay" data-v="nay" type="button">Vote Nay</button>' +
+        '<span class="voted">Your vote is final once cast</span></div>'
+        : myVote ? '<div class="voted" style="margin-top:14px">You voted <b>' + myVote.toUpperCase() + '</b> · votes are final</div>'
         : '<div class="rule" style="border-top:none;padding-top:0;margin-top:14px">Voting is closed on this measure.</div>') +
       '</div>';
   }
@@ -318,8 +320,10 @@
     btns.forEach(function(btn){
       btn.onclick = function(){
         if (ST.busy) return;
+        var aye = btn.dataset.v === 'aye';
+        if (!confirm('Cast your vote ' + (aye ? 'AYE' : 'NAY') + ' on “' + (p.title || 'this measure') + '”?\n\nYour vote is final — it cannot be changed.')) return;
         ST.busy = true; btns.forEach(function(b){ b.disabled = true; });
-        castVote(p.id, btn.dataset.v === 'aye')
+        castVote(p.id, aye)
           .then(reloadVotes)
           .catch(function(e){ alert(e.message || 'Couldn’t record your vote.'); btns.forEach(function(b){ b.disabled = false; }); })
           .then(function(){ ST.busy = false; });
