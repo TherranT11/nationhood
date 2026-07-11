@@ -347,9 +347,7 @@ as $$
   select coalesce(nullif(public.nation_declaration(p_nation, 'head_of_government_title'), ''), 'Prime Minister')
          || ' '
          || coalesce(
-              (select nullif(btrim(first_name || ' ' || last_name), '') from public.politicians
-                 where party_id = p_party and status = 'Party Leader'
-                 order by created_at limit 1),
+              (select nullif(btrim(l.first_name || ' ' || l.last_name), '') from public._party_leader(p_party) l),
               (select name from public.parties where id = p_party),
               'the incumbent');
 $$;

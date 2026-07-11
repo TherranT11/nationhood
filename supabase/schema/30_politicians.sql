@@ -35,6 +35,16 @@ drop policy if exists "politicians_insert_own" on public.politicians;
 create policy "politicians_insert_own" on public.politicians for insert
   with check (exists (select 1 from public.parties p where p.id = party_id and p.user_id = auth.uid()));
 
+-- The ONE source for "who is a party's leader": its 'Party Leader' politician (earliest-seeded on a
+-- tie). Returns the whole row; callers read the column they need — leader stats (Charisma/Acumen/…),
+-- the leader's name for a byline, or the HoG label. Returns an all-NULL row when a party has no leader,
+-- so `coalesce((_party_leader(p)).cha, 0)` degrades cleanly. Used by 40/60/85/176.
+create or replace function public._party_leader(p_party uuid)
+returns public.politicians language sql stable security definer set search_path = public as $$
+  select * from public.politicians where party_id = p_party and status = 'Party Leader' order by created_at limit 1;
+$$;
+revoke all on function public._party_leader(uuid) from public, anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Recruitment-drive staging: the two candidates a party is currently choosing
 -- between (RECRUIT action). One row per party, overwritten each drive. Written
