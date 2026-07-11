@@ -142,8 +142,10 @@ begin
           public.current_game_date());
 
   -- Resolve the card's immediate effects (schema/176). Atomic with the play — a bad effect rolls the
-  -- whole play back. Decision options + stance-gated sides + persistence are handled in later phases.
+  -- whole play back. Stance-gated sides + persistence are handled in later phases.
   perform public._resolve_card_effects(v_dc.nation_id, v_party.id, v_def, v_tick);
+  -- A Government Choice card opens a pending decision its handler resolves later (schema/178).
+  perform public._create_card_decision(v_dc.nation_id, v_party.id, p_deck_card, v_def, v_tick);
 end $$;
 grant execute on function public.card_play(uuid) to authenticated;
 

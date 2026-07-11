@@ -12,7 +12,9 @@ import { esc } from '/util.js';   // shared HTML-escape (one source)
 
 // ---- effect vocabulary (Phase 3 interprets these; the creator only authors them) ----
 const STATS = ['Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Public Debt', 'Interest Rates', 'Crime', 'Immigration', 'Extremism', 'Birth Rates', 'Unemployment', 'Poverty', 'Wages', 'Innovation', 'Infrastructure', 'Prosperity', 'Press Freedom', 'Social Integration', 'Health', 'Education', 'Pension Quality', 'Rule of Law', 'Standard of Living', 'Housing Affordability', 'Equity Between Generations', 'Armed Forces Funding', 'Military Research', 'Cybersecurity', 'CO2 Emissions', 'Energy Prices', 'Environment', 'National Pride', 'Civil Liberties', 'Minority Rights', 'Corruption', 'Religious Influence'];
-const MINISTRIES = ['Interior', 'Finance', 'Growth', 'Justice', 'Defense', 'Education', 'Health', 'Infrastructure'];
+// The real cabinet portfolios (server source: _ministries(), schema/138) — so a card's Decision
+// Handler routes to an actual minister.
+const MINISTRIES = ['Defence', 'Treasury', 'Interior', 'Foreign Affairs', 'Trade', 'Labour', 'Justice', 'Health', 'Education', 'Energy', 'Economic Development'];
 const KINDS = {
   cond:       { label: 'IF [stat] is above/below X, then…', nested: true },
   party_gain: { label: 'Targeted party gains X approval' },
