@@ -396,6 +396,9 @@ export async function mountCardCreator(mount) {
     return h;
   }
   function activeArr() { return state.mech === 'choice' ? state.copt : state.fx; }
+  // Decode a double-sided effect's data-i ('dd0'…/'dr0'…) → { s: the side, i: effect index }, else null.
+  // One source for the encoding the side rows render and the change/delete handlers read.
+  function sideRef(di) { return /^d[dr]\d+$/.test(di) ? { s: state.dside[di.charAt(1) === 'd' ? 'd' : 'r'], i: +di.slice(2) } : null; }
   function kindOpts(f) { return Object.keys(KINDS).map(function (k) { return '<option value="' + k + '"' + (k === f.kind ? ' selected' : '') + '>' + KINDS[k].label + '</option>'; }).join(''); }
 
   function renderFx() {
@@ -459,8 +462,8 @@ export async function mountCardCreator(mount) {
         // Double-sided side NAME (side-level, not an effect).
         if (di === 'dd' || di === 'dr') { state.dside[di === 'dd' ? 'd' : 'r'].txt = v; renderPreview(); return; }
         // Single-effect owners: the choice reward ('rw'), or a double-side effect ('dd0'…/'dr0'…).
-        var special = di === 'rw' ? state.reward
-          : (/^d[dr]\d+$/.test(di) ? state.dside[di.charAt(1) === 'd' ? 'd' : 'r'].fx[+di.slice(2)] : null);
+        var sr = sideRef(di);
+        var special = di === 'rw' ? state.reward : (sr ? sr.s.fx[sr.i] : null);
         if (special) {
           var r = special;
           if (fd === 'kind') { r.kind = v; if (v !== 'none') r.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_gain', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : { stat: STATS[1], x: 2 }; renderFx(); }
@@ -485,9 +488,9 @@ export async function mountCardCreator(mount) {
     });
     wrap.querySelectorAll('.del').forEach(function (b) {
       b.onclick = function () {
-        var di = b.dataset.i;
-        if (/^d[dr]\d+$/.test(di)) state.dside[di.charAt(1) === 'd' ? 'd' : 'r'].fx.splice(+di.slice(2), 1);
-        else activeArr().splice(+di, 1);
+        var sr = sideRef(b.dataset.i);
+        if (sr) sr.s.fx.splice(sr.i, 1);
+        else activeArr().splice(+b.dataset.i, 1);
         renderFx(); renderPreview();
       };
     });
