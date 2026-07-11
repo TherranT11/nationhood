@@ -147,6 +147,9 @@ const CSS = `
 .cc .savebtn:disabled{opacity:.55;cursor:not-allowed}
 .cc .savemsg{font-family:'Space Mono',monospace;font-size:9.5px;text-align:center;margin-top:9px;min-height:12px;line-height:1.5}
 .cc .savemsg.ok{color:var(--green)} .cc .savemsg.err{color:var(--red)}
+.cc .seedbtn{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:var(--field);border:1px dashed var(--line2);border-radius:9px;padding:9px 12px;cursor:pointer;margin-bottom:8px}
+.cc .seedbtn:hover:not(:disabled){color:var(--ink);border-color:var(--soft)}
+.cc .seedbtn:disabled{opacity:.55;cursor:not-allowed}
 /* card pool list */
 .cc .pool{margin-top:14px}
 .cc .poolrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:12.5px}
@@ -250,6 +253,8 @@ const TEMPLATE = `
   </div>
 
   <div class="sect">Card Pool</div>
+  <button class="seedbtn" id="ccSeed" title="Fill every nation's auction block up to its target by drawing from the deck">↻ Seed all markets</button>
+  <div class="savemsg" id="ccSeedMsg"></div>
   <div class="pool" id="poolList"><div class="poolempty">Loading…</div></div>
 </div>
 
@@ -717,6 +722,26 @@ export async function mountCardCreator(mount) {
       msg.className = 'savemsg err'; msg.textContent = 'Save failed: ' + (e.message || e);
     } finally {
       saving = false; btn.textContent = 'Save to Card Pool'; renderPreview();
+    }
+  };
+
+  /* ── seed all markets → seed_card_markets (fills every nation's block up to target). ── */
+  var seeding = false;
+  $('ccSeed').onclick = async function () {
+    if (seeding) return;
+    seeding = true;
+    var btn = $('ccSeed'), msg = $('ccSeedMsg'), label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Seeding…'; msg.className = 'savemsg'; msg.textContent = '';
+    try {
+      var res = await supabase.rpc('seed_card_markets');
+      if (res.error) throw res.error;
+      var n = Number(res.data) || 0;
+      msg.className = 'savemsg ok';
+      msg.textContent = n > 0 ? 'Drew ' + n + ' card' + (n === 1 ? '' : 's') + ' onto markets.' : 'All markets already full.';
+    } catch (e) {
+      msg.className = 'savemsg err'; msg.textContent = 'Seed failed: ' + (e.message || e);
+    } finally {
+      seeding = false; btn.disabled = false; btn.textContent = label;
     }
   };
 

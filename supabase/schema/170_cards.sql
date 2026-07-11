@@ -81,6 +81,14 @@ begin
       select id, v_card from public.nations where not coalesce(dormant, false);
   end if;
 
+  -- Auto-draw: wherever this card just landed and the market has room (below its target, schema/172),
+  -- put THIS card straight on the block instead of waiting for the next tick. One card per nation, only
+  -- into an open slot — a full block is left alone (the card waits in the deck). Covers All + Nation.
+  update public.deck_cards dc set status = 'on_block'
+   where dc.card_id = v_card and dc.status = 'in_deck'
+     and (select count(*) from public.deck_cards b where b.nation_id = dc.nation_id and b.status = 'on_block')
+         < public._card_block_target(dc.nation_id);
+
   return v_card;
 end $$;
 grant execute on function public.card_create(jsonb) to authenticated;
