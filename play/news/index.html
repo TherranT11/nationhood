@@ -121,6 +121,20 @@
   .cm .act.tgt:hover:not(:disabled){filter:brightness(1.08)}
   .cm .act.tgtx{color:var(--muted);background:var(--surface);border-color:var(--line);flex:0 0 auto;padding:9px 12px}
   .cm .handbtns:has(.tgt){flex-wrap:wrap}
+  .hexov{position:fixed;inset:0;z-index:1000;background:rgba(10,10,14,.72);display:flex;align-items:center;justify-content:center;padding:20px}
+  .hexbox{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;width:min(400px,94vw);max-height:92vh;overflow:auto}
+  .hexhd{font-size:13px;color:var(--muted);margin-bottom:12px}
+  .hexhd b{color:var(--ink)}
+  .hexmapwrap{position:relative;width:100%;height:300px;border-radius:12px;overflow:hidden;border:1px solid var(--line);cursor:crosshair;background:#bcd9e6}
+  .hexcv{width:100%;height:100%;display:block}
+  .hexhint{position:absolute;left:8px;bottom:8px;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;color:#15151b;background:rgba(255,255,255,.72);padding:3px 7px;border-radius:6px;pointer-events:none}
+  .hexsel{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin:11px 0}.hexsel b{color:var(--ink)}
+  .hexmode{display:flex;gap:8px;margin-bottom:9px}.hexmode .hxm{flex:1}
+  .hexriv{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}
+  .hexbtns{display:flex;gap:8px;margin-top:4px}.hexbtns .hexgo{flex:1;color:#fff;background:var(--indigo);border-color:var(--indigo)}.hexbtns .hexx{flex:0 0 auto}
+  .hexov .act{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:8px;padding:9px 11px;cursor:pointer;border:1px solid var(--line);background:var(--field);color:var(--muted)}
+  .hexov .act.on{color:#fff;background:var(--indigo);border-color:var(--indigo)}
+  .hexov .act:disabled{opacity:.5;cursor:not-allowed}
 
   .cm .empty{background:var(--surface);border:1px dashed var(--line);border-radius:13px;padding:26px 20px;text-align:center;color:var(--soft);font-size:13px}
   .cm .empty b{display:block;color:var(--muted);font-size:14px;margin-bottom:5px}
@@ -180,6 +194,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { esc, tickToDate } from '/util.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
+  import { drawNationMiniMap } from '/hexmap.js';
 
   mountTopbar();
   mountSidenav();
@@ -315,9 +330,26 @@
     });
   }
 
-  // Play a hand card: if it targets a rival, swap the card's buttons for a party picker; else play now.
+  // Does this card carry a hex_pop effect (pick a hex on play, then boost self or hit a rival there)?
+  // Same side-gating as cardTargets: a generic card's effects all fire; a stance card only its 'both'.
+  function cardNeedsHex(def) {
+    def = def || {};
+    if (def.mech === 'choice' || def.persistV === 'yes') return false;
+    var generic = def.type === 'generic';
+    return (Array.isArray(def.fx) ? def.fx : []).some(function (e) {
+      return e.kind === 'hex_pop' && (generic || (e.side || 'both') === 'both');
+    });
+  }
+  function hexAmount(def) {
+    var e = (Array.isArray(def && def.fx) ? def.fx : []).find(function (x) { return x.kind === 'hex_pop'; });
+    return Math.max(0, Number(e && e.p && e.p.x) || 0);
+  }
+
+  // Play a hand card: a hex card opens the map picker; a party-target card swaps in a party picker;
+  // anything else plays straight through.
   function onPlay(id) {
     var card = (window.__hand || []).find(function (x) { return x.id === id; });
+    if (card && cardNeedsHex(card.definition)) { openHexPicker(id, card.definition); return; }
     if (!card || !cardTargets(card.definition)) { playCard(id); return; }
     var rivals = (window.__roster || []).filter(function (p) { return !PARTY || p.id !== PARTY.id; });
     if (!rivals.length) { playCard(id); return; }   // no rival to hit → play untargeted
@@ -329,6 +361,77 @@
       '<button class="act tgtx" data-tx="1">Cancel</button>';
     row.querySelectorAll('[data-tp]').forEach(function (b) { b.onclick = function () { playCard(id, b.dataset.tp); }; });
     var x = row.querySelector('[data-tx]'); if (x) x.onclick = function () { renderHand(window.__hand || []); };
+  }
+
+  // Interactive hex picker for a hex_pop card. Opens a modal map of your nation (reusing the
+  // Party-page renderer); click a land hex, choose to boost your party (+X) or hit a rival (−X) there,
+  // then play. The nation's hexes are fetched once and cached. The server validates the hex again.
+  async function openHexPicker(id, def) {
+    var amt = hexAmount(def);
+    if (!window.__hexes) {
+      try {
+        var res = await supabase.from('world_hexes').select('q, r, terrain, nation_id, name').eq('nation_id', NATION_ID);
+        window.__hexes = res.error ? [] : (res.data || []);
+      } catch (e) { window.__hexes = []; }
+    }
+    var land = (window.__hexes || []).filter(function (h) { return h.terrain === 'land'; });
+    if (!land.length) { alert('Your nation has no land hexes to target.'); return; }
+    var rivals = (window.__roster || []).filter(function (p) { return !PARTY || p.id !== PARTY.id; });
+
+    var sel = null, mode = 'self', rival = rivals.length ? rivals[0].id : null, mapObj = null;
+    var ov = document.createElement('div');
+    ov.className = 'hexov';
+    ov.innerHTML =
+      '<div class="hexbox">' +
+        '<div class="hexhd">Choose a hex — <b>' + esc(def.name || 'card') + '</b></div>' +
+        '<div class="hexmapwrap"><canvas class="hexcv"></canvas><div class="hexhint">Tap a land hex</div></div>' +
+        '<div class="hexsel" id="hexSel">No hex selected</div>' +
+        '<div class="hexmode">' +
+          '<button class="act hxm on" data-m="self">Boost my party +' + amt + '</button>' +
+          (rivals.length ? '<button class="act hxm" data-m="rival">Hit a rival −' + amt + '</button>' : '') +
+        '</div>' +
+        '<div class="hexriv" id="hexRiv" style="display:none">' +
+          rivals.map(function (p) { return '<button class="act rv" data-r="' + p.id + '">' + esc(p.abbreviation || p.name || '—') + '</button>'; }).join('') +
+        '</div>' +
+        '<div class="hexbtns">' +
+          '<button class="act hexx" id="hexCancel">Cancel</button>' +
+          '<button class="act hexgo" id="hexGo" disabled>Play here</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+
+    var cv = ov.querySelector('.hexcv'), wrap = ov.querySelector('.hexmapwrap');
+    function paint() { mapObj = drawNationMiniMap(cv, wrap, { hexes: land, natColor: {}, viewedId: NATION_ID, mode: 'nation', selected: sel }); }
+    requestAnimationFrame(paint);   // wait for the wrap to have layout before sizing the canvas
+    function updRiv() { ov.querySelectorAll('.rv').forEach(function (b) { b.classList.toggle('on', b.dataset.r === rival); }); }
+    function updGo() { ov.querySelector('#hexGo').disabled = !(sel && (mode === 'self' || rival)); }
+
+    cv.onclick = function (e) {
+      if (!mapObj) return;
+      var rect = cv.getBoundingClientRect();
+      var h = mapObj.hexAt(e.clientX - rect.left, e.clientY - rect.top);
+      if (!h || h.nation_id !== NATION_ID) return;   // only your own land is targetable
+      sel = { q: h.q, r: h.r };
+      ov.querySelector('#hexSel').innerHTML = 'Hex <b>' + h.q + ', ' + h.r + '</b>' + (h.name ? ' · ' + esc(h.name) : '');
+      paint(); updGo();
+    };
+    ov.querySelectorAll('.hxm').forEach(function (b) {
+      b.onclick = function () {
+        mode = b.dataset.m;
+        ov.querySelectorAll('.hxm').forEach(function (x) { x.classList.toggle('on', x === b); });
+        ov.querySelector('#hexRiv').style.display = (mode === 'rival') ? '' : 'none';
+        updRiv(); updGo();
+      };
+    });
+    ov.querySelectorAll('.rv').forEach(function (b) { b.onclick = function () { rival = b.dataset.r; updRiv(); updGo(); }; });
+    updRiv();
+    ov.querySelector('#hexCancel').onclick = function () { ov.remove(); };
+    ov.querySelector('#hexGo').onclick = function () {
+      if (!sel) return;
+      var tgt = (mode === 'rival') ? rival : null;
+      ov.remove();
+      playCard(id, tgt, sel.q, sel.r);
+    };
   }
 
   function renderActions() {
@@ -393,7 +496,7 @@
   // ---- actions (each locks BUSY, then reloads everything) ----
   async function placeBid(id, amount) { await run(function () { return supabase.rpc('card_bid', { p_deck_card: id, p_amount: amount }); }); }
   async function cancelBid(id) { await run(function () { return supabase.rpc('card_bid_cancel', { p_deck_card: id }); }); }
-  async function playCard(id, target) { await run(function () { return supabase.rpc('card_play', { p_deck_card: id, p_target: target || null }); }); }
+  async function playCard(id, target, q, r) { await run(function () { return supabase.rpc('card_play', { p_deck_card: id, p_target: target || null, p_hex_q: (q == null ? null : q), p_hex_r: (r == null ? null : r) }); }); }
   async function discardCard(id) { if (!confirm('Discard this card for +3 Influence? It leaves your hand for good.')) return; await run(function () { return supabase.rpc('card_discard', { p_deck_card: id }); }); }
   async function takeAction() { await run(function () { return supabase.rpc('turn_take_action'); }); }
   async function decideCard(id, opt) { await run(function () { return supabase.rpc('card_decide', { p_decision: id, p_option: opt }); }); }
