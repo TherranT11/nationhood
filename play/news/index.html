@@ -135,6 +135,16 @@
   .hexcv{width:100%;height:100%;display:block}
   .hexhint{position:absolute;left:8px;bottom:8px;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;color:#15151b;background:rgba(255,255,255,.72);padding:3px 7px;border-radius:6px;pointer-events:none}
   .hexsel{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin:11px 0}.hexsel b{color:var(--ink)}
+  .hexstats:empty{display:none}
+  .hexstats{margin:0 0 11px}
+  .hxs-top{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);padding-bottom:6px;border-bottom:1px solid var(--line)}.hxs-top b{color:var(--ink)}
+  .hxs-rows{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+  .hxs-row{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;font-size:12px;padding:4px 6px;border-radius:6px}
+  .hxs-row.me{background:color-mix(in srgb,var(--indigo) 12%,transparent)}
+  .hxs-n{font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hxs-pop{font-variant-numeric:tabular-nums;color:var(--ink)}
+  .hxs-d{font-style:normal;font-size:10px;margin-left:4px;font-variant-numeric:tabular-nums}.hxs-d.up{color:var(--green)}.hxs-d.dn{color:var(--red)}
+  .hxs-s{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--muted);white-space:nowrap}
   .hexmode{display:flex;gap:8px;margin-bottom:9px}.hexmode .hxm{flex:1}
   .hexriv{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}
   .hexbtns{display:flex;gap:8px;margin-top:4px}.hexbtns .hexgo{flex:1;color:#fff;background:var(--indigo);border-color:var(--indigo)}.hexbtns .hexx{flex:0 0 auto}
@@ -198,7 +208,8 @@
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { esc, tickToDate, hexSeats } from '/util.js';
+  import { esc, tickToDate, hexSeats, fmtPop } from '/util.js';
+  import { regionalApproval } from '/regional.js';   // one source for per-hex party approval
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { drawNationMiniMap } from '/hexmap.js';
 
@@ -392,12 +403,63 @@
     return paint;
   }
 
+  // Regional stats for the hex picker: national seats + population, every party's national popularity/
+  // seats, the card-driven per-hex bias, and any elected regional seats. Cached for the session.
+  async function loadHexStats() {
+    if (window.__hexStats) return window.__hexStats;
+    var s = { natSeats: 0, natPop: 0, parties: [], biasMap: {}, seatsByHex: {} };
+    try { var nr = await supabase.from('nations').select('legislature_seats').eq('id', NATION_ID).single(); s.natSeats = (nr.data && Number(nr.data.legislature_seats)) || 0; } catch (e) {}
+    try { var pr = await supabase.from('parties').select('id, name, abbreviation, popularity, seats').eq('nation_id', NATION_ID); s.parties = pr.data || []; } catch (e) {}
+    try {
+      var ids = s.parties.map(function (p) { return p.id; });
+      if (ids.length) {
+        var br = await supabase.from('party_hex_bias').select('party_id, q, r, bias').in('party_id', ids);
+        (br.error ? [] : (br.data || [])).forEach(function (row) { (s.biasMap[row.party_id] || (s.biasMap[row.party_id] = {}))[row.q + ',' + row.r] = Number(row.bias) || 0; });
+      }
+    } catch (e) {}
+    try {
+      var sr = await supabase.from('hex_seats').select('q, r, party_id, seats').eq('nation_id', NATION_ID);
+      (sr.error ? [] : (sr.data || [])).forEach(function (row) { (s.seatsByHex[row.q + ',' + row.r] || (s.seatsByHex[row.q + ',' + row.r] = {}))[row.party_id] = Number(row.seats) || 0; });
+    } catch (e) {}
+    var land = await loadHexes();
+    s.natPop = land.reduce(function (a, h) { return a + (Number(h.population) || 0); }, 0);
+    window.__hexStats = s;
+    return s;
+  }
+
+  // Render the selected hex's makeup: population, seats it elects, and every party's approval here (with
+  // its ± swing off national) + its seats here (the elected result, or a proportional projection).
+  function renderHexStats(el, h, stats) {
+    var key = h.q + ',' + h.r;
+    var seatsTot = hexSeats(stats.natSeats, Number(h.population) || 0, stats.natPop);
+    var elected = stats.seatsByHex[key];   // { pid: seats } when this hex has voted, else undefined
+    var mine = PARTY && PARTY.id;
+    var rows = stats.parties.map(function (p) {
+      var reg = regionalApproval(p, h.q, h.r, stats.biasMap);
+      return { p: p, reg: reg, delta: reg - (Number(p.popularity) || 0) };
+    }).sort(function (a, b) { return b.reg - a.reg; });
+    var sumReg = rows.reduce(function (a, x) { return a + x.reg; }, 0);
+    var seatOf = function (x) { return elected ? (elected[x.p.id] || 0) : (sumReg > 0 ? Math.round(seatsTot * x.reg / sumReg) : 0); };
+    el.innerHTML =
+      '<div class="hxs-top"><span>Population <b>' + fmtPop(h.population) + '</b></span>' +
+        '<span>Seats <b>' + seatsTot + '</b> · ' + (elected ? 'elected' : 'projected') + '</span></div>' +
+      '<div class="hxs-rows">' + rows.map(function (x) {
+        var d = (x.delta >= 0 ? '+' : '') + x.delta.toFixed(1);
+        var st = seatOf(x);
+        return '<div class="hxs-row' + (x.p.id === mine ? ' me' : '') + '">' +
+          '<span class="hxs-n">' + esc(x.p.abbreviation || x.p.name || '—') + (x.p.id === mine ? ' (you)' : '') + '</span>' +
+          '<span class="hxs-pop">' + x.reg.toFixed(1) + '% <i class="hxs-d ' + (x.delta >= 0 ? 'up' : 'dn') + '">' + d + '</i></span>' +
+          '<span class="hxs-s">' + st + ' seat' + (st === 1 ? '' : 's') + '</span></div>';
+      }).join('') + '</div>';
+  }
+
   // Interactive hex picker for a hex_pop card: click a land hex, choose to boost your party (+X) or hit
   // a rival (−X) there, then play. The server validates the hex again.
   async function openHexPicker(id, def) {
     var amt = hexAmount(def);
     var land = await loadHexes();
     if (!land.length) { alert('Your nation has no land hexes to target.'); return; }
+    var stats = await loadHexStats();
     var rivals = (window.__roster || []).filter(function (p) { return !PARTY || p.id !== PARTY.id; });
 
     var sel = null, mode = 'self', rival = rivals.length ? rivals[0].id : null;
@@ -408,6 +470,7 @@
         '<div class="hexhd">Choose a hex — <b>' + esc(def.name || 'card') + '</b></div>' +
         '<div class="hexmapwrap"><canvas class="hexcv"></canvas><div class="hexhint">Tap a land hex</div></div>' +
         '<div class="hexsel" id="hexSel">No hex selected</div>' +
+        '<div class="hexstats" id="hexStats"></div>' +
         '<div class="hexmode">' +
           '<button class="act hxm on" data-m="self">Boost my party +' + amt + '</button>' +
           (rivals.length ? '<button class="act hxm" data-m="rival">Hit a rival −' + amt + '</button>' : '') +
@@ -427,6 +490,7 @@
     var repaint = wireHexMap(ov, land, function (h) {
       sel = { q: h.q, r: h.r };
       ov.querySelector('#hexSel').innerHTML = 'Hex <b>' + h.q + ', ' + h.r + '</b>' + (h.name ? ' · ' + esc(h.name) : '');
+      renderHexStats(ov.querySelector('#hexStats'), h, stats);
       repaint(sel); updGo();
     });
     ov.querySelectorAll('.hxm').forEach(function (b) {

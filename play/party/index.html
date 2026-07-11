@@ -262,6 +262,7 @@
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { nationRegime } from '/ladders.js';
   import { nationColors, drawNationMiniMap } from '/hexmap.js';
+  import { regionalApproval as regApproval } from '/regional.js';   // one source for per-hex party approval
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
@@ -437,19 +438,8 @@
 
   // Deterministic pseudo-random in [0,1) from a string — so each region's numbers are STABLE across
   // reloads (seeded by hex + party), not re-rolled every open. (xmur3-style hash.)
-  function rand01(str) {
-    var h = 1779033703 ^ str.length;
-    for (var i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
-    h = Math.imul(h ^ (h >>> 16), 2246822507); h ^= h >>> 13; h = Math.imul(h, 3266489909); h ^= h >>> 16;
-    return (h >>> 0) / 4294967296;
-  }
-  // A per-region swing of ±(1..5) points on a party's national approval — pure random (no archetype),
-  // symmetric so the population-weighted amalgamation reconciles to the national figure.
-  function regionalLean(q, r, pid) { var k = q + ',' + r + ':' + pid; return (rand01(k + ':s') < 0.5 ? -1 : 1) * (1 + rand01(k) * 4); }
-  // Stored per-region tilt from policy popularity awards (schema/163) — population-weighted and
-  // zero-sum, so it moves individual hexes without shifting the national amalgamation.
-  function regionalBias(q, r, pid) { var b = MAP.bias[pid]; return (b && b[q + ',' + r]) || 0; }
-  function regionalApproval(party, hex) { return Math.max(0, Math.min(100, (Number(party.popularity) || 0) + regionalLean(hex.q, hex.r, party.id) + regionalBias(hex.q, hex.r, party.id))); }
+  // Per-hex party approval — the shared one-source formula (regional.js), reading this page's bias map.
+  function regionalApproval(party, hex) { return regApproval(party, hex.q, hex.r, MAP.bias); }
 
   function paintMap() {
     var res = drawNationMiniMap(MAP.cv, MAP.box, MAP.opts);   // truthy object (with hexAt) when land is painted
