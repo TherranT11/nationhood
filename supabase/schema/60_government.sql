@@ -524,6 +524,12 @@ begin
   -- Lift any assigned National Modifier whose end conditions are all met (schema/70).
   delete from public.nation_modifiers nm
    where public._modifier_end_met(nm.modifier_id, nm.nation_id, nm.since_tick, v_tick);
+  -- Purge card-minted modifier DEFINITIONS (schema/176 timed boosts) once they carry no assignment —
+  -- their nation_modifiers row was just lifted above. Admin-authored modifiers (source is null) are
+  -- never touched. Keeps the modifier list from growing every time a production card is played.
+  delete from public.national_modifiers m
+   where m.source = 'card'
+     and not exists (select 1 from public.nation_modifiers nm where nm.modifier_id = m.id);
   -- Agenda items whose scheduled month has arrived reach the floor automatically
   -- (schema/81). opened_tick starts their 6-tick window; scheduled_tick is cleared.
   -- Isolated like every other tick step — the event text must NEVER be able to abort the whole tick.

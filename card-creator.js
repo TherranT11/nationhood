@@ -21,6 +21,10 @@ const MINISTRIES = ['Defence', 'Treasury', 'Interior', 'Foreign Affairs', 'Trade
 const RESOURCES = ['food', 'goods', 'services', 'military', 'energy', 'minerals', 'diplomacy', 'army', 'navy', 'air_wings'];
 const RES_LABEL = { air_wings: 'Air Wings' };            // multi-word display overrides; the rest use cap()
 const resLabel = function (k) { return RES_LABEL[k] || cap(k); };
+// The resources a Produce cycle outputs (server source: economy_produce, schema/113) — the ones a
+// timed production modifier can boost/cut. A subset of RESOURCES (no army/navy/air_wings, which aren't produced).
+const PROD_RESOURCES = ['energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy'];
+const PROD_TICKS = [12, 24, 36, 48, 60];                 // the offered durations for a timed production modifier
 const KINDS = {
   cond:       { label: 'IF [stat] is above/below X, then…', nested: true },
   party_gain: { label: 'Targeted party gains X approval' },
@@ -36,6 +40,8 @@ const KINDS = {
   res_remove: { label: 'Remove X [resource] from on-hand' },
   rel_up:     { label: 'Relations with a nation increase by X' },
   rel_down:   { label: 'Relations with a nation decrease by X' },
+  prod_up:    { label: 'Increase production of [resource] by X for N ticks' },
+  prod_down:  { label: 'Decrease production of [resource] by X for N ticks' },
   appoint:    { label: 'HoG must appoint you [Ministry], or…', nested: true },
   hex_el:     { label: 'Carry out an election in a chosen hex' },
   nat_el:     { label: 'Carry out national election' },
@@ -461,6 +467,10 @@ export async function mountCardCreator(mount) {
     if (f.kind === 'hex_pop') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">hex &amp; side chosen on play</span>';
     if (f.kind === 'res_add' || f.kind === 'res_remove') h = '<span class="lbl">' + (f.kind === 'res_add' ? 'add' : 'remove') + '</span>' + num(f.p.x, 'x') +
       '<select data-i="' + i + '" data-f="res">' + RESOURCES.map(function (rz) { return '<option value="' + rz + '"' + (rz === f.p.res ? ' selected' : '') + '>' + resLabel(rz) + '</option>'; }).join('') + '</select><span class="lbl">on hand</span>';
+    if (f.kind === 'prod_up' || f.kind === 'prod_down') h = '<span class="lbl">' + (f.kind === 'prod_up' ? 'boost' : 'cut') + '</span>' +
+      '<select data-i="' + i + '" data-f="res">' + PROD_RESOURCES.map(function (rz) { return '<option value="' + rz + '"' + (rz === f.p.res ? ' selected' : '') + '>' + resLabel(rz) + '</option>'; }).join('') + '</select>' +
+      '<span class="lbl">by</span>' + num(f.p.x, 'x') +
+      '<span class="lbl">for</span><select data-i="' + i + '" data-f="ticks">' + PROD_TICKS.map(function (t) { return '<option value="' + t + '"' + (t === (f.p.ticks || 12) ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select><span class="lbl">ticks</span>';
     if (f.kind === 'rel_up' || f.kind === 'rel_down') h = '<span class="lbl">with</span>' +
       '<select data-i="' + i + '" data-f="nation"><option value=""' + (f.p.nation ? '' : ' selected') + '>— select nation —</option>' +
       NATIONS.map(function (n) { return '<option value="' + esc(n.id) + '"' + (n.id === f.p.nation ? ' selected' : '') + '>' + esc(n.name) + '</option>'; }).join('') + '</select>' +
@@ -555,20 +565,20 @@ export async function mountCardCreator(mount) {
         var special = sr ? sr.s.fx[sr.i] : (or ? or.o.fx[or.j] : null);
         if (special) {
           var r = special;
-          if (fd === 'kind') { r.kind = v; if (v !== 'none') r.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_gain', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 2 }; renderFx(); }
+          if (fd === 'kind') { r.kind = v; if (v !== 'none') r.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_gain', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'prod_up' || v === 'prod_down') ? { res: 'energy', x: 2, ticks: 12 } : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 2 }; renderFx(); }
           else if (fd === 'nk') { r.p.nk = v; r.p.np = r.p.np || {}; renderFx(); }
           else if (fd === 'nstat') { r.p.np = r.p.np || {}; r.p.np.stat = v; }
           else if (fd === 'nx') { r.p.np = r.p.np || {}; r.p.np.x = +v; }
-          else r.p[fd] = (fd === 'x') ? +v : v;
+          else r.p[fd] = (fd === 'x' || fd === 'ticks') ? +v : v;
           renderPreview(); return;
         }
         var f = activeArr()[+el.dataset.i];
         if (fd === 'txt' && state.mech === 'choice') { f.txt = v; renderPreview(); return; }
-        if (fd === 'kind') { f.kind = v; f.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 3 }; renderFx(); }
+        if (fd === 'kind') { f.kind = v; f.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'prod_up' || v === 'prod_down') ? { res: 'energy', x: 2, ticks: 12 } : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 3 }; renderFx(); }
         else if (fd === 'nk') { f.p.nk = v; f.p.np = f.p.np || {}; renderFx(); }
         else if (fd === 'nstat') { f.p.np = f.p.np || {}; f.p.np.stat = v; }
         else if (fd === 'nx') { f.p.np = f.p.np || {}; f.p.np.x = +v; }
-        else f.p[fd] = (fd === 'x') ? +v : v;
+        else f.p[fd] = (fd === 'x' || fd === 'ticks') ? +v : v;
         renderPreview();
       };
     });
@@ -612,6 +622,8 @@ export async function mountCardCreator(mount) {
       case 'res_remove': return 'Remove <b>' + (p.x || 0) + ' ' + esc(resLabel(p.res || 'food')) + '</b> from on-hand';
       case 'rel_up': return 'Relations with <b>' + esc(nationName(p.nation) || 'a nation') + '</b> rise by <b>' + (p.x || 0) + '</b>';
       case 'rel_down': return 'Relations with <b>' + esc(nationName(p.nation) || 'a nation') + '</b> fall by <b>' + (p.x || 0) + '</b>';
+      case 'prod_up': return '<b>' + esc(resLabel(p.res || 'energy')) + '</b> production <b>+' + (p.x || 0) + '</b> for <b>' + (p.ticks || 12) + '</b> ticks';
+      case 'prod_down': return '<b>' + esc(resLabel(p.res || 'energy')) + '</b> production <b>−' + (p.x || 0) + '</b> for <b>' + (p.ticks || 12) + '</b> ticks';
       case 'no_conf': return 'Put forth a <b>motion of no confidence</b>';
       case 'nat_el': return 'Carry out a <b>national election</b>';
       case 'hex_el': return 'Carry out an <b>election in a chosen hex</b> (reapportions its seats)';
