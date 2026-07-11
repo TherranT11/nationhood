@@ -420,7 +420,7 @@
       }).slice(0, 15);
     } catch (e) {}
     try {
-      const { data } = await supabase.from('card_decisions').select('id, card_name, options, handler, resolver_party_id, played_by_party_id').eq('nation_id', NATION_ID).eq('status', 'pending').order('created_at', { ascending: true });
+      const { data } = await supabase.from('card_decisions').select('id, card_name, options, handler, resolver_party_id').eq('nation_id', NATION_ID).eq('status', 'pending').order('created_at', { ascending: true });
       decisions = data || [];
     } catch (e) {}
 

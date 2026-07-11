@@ -85,7 +85,7 @@ revoke all on function public._create_card_decision(text, uuid, uuid, jsonb, int
 -- closes. Only the decision's resolver (or an admin) may call it.
 create or replace function public.card_decide(p_decision uuid, p_option int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_uid uuid; v_pid uuid; v_pname text; v_d record; v_opt jsonb; v_tick int;
+declare v_uid uuid; v_pid uuid; v_pname text; v_d record; v_opt jsonb; v_tick int; v_resolver uuid;
 begin
   v_uid := auth.uid();
   if v_uid is null then raise exception 'Not signed in.'; end if;
@@ -94,7 +94,10 @@ begin
   select * into v_d from public.card_decisions where id = p_decision for update;
   if not found then raise exception 'No such decision.'; end if;
   if v_d.status <> 'pending' then raise exception 'That decision has already been made.'; end if;
-  if v_d.resolver_party_id is distinct from v_pid and not public.is_admin() then
+  -- Effective resolver: if the stored resolver's party was deleted (resolver_party_id → null via the
+  -- FK), re-route (minister → HoG → player) so the decision isn't orphaned.
+  v_resolver := coalesce(v_d.resolver_party_id, public._card_decision_resolver(v_d.nation_id, v_d.handler, v_d.played_by_party_id));
+  if v_resolver is distinct from v_pid and not public.is_admin() then
     raise exception 'That decision is not yours to make.'; end if;
   if p_option is null or p_option < 0 or p_option >= jsonb_array_length(v_d.options) then
     raise exception 'Pick a valid option.'; end if;
@@ -103,7 +106,7 @@ begin
   select current_tick into v_tick from public.game_state where id;
   -- Apply the chosen option's effect. Nation/coalition effects land; a party-targeted option is left
   -- untargeted for now (target-picker is a later pass), consistent with the immediate engine.
-  perform public._apply_card_effect(v_d.nation_id, v_d.resolver_party_id, null, v_opt->>'kind', v_opt->'p', v_tick);
+  perform public._apply_card_effect(v_d.nation_id, v_resolver, null, v_opt->>'kind', v_opt->'p', v_tick);
 
   update public.card_decisions set status = 'resolved', chosen_idx = p_option where id = p_decision;
   insert into public.events (nation_id, party_id, kind, body, game_date)
