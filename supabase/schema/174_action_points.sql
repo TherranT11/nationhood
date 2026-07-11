@@ -90,7 +90,8 @@ grant execute on function public.card_discard(uuid) to authenticated;
 -- grants the card's Action Points. Keeps the ownership + in_hand + turn gate from 173; ADDS the
 -- one-choice guard and, on play, banks the card's `acts` (1–6, default 1 for pre-`acts` cards) as
 -- Action Points to spend this turn. Playing NO LONGER costs Influence — the card was paid for at
--- auction (schema/172), and actions don't cost Influence. Mechanical effects stay deferred (171). ──
+-- auction (schema/172), and actions don't cost Influence. Immediate effects resolve at the end via
+-- _resolve_card_effects (schema/176). ──
 create or replace function public.card_play(p_deck_card uuid)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_uid uuid; v_dc record; v_party record; v_def jsonb; v_name text; v_tick int; v_acts int;
@@ -123,7 +124,6 @@ begin
   v_acts := greatest(1, least(6, coalesce((v_def->>'acts')::int, 1)));   -- the card's Action Points
 
   -- TODO(purchase-by-stance): once parties can hold a stance, gate the playable side on reqD/reqR here.
-  -- TODO(effects): apply the card's mechanical effects when the resolution engine (Phase 3b) exists.
   update public.parties   set action_points = v_acts, turn_acted_tick = v_tick
    where id = v_party.id;
   -- Lifecycle (authored on the card): 'shuffle' returns it to the deck to be won again; otherwise it
@@ -140,6 +140,10 @@ begin
           v_party.name || ' played ' || v_name ||
             case when coalesce(v_def->>'desc', '') <> '' then ' — ' || (v_def->>'desc') else '' end,
           public.current_game_date());
+
+  -- Resolve the card's immediate effects (schema/176). Atomic with the play — a bad effect rolls the
+  -- whole play back. Decision options + stance-gated sides + persistence are handled in later phases.
+  perform public._resolve_card_effects(v_dc.nation_id, v_party.id, v_def, v_tick);
 end $$;
 grant execute on function public.card_play(uuid) to authenticated;
 
