@@ -17,8 +17,8 @@ const STATS = ['Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Public 
 // Handler routes to an actual minister.
 const MINISTRIES = ['Defence', 'Treasury', 'Interior', 'Foreign Affairs', 'Trade', 'Labour', 'Justice', 'Health', 'Education', 'Energy', 'Economic Development'];
 // The nation's on-hand stockpile keys (server source: nations.on_hand, schema/113). Stored lowercase.
-// food/goods/services/military are consumed by the economy; the rest are held stockpiles a card can move.
-const RESOURCES = ['food', 'goods', 'services', 'military', 'minerals', 'diplomacy', 'army', 'navy', 'air_wings'];
+// food/goods/services/military/energy are consumed by the economy; the rest are held stockpiles a card can move.
+const RESOURCES = ['food', 'goods', 'services', 'military', 'energy', 'minerals', 'diplomacy', 'army', 'navy', 'air_wings'];
 const RES_LABEL = { air_wings: 'Air Wings' };            // multi-word display overrides; the rest use cap()
 const resLabel = function (k) { return RES_LABEL[k] || cap(k); };
 const KINDS = {
