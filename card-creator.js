@@ -17,8 +17,8 @@ const STATS = ['Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Public 
 // Handler routes to an actual minister.
 const MINISTRIES = ['Defence', 'Treasury', 'Interior', 'Foreign Affairs', 'Trade', 'Labour', 'Justice', 'Health', 'Education', 'Energy', 'Economic Development'];
 // The nation's on-hand stockpile keys (server source: nations.on_hand, schema/113). Stored lowercase.
-// food/goods/services/military are consumed by the economy; the rest are held stockpiles a card can move.
-const RESOURCES = ['food', 'goods', 'services', 'military', 'minerals', 'diplomacy', 'army', 'navy', 'air_wings'];
+// food/goods/services/military/energy are consumed by the economy; the rest are held stockpiles a card can move.
+const RESOURCES = ['food', 'goods', 'services', 'military', 'energy', 'minerals', 'diplomacy', 'army', 'navy', 'air_wings'];
 const RES_LABEL = { air_wings: 'Air Wings' };            // multi-word display overrides; the rest use cap()
 const resLabel = function (k) { return RES_LABEL[k] || cap(k); };
 const KINDS = {
@@ -34,6 +34,8 @@ const KINDS = {
   hex_pop:    { label: 'Swing X approval at a chosen hex (you +X, or a rival −X)' },
   res_add:    { label: 'Add X [resource] to on-hand' },
   res_remove: { label: 'Remove X [resource] from on-hand' },
+  rel_up:     { label: 'Relations with a nation increase by X' },
+  rel_down:   { label: 'Relations with a nation decrease by X' },
   appoint:    { label: 'HoG must appoint you [Ministry], or…', nested: true },
   hex_el:     { label: 'Carry out an election in a chosen hex' },
   nat_el:     { label: 'Carry out national election' },
@@ -459,6 +461,10 @@ export async function mountCardCreator(mount) {
     if (f.kind === 'hex_pop') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">hex &amp; side chosen on play</span>';
     if (f.kind === 'res_add' || f.kind === 'res_remove') h = '<span class="lbl">' + (f.kind === 'res_add' ? 'add' : 'remove') + '</span>' + num(f.p.x, 'x') +
       '<select data-i="' + i + '" data-f="res">' + RESOURCES.map(function (rz) { return '<option value="' + rz + '"' + (rz === f.p.res ? ' selected' : '') + '>' + resLabel(rz) + '</option>'; }).join('') + '</select><span class="lbl">on hand</span>';
+    if (f.kind === 'rel_up' || f.kind === 'rel_down') h = '<span class="lbl">with</span>' +
+      '<select data-i="' + i + '" data-f="nation"><option value=""' + (f.p.nation ? '' : ' selected') + '>— select nation —</option>' +
+      NATIONS.map(function (n) { return '<option value="' + esc(n.id) + '"' + (n.id === f.p.nation ? ' selected' : '') + '>' + esc(n.name) + '</option>'; }).join('') + '</select>' +
+      '<span class="lbl">by</span>' + num(f.p.x, 'x');
     if (f.kind === 'hex_el') h = '<span class="lbl">hex chosen on play · 12-tick cooldown</span>';
     if (f.kind === 'mob_add' || f.kind === 'mob_rem' || f.kind === 'mil_add' || f.kind === 'mil_rem')
       h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px"><span class="lbl">' + ((f.kind === 'mob_add' || f.kind === 'mob_rem') ? '⚠ armed mob — nobody’s soldiers' : '⚑ militia — belongs to a party') + '</span>';
@@ -549,7 +555,7 @@ export async function mountCardCreator(mount) {
         var special = sr ? sr.s.fx[sr.i] : (or ? or.o.fx[or.j] : null);
         if (special) {
           var r = special;
-          if (fd === 'kind') { r.kind = v; if (v !== 'none') r.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_gain', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 2 }; renderFx(); }
+          if (fd === 'kind') { r.kind = v; if (v !== 'none') r.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_gain', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 2 }; renderFx(); }
           else if (fd === 'nk') { r.p.nk = v; r.p.np = r.p.np || {}; renderFx(); }
           else if (fd === 'nstat') { r.p.np = r.p.np || {}; r.p.np.stat = v; }
           else if (fd === 'nx') { r.p.np = r.p.np || {}; r.p.np.x = +v; }
@@ -558,7 +564,7 @@ export async function mountCardCreator(mount) {
         }
         var f = activeArr()[+el.dataset.i];
         if (fd === 'txt' && state.mech === 'choice') { f.txt = v; renderPreview(); return; }
-        if (fd === 'kind') { f.kind = v; f.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 3 }; renderFx(); }
+        if (fd === 'kind') { f.kind = v; f.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 3 }; renderFx(); }
         else if (fd === 'nk') { f.p.nk = v; f.p.np = f.p.np || {}; renderFx(); }
         else if (fd === 'nstat') { f.p.np = f.p.np || {}; f.p.np.stat = v; }
         else if (fd === 'nx') { f.p.np = f.p.np || {}; f.p.np.x = +v; }
@@ -604,6 +610,8 @@ export async function mountCardCreator(mount) {
       case 'hex_pop': return 'At a chosen hex: <b>you +' + (p.x || 0) + '</b>, or <b>a rival −' + (p.x || 0) + '</b> approval';
       case 'res_add': return 'Add <b>' + (p.x || 0) + ' ' + esc(resLabel(p.res || 'food')) + '</b> to on-hand';
       case 'res_remove': return 'Remove <b>' + (p.x || 0) + ' ' + esc(resLabel(p.res || 'food')) + '</b> from on-hand';
+      case 'rel_up': return 'Relations with <b>' + esc(nationName(p.nation) || 'a nation') + '</b> rise by <b>' + (p.x || 0) + '</b>';
+      case 'rel_down': return 'Relations with <b>' + esc(nationName(p.nation) || 'a nation') + '</b> fall by <b>' + (p.x || 0) + '</b>';
       case 'no_conf': return 'Put forth a <b>motion of no confidence</b>';
       case 'nat_el': return 'Carry out a <b>national election</b>';
       case 'hex_el': return 'Carry out an <b>election in a chosen hex</b> (reapportions its seats)';
@@ -690,6 +698,8 @@ export async function mountCardCreator(mount) {
         v.push(hasD && hasR ? ['ok', 'Both stances have a playable side'] : ['warn', 'One side has no effect — half the buyers won’t want this card']);
       }
     }
+    if (arr.some(function (f) { return (f.kind === 'rel_up' || f.kind === 'rel_down') && !(f.p && f.p.nation); }))
+      v.push(['warn', 'A relations effect has no nation picked — it will do nothing']);
     if (state.persistV === 'yes') v.push(['ok', '∞ Persistent — joins the national modifier board when played']);
     v.push(state.handler === 'player'
       ? ['ok', 'The player who plays it decides — no ministry gate']

@@ -35,6 +35,21 @@ begin
 end $$;
 revoke all on function public._relation_set(text, text, int) from public, anon, authenticated;
 
+-- Adjust the standing between two nations by a delta (a pair with no row reads 5, then moves). The
+-- clamp to 1–10 happens in _relation_set. ONE source for nudging a relation — the card effect engine
+-- (schema/176: rel_up / rel_down) calls it. Unknown/self target or a zero delta is a no-op.
+create or replace function public._relation_adjust(p_a text, p_b text, p_delta int)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_cur int;
+begin
+  if p_a is null or p_b is null or p_a = p_b or coalesce(p_delta, 0) = 0 then return; end if;
+  if not exists (select 1 from public.nations where id = p_b) then return; end if;   -- spoofed / deleted target
+  select value into v_cur from public.nation_relations
+   where nation_a = least(p_a, p_b) and nation_b = greatest(p_a, p_b);
+  perform public._relation_set(p_a, p_b, coalesce(v_cur, 5) + p_delta);
+end $$;
+revoke all on function public._relation_adjust(text, text, int) from public, anon, authenticated;
+
 -- Admin RPC: set the standing between two nations from the adminsetup nation form.
 create or replace function public.relation_set(p_a text, p_b text, p_v int)
 returns void language plpgsql security definer set search_path = public as $$

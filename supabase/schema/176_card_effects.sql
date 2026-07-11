@@ -66,6 +66,10 @@ begin
       end if;
     when 'nat_el' then
       update public.nations set next_election_tick = p_tick where id = p_nation and coalesce(next_election_tick, p_tick + 1) > p_tick;
+    -- Diplomacy: nudge the 1–10 standing between the playing nation and a nation chosen in the card
+    -- (p->>'nation'). rel_down is rel_up with the sign flipped. Clamp + guards live in _relation_adjust.
+    when 'rel_up' then   perform public._relation_adjust(p_nation, p_p->>'nation',  v_x::int);
+    when 'rel_down' then perform public._relation_adjust(p_nation, p_p->>'nation', (-v_x)::int);
     when 'cond' then
       v_live := public._nation_live_stat(p_nation, p_p->>'stat');
       if (p_p->>'dir' = 'above' and v_live >  v_x)
@@ -77,7 +81,7 @@ begin
     -- air_wings are held stockpiles a card can move. Clamped at 0 — a removal can't push it negative.
     -- One guarded write for both directions: res_remove is res_add with the sign flipped.
     when 'res_add', 'res_remove' then
-      if p_p->>'res' in ('food', 'goods', 'services', 'military', 'minerals', 'diplomacy', 'army', 'navy', 'air_wings') then
+      if p_p->>'res' in ('food', 'goods', 'services', 'military', 'energy', 'minerals', 'diplomacy', 'army', 'navy', 'air_wings') then
         perform public._nation_stat_add(p_nation, 'on_hand', p_p->>'res',
                                         case when p_kind = 'res_add' then v_x else -v_x end, 0, null);
       end if;
