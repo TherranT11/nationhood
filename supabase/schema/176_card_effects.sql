@@ -73,13 +73,11 @@ begin
     -- Add / remove resource units from the nation's on-hand stockpile (schema/113: nations.on_hand).
     -- food/goods/services/military are the economy-consumed stocks; minerals/diplomacy/army/navy/
     -- air_wings are held stockpiles a card can move. Clamped at 0 — a removal can't push it negative.
-    when 'res_add' then
+    -- One guarded write for both directions: res_remove is res_add with the sign flipped.
+    when 'res_add', 'res_remove' then
       if p_p->>'res' in ('food', 'goods', 'services', 'military', 'minerals', 'diplomacy', 'army', 'navy', 'air_wings') then
-        perform public._nation_stat_add(p_nation, 'on_hand', p_p->>'res',  v_x, 0, null);
-      end if;
-    when 'res_remove' then
-      if p_p->>'res' in ('food', 'goods', 'services', 'military', 'minerals', 'diplomacy', 'army', 'navy', 'air_wings') then
-        perform public._nation_stat_add(p_nation, 'on_hand', p_p->>'res', -v_x, 0, null);
+        perform public._nation_stat_add(p_nation, 'on_hand', p_p->>'res',
+                                        case when p_kind = 'res_add' then v_x else -v_x end, 0, null);
       end if;
     -- no_conf / appoint / hex_el / mob_add / mob_rem / mil_add / mil_rem / event: deferred → no-op.
     else null;
