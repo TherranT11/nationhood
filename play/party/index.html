@@ -258,7 +258,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick, selectAll } from '/supabase.js';
-  import { esc, majority, fmtPop, tickToDate } from '/util.js';
+  import { esc, majority, fmtPop, tickToDate, hexSeats, TICK_PERIOD_MS } from '/util.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { nationRegime } from '/ladders.js';
   import { nationColors, drawNationMiniMap } from '/hexmap.js';
@@ -489,7 +489,7 @@
   function regionalPolitics(hex) {
     if (!MAP.parties.length) return '';
     var pop = Number(hex.population) || 0;
-    var seatsHere = (MAP.totalSeats > 0 && MAP.natPop > 0) ? Math.round(MAP.totalSeats * pop / MAP.natPop) : 0;
+    var seatsHere = hexSeats(MAP.totalSeats, pop, MAP.natPop);
     // An elected hex (schema/181) shows its real makeup; otherwise seats are projected by national share.
     var elected = (MAP.hexSeats && MAP.hexSeats[hex.q + ',' + hex.r]) || null;
     var held = elected
@@ -683,13 +683,13 @@
       } catch (e) { /* leader line falls back to — */ }
 
       // Founded date as the IN-GAME month/year. There's no stored founding tick, so derive it from
-      // created_at against the game clock (one tick = 8h = one in-game month; tick 1 = Jan 1980):
-      // foundedTick ≈ current tick − months elapsed since creation. tickToDate → "Month, Year".
+      // created_at against the game clock (one tick = one in-game month, TICK_PERIOD_MS apart; tick 1 =
+      // Jan 1980): foundedTick ≈ current tick − months elapsed since creation. tickToDate → "Month, Year".
       var foundedText = '—';
       try {
         var curTick = await currentTick();
         if (party.created_at) {
-          var elapsed = Math.round((Date.now() - new Date(party.created_at).getTime()) / (8 * 3600 * 1000));
+          var elapsed = Math.round((Date.now() - new Date(party.created_at).getTime()) / TICK_PERIOD_MS);
           foundedText = tickToDate(Math.max(1, Math.min(curTick, curTick - elapsed)));
         }
       } catch (e) { /* leave — */ }

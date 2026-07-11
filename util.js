@@ -56,11 +56,23 @@ export function majority(seats) {
   return Math.floor((Number(seats) || 0) / 2) + 1;
 }
 
+// Real-world length of one game tick — the ONE source for the client. The server advances the clock via
+// pg_cron on the matching schedule '0 */6 * * *' (00:00 / 06:00 / 12:00 / 18:00 UTC, schema/60); keep
+// the two in lockstep. Read by the topbar "Next Tick" countdown and the Party page's founded-date math.
+export const TICK_PERIOD_MS = 6 * 3600 * 1000;   // 6 hours
+
+// A hex's seat count = its population share of the national chamber (round(total · hexpop / natpop)).
+// ONE source for the client-side projection — the Home election modal and the Party page both read it,
+// and it mirrors the apportionment total the server stores per elected hex (hex_election_resolve, 181).
+export function hexSeats(total, hexPop, natPop) {
+  return (Number(total) > 0 && Number(natPop) > 0) ? Math.round(Number(total) * (Number(hexPop) || 0) / Number(natPop)) : 0;
+}
+
 // Party inactivity (wall-clock) over parties.last_active_at (stamped by _lock_party on every
 // action; any action revives the party). Three thresholds, ALL derived from that one timestamp
 // — no stored flag to drift. An early nudge shows from INACTIVE_WARN_DAYS; at INACTIVE_DAYS the
 // party is inactive and sits out elections (resolve_election, schema/60); at INACTIVE_DELETE_DAYS
-// the 8-hour tick deletes it and its politicians, freeing the nation slot (_purge_inactive_parties,
+// the tick deletes it and its politicians, freeing the nation slot (_purge_inactive_parties,
 // schema/97). These day counts MIRROR those SQL thresholds — keep the two in sync.
 export const INACTIVE_WARN_DAYS = 6;
 export const INACTIVE_DAYS = 7;

@@ -8,6 +8,7 @@ import { liveGameDate, mountGameDate } from '/gamedate.js';
 import { nationBudgetBalance } from '/policies.js';
 import { fetchBudgetInitiatives } from '/initiatives.js';
 import { mountCoalitionBanner } from '/coalition-banner.js';
+import { TICK_PERIOD_MS } from '/util.js';
 
 const CSS = `
 /* Compact chip row, matching the tutorial's .nhbar: Influence (star) · Budget ·
@@ -118,7 +119,7 @@ export function mountTopbar(){
   // it whenever the page is (re)shown so it never goes stale after a tick advances
   // elsewhere: on bfcache restore (back/forward) and when a tab is refocused.
   mountGameDate(document.getElementById('tbDate'));
-  mountNextTick(document.getElementById('tbNext'));   // live "Next Tick" countdown to the next 8h boundary
+  mountNextTick(document.getElementById('tbNext'));   // live "Next Tick" countdown to the next tick boundary
   mountCoalitionBanner();   // top-of-page "form a coalition" prompt while the nation has no governing coalition
   window.addEventListener('pageshow', function () { refreshTopbarDate(); mountCoalitionBanner(); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) { refreshTopbarDate(); mountCoalitionBanner(); } });
@@ -129,20 +130,19 @@ export async function refreshTopbarDate(){
 }
 
 // The live "Next Tick" countdown. The server advances the clock via pg_cron at
-// 00:00 / 08:00 / 16:00 UTC (schema/60), so the next tick is just the next 8-hour UTC
+// 00:00 / 06:00 / 12:00 / 18:00 UTC (schema/60), so the next tick is just the next TICK_PERIOD_MS UTC
 // boundary — pure wall-clock math, no server round-trip. We repaint every second; when
-// a boundary passes (the countdown jumps back up to ~8h), the server has just ticked,
+// a boundary passes (the countdown jumps back up to ~a full period), the server has just ticked,
 // so we re-pull the visible game date — at once, then again a few seconds later in case
 // the cron run lands a moment late. visibilitychange (above) also refreshes on refocus,
-// so a backgrounded tab self-heals.
-const TICK_PERIOD_MS = 8 * 3600 * 1000;   // 8 hours — must match the cron schedule '0 */8 * * *'
+// so a backgrounded tab self-heals. TICK_PERIOD_MS (util.js) is the one source — must match the cron.
 let nextTickTimer = null;
 
 function msUntilNextTick(now){
   const dayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const since = now.getTime() - dayStart;                              // ms since UTC midnight
   const nextBoundary = (Math.floor(since / TICK_PERIOD_MS) + 1) * TICK_PERIOD_MS;
-  return dayStart + nextBoundary - now.getTime();                      // ms to the next 00/08/16 UTC
+  return dayStart + nextBoundary - now.getTime();                      // ms to the next 00/06/12/18 UTC
 }
 function fmtCountdown(ms){
   const s = Math.max(0, Math.floor(ms / 1000));
