@@ -158,42 +158,42 @@
 
     <section class="mod" id="campMod" hidden>
       <div class="mod__hd"><span>Campaign Trail</span><span class="r">Six months to the vote</span></div>
-      <p class="camp-intro">The election is close enough to campaign. Each action is paid in Influence the moment you use it, moves standing before the ballot, and may be used <b>once per campaign</b>.</p>
+      <p class="camp-intro">The election is close enough to campaign. Each action costs <b>1 Action Point</b>, moves standing before the ballot, and may be used <b>once per campaign</b>.</p>
       <div class="camp-wallet">
-        <div class="cw"><div class="v" id="campInf">&mdash;</div><div class="l">Influence</div></div>
+        <div class="cw"><div class="v" id="campInf">&mdash;</div><div class="l">Action Points</div></div>
         <div class="cw"><div class="v" id="campPop">&mdash;</div><div class="l">Your popularity</div></div>
         <div class="cw"><div class="v" id="campSeats">&mdash;</div><div class="l">Projected seats</div></div>
       </div>
       <div class="camp-acts">
         <div class="camp-act" data-act="door">
-          <div class="camp-act__hd"><span class="camp-act__nm">Door Knocking</span><span class="camp-act__cost">4 Influence</span></div>
+          <div class="camp-act__hd"><span class="camp-act__nm">Door Knocking</span><span class="camp-act__cost">1 AP</span></div>
           <div class="camp-act__eff">&plus;1D4 Party Popularity.</div>
           <button class="camp__use" type="button">Use</button>
         </div>
         <div class="camp-act" data-act="public">
-          <div class="camp-act__hd"><span class="camp-act__nm">Public Appearance</span><span class="camp-act__cost">3 Influence</span></div>
+          <div class="camp-act__hd"><span class="camp-act__nm">Public Appearance</span><span class="camp-act__cost">1 AP</span></div>
           <div class="camp-act__eff">&plus;1 Party Popularity.</div>
           <button class="camp__use" type="button">Use</button>
         </div>
         <div class="camp-act" data-act="debate">
-          <div class="camp-act__hd"><span class="camp-act__nm">TV Debate</span><span class="camp-act__cost">5 Influence</span></div>
+          <div class="camp-act__hd"><span class="camp-act__nm">TV Debate</span><span class="camp-act__cost">1 AP</span></div>
           <div class="camp-act__eff">50/50: you gain &plus;6% and they lose 6%, or the reverse. Pick any party.</div>
           <select class="camp__target" aria-label="Debate opponent"></select>
           <button class="camp__use" type="button">Use</button>
         </div>
         <div class="camp-act" data-act="attack">
-          <div class="camp-act__hd"><span class="camp-act__nm">Attack Campaign</span><span class="camp-act__cost">2 Influence</span></div>
+          <div class="camp-act__hd"><span class="camp-act__nm">Attack Campaign</span><span class="camp-act__cost">1 AP</span></div>
           <div class="camp-act__eff">50/50: they lose 3% Popularity, or it backfires and you lose 5%.</div>
           <select class="camp__target" aria-label="Attack target"></select>
           <button class="camp__use" type="button">Use</button>
         </div>
         <div class="camp-act" data-act="townhall">
-          <div class="camp-act__hd"><span class="camp-act__nm">Town Hall</span><span class="camp-act__cost">8 Influence</span></div>
+          <div class="camp-act__hd"><span class="camp-act__nm">Town Hall</span><span class="camp-act__cost">1 AP</span></div>
           <div class="camp-act__eff">&plus;2 Party Popularity, and the next attack that lands on you this campaign hits at half force.</div>
           <button class="camp__use" type="button">Use</button>
         </div>
         <div class="camp-act" data-act="surprise">
-          <div class="camp-act__hd"><span class="camp-act__nm">Election Surprise</span><span class="camp-act__cost">5 Influence</span></div>
+          <div class="camp-act__hd"><span class="camp-act__nm">Election Surprise</span><span class="camp-act__cost">1 AP</span></div>
           <div class="camp-act__eff">50/50: they lose 4% Popularity, or it backfires — you lose 3% and they gain 2%. Pick any party.</div>
           <select class="camp__target" aria-label="Election surprise target"></select>
           <button class="camp__use" type="button">Use</button>
@@ -479,7 +479,7 @@
       // a popularity swing shows at once. One source, so the stat and the card never disagree.
       var thr = Number(nation && nation.electoral_threshold) || 0; // resolver gate: parties contest at/above the threshold
       var maj = seatsTotal ? majority(seatsTotal) : 0;
-      var campInfluence = Math.max(0, Number(party.influence) || 0); // Influence wallet for the Campaign Trail
+      var campInfluence = Math.max(0, Number(party.action_points) || 0); // Action-Point budget for the Campaign Trail
 
       async function loadProjection() {
         // Defensive on `color` (a cosmetic column that may not be migrated): retry without it and
@@ -523,7 +523,7 @@
           mod.querySelectorAll('.camp-act').forEach(function (el) {
             var cfg = CAMP[el.dataset.act], btn = el.querySelector('.camp__use'), spent = !!used[cfg.key];
             el.classList.toggle('camp-act--used', spent);
-            btn.disabled = spent || busy || campInfluence < cfg.cost || (cfg.target && !rivals.length);
+            btn.disabled = spent || busy || campInfluence < 1 || (cfg.target && !rivals.length);   // every campaign move costs 1 AP
             btn.textContent = spent ? 'Used this campaign' : 'Use';
           });
         }
@@ -532,7 +532,7 @@
           .then(function (r) { (r.data || []).forEach(function (row) { used[row.action] = true; }); affordability(); });
         mod.querySelectorAll('.camp-act').forEach(function (el) {
           var cfg = CAMP[el.dataset.act], sel = el.querySelector('.camp__target');
-          el.querySelector('.camp-act__cost').textContent = cfg.cost + ' Influence';   // CAMP is the one source for the cost
+          el.querySelector('.camp-act__cost').textContent = '1 AP';   // every campaign move costs 1 Action Point
           el.querySelector('.camp__use').onclick = function () {
             if (busy || used[cfg.key]) return;
             var args = {};
@@ -542,7 +542,7 @@
               if (r.error) throw r.error;
               var d = r.data || {};
               used[cfg.key] = true;   // spent — one use per campaign
-              if (d.influence != null) { campInfluence = Number(d.influence); setTopbarActions(campInfluence); }
+              campInfluence = Math.max(0, campInfluence - 1); setTopbarActions(campInfluence);   // each campaign move spends 1 AP
               result.textContent = d.body || 'Done.';
               return loadProjection();   // repaint wallet + projection with the new popularity
             }).catch(function (e) { result.textContent = (e && e.message) || 'That campaign action could not be completed.'; })

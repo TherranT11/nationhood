@@ -56,7 +56,7 @@ begin
 
   insert into public.mp_candidacies (party_id, politician_id, candidate_name, candidate_image, opponent_party_id, opponent_name, spend, resolve_tick)
     values (v_p.id, p_member, v_mname, v_image, v_riv.id, v_oppname, v_spend, v_resolve);
-  update public.parties set funds = funds - v_cost, influence = influence - 1 where id = v_p.id;
+  update public.parties set funds = funds - v_cost where id = v_p.id;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_p.nation_id, v_p.id, 'party',
@@ -65,7 +65,7 @@ begin
             public.current_game_date());
 
   return jsonb_build_object('opponent', v_riv.name, 'resolve_tick', v_resolve,
-    'funds', v_p.funds - v_cost, 'actions', v_p.influence - 1);
+    'funds', v_p.funds - v_cost, 'actions', v_p.influence);
 end $$;
 grant execute on function public.direct_parliament(uuid, int) to authenticated;
 
@@ -89,7 +89,7 @@ begin
   v_newpop  := greatest(public._pop_min(), least(v_p.popularity + 3, v_eff));                  -- +3, clamped to [min, ceiling]
   v_gain    := v_newpop - v_p.popularity;
 
-  update public.parties set pop_ceiling = v_newceil, popularity = v_newpop, influence = influence - 1 where id = v_p.id;
+  update public.parties set pop_ceiling = v_newceil, popularity = v_newpop where id = v_p.id;
 
   v_body := 'The ' || public._bare_party(v_p.name)
          || ' has announced the formation of its own paramilitary wing — a show of force on the streets. Popularity '
@@ -98,7 +98,7 @@ begin
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_p.nation_id, v_p.id, 'party', v_body, public.current_game_date());
 
-  return jsonb_build_object('pop_gain', v_gain, 'popularity', v_newpop, 'ceiling', v_newceil, 'actions', v_p.influence - 1);
+  return jsonb_build_object('pop_gain', v_gain, 'popularity', v_newpop, 'ceiling', v_newceil, 'actions', v_p.influence);
 end $$;
 grant execute on function public.direct_paramilitary(uuid) to authenticated;
 
@@ -125,7 +125,6 @@ begin
     update public.politicians set status = 'Party Member' where id = p_member;
   end if;
 
-  update public.parties set influence = influence - 1 where id = v_p.id;   -- spend the action
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_p.nation_id, v_p.id, 'party',
@@ -133,7 +132,7 @@ begin
               || public._bare_party(v_p.name) || '.', public.current_game_date());
 
   return jsonb_build_object('deputy', case when p_appoint then v_mname else null end, 'member', v_mname,
-    'actions', v_p.influence - 1);
+    'actions', v_p.influence);
 end $$;
 grant execute on function public.direct_appoint_deputy(uuid, boolean) to authenticated;
 

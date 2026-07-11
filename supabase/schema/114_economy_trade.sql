@@ -148,8 +148,7 @@ begin
     raise exception 'Unknown resource.'; end if;
   if coalesce(p_qty, 0) < 1 then raise exception 'Choose how much to import.'; end if;
 
-  v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
-  if v_p.influence < 2 then raise exception 'Not enough Influence (need 2).'; end if;
+  v_p := public._begin_action(0);   -- lock caller's party + spend 1 Action Point
   v_buyer := v_p.nation_id;
   if not public._party_holds_ministry(v_p.id, 'Trade') then
     raise exception 'Only the Minister of Trade can import.'; end if;
@@ -186,7 +185,6 @@ begin
   v_cur    := coalesce((select economy->>'currency' from public.nations where id = v_buyer), '$');
 
   perform public._settle_import(v_buyer, p_seller, p_resource, p_qty, v_total, v_duty);           -- goods + money + ledger (one source)
-  update public.parties set influence = influence - 2 where id = v_p.id;          -- 2 AP on confirm
 
   -- Resulting Public Debt (imports are debt-financed via _nation_budget_add) — recorded on the event so
   -- it appears in the Budget page's history + sparkline (debt_after), and noted in the line itself.
@@ -200,7 +198,7 @@ begin
             public.current_game_date(), 'neg', v_debt);
 
   return jsonb_build_object('resource', p_resource, 'qty', p_qty, 'world', v_world, 'total', v_total,
-    'duty', v_duty, 'net', v_net, 'actions', v_p.influence - 2);
+    'duty', v_duty, 'net', v_net, 'actions', v_p.influence);
 end $$;
 grant execute on function public.economy_import(text, text, int) to authenticated;
 
@@ -218,12 +216,10 @@ begin
   if coalesce(p_goods, 0) < 1 then raise exception 'Choose how many Goods to create.'; end if;
   v_cost := 2 * p_goods;
 
-  v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
+  v_p := public._begin_action(0);   -- lock caller's party + spend 1 Action Point
   v_nation := v_p.nation_id;
   if not public._party_holds_ministry(v_p.id, 'Economic Development') then
     raise exception 'Only the Minister of Economic Development can industrialize.'; end if;
-  if v_p.influence < v_cost then
-    raise exception 'Not enough Influence (need % for % Goods).', v_cost, p_goods; end if;
 
   -- Lock the nation row so two concurrent runs can't both pass the stock check and overdraw it.
   select name, coalesce((on_hand->>'energy')::numeric, 0), coalesce((on_hand->>'minerals')::numeric, 0)
@@ -235,14 +231,13 @@ begin
   perform public._nation_stat_add(v_nation, 'on_hand', 'energy',   -p_goods, 0, null);
   perform public._nation_stat_add(v_nation, 'on_hand', 'minerals', -p_goods, 0, null);
   perform public._nation_stat_add(v_nation, 'on_hand', 'goods',     p_goods, 0, null);
-  update public.parties set influence = influence - v_cost where id = v_p.id;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_nation, v_p.id, 'economy',
       'Nation of ' || v_name || ' has continued to industrialize, creating ' || p_goods || ' goods.',
       public.current_game_date());
 
-  return jsonb_build_object('goods', p_goods, 'cost', v_cost, 'actions', v_p.influence - v_cost);
+  return jsonb_build_object('goods', p_goods, 'cost', v_cost, 'actions', v_p.influence);
 end $$;
 grant execute on function public.economy_industrialize(int) to authenticated;
 

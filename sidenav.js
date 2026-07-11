@@ -11,12 +11,12 @@ import { hasUnvotedFloorMeasure } from '/proposals.js';
 
 // The nav items — the single source for both the rail and the bottom bar. href:null
 // marks a section that isn't built yet (shown disabled).
-// Home (the national + world news desk) leads as the landing page you see on login;
+// Home (the nation-and-world dashboard — turn queue, card market, and your hand) leads as the landing page you see on login;
 // Party sits right after it, then the tutorial spine (Nation · Government · Legislature ·
 // Elections · Trade · World · Conflict · Forum · Wiki); the real-game extras (Policies,
 // Corporations) slot next to their siblings, and "Trade" is the Economy page.
 const NAV = [
-  { href: '/play/news/',        label: 'Home',         svg: '<path d="M5 4h11v15a1 1 0 01-1 1H5z"/><path d="M16 8h3v10a2 2 0 01-2 2"/><path d="M8 8h5M8 11h5M8 14h5"/>' },
+  { href: '/play/news/',        label: 'Home',         svg: '<path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/>' },
   { href: '/play/party/',       label: 'Party',        svg: '<path d="M4 21V4"/><path d="M4 4c3-2 6 2 9 0s6-2 9 0v9c-3 2-6-2-9 0s-6 2-9 0"/>' },
   { href: '/play/',             label: 'Nation',       svg: '<path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/>' },
   { href: '/play/government/',  label: 'Government',   svg: '<path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/>' },

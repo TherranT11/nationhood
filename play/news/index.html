@@ -11,90 +11,165 @@
 <link rel="stylesheet" href="/play.css">
 <style>
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
-
-  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
-
-  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0;display:flex;flex-direction:column}
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
   .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
   .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
-  .phead p{color:var(--muted);font-size:13.5px;margin-top:5px;max-width:620px}
-  /* Masthead dateline — the current in-game month/year, centred between hairline rules. */
-  .dateline{display:flex;align-items:center;gap:14px;margin-top:16px;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--ink)}
-  .dateline::before,.dateline::after{content:'';height:1px;background:var(--line);flex:1}
+  .phead p{color:var(--muted);font-size:13.5px;margin-top:5px;max-width:640px}
 
-  /* Reading column: capped so headlines don't stretch on wide screens; two columns when there's room. */
-  .phead,.feeds{max-width:720px}
-  .feeds{display:grid;grid-template-columns:1fr;gap:18px;align-items:start;margin-top:18px}
-  .feeds .panel{margin-top:0}
-  .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px}
-  .sec-h{display:flex;align-items:baseline;flex-wrap:wrap;gap:10px;margin-bottom:14px}
-  .sec-h b{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);font-weight:700}
-  .sec-h .n{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;color:var(--soft)}
-  .natfilter{margin-left:auto;max-width:190px;background:var(--surface);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:5px 8px;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;cursor:pointer}
+  /* scoped accents (theme-aware via tokens + color-mix) */
+  .cm{--gen:var(--blue);--rev:var(--red);--auto:#9159c9;--nat:var(--amber);--inf:var(--amber)}
+  .cm .sect{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--soft);margin:0 0 12px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .cm .sect.gap{margin-top:26px}
+  .cm .sect .note{letter-spacing:.03em;font-size:9.5px;text-transform:none;color:var(--soft)}
+  .cm .inf{color:var(--inf);font-weight:700}
 
-  .feed{display:flex;flex-direction:column}
-  /* Date section break — a subtle "SEPTEMBER 1983" divider grouping each tick's headlines. */
-  .datebreak{display:flex;align-items:center;gap:12px;margin:16px 0 2px;font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
-  .datebreak::after{content:'';height:1px;background:var(--line);flex:1}
-  .datebreak:first-child{margin-top:0}
-  .hl{display:flex;gap:13px;padding:13px 0;border-top:1px solid var(--line)}
-  .hl:first-child,.datebreak + .hl{border-top:none;padding-top:2px}
-  .hl:last-child{padding-bottom:2px}
-  .hl__logo{width:42px;height:42px;border-radius:10px;flex:none;display:grid;place-items:center;font-family:'Space Mono',monospace;font-weight:700;font-size:14px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45);background-size:cover;background-position:center;overflow:hidden}
-  .hl__body{flex:1;min-width:0}
-  .hl__paper{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:4px}
-  .hl__flag{width:16px;height:12px;border-radius:2px;object-fit:cover;flex:none;border:1px solid var(--line)}
-  .hl__pname{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.03em;color:var(--muted)}
-  .hl__slant{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:5px;padding:3px 7px}
-  .hl__text{font-size:15.5px;font-weight:700;letter-spacing:-.01em;line-height:1.32;color:var(--ink)}
-  .hl__meta{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.02em;color:var(--soft);margin-top:5px;display:flex;align-items:center;gap:5px}
+  /* twin timelines */
+  .cm .toprow{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:18px}
+  @media(max-width:900px){.cm .toprow{grid-template-columns:1fr}}
+  .cm .tlcard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px 14px}
+  .cm .tl{margin-top:6px;max-height:300px;overflow-y:auto;padding-right:6px}
+  .cm .tle{position:relative;padding:0 0 14px 18px;border-left:1px solid var(--line);margin-left:4px}
+  .cm .tle:last-child{border-left-color:transparent;padding-bottom:2px}
+  .cm .tle .tdot{position:absolute;left:-5px;top:4px;width:9px;height:9px;border-radius:50%;background:var(--soft);border:2px solid var(--surface)}
+  .cm .tle.world .tdot{background:var(--blue)}
+  .cm .tle .when{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;color:var(--soft);letter-spacing:.08em;text-transform:uppercase}
+  .cm .tle .ntag{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.06em;color:var(--blue);margin-left:6px}
+  .cm .tle .tt{font-size:12.5px;color:var(--ink);margin:2px 0 1px;line-height:1.35}
+  .cm .tlempty{color:var(--soft);font-size:12.5px;padding:6px 0}
+  .cm .err{color:var(--red);font-size:12.5px;padding:8px 0}
 
-  .empty{text-align:center;padding:40px 20px;color:var(--soft)}
-  .empty b{display:block;color:var(--muted);font-size:15px;margin-bottom:6px}
-  .empty span{display:block;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:var(--soft);margin-top:6px}
+  /* card queue — the live turn rotation */
+  .cm .queuecard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 18px 12px}
+  .cm .qrow{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+  .cm .qtick{flex:none;min-width:132px;background:var(--field);border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+  .cm .qtick.now{border-color:var(--inf);background:color-mix(in srgb,var(--inf) 8%,var(--field))}
+  .cm .qtick.me{border-color:var(--indigo)}
+  .cm .qtick.now.me{border-color:var(--inf)}
+  .cm .qmo{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.08em;color:var(--soft);display:flex;align-items:center;gap:6px;text-transform:uppercase}
+  .cm .qtick.now .qmo{color:var(--inf)}
+  .cm .qsw{width:8px;height:8px;border-radius:2px;flex:none}
+  .cm .qp{font-size:12.5px;font-weight:800;color:var(--ink);margin-top:5px;line-height:1.25}
+  .cm .qyou{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.08em;color:var(--indigo)}
+  .cm .qtick.now .qyou{color:var(--inf)}
 
-  /* Two columns on wide screens — Party Actions (left) + News Feed (right), equal width. Both feeds
-     share one scroll cap so the columns are even in height and each scrolls on its own; neither can
-     run away and dominate the page. Below this the feeds stack (party actions first) and flow naturally. */
-  @media(min-width:1150px){
-    .phead{max-width:1040px}
-    /* Fill the content area: the two panels span the full width as equal columns and stretch to
-       the same height (the feeds grid grows to fill the page via flex:1), with each feed scrolling
-       inside its own panel — so neither a taller header nor a longer feed unbalances the columns. */
-    .feeds{max-width:none;flex:1;min-height:0;grid-template-columns:1fr 1fr;gap:22px;align-items:stretch}
-    .feeds .panel{display:flex;flex-direction:column;min-height:0}
-    #actions,#news{flex:1;min-height:0;overflow-y:auto;padding-right:6px}
-  }
-  /* Mobile refresh — a tappable filter, tighter panels, and drop the descriptive subtext for room. */
-  @media(max-width:820px){ .natfilter{padding:7px 10px;font-size:11px} }
-  @media(max-width:520px){ .panel{padding:16px 15px} .n-desc{display:none} }
+  /* action container — the three turn choices */
+  .cm .actbox{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .cm .actbox.off{opacity:.75}
+  .cm .actbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .cm .apbadge{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--inf);background:color-mix(in srgb,var(--inf) 12%,transparent);border:1px solid color-mix(in srgb,var(--inf) 40%,transparent);border-radius:8px;padding:6px 11px}
+  .cm .actstat{font-size:13px;color:var(--muted)}
+  .cm .actstat b{color:var(--ink)}
+  .cm .actrow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:820px){.cm .actrow{grid-template-columns:1fr}}
+  .cm .actopt{background:var(--field);border:1px solid var(--line);border-radius:12px;padding:15px 15px 13px;text-align:left;cursor:pointer;transition:border-color .15s;color:inherit;font:inherit}
+  .cm .actopt:hover:not(:disabled){border-color:var(--indigo)}
+  .cm .actopt:disabled{opacity:.45;cursor:not-allowed}
+  .cm .actopt .an{font-size:14px;font-weight:800;color:var(--ink);margin-bottom:5px}
+  .cm .actopt .ad{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);letter-spacing:.03em;line-height:1.6}
+  .cm .actopt.info{cursor:default}
+  .cm .actopt.info:hover{border-color:var(--line)}
 
-  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+  /* government decisions (played Choice cards awaiting a resolver) */
+  .cm .deccard{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:15px 17px;margin-bottom:11px}
+  .cm .dechd{font-size:14px;font-weight:800;color:var(--ink);margin-bottom:3px}
+  .cm .decwho{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-bottom:11px}
+  .cm .decwho.mine{color:var(--inf)}
+  .cm .decopts{display:flex;gap:9px;flex-wrap:wrap}
+  .cm .decopt{flex:1;min-width:170px;text-align:left;background:var(--field);border:1px solid var(--line);border-radius:10px;padding:11px 13px;color:var(--ink);font:inherit;font-size:12.5px;line-height:1.4}
+  .cm button.decopt{cursor:pointer}
+  .cm button.decopt:hover:not(:disabled){border-color:var(--indigo)}
+  .cm button.decopt:disabled{opacity:.55;cursor:not-allowed}
+  .cm .decopt.wait{color:var(--muted)}
+
+  /* market + hand grids */
+  .cm .market{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px}
+  .cm .hand{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px}
+  .cm .cardc{background:var(--surface);border:1px solid var(--line);border-radius:13px;overflow:hidden;display:flex;flex-direction:column}
+  .cm .stripe{height:4px}
+  .cm .stripe.gen{background:var(--gen)} .cm .stripe.rev{background:var(--rev)} .cm .stripe.auto{background:var(--auto)} .cm .stripe.nat{background:var(--nat)}
+  .cm .c-body{padding:13px 14px 11px;flex:1;display:flex;flex-direction:column}
+  .cm .c-kind{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
+  .cm .c-kind.gen{color:var(--gen)} .cm .c-kind.rev{color:var(--rev)} .cm .c-kind.auto{color:var(--auto)} .cm .c-kind.nat{color:var(--nat)}
+  .cm .c-name{font-size:15px;font-weight:800;line-height:1.2;margin-bottom:6px;color:var(--ink)}
+  .cm .c-req{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.05em;border-radius:5px;padding:3px 7px;display:inline-block;margin-bottom:8px;width:fit-content;color:var(--muted);background:var(--chip);border:1px solid var(--line)}
+  .cm .c-fx{font-size:11.5px;color:var(--muted);line-height:1.5;flex:1}
+  .cm .c-cost{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);margin-top:9px;letter-spacing:.04em}
+  .cm .c-cost b{color:var(--inf)}
+
+  /* bid footer (sealed — only your own bid) */
+  .cm .c-bid{border-top:1px solid var(--line);background:var(--field);padding:9px 11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .cm .mybid{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft)}
+  .cm .mybid b{color:var(--inf);font-size:12px}
+  .cm .bidctrl{margin-left:auto;display:flex;align-items:center;gap:6px}
+  .cm .bbtn{width:24px;height:24px;border-radius:6px;background:var(--chip);border:1px solid var(--line);color:var(--muted);font-family:'Space Mono',monospace;font-weight:700;cursor:pointer;font-size:13px;line-height:1}
+  .cm .bbtn:hover{color:var(--ink);border-color:var(--soft)}
+  .cm .bval{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--inf);min-width:22px;text-align:center}
+  .cm .act{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:7px;padding:7px 11px;cursor:pointer;border:1px solid}
+  .cm .act.bid{color:#fff;background:var(--indigo);border-color:var(--indigo)}
+  .cm .act.bid:hover{filter:brightness(1.08)}
+  .cm .act.cancel{color:var(--muted);background:var(--surface);border-color:var(--line)}
+  .cm .act.cancel:hover{color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,transparent)}
+  .cm .act.play{width:calc(100% - 24px);margin:0 12px 12px;text-align:center;color:#fff;background:var(--indigo);border-color:var(--indigo);padding:9px 0}
+  .cm .act.play:hover:not(:disabled){filter:brightness(1.08)}
+  .cm .handbtns{display:flex;gap:8px;padding:0 12px 12px}
+  .cm .handbtns .act{flex:1;width:auto;margin:0;text-align:center;padding:9px 0}
+  .cm .act.disc{color:var(--muted);background:var(--surface);border-color:var(--line)}
+  .cm .act.disc:hover:not(:disabled){color:var(--inf);border-color:color-mix(in srgb,var(--inf) 45%,transparent)}
+  .cm .act:disabled{opacity:.55;cursor:not-allowed;filter:none}
+  .cm .handbtns .tgtlbl{flex-basis:100%;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:2px 0}
+  .cm .act.tgt{color:#fff;background:var(--indigo);border-color:var(--indigo)}
+  .cm .act.tgt:hover:not(:disabled){filter:brightness(1.08)}
+  .cm .act.tgtx{color:var(--muted);background:var(--surface);border-color:var(--line);flex:0 0 auto;padding:9px 12px}
+  .cm .handbtns:has(.tgt){flex-wrap:wrap}
+
+  .cm .empty{background:var(--surface);border:1px dashed var(--line);border-radius:13px;padding:26px 20px;text-align:center;color:var(--soft);font-size:13px}
+  .cm .empty b{display:block;color:var(--muted);font-size:14px;margin-bottom:5px}
 </style>
 </head>
 <body>
 <div class="app">
-  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
+  <div id="sidenav"></div>
 
   <main class="main">
     <div class="topbar" id="topbar"></div>
     <div class="phead">
-      <span class="eye">The Press</span>
+      <span class="eye" id="eye">The Party</span>
       <h1>Home</h1>
-      <p>Your nation's parties out on the ground, and the day's headlines from across the world.</p>
-      <div class="dateline" id="dateline" hidden></div>
+      <p>Your nation and the world at a glance — the turn queue, the card market, and the cards in your hand. You play cards on your party's turn.</p>
     </div>
 
-    <div class="feeds">
-      <section class="panel">
-        <div class="sec-h"><b>Party Actions</b><span class="n" id="actionsNat"></span></div>
-        <div class="feed" id="actions"><p class="empty"><b>Loading…</b></p></div>
-      </section>
+    <div class="cm">
+      <!-- twin timelines -->
+      <div class="toprow">
+        <div class="tlcard">
+          <div class="sect">Nation Timeline <span class="note" id="tlNat"></span></div>
+          <div class="tl" id="timeline"><div class="tlempty">Loading…</div></div>
+        </div>
+        <div class="tlcard">
+          <div class="sect">World Timeline <span class="note">beyond the borders</span></div>
+          <div class="tl" id="worldline"><div class="tlempty">Loading…</div></div>
+        </div>
+      </div>
 
-      <section class="panel">
-        <div class="sec-h"><b>News Feed</b><span class="n n-desc">headlines from across the world</span><select class="natfilter" id="newsNat" aria-label="Filter the News Feed by nation" hidden><option value="">Global</option></select></div>
-        <div class="feed" id="news"><p class="empty"><b>Loading the wires…</b></p></div>
-      </section>
+      <!-- turn queue -->
+      <div class="sect gap">Turn Queue <span class="note">your nation's rotation · one party acts each tick</span></div>
+      <div class="queuecard"><div class="qrow" id="queue"><div class="tlempty">Loading…</div></div></div>
+
+      <!-- action container -->
+      <div class="sect gap">Your Turn <span class="note" id="actNote"></span></div>
+      <div id="actions"></div>
+
+      <!-- government decisions (from played Choice cards) -->
+      <div class="sect gap" id="decSect" style="display:none">Government Decisions <span class="note">a played card demands a choice</span></div>
+      <div id="decisions"></div>
+
+      <!-- market -->
+      <div class="sect gap">The Market <span class="note" id="marketNote"></span></div>
+      <div class="market" id="market"><div class="empty"><b>Loading…</b></div></div>
+
+      <!-- hand -->
+      <div class="sect gap">Your Hand <span class="note" id="handNote"></span></div>
+      <div class="hand" id="hand"></div>
     </div>
   </main>
 </div>
@@ -104,151 +179,330 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { esc, tickToDate } from '/util.js';
-  import { ideologyLabel, partyColor } from '/archetypes.js';   // sidenav brand subtitle + party-action colours
-  import { slantLabel } from '/slants.js';   // ONE source for the slant vocabulary
+  import { ideologyLabel, partyColor } from '/archetypes.js';
 
-  mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
-  mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
+  mountTopbar();
+  mountSidenav();
 
-  // The outlet's logo: its uploaded image, else a monogram over its colour (same as the admin editor).
-  function logoBox(h, c) {
-    if (h.logo) return '<span class="hl__logo" style="background-image:url(' + esc(h.logo) + ')"></span>';
-    var mono = esc(h.mono || (h.paper || '?').replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || '?');
-    return '<span class="hl__logo" style="background:' + c + '">' + mono + '</span>';
+  var PARTY = null, NATION_ID = null, NATION_NAME = '', BUSY = false;
+  var draft = {};                 // per-market-card intended bid amount
+  var CUR_TICK = 1;               // for month labels on the queue + eyebrow
+  var TURN_PARTY = null;          // id of the party whose turn it is now (nation_turn)
+  var NATIONS = {};               // nation id → name, for the world timeline tags
+  // Party micro-actions stay off the World Timeline — it's for nation-scale news.
+  var LOCAL_KINDS = { rally:1, fundraise:1, attack:1, adblitz:1, recruit:1, party:1 };
+
+  function myTurn() { return TURN_PARTY != null && PARTY && TURN_PARTY === PARTY.id; }
+  function hasChosen() { return PARTY && Number(PARTY.turn_acted_tick) === Number(CUR_TICK); }   // one choice per turn
+  function apLeft() { return (PARTY && Number(PARTY.action_points)) || 0; }
+  function shortMonth(tick) { return tickToDate(tick).split(',')[0].slice(0, 3); }
+
+  // Card kind → label + colour class, from the stored definition (one source: the Card Creator's fields).
+  function kindOf(def) {
+    if (def.lim === 'nation') return { label: 'Nation · ' + (NATION_NAME || 'this nation'), cls: 'nat' };
+    if (def.type === 'generic') return { label: 'Generic', cls: 'gen' };
+    if (def.type === 'ar') return { label: 'Stance · Autocratic / Reform', cls: 'auto' };
+    return { label: 'Stance · Democratic / Revolutionary', cls: 'rev' };
   }
-  // The month/year to group under — the raw game_date ("September, 1983") shown as "SEPTEMBER 1983".
-  function dateLabel(d) { return (d || 'Undated').replace(',', ''); }
-  // One headline row, led by the paper's logo. `withFlag` shows the source nation's flag + name
-  // (World Press); own-nation headlines omit it. The date isn't repeated per row — it's the group
-  // divider now — so the meta line carries only the source nation, and is dropped when there's none.
-  function headlineRow(h, withFlag) {
-    var c = esc(h.color || '#6b5cff');
-    var nat = withFlag && h.nations ? h.nations : null;
-    var flag = nat && nat.flag ? '<img class="hl__flag" src="' + esc(nat.flag) + '" alt="">' : '';
-    var slant = '<span class="hl__slant" style="color:' + c + ';background:color-mix(in srgb,' + c + ' 13%,transparent);border:1px solid color-mix(in srgb,' + c + ' 40%,transparent)">' + esc(slantLabel(h.slant)) + '</span>';
-    var meta = nat ? flag + ' ' + esc(nat.name) : '';
-    return '<article class="hl">' + logoBox(h, c) +
-      '<div class="hl__body">' +
-        '<div class="hl__paper"><span class="hl__pname">' + esc(h.paper || 'The Press') + '</span>' + slant + '</div>' +
-        '<div class="hl__text">' + esc(h.headline) + '</div>' +
-        (meta ? '<div class="hl__meta">' + meta + '</div>' : '') +
-      '</div>' +
-    '</article>';
+  // A card's requirement line — informational only (there's no party stance to gate on yet).
+  function reqOf(def) {
+    if (def.type === 'ar') return 'A' + (def.reqD || 1) + '+ / Ref' + (def.reqR || 1) + '+';
+    if (def.type === 'dr') return 'D' + (def.reqD || 1) + '+ / R' + (def.reqR || 1) + '+';
+    return '';
   }
-
-  // One Party Actions row — a party's on-the-ground activity (rally, drive, ad blitz…). Led by a
-  // monogram over the party's colour (like a paper's logo), then the party name and the event line.
-  // The party may be gone (party_id nulled on delete) — fall back to a neutral badge then.
-  function actionRow(e) {
-    var p = e.parties || null;
-    var c = esc(partyColor(p) || '#6b5cff');
-    var name = (p && p.name) || 'A party';
-    var mono = esc(name.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || '?');
-    return '<article class="hl">' +
-      '<span class="hl__logo" style="background:' + c + '">' + mono + '</span>' +
-      '<div class="hl__body">' +
-        '<div class="hl__paper"><span class="hl__pname">' + esc(name) + '</span></div>' +
-        '<div class="hl__text">' + esc(e.body) + '</div>' +
-      '</div>' +
-    '</article>';
+  function cardHead(def) {
+    var k = kindOf(def);
+    var req = reqOf(def);
+    return '<div class="stripe ' + k.cls + '"></div><div class="c-body">' +
+      '<div class="c-kind ' + k.cls + '">' + esc(k.label) + '</div>' +
+      '<div class="c-name">' + esc(def.name || 'Untitled card') + '</div>' +
+      (req ? '<div class="c-req">' + esc(req) + '</div>' : '') +
+      '<div class="c-fx">' + (def.desc ? esc(def.desc) : '<span style="color:var(--soft)">No description.</span>') + '</div>';
   }
 
-  // Rows arrive newest-first, so consecutive rows share a game_date in runs — walk them and drop a
-  // date divider whenever it changes, grouping each month under one "SEPTEMBER 1983" break. `rowFn`
-  // renders each row (a headline or a party action), so both feeds share one date-grouping source.
-  function renderFeed(el, rows, rowFn, emptyMsg) {
-    if (!rows || !rows.length) { el.innerHTML = '<div class="empty"><b>' + emptyMsg + '</b><span>New entries appear as the game turns.</span></div>'; return; }
-    var html = '', last = null;
-    rows.forEach(function (r) {
-      var d = r.game_date || '';
-      if (d !== last) { html += '<div class="datebreak">' + esc(dateLabel(d)) + '</div>'; last = d; }
-      html += rowFn(r);
+  // ---- turn queue: walk the rotation forward from whoever's up now ----
+  function renderQueue(roster) {
+    var el = document.getElementById('queue');
+    if (!roster.length) { el.innerHTML = '<div class="tlempty">No parties in this nation yet.</div>'; return; }
+    var idx = 0;
+    for (var i = 0; i < roster.length; i++) { if (roster[i].id === TURN_PARTY) { idx = i; break; } }
+    var n = Math.min(12, Math.max(roster.length, 5));   // at least a few months out, at most one screenful
+    var out = '';
+    for (var j = 0; j < n; j++) {
+      var p = roster[(idx + j) % roster.length];
+      var now = j === 0, me = p.id === (PARTY && PARTY.id);
+      out += '<div class="qtick' + (now ? ' now' : '') + (me ? ' me' : '') + '">' +
+        '<div class="qmo"><span class="qsw" style="background:' + esc(partyColor(p)) + '"></span>' +
+          esc(shortMonth(CUR_TICK + j)) + (now ? ' · NOW' : '') + '</div>' +
+        '<div class="qp">' + esc(p.abbreviation || p.name || '—') + '</div>' +
+        (me ? '<div class="qyou">You</div>' : '') +
+      '</div>';
+    }
+    el.innerHTML = out;
+  }
+
+  function renderMarket(cards, myBids) {
+    var el = document.getElementById('market');
+    // A bid reserves a hand slot (server: schema/180). Held cards + cards you're already bidding on
+    // fill toward the cap of 4; at the cap you can't bid on a NEW card until you play or discard one.
+    var reserved = (window.__hand || []).length + Object.keys(myBids).length;
+    var full = reserved >= 4;
+    document.getElementById('marketNote').innerHTML = 'sealed bids · you have <span class="inf">⚡' + (PARTY.influence || 0) + '</span> · ' +
+      (full ? '<span class="inf">hand full (4/4)</span> — play or discard to bid on a new card' : 'highest bid wins at the next tick');
+    if (!cards.length) { el.innerHTML = '<div class="empty"><b>The market is quiet.</b>No cards are up for auction here yet.</div>'; return; }
+    el.innerHTML = cards.map(function (c) {
+      var def = c.definition || {};
+      var cost = Math.max(1, Number(def.cost) || 0);
+      var mine = myBids[c.id] || 0;                // sealed: only your own bid
+      var afford = (PARTY.influence || 0) + mine;  // raising refunds the old bid first, so it's spendable
+      if (draft[c.id] == null) draft[c.id] = Math.max(cost, mine);
+      var v = draft[c.id];
+      var noRoom = !mine && full;                  // a bid on a NEW card, but no free slot
+      var bidDis = noRoom || v > afford;
+      var bidTitle = noRoom ? ' title="Hand full — play or discard a card first"' : (v > afford ? ' title="Not enough Influence"' : '');
+      return '<div class="cardc">' + cardHead(def) +
+        '<div class="c-cost">Base ⚡<b>' + cost + '</b></div></div>' +
+        '<div class="c-bid">' +
+          '<span class="mybid">' + (mine ? 'Your bid <b>⚡' + mine + '</b>' : (noRoom ? 'Hand full' : 'No bid')) + '</span>' +
+          '<div class="bidctrl">' +
+            (mine ? '<button class="act cancel" data-cancel="' + c.id + '">Cancel</button>' : '') +
+            '<button class="bbtn" data-dec="' + c.id + '">−</button>' +
+            '<span class="bval">' + v + '</span>' +
+            '<button class="bbtn" data-inc="' + c.id + '">+</button>' +
+            '<button class="act bid" data-bid="' + c.id + '"' + (bidDis ? ' disabled' : '') + bidTitle + '>' + (mine ? 'Raise' : 'Bid') + '</button>' +
+          '</div>' +
+        '</div></div>';
+    }).join('');
+
+    el.querySelectorAll('[data-dec]').forEach(function (b) { b.onclick = function () { var id = b.dataset.dec, cost = minBid(cards, id); draft[id] = Math.max(cost, (draft[id] || cost) - 1); refreshVal(id); }; });
+    el.querySelectorAll('[data-inc]').forEach(function (b) { b.onclick = function () { var id = b.dataset.inc, afford = (PARTY.influence || 0) + (myBids[id] || 0), next = (draft[id] || 0) + 1; if (next <= afford) { draft[id] = next; refreshVal(id); } }; });
+    el.querySelectorAll('[data-bid]').forEach(function (b) { b.onclick = function () { placeBid(b.dataset.bid, draft[b.dataset.bid]); }; });
+    el.querySelectorAll('[data-cancel]').forEach(function (b) { b.onclick = function () { cancelBid(b.dataset.cancel); }; });
+  }
+  function minBid(cards, id) { var c = cards.find(function (x) { return x.id === id; }); return Math.max(1, Number(c && c.definition && c.definition.cost) || 0); }
+  function refreshVal(id) { var el = document.querySelector('[data-bid="' + id + '"]'); if (el) el.closest('.bidctrl').querySelector('.bval').textContent = draft[id]; }
+
+  function renderHand(cards) {
+    var el = document.getElementById('hand');
+    var canAct = myTurn() && !hasChosen();   // play/discard IS your turn choice — only before you've chosen
+    document.getElementById('handNote').innerHTML = cards.length + '/4 held · ' +
+      (myTurn()
+        ? (hasChosen() ? 'turn taken — you hold <span class="inf">' + apLeft() + ' AP</span>' : '<span class="inf">your turn</span> — play or discard a card')
+        : 'not your turn — you act on your party’s turn');
+    if (!cards.length) { el.innerHTML = '<div class="empty"><b>Your hand is empty.</b>Win cards at auction to hold them here.</div>'; return; }
+    el.innerHTML = cards.map(function (c) {
+      var def = c.definition || {};
+      var acts = Math.max(1, Math.min(6, Number(def.acts) || 1));
+      return '<div class="cardc">' + cardHead(def) + '</div>' +
+        '<div class="handbtns">' +
+          '<button class="act play" data-play="' + c.id + '"' + (canAct ? '' : ' disabled') + '>Play · +' + acts + ' AP</button>' +
+          '<button class="act disc" data-disc="' + c.id + '"' + (canAct ? '' : ' disabled') + ' title="Discard for +3 Influence">Discard · +3⚡</button>' +
+        '</div></div>';
+    }).join('');
+    el.querySelectorAll('[data-play]').forEach(function (b) { b.onclick = function () { onPlay(b.dataset.play); }; });
+    el.querySelectorAll('[data-disc]').forEach(function (b) { b.onclick = function () { discardCard(b.dataset.disc); }; });
+  }
+
+  // Does this card land a party-scoped effect (party_gain/party_lose) that needs a rival chosen? A
+  // generic card's every effect fires; a stance card only fires its 'both'-sided effects (176), so
+  // only those need a target. Choice-mechanic rewards target the player, not a pick — no picker.
+  function cardTargets(def) {
+    def = def || {};
+    if (def.mech === 'choice' || def.persistV === 'yes') return false;
+    var generic = def.type === 'generic';
+    return (Array.isArray(def.fx) ? def.fx : []).some(function (e) {
+      return (e.kind === 'party_gain' || e.kind === 'party_lose') && (generic || (e.side || 'both') === 'both');
     });
-    el.innerHTML = html;
   }
-  function renderError(el, e) {
-    // Surface the underlying reason instead of swallowing it — a silent catch made this
-    // impossible to diagnose (both feeds just said "couldn't load"). Logs for the console
-    // and shows the message inline so the cause is visible without DevTools.
-    console.error('[news] load failed:', e);
-    var why = e && (e.message || e.code) ? ' (' + esc(String(e.message || e.code)) + ')' : '';
-    el.innerHTML = '<div class="empty"><b>Couldn’t load the news right now.</b><span>Refresh to try again.' + why + '</span></div>';
+
+  // Play a hand card: if it targets a rival, swap the card's buttons for a party picker; else play now.
+  function onPlay(id) {
+    var card = (window.__hand || []).find(function (x) { return x.id === id; });
+    if (!card || !cardTargets(card.definition)) { playCard(id); return; }
+    var rivals = (window.__roster || []).filter(function (p) { return !PARTY || p.id !== PARTY.id; });
+    if (!rivals.length) { playCard(id); return; }   // no rival to hit → play untargeted
+    var row = document.querySelector('[data-play="' + id + '"]');
+    row = row && row.parentNode;
+    if (!row) { playCard(id); return; }
+    row.innerHTML = '<span class="tgtlbl">Target a party:</span>' +
+      rivals.map(function (p) { return '<button class="act tgt" data-tp="' + p.id + '">' + esc(p.abbreviation || p.name || '—') + '</button>'; }).join('') +
+      '<button class="act tgtx" data-tx="1">Cancel</button>';
+    row.querySelectorAll('[data-tp]').forEach(function (b) { b.onclick = function () { playCard(id, b.dataset.tp); }; });
+    var x = row.querySelector('[data-tx]'); if (x) x.onclick = function () { renderHand(window.__hand || []); };
+  }
+
+  function renderActions() {
+    var el = document.getElementById('actions'), note = document.getElementById('actNote');
+    if (!myTurn()) {
+      var who = (window.__roster || []).find(function (x) { return x.id === TURN_PARTY; });
+      note.textContent = 'waiting';
+      el.innerHTML = '<div class="actbox off"><div class="actbar"><span class="actstat">It’s <b>' +
+        esc(who ? (who.abbreviation || who.name) : 'another party') + '</b>’s turn — your turn comes round the rotation above.</span></div></div>';
+      return;
+    }
+    if (hasChosen()) {
+      note.innerHTML = '<span class="inf">turn taken</span>';
+      el.innerHTML = '<div class="actbox"><div class="actbar"><span class="apbadge">▶ ' + apLeft() + ' AP</span>' +
+        '<span class="actstat">Turn taken. Spend Action Points on moves across the game — each costs <b>1 AP</b>.</span></div></div>';
+      return;
+    }
+    note.textContent = 'choose one';
+    el.innerHTML = '<div class="actbox"><div class="actbar"><span class="actstat">It’s your turn — <b>choose one</b>. Actions cost <b>1 AP</b> each, no Influence.</span></div>' +
+      '<div class="actrow">' +
+        '<button class="actopt" id="optTake"><div class="an">Take 1 Action</div><div class="ad">Bank 1 AP · spend it on one move this turn</div></button>' +
+        '<div class="actopt info"><div class="an">Play a Card</div><div class="ad">Use ▸ Play on a hand card below · banks that card’s AP</div></div>' +
+        '<div class="actopt info"><div class="an">Discard a Card</div><div class="ad">Use ▸ Discard on a hand card below · +3 Influence</div></div>' +
+      '</div></div>';
+    var t = document.getElementById('optTake'); if (t) t.onclick = function () { takeAction(); };
+  }
+
+  // Pending Government Choice decisions for the nation. The resolver gets clickable options; everyone
+  // else sees who it's waiting on. Effects fire server-side when the resolver picks (card_decide).
+  function partyLabel(id) { var p = (window.__roster || []).find(function (x) { return x.id === id; }); return p ? (p.abbreviation || p.name) : 'a party'; }
+  function renderDecisions(decs) {
+    var wrap = document.getElementById('decisions'), sect = document.getElementById('decSect');
+    if (!decs.length) { sect.style.display = 'none'; wrap.innerHTML = ''; return; }
+    sect.style.display = '';
+    wrap.innerHTML = decs.map(function (d) {
+      var mine = PARTY && d.resolver_party_id === PARTY.id;
+      var opts = Array.isArray(d.options) ? d.options : [];
+      var who = mine ? 'Your call' : ('Awaiting ' + (d.handler && d.handler !== 'player' ? 'the ' + esc(d.handler) + ' minister (' + esc(partyLabel(d.resolver_party_id)) + ')' : esc(partyLabel(d.resolver_party_id))));
+      return '<div class="deccard"><div class="dechd">' + esc(d.card_name || 'A decision') + '</div>' +
+        '<div class="decwho' + (mine ? ' mine' : '') + '">' + who + '</div>' +
+        '<div class="decopts">' + opts.map(function (o, i) {
+          var label = esc((o && o.txt) || ('Option ' + (i + 1)));
+          return mine
+            ? '<button class="decopt" data-dec="' + d.id + '" data-opt="' + i + '">' + label + '</button>'
+            : '<span class="decopt wait">' + label + '</span>';
+        }).join('') + '</div></div>';
+    }).join('');
+    wrap.querySelectorAll('[data-dec]').forEach(function (b) { b.onclick = function () { decideCard(b.dataset.dec, +b.dataset.opt); }; });
+  }
+
+  function renderTimeline(elId, events, world) {
+    var el = document.getElementById(elId);
+    if (!events.length) { el.innerHTML = '<div class="tlempty">No events yet.</div>'; return; }
+    el.innerHTML = events.map(function (e) {
+      var tag = world && e.nation_id ? '<span class="ntag">' + esc(NATIONS[e.nation_id] || e.nation_id) + '</span>' : '';
+      return '<div class="tle' + (world ? ' world' : '') + '"><span class="tdot"></span>' +
+        '<div class="when">' + esc((e.game_date || '').replace(',', '')) + tag + '</div>' +
+        '<div class="tt">' + esc(e.body || '') + '</div></div>';
+    }).join('');
+  }
+
+  // ---- actions (each locks BUSY, then reloads everything) ----
+  async function placeBid(id, amount) { await run(function () { return supabase.rpc('card_bid', { p_deck_card: id, p_amount: amount }); }); }
+  async function cancelBid(id) { await run(function () { return supabase.rpc('card_bid_cancel', { p_deck_card: id }); }); }
+  async function playCard(id, target) { await run(function () { return supabase.rpc('card_play', { p_deck_card: id, p_target: target || null }); }); }
+  async function discardCard(id) { if (!confirm('Discard this card for +3 Influence? It leaves your hand for good.')) return; await run(function () { return supabase.rpc('card_discard', { p_deck_card: id }); }); }
+  async function takeAction() { await run(function () { return supabase.rpc('turn_take_action'); }); }
+  async function decideCard(id, opt) { await run(function () { return supabase.rpc('card_decide', { p_decision: id, p_option: opt }); }); }
+  async function run(fn) {
+    if (BUSY) return; BUSY = true; setDisabled(true);
+    try {
+      const { error } = await fn();
+      if (error) throw error;
+      draft = {};            // clear drafts so re-render reseeds from the new bids
+      await loadAll();
+    } catch (e) {
+      alert((e && e.message) || 'That action failed.');
+    } finally { BUSY = false; setDisabled(false); }
+  }
+  function setDisabled(on) { document.querySelectorAll('.cm .act, .cm .bbtn, .cm .actopt, .cm button.decopt').forEach(function (b) { b.disabled = on; }); }
+
+  function setEye() {
+    var name = TURN_PARTY && PARTY && TURN_PARTY === PARTY.id ? 'Your Turn'
+             : (function () { var p = (window.__roster || []).find(function (x) { return x.id === TURN_PARTY; }); return p ? esc(p.abbreviation || p.name) + '’s Turn' : '—'; })();
+    document.getElementById('eye').innerHTML = esc(NATION_NAME) + ' · ' + esc(tickToDate(CUR_TICK)) + ' · ' + name;
+  }
+
+  async function loadAll() {
+    // Refresh the party (influence changes with bids/plays), then rotation / market / hand / timelines.
+    try {
+      const { data: p } = await supabase.from('parties').select('id, name, archetype, nation_id, influence, action_points, turn_acted_tick').eq('user_id', PARTY.user_id).single();
+      if (p) { PARTY = Object.assign(PARTY, p); setTopbarActions(PARTY.influence); }
+    } catch (e) { /* keep the last known party */ }
+
+    var roster = [], market = [], hand = [], bids = {}, events = [], world = [], decisions = [];
+    try {
+      const { data } = await supabase.rpc('nation_turn', { p_nation: NATION_ID });
+      TURN_PARTY = data || null;
+    } catch (e) { TURN_PARTY = null; }
+    try {
+      const { data } = await supabase.from('parties').select('id, name, abbreviation, archetype, color, turn_seq').eq('nation_id', NATION_ID).order('turn_seq', { ascending: true }).order('id', { ascending: true });
+      roster = data || [];
+    } catch (e) {}
+    window.__roster = roster;
+    try {
+      const { data } = await supabase.from('deck_cards').select('id, cards(definition)').eq('nation_id', NATION_ID).eq('status', 'on_block');
+      market = (data || []).map(function (r) { return { id: r.id, definition: (r.cards && r.cards.definition) || {} }; });
+    } catch (e) {}
+    try {
+      const { data } = await supabase.from('card_bids').select('deck_card_id, amount').eq('party_id', PARTY.id);   // RLS returns only mine anyway
+      (data || []).forEach(function (b) { bids[b.deck_card_id] = b.amount; });
+    } catch (e) {}
+    try {
+      const { data } = await supabase.from('deck_cards').select('id, cards(definition)').eq('party_id', PARTY.id).eq('status', 'in_hand');
+      hand = (data || []).map(function (r) { return { id: r.id, definition: (r.cards && r.cards.definition) || {} }; });
+      window.__hand = hand;   // renderHand's target picker reads definitions back from here
+    } catch (e) {}
+    try {
+      const { data } = await supabase.from('events').select('kind, body, game_date, created_at').eq('nation_id', NATION_ID).order('created_at', { ascending: false }).limit(25);
+      events = data || [];
+    } catch (e) {}
+    try {
+      // World Timeline: nation-scale news from OTHER nations, party micro-actions filtered out,
+      // deduped by body (a global event lands one row per nation).
+      const { data } = await supabase.from('events').select('kind, body, game_date, created_at, nation_id').neq('nation_id', NATION_ID).order('created_at', { ascending: false }).limit(60);
+      var seen = {};
+      world = (data || []).filter(function (e) {
+        if (LOCAL_KINDS[e.kind]) return false;
+        if (seen[e.body]) return false;
+        seen[e.body] = 1; return true;
+      }).slice(0, 15);
+    } catch (e) {}
+    try {
+      const { data } = await supabase.from('card_decisions').select('id, card_name, options, handler, resolver_party_id').eq('nation_id', NATION_ID).eq('status', 'pending').order('created_at', { ascending: true });
+      decisions = data || [];
+    } catch (e) {}
+
+    setEye();
+    renderQueue(roster);
+    renderActions();
+    renderDecisions(decisions);
+    renderMarket(market, bids);
+    renderHand(hand);
+    renderTimeline('timeline', events, false);
+    renderTimeline('worldline', world, true);
   }
 
   (async () => {
     if (!isConfigured) return;
     const user = await requireUser();
-    if (!user) return; // redirected to login
-
-    // Masthead dateline — the current in-game month/year, grounding the page in the game clock.
-    // A read failure just leaves it hidden; the feeds still load.
+    if (!user) return;
     try {
-      const { data: gs } = await supabase.from('game_state').select('current_tick').single();
-      if (gs) { const dl = document.getElementById('dateline'); dl.textContent = tickToDate(gs.current_tick).replace(',', '').toUpperCase(); dl.hidden = false; }
-    } catch (e) { /* no dateline if the clock can't be read */ }
-
-    let nationId = null;
-    try {
-      const { data: party, error } = await supabase.from('parties').select('name, archetype, nation_id, influence').eq('user_id', user.id).maybeSingle();
-      if (error) throw error;
-      if (!party) { window.location.replace('/nation-select/'); return; }   // no party yet → pick a nation (maybeSingle so this branch is reachable)
-      nationId = party.nation_id;
+      const { data: party } = await supabase.from('parties').select('id, name, archetype, nation_id, influence, action_points, turn_acted_tick').eq('user_id', user.id).maybeSingle();
+      if (!party) { window.location.replace('/nation-select/'); return; }
+      PARTY = Object.assign({ user_id: user.id }, party);
+      NATION_ID = party.nation_id;
       setTopbarActions(party.influence);
-      const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', nationId).single();
-      const nationName = (nation && nation.name) || nationId;
-      document.getElementById('actionsNat').textContent = nationName;
-      // Fill the sidenav brand (top-left) like every other screen does, so it isn't stuck on the placeholder.
+      try {
+        const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle();
+        CUR_TICK = (gs && gs.current_tick) || 1;
+      } catch (e) {}
+      try {
+        const { data: nats } = await supabase.from('nations').select('id, name');
+        (nats || []).forEach(function (n) { NATIONS[n.id] = n.name; });
+      } catch (e) {}
+      const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', NATION_ID).single();
+      NATION_NAME = (nation && nation.name) || NATIONS[NATION_ID] || NATION_ID;
+      document.getElementById('tlNat').textContent = NATION_NAME;
       document.getElementById('pname').textContent = party.name;
-      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + NATION_NAME;
       if (nation && nation.flag) { const f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
+      await loadAll();
     } catch (e) {
-      // Couldn't resolve the player's nation — still show the (global) News Feed, which doesn't need it.
-      renderError(document.getElementById('actions'), e);
-    }
-
-    // News Feed — headlines from across the world (Global by default), or a single nation's desk when
-    // the filter picks one. newsReq tags each load so a slow earlier fetch can't overwrite a newer one.
-    let newsReq = 0;
-    async function loadNews(only) {
-      var el = document.getElementById('news'), req = ++newsReq;
-      try {
-        let q = supabase.from('news_headlines')
-          .select('paper, slant, color, mono, logo, headline, game_date, nation_id, nations(name, flag)')
-          .order('created_at', { ascending: false }).limit(40);
-        if (only) q = q.eq('nation_id', only);   // Global otherwise: every nation, including your own
-        const { data, error } = await q;
-        if (error) throw error;
-        if (req !== newsReq) return;   // a newer selection superseded this one
-        renderFeed(el, data, function (h) { return headlineRow(h, true); }, only ? 'No headlines from there yet.' : 'The wires are quiet.');
-      } catch (e) { if (req === newsReq) renderError(el, e); }
-    }
-    loadNews(null);
-
-    // Nation filter for the News Feed: every live nation, INCLUDING your own; picking one narrows the
-    // feed to its desk. Stays hidden if the nations can't be read, so the feed still works alone.
-    try {
-      const { data: nats } = await supabase.from('nations').select('id, name').eq('dormant', false).order('name');
-      const natSel = document.getElementById('newsNat');
-      if (natSel && nats && nats.length) {
-        natSel.innerHTML = '<option value="">Global</option>' + nats.map(function (n) { return '<option value="' + esc(n.id) + '">' + esc(n.name || n.id) + '</option>'; }).join('');
-        natSel.onchange = function () { loadNews(this.value || null); };
-        natSel.hidden = false;
-      }
-    } catch (e) { /* no filter if nations can't be read; the feed still loads */ }
-
-    // Party Actions — your nation's parties out on the ground: rallies, recruiting drives, fundraising,
-    // ad blitzes, attacks and campaigns. These live in the events feed (schema/40) and are NOT
-    // headlines (party-internal moves never make the press), so we read them straight from events.
-    if (nationId) {
-      try {
-        const { data, error } = await supabase.from('events')
-          .select('body, game_date, parties(name, archetype, color)')
-          .eq('nation_id', nationId)
-          .in('kind', ['rally', 'fundraise', 'attack', 'adblitz', 'recruit', 'campaign', 'party'])
-          .order('created_at', { ascending: false }).limit(40);
-        if (error) throw error;
-        renderFeed(document.getElementById('actions'), data, actionRow, 'No party activity at home yet.');
-      } catch (e) { renderError(document.getElementById('actions'), e); }
+      document.getElementById('market').innerHTML = '<div class="err">Couldn’t load Home. Refresh to try again.</div>';
     }
   })();
 </script>

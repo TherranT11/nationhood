@@ -17,6 +17,7 @@ const CSS = `
 .tb-discord:hover{background:#4752c4}
 .tb-discord svg{width:18px;height:18px}
 .tb-chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-family:'Space Mono',monospace;font-size:12.5px;font-weight:700;white-space:nowrap}
+.tb-ap{color:var(--indigo)}
 .tb-inf{color:var(--ink)}
 .tb-inf svg{width:16px;height:16px;fill:var(--amber)}
 .tb-bal--pos{color:var(--green)}
@@ -53,7 +54,8 @@ const CSS = `
 
 const HTML = `
 <a class="tb-discord" href="https://discord.gg/HBvWxJUm8" target="_blank" rel="noopener" aria-label="Join our Discord"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 16.558 3a13.6 13.6 0 0 0-.6 1.23 18.27 18.27 0 0 0-5.487 0A13.6 13.6 0 0 0 9.87 3a19.79 19.79 0 0 0-3.76 1.369C2.72 9.046 1.79 13.605 2.255 18.1a19.9 19.9 0 0 0 6.073 3.058c.49-.668.926-1.377 1.302-2.122a12.93 12.93 0 0 1-2.05-.978c.172-.126.34-.257.502-.392a14.2 14.2 0 0 0 12.036 0c.164.135.332.266.502.392-.654.386-1.343.714-2.052.98.376.743.812 1.452 1.302 2.12a19.86 19.86 0 0 0 6.075-3.058c.546-5.21-.93-9.728-3.93-13.73ZM9.682 15.33c-1.182 0-2.157-1.086-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.334-.955 2.42-2.157 2.42Zm4.636 0c-1.182 0-2.157-1.086-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.334-.946 2.42-2.157 2.42Z"/></svg></a>
-<span class="tb-chip tb-inf" title="Influence — actions you can take this tick"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg><span id="tbInf">12</span></span>
+<span class="tb-chip tb-ap" title="Action Points — actions you can take this turn (each move costs 1)">&#9656; <span id="tbAP">0</span></span>
+<span class="tb-chip tb-inf" title="Influence — bank it to bid on cards in the Market"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg><span id="tbInf">0</span></span>
 <span class="tb-chip tb-bal" id="tbBal" title="Budget Balance (per year) — the net of the nation's in-force policy effects" hidden>—</span>
 <span class="tb-chip tb-next" title="Time to the next tick">&#9201; <span id="tbNext">—:—:—</span></span>
 <span class="tb-chip tb-date" id="tbDate" title="In-game date"></span>
@@ -164,9 +166,20 @@ function mountNextTick(el){   // internal: only mountTopbar uses it
 }
 
 // Live-value setters — no-ops if the topbar isn't mounted on this page.
-export function setTopbarActions(n){
-  const el = document.getElementById('tbInf');            // the Influence chip (server field: influence)
-  if (el) el.textContent = (n != null ? n : 12);          // 12 = the default budget, matching the static markup
+// The action budget is now Action Points (per turn), separate from Influence (the card currency).
+// Pages still call setTopbarActions(...) after a move; the argument is the legacy influence-as-actions
+// value and is IGNORED — we re-read Action Points + Influence authoritatively from the server so every
+// existing caller refreshes the AP chip after spending an action.
+export function setTopbarActions(_legacy){ refreshTopbarBudget(); }
+function setTopbarAP(n){ const el = document.getElementById('tbAP'); if (el) el.textContent = (n != null ? n : 0); }
+function setTopbarInfluence(n){ const el = document.getElementById('tbInf'); if (el) el.textContent = (n != null ? n : 0); }
+async function refreshTopbarBudget(){
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const { data: p } = await supabase.from('parties').select('action_points, influence').eq('user_id', session.user.id).maybeSingle();
+    if (p) { setTopbarAP(p.action_points); setTopbarInfluence(p.influence); }
+  } catch (e) { /* keep the last shown values */ }
 }
 // The nation's Budget Balance — the computed net of its in-force policy effects (one source:
 // nationBudgetBalance in policies.js), shown ±-coloured and suffixed "bn /yr". Internal:
@@ -228,10 +241,11 @@ async function loadChrome(){
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     const { data: p } = await supabase.from('parties')
-      .select('color, archetype, influence, nation_id').eq('user_id', session.user.id).maybeSingle();
+      .select('color, archetype, influence, action_points, nation_id').eq('user_id', session.user.id).maybeSingle();
     if (!p) return;
     setAccent(partyColor(p));               // chosen colour, else archetype default (one source: archetypes.js)
-    setTopbarActions(p.influence);
+    setTopbarAP(p.action_points);           // action budget (Action Points, per turn)
+    setTopbarInfluence(p.influence);        // card currency (Influence)
     // Budget Balance = the net of the nation's in-force policy effects minus its running initiatives'
     // standing $bn/yr (one source: policies.js).
     try {

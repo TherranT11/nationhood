@@ -94,8 +94,6 @@
   import { esc, majority, declaredValue, loadHogTitleSlot } from '/util.js';
   import { fetchAdministrations, renderAdministrations } from '/administrations.js';
   import { partyColor, ideologyLabel } from '/archetypes.js';
-  import { nationBudgetBalance, nationStatContributions } from '/policies.js';
-  import { fetchBudgetInitiatives } from '/initiatives.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
@@ -201,36 +199,21 @@
   // Balance and Bureaucracy = the sum of in-force policy effects (policies.js, the same figures
   // their detail pages show), and Public Debt = economy.debt (the "Starting Debt" field).
   function ministryStats(nation){
-    var MS = (nation && nation.ministry_stats) || {};
-    var ec = (nation && nation.economy) || {};
-    var cur = ec.currency || '$';
+    var cur = (nation && nation.economy && nation.economy.currency) || '$';
+    // Values come from STAT_VALUES (nation_stat_values RPC, schema/177) — the one server-side source.
+    // cellVal only FORMATS: Budget Balance ±$bn/yr, Bureaucracy %, Public Debt $bn, the rest a number.
     function cellVal(s){
+      var v = STAT_VALUES[s];
+      if (v == null || !isFinite(Number(v))) return '--';
+      v = Number(v);
       if (s === 'Budget Balance'){
-        if (BUDGET_BAL == null || !isFinite(BUDGET_BAL)) return '--';
-        var b = Math.round(BUDGET_BAL * 10) / 10;
+        var b = Math.round(v * 10) / 10;
         return '<span style="color:var(--' + (b < 0 ? 'red' : 'green') + ')">' + (b < 0 ? '−' : '') + esc(cur) + Math.abs(b) +
           'bn<span style="font-size:13px;font-weight:700;color:var(--soft)"> /yr</span></span>';
       }
-      if (s === 'Bureaucracy'){
-        return (BUREAUCRACY == null || !isFinite(BUREAUCRACY)) ? '--' : Math.round(BUREAUCRACY) + '%';
-      }
-      if (s === 'Public Debt'){
-        var n = Number(ec.debt);
-        return (ec.debt == null || ec.debt === '' || !isFinite(n)) ? '--' : esc(cur) + Math.abs(n) + 'bn';
-      }
-      if (s === 'Tax Burden'){
-        // Tax Burden auto-generates from policy — the sum of every in-force policy's Tax Burden effect,
-        // with NO authored base (a nation's base tax RATE lives on economy.tax and feeds the corporations
-        // business climate, a separate figure). ONE source with the /play/tax-burden/ detail page.
-        return esc(String(Math.round(nationStatContributions(STAT_POLS, STAT_OV, STAT_GDP, 'Tax Burden').total * 10) / 10));
-      }
-      // Every other ministry stat: its authored base (ministry_stats) + the cumulative contribution of
-      // in-force policies (policies.js) — the same model as Budget Balance/Bureaucracy. "--" only when
-      // there's no base and no policy touches it.
-      var contrib = nationStatContributions(STAT_POLS, STAT_OV, STAT_GDP, s).total;
-      var hasBase = MS[s] != null && MS[s] !== '';
-      if (!hasBase && Math.abs(contrib) < 0.0001) return '--';
-      return esc(String(Math.round(((hasBase ? Number(MS[s]) : 0) + contrib) * 10) / 10));
+      if (s === 'Bureaucracy') return Math.round(v) + '%';
+      if (s === 'Public Debt') return esc(cur) + Math.abs(v) + 'bn';
+      return esc(String(Math.round(v * 10) / 10));
     }
     return STAT_GROUPS.map(function (g) {
       var cells = g.stats.map(function (s) {
@@ -320,11 +303,9 @@
 
   // --- state shared across renders ---
   var MY_PARTY_ID = null, NATION = null, NATION_ID = null, HOG_TITLE = 'Head of Government';
-  var BUDGET_BAL = null;   // computed Budget Balance ($bn/yr) — Σ in-force policy effects (policies.js); null until loaded
-  var BUREAUCRACY = null;  // computed Bureaucracy (%) — Σ in-force policy Bureaucracy effects; null until loaded
-  // Every other ministry stat = its authored base (ministry_stats) + Σ in-force policy contribution;
-  // these hold the inputs so cellVal can compute each one (policies.js is the one source).
-  var STAT_POLS = [], STAT_OV = {}, STAT_GDP = null;
+  // Displayed ministry stat values, keyed by stat name — from nation_stat_values (schema/177), the one
+  // server-side source (base + policy contributions + writable-stats delta). cellVal reads from this.
+  var STAT_VALUES = {};
   // State-of-the-Nation data — the declaration slots for the National Identity panel. Loaded once
   // at boot; the panel reads straight from these.
   var DECL_SLOTS = [];
@@ -345,6 +326,12 @@
         .select('*').eq('nation_id', NATION_ID).eq('status', 'active').maybeSingle();
       const { data: parties } = await supabase.from('parties')
         .select('id, name, abbreviation, seats, archetype, in_government, color').eq('nation_id', NATION_ID);
+      // Ministry stat values from ONE source — nation_stat_values (schema/177): base + policy + delta.
+      try {
+        var ALL_STATS = STAT_GROUPS.reduce(function (a, g) { return a.concat(g.stats); }, []);
+        const { data: sv } = await supabase.rpc('nation_stat_values', { p_nation: NATION_ID, p_stats: ALL_STATS });
+        STAT_VALUES = sv || {};
+      } catch (e) { STAT_VALUES = {}; }
       render(govt, NATION || {}, parties || []);
       // Administration History (collapsible, past + current governments) — non-blocking enhancement.
       var ahTick = null; try { ahTick = await currentTick(); } catch (e) { /* duration falls back to the formed tick */ }
@@ -379,20 +366,7 @@
       document.getElementById('ghead').textContent = 'Government of ' + nationName;
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
-      var currency = (nation && nation.economy && nation.economy.currency) || '$';
       setTopbarActions(party.influence);
-
-      // Budget Balance and Bureaucracy are computed from the nation's in-force policy effects (one
-      // source: policies.js) — the same figures their detail pages show. Non-fatal — cells fall back to "--".
-      try {
-        const { data: pols } = await supabase.from('policies').select('id, definition');
-        var _ov = (nation && nation.policies) || {}, _gdp = nation && nation.gdp;
-        var _inits = await fetchBudgetInitiatives(party.nation_id);
-        BUDGET_BAL = nationBudgetBalance(pols || [], _ov, _gdp, _inits);
-        BUREAUCRACY = nationStatContributions(pols || [], _ov, _gdp, 'Bureaucracy').total;
-        STAT_POLS = pols || []; STAT_OV = _ov; STAT_GDP = _gdp;
-      } catch (e) {}
-
       await loadNationState();   // declaration slots for the National Identity panel
       await load();
     } catch (e) {

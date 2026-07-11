@@ -561,6 +561,7 @@
         <button class="vtab" data-tab="corporations" type="button">Corporations</button>
         <button class="vtab" data-tab="world-events" type="button">World Events</button>
         <button class="vtab" data-tab="world-map" type="button">World Map</button>
+        <button class="vtab" data-tab="cards" type="button">Cards</button>
       </nav>
       <div class="tabwrap">
       <div class="tabpane" data-tab="news">
@@ -1099,12 +1100,19 @@
           <div class="wm-inspect" id="wmInspect" hidden></div>
         </div>
       </div>
+
+      <div class="tabpane" data-tab="cards" hidden>
+        <h2>Card Creator</h2>
+        <p class="sub" style="margin:0 0 16px">Build a card and shuffle it into decks. <b>All Nations</b> drops a copy into every live nation's deck; <b>Specific Nation</b> into just one. Saving is the shuffle.</p>
+        <div id="ccMount"></div>
+      </div>
       </div><!-- /tabwrap -->
     </div><!-- /adminbody -->
   </div>
 
   <script type="module">
     import { supabase, isConfigured, currentTick, selectAll } from '/supabase.js';
+    import { mountCardCreator } from '/card-creator.js';   // Cards tab (self-contained builder → card_create)
     import { esc, fmtGdp, fmtPop, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel } from '/util.js';
     import * as HM from '/hexmap.js';
     import { regimeLabel, nationRegime, statName } from '/ladders.js';
@@ -1943,6 +1951,7 @@
         if (tab === 'cities') loadCities();
         if (tab === 'declarations') loadDeclarations();
         if (tab === 'policies') loadPolicies();
+        if (tab === 'cards') mountCardCreator(document.getElementById('ccMount'));   // builds once, keeps state
         if (tab === 'trade-policy') loadTradePolicy();
         if (tab === 'inactivity') loadInactivity();
         if (tab === 'crises') loadCrises();

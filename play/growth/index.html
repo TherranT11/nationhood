@@ -171,13 +171,13 @@
       // composition the Government page's ministry-stat cell uses — one source (policies.js).
       var pols = [];
       try { const { data } = await supabase.from('policies').select('id, definition'); pols = data || []; } catch (e) {}
-      var contrib = nationStatContributions(pols, nation.policies, nation.gdp, 'Growth');
-      var ms = (nation.ministry_stats && nation.ministry_stats['Growth'] != null && nation.ministry_stats['Growth'] !== '') ? Number(nation.ministry_stats['Growth']) : null;
-      var hasBase = ms != null && isFinite(ms);
-      if (hasBase || contrib.items.length) {
-        var value = (hasBase ? ms : 0) + contrib.total;
-        document.getElementById('growthVal').textContent = String(Math.round(value * 10) / 10);
-      }   // else leave the "--" placeholder (no base authored, no policy touches it)
+      var contrib = nationStatContributions(pols, nation.policies, nation.gdp, 'Growth');   // for the UP/DOWN breakdown below
+      // Headline value from the one server source — nation_stat_values (schema/177): base + policy +
+      // writable-stats delta. Leave the "--" placeholder when the RPC has no value for it.
+      try {
+        const { data: sv } = await supabase.rpc('nation_stat_values', { p_nation: party.nation_id, p_stats: ['Growth'] });
+        if (sv && sv['Growth'] != null) document.getElementById('growthVal').textContent = String(Math.round(Number(sv['Growth']) * 10) / 10);
+      } catch (e) { /* leave the "--" placeholder */ }
 
       UP = contrib.items.filter(function (c) { return c.amount > 0; }).sort(function (a, b) { return b.amount - a.amount; });
       DOWN = contrib.items.filter(function (c) { return c.amount < 0; }).sort(function (a, b) { return a.amount - b.amount; });

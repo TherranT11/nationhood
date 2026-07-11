@@ -119,7 +119,7 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, policyEffectChange, effectText, policyInForceEffects, fiscalFactor, policyMoney, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity, proposalInfluenceCost } from '/policies.js';
+  import { policyOptions, policyOptionIdx, policyEffectChange, effectText, policyInForceEffects, fiscalFactor, policyMoney, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
   import { isMonarchy, regimeText, nationRegime } from '/ladders.js';
 
@@ -339,10 +339,8 @@
       // chamber won't take another until it resolves (the server enforces this too).
       var blocked = !!pendingPolicies[curPolicy().id];
       var ok = !noSeats && !blocked && sel.proposed != null && sel.proposed !== inForceIdx() && !lawBusy;
-      // Cost = the policy's own authored Influence, scaled by the rungs moved (one source: policies.js,
-      // mirrors the server).
-      var cost = ok ? proposalInfluenceCost(Number(curDef().influence) || 0, inForceIdx(), sel.proposed) : null;
-      document.getElementById('l-cost').textContent = cost == null ? '—' : (cost + ' Influence');
+      // Proposing a law costs 1 Action Point (flat) — the old rung-scaled Influence cost is retired.
+      document.getElementById('l-cost').textContent = ok ? '1 AP' : '—';
       sendBtn.disabled = !ok;
       if (!lawBusy) note.textContent = noSeats ? 'Your party holds no legislature seats — win seats at an election before you can propose a bill.'
         : blocked ? 'A bill to change this policy is already before the chamber — it must resolve first.'
@@ -390,7 +388,7 @@
       '<div class="preview"><div class="pvlabel">Live Preview</div>' +
         '<div class="pvcard"><h3 id="d-pv" class="empty">Choose what to declare</h3></div>' +
         '<div class="proj"><div class="actions">' +
-          '<button class="btn" id="d-floor" type="button" disabled>Send to the Floor Now <span class="ac">1 Influence</span></button>' +
+          '<button class="btn" id="d-floor" type="button" disabled>Send to the Floor Now <span class="ac">1 AP</span></button>' +
           '<button class="btn" id="d-agenda" type="button" disabled>Add to Upcoming Agenda <span class="ac">Free</span></button>' +
           '<div class="proposed-note" id="d-note">Pick a name to propose it.</div>' +
         '</div></div></div>';
@@ -474,7 +472,7 @@
       '<div class="preview"><div class="pvlabel">Live Preview</div>' +
         '<div class="pvcard"><h3 id="r-pv"' + (move ? '' : ' class="empty"') + '>' + (move ? esc(move.title) : 'Nothing to propose') + '</h3></div>' +
         '<div class="proj"><div class="actions">' +
-          '<button class="btn" id="r-floor" type="button"' + (move ? '' : ' disabled') + '>Send to the Floor Now <span class="ac">1 Influence</span></button>' +
+          '<button class="btn" id="r-floor" type="button"' + (move ? '' : ' disabled') + '>Send to the Floor Now <span class="ac">1 AP</span></button>' +
           '<button class="btn" id="r-agenda" type="button"' + (move ? '' : ' disabled') + '>Add to Upcoming Agenda <span class="ac">Free</span></button>' +
           '<div class="proposed-note" id="r-note">' +
             (move ? 'A simple majority of the chamber carries it.'
@@ -517,7 +515,7 @@
         '<div class="pvcard"><h3 id="t-pv" class="empty">Choose a threshold</h3>' +
           '<div class="pvarts"><div class="ac">Effect if enacted</div><div id="t-effs"><p class="none">—</p></div></div></div>' +
         '<div class="proj"><div class="actions">' +
-          '<button class="btn" id="t-floor" type="button" disabled>Send to the Floor Now <span class="ac">1 Influence</span></button>' +
+          '<button class="btn" id="t-floor" type="button" disabled>Send to the Floor Now <span class="ac">1 AP</span></button>' +
           '<button class="btn" id="t-agenda" type="button" disabled>Add to Upcoming Agenda <span class="ac">Free</span></button>' +
           '<div class="proposed-note" id="t-note">Pick a threshold to propose it.</div>' +
         '</div></div></div>';

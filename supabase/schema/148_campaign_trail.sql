@@ -102,15 +102,15 @@ begin
   v_p := public._lock_party();
   perform public._require_campaign(v_p.nation_id);
   perform public._campaign_use_once(v_p.id, v_p.nation_id, 'door_knock', 'a door-knocking drive');
-  if v_p.influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
+  perform public._spend_action_point(v_p.id);   -- campaign action costs 1 Action Point
   v_roll := 1 + floor(random() * 4)::int;   -- 1D4
   v_new := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity,
              least(v_p.popularity + v_roll, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor)));
   v_delta := v_new - v_p.popularity;
   v_body := 'The ' || public._bare_party(v_p.name) || ' ran a door-knocking drive. Popularity +' || trim(to_char(v_delta, 'FM990.0')) || '%.';
-  update public.parties set popularity = v_new, influence = influence - v_cost where id = v_p.id;
+  update public.parties set popularity = v_new where id = v_p.id;
   perform public._campaign_event(v_p.nation_id, v_p.id, v_body, v_delta);
-  return jsonb_build_object('influence', v_p.influence - v_cost, 'popularity', v_new, 'delta', v_delta, 'body', v_body);
+  return jsonb_build_object('influence', v_p.influence, 'popularity', v_new, 'delta', v_delta, 'body', v_body);
 end $$;
 grant execute on function public.campaign_door_knock() to authenticated;
 
@@ -122,14 +122,14 @@ begin
   v_p := public._lock_party();
   perform public._require_campaign(v_p.nation_id);
   perform public._campaign_use_once(v_p.id, v_p.nation_id, 'public_appearance', 'a public appearance');
-  if v_p.influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
+  perform public._spend_action_point(v_p.id);   -- campaign action costs 1 Action Point
   v_new := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity,
              least(v_p.popularity + 1, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor)));
   v_delta := v_new - v_p.popularity;
   v_body := 'The ' || public._bare_party(v_p.name) || ' made a public appearance. Popularity +' || trim(to_char(v_delta, 'FM990.0')) || '%.';
-  update public.parties set popularity = v_new, influence = influence - v_cost where id = v_p.id;
+  update public.parties set popularity = v_new where id = v_p.id;
   perform public._campaign_event(v_p.nation_id, v_p.id, v_body, v_delta);
-  return jsonb_build_object('influence', v_p.influence - v_cost, 'popularity', v_new, 'delta', v_delta, 'body', v_body);
+  return jsonb_build_object('influence', v_p.influence, 'popularity', v_new, 'delta', v_delta, 'body', v_body);
 end $$;
 grant execute on function public.campaign_public_appearance() to authenticated;
 
@@ -143,7 +143,7 @@ begin
   v_p := public._lock_party();
   perform public._require_campaign(v_p.nation_id);
   perform public._campaign_use_once(v_p.id, v_p.nation_id, 'tv_debate', 'a TV debate');
-  if v_p.influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
+  perform public._spend_action_point(v_p.id);   -- campaign action costs 1 Action Point
   -- Lock the target too: FOR UPDATE so two attackers can't both read-then-write its popularity and
   -- lose one update. Lock order is caller-then-target, so two players targeting each other at the
   -- same instant can deadlock — benign: Postgres aborts one, the client surfaces the error, retry
@@ -163,7 +163,7 @@ begin
   end if;
   v_self_delta := v_self_new - v_p.popularity;
   v_targ_delta := v_targ_new - v_t.popularity;
-  update public.parties set popularity = v_self_new, influence = influence - v_cost where id = v_p.id;
+  update public.parties set popularity = v_self_new where id = v_p.id;
   if v_targ_delta <> 0 then update public.parties set popularity = v_targ_new where id = v_t.id; end if;
   v_body := 'The ' || public._bare_party(v_p.name) || ' met the ' || public._bare_party(v_t.name) || ' in a televised debate and ' ||
             case when v_won then 'came out ahead' else 'lost the exchange' end || '. Popularity ' ||
@@ -175,7 +175,7 @@ begin
       ' a televised debate with the ' || public._bare_party(v_p.name) || '. Popularity ' ||
       case when v_targ_delta >= 0 then '+' else '' end || trim(to_char(v_targ_delta, 'FM990.0')) || '%.', v_targ_delta);
   end if;
-  return jsonb_build_object('influence', v_p.influence - v_cost, 'popularity', v_self_new, 'self_delta', v_self_delta,
+  return jsonb_build_object('influence', v_p.influence, 'popularity', v_self_new, 'self_delta', v_self_delta,
     'target', v_t.name, 'target_delta', v_targ_delta, 'won', v_won, 'body', v_body);
 end $$;
 grant execute on function public.campaign_tv_debate(uuid) to authenticated;
@@ -189,7 +189,7 @@ begin
   v_p := public._lock_party();
   perform public._require_campaign(v_p.nation_id);
   perform public._campaign_use_once(v_p.id, v_p.nation_id, 'attack', 'an attack campaign');
-  if v_p.influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
+  perform public._spend_action_point(v_p.id);   -- campaign action costs 1 Action Point
   select * into v_t from public.parties where id = p_target for update;
   if not found or v_t.nation_id <> v_p.nation_id then raise exception 'Choose a target in your nation.'; end if;
   if v_t.id = v_p.id then raise exception 'Choose a target other than your own party.'; end if;
@@ -204,7 +204,7 @@ begin
   end if;
   v_self_delta := v_self_new - v_p.popularity;
   v_targ_delta := v_targ_new - v_t.popularity;
-  update public.parties set popularity = v_self_new, influence = influence - v_cost where id = v_p.id;
+  update public.parties set popularity = v_self_new where id = v_p.id;
   if v_targ_delta <> 0 then update public.parties set popularity = v_targ_new where id = v_t.id; end if;
   if v_landed then
     v_body := 'The ' || public._bare_party(v_p.name) || '’s attack on the ' || public._bare_party(v_t.name) || ' landed.';
@@ -217,7 +217,7 @@ begin
               ' backfired. Popularity ' || trim(to_char(v_self_delta, 'FM990.0')) || '%.';
     perform public._campaign_event(v_p.nation_id, v_p.id, v_body, v_self_delta);
   end if;
-  return jsonb_build_object('influence', v_p.influence - v_cost, 'popularity', v_self_new, 'self_delta', v_self_delta,
+  return jsonb_build_object('influence', v_p.influence, 'popularity', v_self_new, 'self_delta', v_self_delta,
     'target', v_t.name, 'target_delta', v_targ_delta, 'landed', v_landed, 'body', v_body);
 end $$;
 grant execute on function public.campaign_attack(uuid) to authenticated;
@@ -231,16 +231,16 @@ begin
   v_p := public._lock_party();
   perform public._require_campaign(v_p.nation_id);
   perform public._campaign_use_once(v_p.id, v_p.nation_id, 'town_hall', 'a town hall');
-  if v_p.influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
+  perform public._spend_action_point(v_p.id);   -- campaign action costs 1 Action Point
   v_new := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity,
              least(v_p.popularity + 2, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor)));
   v_delta := v_new - v_p.popularity;
   select next_election_tick into v_next from public.nations where id = v_p.nation_id;
-  update public.parties set popularity = v_new, influence = influence - v_cost, attack_shield_tick = v_next where id = v_p.id;
+  update public.parties set popularity = v_new, attack_shield_tick = v_next where id = v_p.id;
   v_body := 'The ' || public._bare_party(v_p.name) || ' held a town hall, rallying its base. Popularity +' || trim(to_char(v_delta, 'FM990.0'))
             || '%. The next attack against it this campaign will land at half force.';
   perform public._campaign_event(v_p.nation_id, v_p.id, v_body, v_delta);
-  return jsonb_build_object('influence', v_p.influence - v_cost, 'popularity', v_new, 'delta', v_delta, 'shield', true, 'body', v_body);
+  return jsonb_build_object('influence', v_p.influence, 'popularity', v_new, 'delta', v_delta, 'shield', true, 'body', v_body);
 end $$;
 grant execute on function public.campaign_town_hall() to authenticated;
 
@@ -255,7 +255,7 @@ begin
   v_p := public._lock_party();
   perform public._require_campaign(v_p.nation_id);
   perform public._campaign_use_once(v_p.id, v_p.nation_id, 'election_surprise', 'an election surprise');
-  if v_p.influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
+  perform public._spend_action_point(v_p.id);   -- campaign action costs 1 Action Point
   select * into v_t from public.parties where id = p_target for update;
   if not found or v_t.nation_id <> v_p.nation_id then raise exception 'Choose a target in your nation.'; end if;
   if v_t.id = v_p.id then raise exception 'Choose a target other than your own party.'; end if;
@@ -271,7 +271,7 @@ begin
   end if;
   v_self_delta := v_self_new - v_p.popularity;
   v_targ_delta := v_targ_new - v_t.popularity;
-  update public.parties set popularity = v_self_new, influence = influence - v_cost where id = v_p.id;
+  update public.parties set popularity = v_self_new where id = v_p.id;
   if v_targ_delta <> 0 then update public.parties set popularity = v_targ_new where id = v_t.id; end if;
   if v_landed then
     v_body := 'The ' || public._bare_party(v_p.name) || ' sprang an election surprise on the ' || public._bare_party(v_t.name) || ', and it landed.';
@@ -289,7 +289,7 @@ begin
         '’s election surprise backfired. Popularity +' || trim(to_char(v_targ_delta, 'FM990.0')) || '%.', v_targ_delta);
     end if;
   end if;
-  return jsonb_build_object('influence', v_p.influence - v_cost, 'popularity', v_self_new, 'self_delta', v_self_delta,
+  return jsonb_build_object('influence', v_p.influence, 'popularity', v_self_new, 'self_delta', v_self_delta,
     'target', v_t.name, 'target_delta', v_targ_delta, 'landed', v_landed, 'body', v_body);
 end $$;
 grant execute on function public.campaign_election_surprise(uuid) to authenticated;

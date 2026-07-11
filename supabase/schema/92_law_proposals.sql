@@ -214,7 +214,6 @@ begin
   -- the change moves (_proposal_cost). Each policy sets its own base — there's no game-wide setting.
   v_levels := abs(p_option - v_curopt);
   v_cost := public._proposal_cost(coalesce((v_def->>'influence')::int, 0), v_levels);
-  if v_party.influence < v_cost then raise exception 'Not enough Influence (need %).', v_cost; end if;
 
   -- One live bill per policy. Lock the nation row (the no-confidence idiom) so two parties can't both
   -- slip a competing bill in, then refuse if one is already in committee, on the agenda, or on the floor.
@@ -238,8 +237,7 @@ begin
             'committee', v_tick)   -- opened_tick = when it entered committee; the 6-tick expiry ages from here
     returning id into v_pid;
 
-  update public.parties set influence = influence - v_cost where id = v_party.id;
-  return jsonb_build_object('id', v_pid, 'status', 'committee', 'cost', v_cost, 'actions', v_party.influence - v_cost);
+  return jsonb_build_object('id', v_pid, 'status', 'committee', 'cost', v_cost, 'actions', v_party.influence);
 end $$;
 grant execute on function public.propose_law(uuid, int, text, text) to authenticated;
 

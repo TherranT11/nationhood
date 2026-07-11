@@ -10,11 +10,6 @@ export function esc(s) {
 // party-creation. One constant so the display and the guard can never disagree.
 export const MAX_PARTIES_PER_NATION = 8;
 
-// The AP cost of a Party Standing action (Rally / Fundraise / Attack / Ad Blitz).
-// One client source for that cost — it MIRRORS the server's schema/40 _standing_cost()
-// (the authoritative gate). If that constant changes, change it here too.
-export const STANDING_COST = 3;
-
 // The five politician competencies — the ordered source for every place that
 // shows or rolls a politician's stats: key = db column, name = full label,
 // abbr = compact column header.

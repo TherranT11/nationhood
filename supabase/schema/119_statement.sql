@@ -38,8 +38,6 @@ begin
   v_body := public._head_of_government_label(v_nation, v_p.id) || ' of ' || coalesce(v_nname, v_nation)
             || ' has released the following statement: ' || v_msg;
 
-  update public.parties set influence = influence - 1 where id = v_p.id;   -- a statement costs 1 Influence
-
   if v_intl then
     insert into public.events (nation_id, party_id, kind, body, game_date)
       select n.id, v_p.id, 'declaration', v_body, public.current_game_date()
@@ -50,7 +48,7 @@ begin
   end if;
 
   return jsonb_build_object('scope', case when v_intl then 'international' else 'domestic' end,
-    'influence', v_p.influence - 1);
+    'influence', v_p.influence);
 end $$;
 grant execute on function public.release_statement(text, text) to authenticated;
 

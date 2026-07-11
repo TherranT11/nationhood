@@ -179,12 +179,10 @@ begin
 
   -- Upfront Influence = the authored figure — gate first, before starting.
   v_need := public._initiative_influence(v_def);
-  if v_p.influence < v_need then raise exception 'Not enough Influence (need %).', v_need; end if;
 
   v_res := public._initiative_start(v_p.nation_id, p_initiative, p_ownership, p_corp, null, 0);
-  update public.parties set influence = influence - v_need where id = v_p.id;
 
-  return v_res || jsonb_build_object('actions', v_p.influence - v_need, 'influence_cost', v_need);
+  return v_res || jsonb_build_object('actions', v_p.influence, 'influence_cost', v_need);
 end $$;
 grant execute on function public.initiative_enact(uuid, text, uuid) to authenticated;
 

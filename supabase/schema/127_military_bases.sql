@@ -88,12 +88,10 @@ create or replace function public.build_military_base(p_host text default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_p public.parties%rowtype; v_nation text; v_tick int; v_cost numeric := 15; v_host text; v_abroad boolean;
 begin
-  v_p := public._begin_action(0);   -- requires >= 1 action; the 2 AP are spent below
+  v_p := public._begin_action(0);   -- lock party + spend 1 Action Point
   v_nation := v_p.nation_id;
   if not public._party_holds_ministry(v_p.id, 'Defence') then
     raise exception 'Only the Minister of Defence can build a military base.'; end if;
-  if v_p.influence < 2 then
-    raise exception 'Not enough Influence (need 2).'; end if;
 
   v_host := coalesce(nullif(p_host, ''), v_nation);   -- default / empty / own → home
   v_abroad := v_host <> v_nation;
@@ -108,14 +106,13 @@ begin
   perform public._apply_policy_effect(v_nation, jsonb_build_object('t', 'Budget', 'v', -v_cost));   -- pay $15B (shortfall → Debt)
   insert into public.military_bases (nation_id, host_nation_id, built_tick)
     values (v_nation, v_host, v_tick);
-  update public.parties set influence = influence - 2 where id = v_p.id;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_nation, v_p.id, 'declaration',
             v_p.name || ' has commissioned a new military base '
               || (case when v_abroad then 'in ' || (select name from public.nations where id = v_host) else 'at home' end) || '.',
             public.current_game_date());
-  return jsonb_build_object('built', true, 'abroad', v_abroad, 'actions', v_p.influence - 2);
+  return jsonb_build_object('built', true, 'abroad', v_abroad, 'actions', v_p.influence);
 end $$;
 grant execute on function public.build_military_base(text) to authenticated;
 
