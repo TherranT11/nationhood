@@ -66,6 +66,10 @@ begin
       end if;
     when 'nat_el' then
       update public.nations set next_election_tick = p_tick where id = p_nation and coalesce(next_election_tick, p_tick + 1) > p_tick;
+    -- Diplomacy: nudge the 1–10 standing between the playing nation and a nation chosen in the card
+    -- (p->>'nation'). rel_down is rel_up with the sign flipped. Clamp + guards live in _relation_adjust.
+    when 'rel_up' then   perform public._relation_adjust(p_nation, p_p->>'nation',  v_x::int);
+    when 'rel_down' then perform public._relation_adjust(p_nation, p_p->>'nation', (-v_x)::int);
     when 'cond' then
       v_live := public._nation_live_stat(p_nation, p_p->>'stat');
       if (p_p->>'dir' = 'above' and v_live >  v_x)
