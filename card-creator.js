@@ -24,6 +24,7 @@ const RESOURCES = ['food', 'goods', 'services', 'military', 'energy', 'minerals'
 // timed production modifier can boost/cut. A subset of RESOURCES (no army/navy/air_wings, which aren't produced).
 const PROD_RESOURCES = ['energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy'];
 const PROD_TICKS = [12, 24, 36, 48, 60];                 // the offered durations for a timed production modifier
+const SANCTION_TICKS = [36, 60, 120];                    // the offered minimum locks for a card-placed sanction
 const KINDS = {
   cond:       { label: 'IF [stat] is above/below X, then…', nested: true },
   party_gain: { label: 'Targeted party gains X approval' },
@@ -32,6 +33,9 @@ const KINDS = {
   decider_lose: { label: 'Deciding party loses X approval' },
   coal_up:    { label: 'Coalition health +1' },
   coal_down:  { label: 'Coalition health −1' },
+  coal_pop_up:   { label: 'All coalition parties gain X approval' },
+  coal_pop_down: { label: 'All coalition parties lose X approval' },
+  sanction:   { label: 'Sanction a nation for a minimum of N ticks' },
   stat_up:    { label: 'Stat goes up by X' },
   stat_down:  { label: 'Stat goes down by X' },
   hex_pop:    { label: 'Swing X approval at a chosen hex (you +X, or a rival −X)' },
@@ -485,6 +489,11 @@ export async function mountCardCreator(mount) {
       '<select data-i="' + i + '" data-f="nation"><option value=""' + (f.p.nation ? '' : ' selected') + '>— select nation —</option>' +
       NATIONS.map(function (n) { return '<option value="' + esc(n.id) + '"' + (n.id === f.p.nation ? ' selected' : '') + '>' + esc(n.name) + '</option>'; }).join('') + '</select>' +
       '<span class="lbl">by</span>' + num(f.p.x, 'x');
+    if (f.kind === 'coal_pop_up' || f.kind === 'coal_pop_down') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">to every party in government</span>';
+    if (f.kind === 'sanction') h = '<span class="lbl">sanction</span>' +
+      '<select data-i="' + i + '" data-f="nation"><option value=""' + (f.p.nation ? '' : ' selected') + '>— target nation —</option>' +
+      NATIONS.map(function (n) { return '<option value="' + esc(n.id) + '"' + (n.id === f.p.nation ? ' selected' : '') + '>' + esc(n.name) + '</option>'; }).join('') + '</select>' +
+      '<span class="lbl">for min</span><select data-i="' + i + '" data-f="ticks">' + SANCTION_TICKS.map(function (t) { return '<option value="' + t + '"' + (t === (f.p.ticks || 36) ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select><span class="lbl">ticks</span>';
     if (f.kind === 'deck_add') {
       var dorm = POOL.filter(function (c) { return c.def && c.def.lim === 'dormant'; });
       h = '<span class="lbl">card</span><select data-i="' + i + '" data-f="card"><option value="">' + (dorm.length ? '— dormant card —' : '— none authored yet —') + '</option>' +
@@ -527,7 +536,8 @@ export async function mountCardCreator(mount) {
       : (v === 'prod_up' || v === 'prod_down') ? { res: 'energy', x: 2, ticks: 12 }
       : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 }
       : v === 'deck_add' ? { card: '', nation: '' }
-      : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 }
+      : v === 'sanction' ? { nation: '', ticks: 36 }
+      : (v === 'decider_gain' || v === 'decider_lose' || v === 'coal_pop_up' || v === 'coal_pop_down') ? { x: 2 }
       : { stat: STATS[1], x: 3 };
   }
 
@@ -751,6 +761,8 @@ export async function mountCardCreator(mount) {
       v.push(['warn', 'A relations effect has no nation picked — it will do nothing']);
     if (arr.some(function (f) { return f.kind === 'deck_add' && !(f.p && f.p.card && f.p.nation); }))
       v.push(['warn', 'A “card enters deck” effect needs both a dormant card and a nation picked']);
+    if (arr.some(function (f) { return f.kind === 'sanction' && !(f.p && f.p.nation); }))
+      v.push(['warn', 'A sanction effect has no target nation picked — it will do nothing']);
     if (state.persistV === 'yes') v.push(['ok', '∞ Persistent — joins the national modifier board when played']);
     v.push(state.handler === 'player'
       ? ['ok', 'The player who plays it decides — no ministry gate']

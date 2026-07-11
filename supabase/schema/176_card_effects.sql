@@ -80,6 +80,10 @@ begin
     -- Government-Choice decision (card_decide passes it as p_target). Same write, different target source.
     when 'party_gain', 'decider_gain' then if p_target is not null then perform public._apply_party_effect(p_target, p_nation, jsonb_build_object('t', 'Party Popularity', 'v',  v_x)); end if;
     when 'party_lose', 'decider_lose' then if p_target is not null then perform public._apply_party_effect(p_target, p_nation, jsonb_build_object('t', 'Party Popularity', 'v', -v_x)); end if;
+    -- Every party IN GOVERNMENT gains/loses X approval — the coalition-wide swing, through the same
+    -- policy engine the modifier tick uses (schema/91: loops in_government parties, canonical clamps).
+    when 'coal_pop_up'   then perform public._apply_policy_effect(p_nation, jsonb_build_object('t', 'Party Popularity', 'v',  v_x));
+    when 'coal_pop_down' then perform public._apply_policy_effect(p_nation, jsonb_build_object('t', 'Party Popularity', 'v', -v_x));
     when 'coal_up' then
       select id into v_gov from public.governments where nation_id = p_nation and status = 'active';
       if v_gov is not null then perform public._coalition_health_restore(v_gov, 1); end if;
@@ -110,6 +114,12 @@ begin
     when 'deck_add' then
       if p_p->>'card' ~ '^[0-9a-fA-F-]{36}$' then
         perform public._card_enter_deck((p_p->>'card')::uuid, p_p->>'nation');
+      end if;
+    -- The playing nation sanctions a target nation ('nation') for a MINIMUM of 'ticks' ticks — an embargo
+    -- that can't be lifted before then (schema/117). Guarded against self/zero-duration.
+    when 'sanction' then
+      if p_p->>'nation' is not null and p_p->>'nation' <> '' and coalesce(public._to_num(p_p->>'ticks'), 0) > 0 then
+        perform public._card_place_sanction(p_nation, p_p->>'nation', p_tick + (public._to_num(p_p->>'ticks'))::int);
       end if;
     when 'cond' then
       v_live := public._nation_live_stat(p_nation, p_p->>'stat');
