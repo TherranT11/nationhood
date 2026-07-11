@@ -31,4 +31,50 @@ begin
 end $$;
 revoke all on function public._card_enter_deck(uuid, text) from public, anon, authenticated;
 
+-- Pending timed activations: a deck_add effect with a delay parks the summon here until its due tick.
+create table if not exists public.card_activations (
+  id         uuid primary key default gen_random_uuid(),
+  card_id    uuid not null references public.cards (id)   on delete cascade,
+  nation_id  text not null references public.nations (id) on delete cascade,
+  due_tick   int  not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists card_activations_due_idx on public.card_activations (due_tick);
+alter table public.card_activations enable row level security;
+drop policy if exists "card_activations_select_all" on public.card_activations;
+create policy "card_activations_select_all" on public.card_activations for select using (true);  -- readable (a pending summon is public); writes RPC-only
+
+-- Schedule a summon: due now (p_due <= p_now) → enter the deck immediately; otherwise park it for the tick
+-- processor below. Skips a duplicate pending row for the same (card, nation).
+create or replace function public._card_schedule_deck_add(p_card uuid, p_nation text, p_due int, p_now int)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if p_card is null or p_nation is null then return; end if;
+  if coalesce(p_due, p_now) <= p_now then
+    perform public._card_enter_deck(p_card, p_nation);
+    return;
+  end if;
+  if not exists (select 1 from public.cards where id = p_card) then return; end if;
+  if not exists (select 1 from public.nations where id = p_nation and not coalesce(dormant, false)) then return; end if;
+  if exists (select 1 from public.card_activations where card_id = p_card and nation_id = p_nation) then return; end if;
+  insert into public.card_activations (card_id, nation_id, due_tick) values (p_card, p_nation, p_due);
+end $$;
+revoke all on function public._card_schedule_deck_add(uuid, text, int, int) from public, anon, authenticated;
+
+-- Fire every activation whose tick has arrived (called from advance_tick, schema/60). Each is isolated so
+-- one bad row can't abort the tick; the row is consumed whether or not the summon lands (guards in enter).
+create or replace function public._process_card_activations(p_tick int)
+returns void language plpgsql security definer set search_path = public as $$
+declare r record;
+begin
+  for r in select id, card_id, nation_id from public.card_activations where due_tick <= p_tick loop
+    begin
+      perform public._card_enter_deck(r.card_id, r.nation_id);
+    exception when others then raise warning 'tick %: card activation % failed — %', p_tick, r.id, sqlerrm;
+    end;
+    delete from public.card_activations where id = r.id;
+  end loop;
+end $$;
+revoke all on function public._process_card_activations(int) from public, anon, authenticated;
+
 notify pgrst, 'reload schema';

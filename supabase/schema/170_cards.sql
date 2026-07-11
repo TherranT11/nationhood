@@ -69,15 +69,17 @@ begin
   insert into public.cards (definition) values (p_definition) returning id into v_card;
 
   v_lim := coalesce(p_definition->>'lim', 'all');
-  if v_lim = 'nation' then
+  -- Dormant cards (a 'Dormant?' flag, orthogonal to the Limiter) are dealt to NO deck at creation — they
+  -- wait until a deck_add effect (schema/184) activates them. (Legacy lim='dormant' is treated the same.)
+  if coalesce(p_definition->>'dormant', 'no') = 'yes' or v_lim = 'dormant' then
+    null;
+  elsif v_lim = 'nation' then
     v_nation := p_definition->>'nation';
     if v_nation is null or v_nation = '' then raise exception 'A Specific-Nation card needs a nation.'; end if;
     if not exists (select 1 from public.nations where id = v_nation) then
       raise exception 'No such nation: %', v_nation;
     end if;
     insert into public.deck_cards (nation_id, card_id) values (v_nation, v_card);
-  elsif v_lim = 'dormant' then
-    null;   -- the Dormant Deck: dealt to no nation at creation; a deck_add effect (schema/184) summons it later
   else
     insert into public.deck_cards (nation_id, card_id)
       select id, v_card from public.nations where not coalesce(dormant, false);
@@ -102,7 +104,7 @@ grant execute on function public.card_create(jsonb) to authenticated;
 -- as historical record. Admin-only; security definer. Returns nothing.
 create or replace function public.card_update(p_card uuid, p_definition jsonb)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_old jsonb; v_old_key text; v_new_lim text; v_new_nation text;
+declare v_old jsonb; v_old_key text; v_new_key text; v_new_lim text; v_new_nation text;
 begin
   if not public.is_admin() then raise exception 'Admins only.'; end if;
   if p_definition is null or jsonb_typeof(p_definition) <> 'object' then
@@ -113,19 +115,25 @@ begin
 
   update public.cards set definition = p_definition where id = p_card;
 
-  -- The limiter identity: 'all', 'nation:<id>', or 'dormant'. Re-shuffle only when it changes. Turning a
-  -- card dormant clears its undealt copies and deals nothing; a dormant→dealt change deals it out afresh.
-  v_old_key := case coalesce(v_old->>'lim', 'all') when 'nation' then 'nation:' || coalesce(v_old->>'nation', '') when 'dormant' then 'dormant' else 'all' end;
+  -- The deal identity: 'dormant' (a Dormant? card, or legacy lim='dormant'), 'nation:<id>', or 'all'.
+  -- Re-shuffle only when it changes. Turning a card dormant clears its undealt copies and deals nothing;
+  -- a dormant→dealt change deals it out afresh.
   v_new_lim := coalesce(p_definition->>'lim', 'all');
   v_new_nation := p_definition->>'nation';
-  if v_old_key is distinct from (case v_new_lim when 'nation' then 'nation:' || coalesce(v_new_nation, '') when 'dormant' then 'dormant' else 'all' end) then
+  v_old_key := case when coalesce(v_old->>'dormant', 'no') = 'yes' or coalesce(v_old->>'lim', 'all') = 'dormant' then 'dormant'
+                    when coalesce(v_old->>'lim', 'all') = 'nation' then 'nation:' || coalesce(v_old->>'nation', '')
+                    else 'all' end;
+  v_new_key := case when coalesce(p_definition->>'dormant', 'no') = 'yes' or v_new_lim = 'dormant' then 'dormant'
+                    when v_new_lim = 'nation' then 'nation:' || coalesce(v_new_nation, '')
+                    else 'all' end;
+  if v_old_key is distinct from v_new_key then
     delete from public.deck_cards where card_id = p_card and status in ('in_deck', 'on_block');
-    if v_new_lim = 'nation' then
+    if v_new_key = 'dormant' then
+      null;   -- back to the Dormant Deck: dealt nowhere until activated
+    elsif v_new_lim = 'nation' then
       if v_new_nation is null or v_new_nation = '' then raise exception 'A Specific-Nation card needs a nation.'; end if;
       if not exists (select 1 from public.nations where id = v_new_nation) then raise exception 'No such nation: %', v_new_nation; end if;
       insert into public.deck_cards (nation_id, card_id) values (v_new_nation, p_card);
-    elsif v_new_lim = 'dormant' then
-      null;   -- back to the Dormant Deck: dealt nowhere until summoned
     else
       insert into public.deck_cards (nation_id, card_id)
         select id, p_card from public.nations where not coalesce(dormant, false);

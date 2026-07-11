@@ -46,7 +46,7 @@ const KINDS = {
   rel_down:   { label: 'Relations with a nation decrease by X' },
   prod_up:    { label: 'Increase production of [resource] by X for N ticks' },
   prod_down:  { label: 'Decrease production of [resource] by X for N ticks' },
-  deck_add:   { label: 'A dormant card enters a nation’s deck' },
+  deck_add:   { label: 'Activate a dormant card into a nation’s deck (now or in N ticks)' },
   appoint:    { label: 'HoG must appoint you [Ministry], or…', nested: true },
   hex_el:     { label: 'Carry out an election in a chosen hex' },
   nat_el:     { label: 'Carry out national election' },
@@ -219,7 +219,6 @@ const TEMPLATE = `
       <div class="seg" id="segLim">
         <button data-v="all">All Nations</button>
         <button data-v="nation" class="c-nat">Specific Nation</button>
-        <button data-v="dormant">Dormant</button>
       </div>
       <select id="fNation" style="margin-top:8px;display:none"></select>
     </div>
@@ -254,6 +253,15 @@ const TEMPLATE = `
       <div class="seg" id="segPersist">
         <button data-v="no">No — resolves &amp; discards</button>
         <button data-v="yes" class="c-nat">∞ Persistent</button>
+      </div>
+    </div>
+  </div>
+  <div class="frow single">
+    <div>
+      <label>Dormant? — held out of decks until another card activates it</label>
+      <div class="seg" id="segDormant">
+        <button data-v="no">No — dealt normally</button>
+        <button data-v="yes" class="c-nat">💤 Dormant</button>
       </div>
     </div>
   </div>
@@ -342,7 +350,7 @@ export async function mountCardCreator(mount) {
         d: { txt: '', fx: [{ kind: 'no_conf', p: {} }] },
         r: { txt: '', fx: [{ kind: 'stat_down', p: { stat: 'Growth', x: 4 } }] }
       },
-      persistV: 'no', reqCard: '', allowCard: '',
+      persistV: 'no', dormant: 'no', reqCard: '', allowCard: '',   // dormant: held out of decks until a deck_add effect activates it
       handler: 'player',      // who resolves the card's decision: 'player' (holder decides) or a ministry name
       afterPlay: 'discard'    // 'discard' (permanent) or 'shuffle' (back into the deck)
     };
@@ -368,6 +376,7 @@ export async function mountCardCreator(mount) {
   wireSeg('segStance', 'stanceReq', syncStance);
   wireSeg('reqD', 'reqD'); wireSeg('reqR', 'reqR');
   wireSeg('segPersist', 'persistV');
+  wireSeg('segDormant', 'dormant');
   wireSeg('segAfter', 'afterPlay');
   // Decision Handler dropdown: "Player decides", "Head of Government decides" (no ministry) + each ministry.
   $('fHandler').innerHTML = '<option value="player">Player who plays it decides</option>' +
@@ -385,7 +394,7 @@ export async function mountCardCreator(mount) {
     $('fName').value = state.name; $('fCost').value = state.cost; $('fActs').value = state.acts; $('fDesc').value = state.desc;
     markSeg('segType', state.type); markSeg('segLim', state.lim); markSeg('segMech', state.mech);
     markSeg('segPersist', state.persistV); markSeg('reqD', state.reqD); markSeg('reqR', state.reqR);
-    markSeg('segStance', state.stanceReq); markSeg('segAfter', state.afterPlay);
+    markSeg('segStance', state.stanceReq); markSeg('segAfter', state.afterPlay); markSeg('segDormant', state.dormant);
     $('fHandler').value = state.handler;
     $('fNation').style.display = state.lim === 'nation' ? 'block' : 'none';
     $('fNation').value = state.nation;
@@ -404,7 +413,9 @@ export async function mountCardCreator(mount) {
     var d = c.def || {};
     var s = freshState();
     s.name = d.name || ''; s.cost = Number(d.cost) || 0; s.acts = Math.max(1, Math.min(6, Number(d.acts) || 1)); s.desc = d.desc || '';
-    s.type = d.type || 'dr'; s.lim = d.lim || 'all'; s.nation = d.nation || '';
+    s.type = d.type || 'dr'; s.lim = (d.lim === 'nation') ? 'nation' : 'all'; s.nation = d.nation || '';
+    // Dormant is now its own flag; a legacy lim='dormant' card maps to dormant + an 'all' limiter.
+    s.dormant = (d.dormant === 'yes' || d.lim === 'dormant') ? 'yes' : 'no';
     s.mech = (d.mech === 'choice' || d.mech === 'double') ? d.mech : 'oneoff';   // legacy 'bill' mechanic → oneoff
     s.persistV = d.persistV === 'yes' ? 'yes' : 'no';
     s.reqCard = d.reqCard || ''; s.allowCard = d.allowCard || '';
@@ -493,11 +504,12 @@ export async function mountCardCreator(mount) {
       NATIONS.map(function (n) { return '<option value="' + esc(n.id) + '"' + (n.id === f.p.nation ? ' selected' : '') + '>' + esc(n.name) + '</option>'; }).join('') + '</select>' +
       '<span class="lbl">for min</span><select data-i="' + i + '" data-f="ticks">' + SANCTION_TICKS.map(function (t) { return '<option value="' + t + '"' + (t === (f.p.ticks || 36) ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select><span class="lbl">ticks</span>';
     if (f.kind === 'deck_add') {
-      var dorm = POOL.filter(function (c) { return c.def && c.def.lim === 'dormant'; });
-      h = '<span class="lbl">card</span><select data-i="' + i + '" data-f="card"><option value="">' + (dorm.length ? '— dormant card —' : '— none authored yet —') + '</option>' +
+      var dorm = POOL.filter(function (c) { return c.def && (c.def.dormant === 'yes' || c.def.lim === 'dormant'); });
+      h = '<span class="lbl">activate</span><select data-i="' + i + '" data-f="card"><option value="">' + (dorm.length ? '— dormant card —' : '— none authored yet —') + '</option>' +
         dorm.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === f.p.card ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') + '</select>' +
-        '<span class="lbl">enters</span><select data-i="' + i + '" data-f="nation"><option value=""' + (f.p.nation ? '' : ' selected') + '>— nation —</option>' +
-        NATIONS.map(function (n) { return '<option value="' + esc(n.id) + '"' + (n.id === f.p.nation ? ' selected' : '') + '>' + esc(n.name) + '</option>'; }).join('') + '</select><span class="lbl">deck</span>';
+        '<span class="lbl">into</span><select data-i="' + i + '" data-f="nation"><option value=""' + (f.p.nation ? '' : ' selected') + '>— nation —</option>' +
+        NATIONS.map(function (n) { return '<option value="' + esc(n.id) + '"' + (n.id === f.p.nation ? ' selected' : '') + '>' + esc(n.name) + '</option>'; }).join('') + '</select>' +
+        '<span class="lbl">deck in</span><input type="number" value="' + (f.p.ticks || 0) + '" data-i="' + i + '" data-f="ticks" min="0" max="120" style="max-width:70px"><span class="lbl">ticks (0 = now)</span>';
     }
     if (f.kind === 'hex_el') h = '<span class="lbl">hex chosen on play · 12-tick cooldown</span>';
     if (f.kind === 'mob_add' || f.kind === 'mob_rem' || f.kind === 'mil_add' || f.kind === 'mil_rem')
@@ -568,7 +580,7 @@ export async function mountCardCreator(mount) {
       : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 }
       : (v === 'prod_up' || v === 'prod_down') ? { res: 'energy', x: 2, ticks: 12 }
       : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 }
-      : v === 'deck_add' ? { card: '', nation: '' }
+      : v === 'deck_add' ? { card: '', nation: '', ticks: 0 }
       : v === 'sanction' ? { nation: '', ticks: 36 }
       : v === 'bill' ? { name: '', pass: [{ kind: 'stat_up', p: { stat: 'Growth', x: 5 } }], fail: [{ kind: 'stat_down', p: { stat: 'Growth', x: 3 } }] }
       : (v === 'decider_gain' || v === 'decider_lose' || v === 'coal_pop_up' || v === 'coal_pop_down') ? { x: 2 }
@@ -709,7 +721,7 @@ export async function mountCardCreator(mount) {
     var pFlag = $('pFlag'), pfSrc = state.lim === 'nation' ? nationFlag(state.nation) : '';
     if (pfSrc) { pFlag.src = pfSrc; pFlag.hidden = false; } else { pFlag.hidden = true; pFlag.removeAttribute('src'); }
     var natName = nationName(state.nation);
-    var kindTxt = state.lim === 'dormant' ? 'Dormant · summoned by a card'
+    var kindTxt = state.dormant === 'yes' ? '💤 Dormant · ' + (state.lim === 'nation' ? (natName || '—') : 'activated by a card')
       : state.lim === 'nation' ? 'Nation · ' + (natName || '—')
       : state.type === 'generic' ? 'Generic' : 'Stance · ' + ax.d.name + ' / ' + ax.r.name;
     var kindCol = state.lim === 'nation' ? 'var(--nat)' : state.type === 'generic' ? 'var(--gen)' : state.type === 'ar' ? 'var(--auto)' : 'var(--rev)';
@@ -797,7 +809,7 @@ export async function mountCardCreator(mount) {
     if (state.reqCard && state.reqCard === state.allowCard) v.push(['warn', 'Requires and allows the same card — circular chain']);
     v.push(state.name ? ['ok', 'Named'] : ['warn', 'Card needs a name']);
     if (state.lim === 'nation') v.push(state.nation ? ['ok', 'Enters ' + esc(nationName(state.nation) || state.nation) + '’s deck only'] : ['warn', 'Pick a nation for a Specific-Nation card']);
-    if (state.lim === 'dormant') v.push(['ok', 'Dormant — dealt to no deck until a “card enters deck” effect summons it']);
+    if (state.dormant === 'yes') v.push(['ok', '💤 Dormant — dealt to no deck until a “dormant card enters deck” effect activates it']);
     $('pValid').innerHTML = v.map(function (x) { return '<div class="vline ' + x[0] + '">' + x[1] + '</div>'; }).join('');
 
     // Save is blocked while any hard requirement is unmet (a name, and a nation when nation-limited).
@@ -838,7 +850,7 @@ export async function mountCardCreator(mount) {
     if (!POOL.length) { el.innerHTML = '<div class="poolempty">No cards yet — build one and shuffle it in.</div>'; return; }
     el.innerHTML = POOL.map(function (c) {
       var d = c.def || {};
-      var meta = (d.lim === 'nation' ? (nationName(d.nation) || 'One nation') : 'All nations') + ' · ' + (d.mech || 'oneoff');
+      var meta = (d.dormant === 'yes' || d.lim === 'dormant' ? '💤 Dormant' : d.lim === 'nation' ? (nationName(d.nation) || 'One nation') : 'All nations') + ' · ' + (d.mech || 'oneoff');
       return '<div class="poolrow"><span class="pn">' + esc(c.name) + '</span><span class="pm">' + esc(meta) + '</span>' +
         '<button class="pedit" data-id="' + esc(c.id) + '">Edit</button>' +
         '<button class="pdel" data-id="' + esc(c.id) + '">Delete</button></div>';
@@ -873,7 +885,7 @@ export async function mountCardCreator(mount) {
   function buildDefinition() {
     var clone = function (o) { return JSON.parse(JSON.stringify(o)); };
     var d = { name: state.name, cost: state.cost, acts: state.acts, desc: state.desc, type: state.type, lim: state.lim,
-              mech: state.mech, persistV: state.persistV, reqCard: state.reqCard, allowCard: state.allowCard,
+              mech: state.mech, persistV: state.persistV, dormant: state.dormant, reqCard: state.reqCard, allowCard: state.allowCard,
               handler: state.handler, afterPlay: state.afterPlay };
     if (state.lim === 'nation') d.nation = state.nation;              // only meaningful when nation-limited
     // Stance gates only when a stance card is explicitly Stance-gated; otherwise the card needs no stance.

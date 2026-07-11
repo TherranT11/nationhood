@@ -109,11 +109,13 @@ begin
           case when p_kind = 'prod_up' then v_x else -v_x end,
           (public._to_num(p_p->>'ticks'))::int, p_tick);
       end if;
-    -- Summon a dormant card into a chosen nation's deck (schema/184). The card ('card') and nation
-    -- ('nation') are authored on the effect. Guarded against a malformed uuid so a bad param can't abort.
+    -- Activate a dormant card into a chosen nation's deck (schema/184), now or after 'ticks' ticks. The
+    -- card ('card'), nation ('nation') and delay ('ticks', default 0 = immediately) are authored on the
+    -- effect. Guarded against a malformed uuid so a bad param can't abort.
     when 'deck_add' then
       if p_p->>'card' ~ '^[0-9a-fA-F-]{36}$' then
-        perform public._card_enter_deck((p_p->>'card')::uuid, p_p->>'nation');
+        perform public._card_schedule_deck_add((p_p->>'card')::uuid, p_p->>'nation',
+                                               p_tick + coalesce((public._to_num(p_p->>'ticks'))::int, 0), p_tick);
       end if;
     -- The playing nation sanctions a target nation ('nation') for a MINIMUM of 'ticks' ticks — an embargo
     -- that can't be lifted before then (schema/117). Guarded against self/zero-duration.
