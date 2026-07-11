@@ -70,6 +70,16 @@ begin
       or (p_p->>'dir' = 'below' and v_live <  v_x) then
         perform public._apply_card_effect(p_nation, p_target, p_p->>'nk', p_p->'np', p_tick);
       end if;
+    -- Add / remove resource units from the nation's on-hand stockpile (schema/113: nations.on_hand,
+    -- keys food/goods/services/military). Clamped at 0 — a removal can't push a stockpile negative.
+    when 'res_add' then
+      if p_p->>'res' in ('food', 'goods', 'services', 'military') then
+        perform public._nation_stat_add(p_nation, 'on_hand', p_p->>'res',  v_x, 0, null);
+      end if;
+    when 'res_remove' then
+      if p_p->>'res' in ('food', 'goods', 'services', 'military') then
+        perform public._nation_stat_add(p_nation, 'on_hand', p_p->>'res', -v_x, 0, null);
+      end if;
     -- no_conf / appoint / hex_el / mob_add / mob_rem / mil_add / mil_rem / event: deferred → no-op.
     else null;
   end case;

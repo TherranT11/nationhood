@@ -15,6 +15,8 @@ const STATS = ['Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Public 
 // The real cabinet portfolios (server source: _ministries(), schema/138) — so a card's Decision
 // Handler routes to an actual minister.
 const MINISTRIES = ['Defence', 'Treasury', 'Interior', 'Foreign Affairs', 'Trade', 'Labour', 'Justice', 'Health', 'Education', 'Energy', 'Economic Development'];
+// The nation's on-hand stockpile keys (server source: nations.on_hand, schema/113). Stored lowercase.
+const RESOURCES = ['food', 'goods', 'services', 'military'];
 const KINDS = {
   cond:       { label: 'IF [stat] is above/below X, then…', nested: true },
   party_gain: { label: 'Targeted party gains X approval' },
@@ -24,6 +26,8 @@ const KINDS = {
   stat_up:    { label: 'Stat goes up by X' },
   stat_down:  { label: 'Stat goes down by X' },
   hex_pop:    { label: 'Swing X approval at a chosen hex (you +X, or a rival −X)' },
+  res_add:    { label: 'Add X [resource] to on-hand' },
+  res_remove: { label: 'Remove X [resource] from on-hand' },
   appoint:    { label: 'HoG must appoint you [Ministry], or…', nested: true },
   hex_el:     { label: 'Carry out election in Hex X' },
   nat_el:     { label: 'Carry out national election' },
@@ -228,8 +232,12 @@ const TEMPLATE = `
   <div id="fxList"></div>
   <button class="addfx" id="addFx">+ Add Effect</button>
 
-  <div class="sect">Purchase Requirement <span class="cnt">both sides priced — buyer's stance picks the playable side</span></div>
-  <div class="req">
+  <div class="sect">Purchase Requirement <span class="cnt">a stance gate is optional — off by default</span></div>
+  <div class="seg" id="segStance" style="margin-bottom:12px">
+    <button data-v="none">No stance required</button>
+    <button data-v="gated">Stance-gated</button>
+  </div>
+  <div class="req" id="reqGrid">
     <div class="reqbox d">
       <div class="t" id="reqDT">Democratic side</div>
       <div class="lvlseg" id="reqD"><button data-v="1">D1</button><button data-v="2">D2</button><button data-v="3">D3</button></div>
@@ -279,7 +287,7 @@ export async function mountCardCreator(mount) {
   var state = {
     name: '', cost: 4, acts: 2, desc: '',
     type: 'dr', lim: 'all', nation: '', mech: 'oneoff',
-    reqD: 2, reqR: 2,
+    stanceReq: 'none', reqD: 2, reqR: 2,   // stanceReq 'none' = anyone can buy/play; 'gated' = reqD/reqR levels apply
     fx: [
       { side: 'd', kind: 'no_conf', p: {} },
       { side: 'r', kind: 'stat_down', p: { stat: 'Growth', x: 4 } },
@@ -316,6 +324,7 @@ export async function mountCardCreator(mount) {
   wireSeg('segType', 'type', function () { syncAxis(); renderFx(); });
   wireSeg('segLim', 'lim', function () { $('fNation').style.display = state.lim === 'nation' ? 'block' : 'none'; });
   wireSeg('segMech', 'mech', function () { renderFx(); });
+  wireSeg('segStance', 'stanceReq', syncStance);
   wireSeg('reqD', 'reqD'); wireSeg('reqR', 'reqR');
   wireSeg('segPersist', 'persistV');
   wireSeg('segAfter', 'afterPlay');
@@ -327,7 +336,12 @@ export async function mountCardCreator(mount) {
   // initial "on" states
   markSeg('segType', state.type); markSeg('segLim', state.lim); markSeg('segMech', state.mech);
   markSeg('segPersist', state.persistV); markSeg('reqD', state.reqD); markSeg('reqR', state.reqR);
-  markSeg('segAfter', state.afterPlay);
+  markSeg('segStance', state.stanceReq); markSeg('segAfter', state.afterPlay);
+  // Stance gate is optional: the D/R level pickers only matter when 'Stance-gated' is chosen. (No
+  // renderPreview here — wireSeg calls it after this callback, and the initial call below predates the
+  // nations load, so rendering here would read NATIONS before it exists.)
+  function syncStance() { $('reqGrid').style.display = state.stanceReq === 'gated' ? '' : 'none'; }
+  syncStance();
 
   ['fName', 'fCost', 'fActs', 'fDesc'].forEach(function (id) {
     $(id).oninput = function (e) {
@@ -361,6 +375,8 @@ export async function mountCardCreator(mount) {
     if (f.kind === 'stat_up' || f.kind === 'stat_down') h = '<span class="lbl">stat</span>' + statSel(f.p.stat, 'stat') + '<span class="lbl">by</span>' + num(f.p.x, 'x');
     if (f.kind === 'party_gain' || f.kind === 'party_lose') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">target chosen on play</span>';
     if (f.kind === 'hex_pop') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">hex &amp; side chosen on play</span>';
+    if (f.kind === 'res_add' || f.kind === 'res_remove') h = '<span class="lbl">' + (f.kind === 'res_add' ? 'add' : 'remove') + '</span>' + num(f.p.x, 'x') +
+      '<select data-i="' + i + '" data-f="res">' + RESOURCES.map(function (rz) { return '<option value="' + rz + '"' + (rz === f.p.res ? ' selected' : '') + '>' + rz.charAt(0).toUpperCase() + rz.slice(1) + '</option>'; }).join('') + '</select><span class="lbl">on hand</span>';
     if (f.kind === 'hex_el') h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px">';
     if (f.kind === 'mob_add' || f.kind === 'mob_rem' || f.kind === 'mil_add' || f.kind === 'mil_rem')
       h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px"><span class="lbl">' + ((f.kind === 'mob_add' || f.kind === 'mob_rem') ? '⚠ armed mob — nobody’s soldiers' : '⚑ militia — belongs to a party') + '</span>';
@@ -404,8 +420,9 @@ export async function mountCardCreator(mount) {
     } else if (state.mech === 'double') {
       function sideBlock(key, ref, cls, side, lvl) {
         var f = state.dside[key];
+        var gate = state.stanceReq === 'gated' ? ' (' + side.pre + lvl + '+)' : '';
         return '<div class="opt ' + cls + '">' +
-          '<div class="opt-h">' + side.ic + ' ' + side.name + ' side (' + side.pre + lvl + '+) — its own name + effect:</div>' +
+          '<div class="opt-h">' + side.ic + ' ' + side.name + ' side' + gate + ' — its own name + effect:</div>' +
           '<input type="text" value="' + esc(f.txt || '') + '" data-i="' + ref + '" data-f="txt" placeholder="Name this side of the card…">' +
           '<div class="fx-top" style="margin-top:9px"><span class="n">→</span>' +
           '<select data-i="' + ref + '" data-f="kind">' + kindOpts(f) + '</select></div>' +
@@ -437,7 +454,7 @@ export async function mountCardCreator(mount) {
         if (special) {
           var r = special;
           if (fd === 'txt') { r.txt = v; renderPreview(); return; }
-          if (fd === 'kind') { r.kind = v; if (v !== 'none') r.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_gain', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : { stat: STATS[1], x: 2 }; renderFx(); }
+          if (fd === 'kind') { r.kind = v; if (v !== 'none') r.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_gain', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : { stat: STATS[1], x: 2 }; renderFx(); }
           else if (fd === 'nk') { r.p.nk = v; r.p.np = r.p.np || {}; renderFx(); }
           else if (fd === 'nstat') { r.p.np = r.p.np || {}; r.p.np.stat = v; }
           else if (fd === 'nx') { r.p.np = r.p.np || {}; r.p.np.x = +v; }
@@ -446,7 +463,7 @@ export async function mountCardCreator(mount) {
         }
         var f = activeArr()[+el.dataset.i];
         if (fd === 'txt' && state.mech === 'choice') { f.txt = v; renderPreview(); return; }
-        if (fd === 'kind') { f.kind = v; f.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : { stat: STATS[1], x: 3 }; renderFx(); }
+        if (fd === 'kind') { f.kind = v; f.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : { stat: STATS[1], x: 3 }; renderFx(); }
         else if (fd === 'nk') { f.p.nk = v; f.p.np = f.p.np || {}; renderFx(); }
         else if (fd === 'nstat') { f.p.np = f.p.np || {}; f.p.np.stat = v; }
         else if (fd === 'nx') { f.p.np = f.p.np || {}; f.p.np.x = +v; }
@@ -476,6 +493,8 @@ export async function mountCardCreator(mount) {
       case 'stat_up': return '<b>' + esc(p.stat || '?') + ' +' + (p.x || 0) + '</b>';
       case 'stat_down': return '<b>' + esc(p.stat || '?') + ' −' + (p.x || 0) + '</b>';
       case 'hex_pop': return 'At a chosen hex: <b>you +' + (p.x || 0) + '</b>, or <b>a rival −' + (p.x || 0) + '</b> approval';
+      case 'res_add': return 'Add <b>' + (p.x || 0) + ' ' + esc((p.res || 'food').charAt(0).toUpperCase() + (p.res || 'food').slice(1)) + '</b> to on-hand';
+      case 'res_remove': return 'Remove <b>' + (p.x || 0) + ' ' + esc((p.res || 'food').charAt(0).toUpperCase() + (p.res || 'food').slice(1)) + '</b> from on-hand';
       case 'no_conf': return 'Put forth a <b>motion of no confidence</b>';
       case 'nat_el': return 'Carry out a <b>national election</b>';
       case 'hex_el': return 'Carry out an <b>election in hex ' + esc(p.hex || '?') + '</b>';
@@ -504,7 +523,9 @@ export async function mountCardCreator(mount) {
     reqs += '<span class="rq acts">▶ ' + (state.acts || 1) + ' action' + ((state.acts || 1) === 1 ? '' : 's') + '</span>';
     if (state.persistV === 'yes') reqs += '<span class="rq pers">∞ Persistent</span>';
     if (state.afterPlay === 'shuffle') reqs += '<span class="rq recyc">↻ Reshuffles</span>';
-    if (state.type !== 'generic') reqs += '<span class="rq d">' + ax.d.ic + ' ' + ax.d.pre + state.reqD + '+</span><span class="rq r">' + ax.r.ic + ' ' + ax.r.pre + state.reqR + '+</span>';
+    var gated = state.type !== 'generic' && state.stanceReq === 'gated';
+    if (gated) reqs += '<span class="rq d">' + ax.d.ic + ' ' + ax.d.pre + state.reqD + '+</span><span class="rq r">' + ax.r.ic + ' ' + ax.r.pre + state.reqR + '+</span>';
+    else if (state.type !== 'generic') reqs += '<span class="rq">no stance req</span>';
     $('pReqs').innerHTML = reqs;
 
     var html = '';
@@ -522,13 +543,13 @@ export async function mountCardCreator(mount) {
         html += '<div class="fxgroup grw"><div class="gt">◈ Played-by reward — whoever asks, profits</div><div class="fxline">' + rt + '</div></div>';
       }
     } else if (state.mech === 'double') {
-      html += '<div class="fxgroup gd"><div class="gt">' + ax.d.ic + ' ' + ax.d.pre + state.reqD + '+ · “' + esc(state.dside.d.txt || 'unnamed side') + '”</div><div class="fxline">' + fxText(state.dside.d.kind, state.dside.d.p) + '</div></div>';
-      html += '<div class="fxgroup gr"><div class="gt">' + ax.r.ic + ' ' + ax.r.pre + state.reqR + '+ · “' + esc(state.dside.r.txt || 'unnamed side') + '”</div><div class="fxline">' + fxText(state.dside.r.kind, state.dside.r.p) + '</div></div>';
+      html += '<div class="fxgroup gd"><div class="gt">' + ax.d.ic + ' ' + (gated ? ax.d.pre + state.reqD + '+ · ' : '') + '“' + esc(state.dside.d.txt || 'unnamed side') + '”</div><div class="fxline">' + fxText(state.dside.d.kind, state.dside.d.p) + '</div></div>';
+      html += '<div class="fxgroup gr"><div class="gt">' + ax.r.ic + ' ' + (gated ? ax.r.pre + state.reqR + '+ · ' : '') + '“' + esc(state.dside.r.txt || 'unnamed side') + '”</div><div class="fxline">' + fxText(state.dside.r.kind, state.dside.r.p) + '</div></div>';
     } else {
       var groups = { d: [], r: [], both: [] };
       state.fx.forEach(function (f) { groups[state.type === 'generic' ? 'both' : f.side].push(fxText(f.kind, f.p)); });
-      if (groups.d.length) html += '<div class="fxgroup gd"><div class="gt">' + ax.d.ic + ' ' + ax.d.name + ' play (' + ax.d.pre + state.reqD + '+)</div>' + groups.d.map(function (t) { return '<div class="fxline">' + t + '</div>'; }).join('') + '</div>';
-      if (groups.r.length) html += '<div class="fxgroup gr"><div class="gt">' + ax.r.ic + ' ' + ax.r.name + ' play (' + ax.r.pre + state.reqR + '+)</div>' + groups.r.map(function (t) { return '<div class="fxline">' + t + '</div>'; }).join('') + '</div>';
+      if (groups.d.length) html += '<div class="fxgroup gd"><div class="gt">' + ax.d.ic + ' ' + ax.d.name + ' play' + (gated ? ' (' + ax.d.pre + state.reqD + '+)' : '') + '</div>' + groups.d.map(function (t) { return '<div class="fxline">' + t + '</div>'; }).join('') + '</div>';
+      if (groups.r.length) html += '<div class="fxgroup gr"><div class="gt">' + ax.r.ic + ' ' + ax.r.name + ' play' + (gated ? ' (' + ax.r.pre + state.reqR + '+)' : '') + '</div>' + groups.r.map(function (t) { return '<div class="fxline">' + t + '</div>'; }).join('') + '</div>';
       if (groups.both.length) html += '<div class="fxgroup gb"><div class="gt">◈ Either play</div>' + groups.both.map(function (t) { return '<div class="fxline">' + t + '</div>'; }).join('') + '</div>';
     }
     $('pFx').innerHTML = html || '<div class="fxline" style="color:var(--soft)">no effects yet</div>';
@@ -551,7 +572,9 @@ export async function mountCardCreator(mount) {
     } else if (state.mech === 'double') {
       var dn = (state.dside.d.txt || '').trim(), rn = (state.dside.r.txt || '').trim();
       v.push(dn && rn ? ['ok', 'Both sides named'] : ['warn', 'Each side needs its own name — it’s what the news prints']);
-      v.push(state.type !== 'generic' ? ['ok', 'Sides gate at ' + ax.d.pre + state.reqD + '+ / ' + ax.r.pre + state.reqR + '+'] : ['warn', 'Double Sided needs a stance axis — switch Type off Generic']);
+      v.push(state.type === 'generic' ? ['warn', 'Double Sided needs a stance axis — switch Type off Generic']
+        : state.stanceReq === 'gated' ? ['ok', 'Sides gate at ' + ax.d.pre + state.reqD + '+ / ' + ax.r.pre + state.reqR + '+']
+        : ['ok', 'No stance required — either side is playable by anyone']);
     } else {
       v.push(state.fx.length <= 5 ? ['ok', 'Effects: ' + state.fx.length + ' / 5'] : ['warn', 'Too many effects']);
       if (state.type !== 'generic') {
@@ -645,7 +668,8 @@ export async function mountCardCreator(mount) {
               mech: state.mech, persistV: state.persistV, reqCard: state.reqCard, allowCard: state.allowCard,
               handler: state.handler, afterPlay: state.afterPlay };
     if (state.lim === 'nation') d.nation = state.nation;              // only meaningful when nation-limited
-    if (state.type !== 'generic') { d.reqD = state.reqD; d.reqR = state.reqR; }  // stance gates only for stance cards
+    // Stance gates only when a stance card is explicitly Stance-gated; otherwise the card needs no stance.
+    if (state.type !== 'generic' && state.stanceReq === 'gated') { d.reqD = state.reqD; d.reqR = state.reqR; }
     if (state.mech === 'choice') { d.copt = clone(state.copt); d.reward = clone(state.reward); }
     else if (state.mech === 'double') d.dside = clone(state.dside);
     else d.fx = clone(state.fx);
