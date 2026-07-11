@@ -41,6 +41,29 @@ begin
 end $$;
 revoke all on function public._apply_card_stat(text, text, numeric) from public, anon, authenticated;
 
+-- Mint a named, board-visible national modifier (schema/70) that adds a flat delta to one resource's
+-- Produce output for p_ticks ticks, then auto-lifts (a 'duration' end condition, checked each tick in
+-- schema/60). source='card' so schema/60 purges the definition once it detaches — a card played many
+-- times never grows the modifier list. Green for a boost, red for a cut. No-op on a zero delta/duration.
+create or replace function public._mint_timed_resource_modifier(p_nation text, p_res text, p_delta numeric, p_ticks int, p_tick int)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_mid uuid;
+begin
+  if coalesce(p_delta, 0) = 0 or coalesce(p_ticks, 0) <= 0 then return; end if;
+  insert into public.national_modifiers (name, color, description, source)
+    values (initcap(p_res) || ' production ' || (case when p_delta > 0 then '+' else '' end) || p_delta::int,
+            case when p_delta > 0 then 'green' else 'red' end,
+            'Temporary — lasts ' || p_ticks || ' ticks.', 'card')
+    returning id into v_mid;
+  insert into public.modifier_effects (modifier_id, effect_type, effect_key, effect_value)
+    values (v_mid, 'resource_add', p_res, p_delta);
+  insert into public.modifier_end_conditions (modifier_id, cond_type, cond_op, cond_key, cond_value)
+    values (v_mid, 'duration', 'gte', null, p_ticks);
+  insert into public.nation_modifiers (nation_id, modifier_id, since_tick)
+    values (p_nation, v_mid, p_tick);
+end $$;
+revoke all on function public._mint_timed_resource_modifier(text, text, numeric, int, int) from public, anon, authenticated;
+
 -- Apply ONE authored effect. p_target is the party a party-scoped effect hits (null → skip, no target
 -- chosen). Unresolvable kinds are silent no-ops (see header). Recurses for 'cond'.
 drop function if exists public._apply_card_effect(text, uuid, uuid, text, jsonb, int);   -- retired 6-arg form (dead p_party removed)
@@ -70,6 +93,18 @@ begin
     -- (p->>'nation'). rel_down is rel_up with the sign flipped. Clamp + guards live in _relation_adjust.
     when 'rel_up' then   perform public._relation_adjust(p_nation, p_p->>'nation',  v_x::int);
     when 'rel_down' then perform public._relation_adjust(p_nation, p_p->>'nation', (-v_x)::int);
+    -- Timed production boost/cut: mint a named national modifier (schema/70) that adds a flat delta to a
+    -- resource's Produce output for p->>'ticks' ticks, then auto-lifts (a 'duration' end condition). Shows
+    -- on the nation's modifier board. prod_down is prod_up negated. Guards on a real production resource
+    -- and a positive duration.
+    when 'prod_up', 'prod_down' then
+      if p_p->>'res' in ('energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy')
+         and coalesce(public._to_num(p_p->>'ticks'), 0) > 0 then
+        perform public._mint_timed_resource_modifier(
+          p_nation, p_p->>'res',
+          case when p_kind = 'prod_up' then v_x else -v_x end,
+          (public._to_num(p_p->>'ticks'))::int, p_tick);
+      end if;
     when 'cond' then
       v_live := public._nation_live_stat(p_nation, p_p->>'stat');
       if (p_p->>'dir' = 'above' and v_live >  v_x)

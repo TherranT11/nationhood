@@ -20,6 +20,10 @@ create table if not exists public.national_modifiers (
   description   text,
   created_at    timestamptz not null default now()
 );
+-- Provenance: null = admin-authored (permanent in the modifier list); 'card' = minted by a played card
+-- (e.g. a timed production boost). Card-minted definitions are purged once unattached (schema/60), so a
+-- card played hundreds of times doesn't grow the modifier list without bound.
+alter table public.national_modifiers add column if not exists source text;
 
 -- One row per effect on a modifier.
 create table if not exists public.modifier_effects (
@@ -35,6 +39,7 @@ create index if not exists modifier_effects_modifier_idx on public.modifier_effe
 --   stat_tick                                     (effect_key = nation stat; signed per-tick delta) ✓
 --   coalition_pop_tick                            (no key; signed per-tick delta to every in-government party's popularity) ✓
 --   resource_ceiling                              (effect_key = production resource)          ✓ (_apply_modifier_bounds)
+--   resource_add                                  (effect_key = production resource; signed flat delta to a Produce cycle) ✓ (schema/113)
 --   stat_ceiling | stat_floor                     (effect_key = nation stat)                  ✓ (_apply_modifier_bounds)
 --   regime_ceiling | regime_floor                 (no key)                                    — inert
 
@@ -214,6 +219,18 @@ begin
   return v;
 end $$;
 revoke all on function public._mod_rate_multiplier(text, text) from public, anon, authenticated;
+
+-- The combined flat delta a nation's active modifiers add to one production resource's Produce-cycle
+-- output ('resource_add', schema/70 catalogue). Deltas STACK (two +5 boosts → +10); no modifier → 0.
+-- Read at the Produce cycle (schema/113), after the rate multiplier, then floored at 0 there.
+create or replace function public._mod_resource_add(p_nation text, p_key text)
+returns numeric language sql stable security definer set search_path = public as $$
+  select coalesce(sum(e.effect_value), 0)
+    from public.nation_modifiers nm
+    join public.modifier_effects e on e.modifier_id = nm.modifier_id
+   where nm.nation_id = p_nation and e.effect_type = 'resource_add' and e.effect_key = p_key;
+$$;
+revoke all on function public._mod_resource_add(text, text) from public, anon, authenticated;
 
 -- Safe numeric cast: returns null instead of throwing on non-numeric text (e.g. a
 -- legacy free-text regime like "Electoral Democracy"). Used by the end-condition

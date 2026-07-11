@@ -21,6 +21,10 @@ const MINISTRIES = ['Defence', 'Treasury', 'Interior', 'Foreign Affairs', 'Trade
 const RESOURCES = ['food', 'goods', 'services', 'military', 'energy', 'minerals', 'diplomacy', 'army', 'navy', 'air_wings'];
 const RES_LABEL = { air_wings: 'Air Wings' };            // multi-word display overrides; the rest use cap()
 const resLabel = function (k) { return RES_LABEL[k] || cap(k); };
+// The resources a Produce cycle outputs (server source: economy_produce, schema/113) — the ones a
+// timed production modifier can boost/cut. A subset of RESOURCES (no army/navy/air_wings, which aren't produced).
+const PROD_RESOURCES = ['energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy'];
+const PROD_TICKS = [12, 24, 36, 48, 60];                 // the offered durations for a timed production modifier
 const KINDS = {
   cond:       { label: 'IF [stat] is above/below X, then…', nested: true },
   party_gain: { label: 'Targeted party gains X approval' },
@@ -36,6 +40,8 @@ const KINDS = {
   res_remove: { label: 'Remove X [resource] from on-hand' },
   rel_up:     { label: 'Relations with a nation increase by X' },
   rel_down:   { label: 'Relations with a nation decrease by X' },
+  prod_up:    { label: 'Increase production of [resource] by X for N ticks' },
+  prod_down:  { label: 'Decrease production of [resource] by X for N ticks' },
   appoint:    { label: 'HoG must appoint you [Ministry], or…', nested: true },
   hex_el:     { label: 'Carry out an election in a chosen hex' },
   nat_el:     { label: 'Carry out national election' },
@@ -212,6 +218,7 @@ const TEMPLATE = `
     <button data-v="oneoff">One-Off Effect</button>
     <button data-v="double">Double Sided</button>
     <button data-v="choice">Government Choice</button>
+    <button data-v="bill">Committee Bill</button>
   </div>
 
   <div class="sect">Decision &amp; Lifecycle</div>
@@ -324,6 +331,11 @@ export async function mountCardCreator(mount) {
         d: { txt: '', fx: [{ kind: 'no_conf', p: {} }] },
         r: { txt: '', fx: [{ kind: 'stat_down', p: { stat: 'Growth', x: 4 } }] }
       },
+      // Committee Bill: the card's name is the bill title; two effect lists fire on the floor vote.
+      bill: {
+        pass: [{ kind: 'stat_up', p: { stat: 'Growth', x: 5 } }],
+        fail: [{ kind: 'stat_down', p: { stat: 'Growth', x: 3 } }]
+      },
       persistV: 'no', reqCard: '', allowCard: '',
       handler: 'player',      // who resolves the card's decision: 'player' (holder decides) or a ministry name
       afterPlay: 'discard'    // 'discard' (permanent) or 'shuffle' (back into the deck)
@@ -407,6 +419,9 @@ export async function mountCardCreator(mount) {
       s.copt = d.copt.map(normSlot);
     } else if (s.mech === 'double' && d.dside) {
       s.dside = { d: normSlot(d.dside.d), r: normSlot(d.dside.r) };
+    } else if (s.mech === 'bill') {
+      var nb = function (arr) { return (Array.isArray(arr) && arr.length ? arr : [{ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }]).map(function (f) { return { kind: f.kind || 'stat_up', p: f.p || {} }; }); };
+      s.bill = { pass: nb(d.bpass), fail: nb(d.bfail) };
     } else if (s.mech === 'oneoff' && Array.isArray(d.fx)) {
       s.fx = d.fx.map(function (f) { return { side: f.side || 'both', kind: f.kind || 'stat_up', p: f.p || {} }; });
     }
@@ -461,6 +476,10 @@ export async function mountCardCreator(mount) {
     if (f.kind === 'hex_pop') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">hex &amp; side chosen on play</span>';
     if (f.kind === 'res_add' || f.kind === 'res_remove') h = '<span class="lbl">' + (f.kind === 'res_add' ? 'add' : 'remove') + '</span>' + num(f.p.x, 'x') +
       '<select data-i="' + i + '" data-f="res">' + RESOURCES.map(function (rz) { return '<option value="' + rz + '"' + (rz === f.p.res ? ' selected' : '') + '>' + resLabel(rz) + '</option>'; }).join('') + '</select><span class="lbl">on hand</span>';
+    if (f.kind === 'prod_up' || f.kind === 'prod_down') h = '<span class="lbl">' + (f.kind === 'prod_up' ? 'boost' : 'cut') + '</span>' +
+      '<select data-i="' + i + '" data-f="res">' + PROD_RESOURCES.map(function (rz) { return '<option value="' + rz + '"' + (rz === f.p.res ? ' selected' : '') + '>' + resLabel(rz) + '</option>'; }).join('') + '</select>' +
+      '<span class="lbl">by</span>' + num(f.p.x, 'x') +
+      '<span class="lbl">for</span><select data-i="' + i + '" data-f="ticks">' + PROD_TICKS.map(function (t) { return '<option value="' + t + '"' + (t === (f.p.ticks || 12) ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select><span class="lbl">ticks</span>';
     if (f.kind === 'rel_up' || f.kind === 'rel_down') h = '<span class="lbl">with</span>' +
       '<select data-i="' + i + '" data-f="nation"><option value=""' + (f.p.nation ? '' : ' selected') + '>— select nation —</option>' +
       NATIONS.map(function (n) { return '<option value="' + esc(n.id) + '"' + (n.id === f.p.nation ? ' selected' : '') + '>' + esc(n.name) + '</option>'; }).join('') + '</select>' +
@@ -488,6 +507,8 @@ export async function mountCardCreator(mount) {
   function sideRef(di) { return /^d[dr]\d+$/.test(di) ? { s: state.dside[di.charAt(1) === 'd' ? 'd' : 'r'], i: +di.slice(2) } : null; }
   // Decode a Government-Choice option effect's data-i ('o<opt>_<eff>') → { o: the option, j: effect index }.
   function optRef(di) { var m = /^o(\d+)_(\d+)$/.exec(di); return m ? { o: state.copt[+m[1]], j: +m[2] } : null; }
+  // Decode a Committee-Bill effect's data-i ('bp<i>' pass / 'bf<i>' fail) → { arr: the list, i: index }.
+  function billRef(di) { var m = /^b([pf])(\d+)$/.exec(di); return m ? { arr: state.bill[m[1] === 'p' ? 'pass' : 'fail'], i: +m[2] } : null; }
   function kindOpts(f) { return Object.keys(KINDS).map(function (k) { return '<option value="' + k + '"' + (k === f.kind ? ' selected' : '') + '>' + KINDS[k].label + '</option>'; }).join(''); }
 
   function renderFx() {
@@ -529,6 +550,22 @@ export async function mountCardCreator(mount) {
       wrap.innerHTML = sideBlock('d', 'dd', 'dside-d', ax.d, state.reqD) + sideBlock('r', 'dr', 'dside-r', ax.r, state.reqR);
       $('fxCount').textContent = 'two sides · up to 3 effects each';
       $('addFx').style.display = 'none';
+    } else if (state.mech === 'bill') {
+      function billBlock(key, pre, cls, head) {
+        var arr = state.bill[key];
+        var effRows = arr.map(function (f, i) {
+          var del = arr.length > 1 ? '<button class="del" data-i="' + pre + i + '">✕</button>' : '';
+          return '<div class="fx-top" style="margin-top:9px"><span class="n">' + (i + 1) + '</span>' +
+            '<select data-i="' + pre + i + '" data-f="kind">' + kindOpts(f) + '</select>' + del + '</div>' +
+            '<div class="fx-params">' + fxParamsHTML(f, pre + i) + '</div>';
+        }).join('');
+        var add = arr.length < 5 ? '<button class="addfx billadd" data-add="' + key + '" style="margin-top:9px">+ Add effect (' + arr.length + '/5)</button>' : '';
+        return '<div class="opt ' + cls + '"><div class="opt-h">' + head + '</div>' + effRows + add + '</div>';
+      }
+      wrap.innerHTML = billBlock('pass', 'bp', 'dside-r', '✔ If the bill PASSES — up to 5 effects:') +
+                       billBlock('fail', 'bf', 'dside-d', '✘ If the bill FAILS — up to 5 effects:');
+      $('fxCount').textContent = 'committee bill · up to 5 effects each way';
+      $('addFx').style.display = 'none';
     } else {
       wrap.innerHTML = state.fx.map(function (f, i) {
         var sideBtns = state.type === 'generic' ? '' :
@@ -550,25 +587,26 @@ export async function mountCardCreator(mount) {
         var fd = el.dataset.f, v = el.value, di = el.dataset.i;
         // Double-sided side NAME (side-level, not an effect).
         if (di === 'dd' || di === 'dr') { state.dside[di === 'dd' ? 'd' : 'r'].txt = v; renderPreview(); return; }
-        // Single-effect owners: a double-side effect ('dd0'…/'dr0'…) or a choice-option effect ('o0_0'…).
-        var sr = sideRef(di), or = optRef(di);
-        var special = sr ? sr.s.fx[sr.i] : (or ? or.o.fx[or.j] : null);
+        // Single-effect owners: a double-side effect ('dd0'…), a choice-option effect ('o0_0'…), or a
+        // committee-bill effect ('bp0'/'bf0').
+        var sr = sideRef(di), or = optRef(di), br = billRef(di);
+        var special = sr ? sr.s.fx[sr.i] : or ? or.o.fx[or.j] : br ? br.arr[br.i] : null;
         if (special) {
           var r = special;
-          if (fd === 'kind') { r.kind = v; if (v !== 'none') r.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_gain', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 2 }; renderFx(); }
+          if (fd === 'kind') { r.kind = v; if (v !== 'none') r.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_gain', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'prod_up' || v === 'prod_down') ? { res: 'energy', x: 2, ticks: 12 } : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 2 }; renderFx(); }
           else if (fd === 'nk') { r.p.nk = v; r.p.np = r.p.np || {}; renderFx(); }
           else if (fd === 'nstat') { r.p.np = r.p.np || {}; r.p.np.stat = v; }
           else if (fd === 'nx') { r.p.np = r.p.np || {}; r.p.np.x = +v; }
-          else r.p[fd] = (fd === 'x') ? +v : v;
+          else r.p[fd] = (fd === 'x' || fd === 'ticks') ? +v : v;
           renderPreview(); return;
         }
         var f = activeArr()[+el.dataset.i];
         if (fd === 'txt' && state.mech === 'choice') { f.txt = v; renderPreview(); return; }
-        if (fd === 'kind') { f.kind = v; f.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 3 }; renderFx(); }
+        if (fd === 'kind') { f.kind = v; f.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'prod_up' || v === 'prod_down') ? { res: 'energy', x: 2, ticks: 12 } : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 3 }; renderFx(); }
         else if (fd === 'nk') { f.p.nk = v; f.p.np = f.p.np || {}; renderFx(); }
         else if (fd === 'nstat') { f.p.np = f.p.np || {}; f.p.np.stat = v; }
         else if (fd === 'nx') { f.p.np = f.p.np || {}; f.p.np.x = +v; }
-        else f.p[fd] = (fd === 'x') ? +v : v;
+        else f.p[fd] = (fd === 'x' || fd === 'ticks') ? +v : v;
         renderPreview();
       };
     });
@@ -577,9 +615,10 @@ export async function mountCardCreator(mount) {
     });
     wrap.querySelectorAll('.del').forEach(function (b) {
       b.onclick = function () {
-        var di = b.dataset.i, sr = sideRef(di), or = optRef(di);
+        var di = b.dataset.i, sr = sideRef(di), or = optRef(di), br = billRef(di);
         if (sr) sr.s.fx.splice(sr.i, 1);
         else if (or) or.o.fx.splice(or.j, 1);
+        else if (br) br.arr.splice(br.i, 1);
         else activeArr().splice(+di, 1);
         renderFx(); renderPreview();
       };
@@ -589,6 +628,9 @@ export async function mountCardCreator(mount) {
     });
     wrap.querySelectorAll('.optadd').forEach(function (b) {
       b.onclick = function () { var o = state.copt[+b.dataset.add]; if (o.fx.length < 3) { o.fx.push({ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); renderFx(); renderPreview(); } };
+    });
+    wrap.querySelectorAll('.billadd').forEach(function (b) {
+      b.onclick = function () { var arr = state.bill[b.dataset.add]; if (arr.length < 5) { arr.push({ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); renderFx(); renderPreview(); } };
     });
   }
   $('addFx').onclick = function () {
@@ -612,6 +654,8 @@ export async function mountCardCreator(mount) {
       case 'res_remove': return 'Remove <b>' + (p.x || 0) + ' ' + esc(resLabel(p.res || 'food')) + '</b> from on-hand';
       case 'rel_up': return 'Relations with <b>' + esc(nationName(p.nation) || 'a nation') + '</b> rise by <b>' + (p.x || 0) + '</b>';
       case 'rel_down': return 'Relations with <b>' + esc(nationName(p.nation) || 'a nation') + '</b> fall by <b>' + (p.x || 0) + '</b>';
+      case 'prod_up': return '<b>' + esc(resLabel(p.res || 'energy')) + '</b> production <b>+' + (p.x || 0) + '</b> for <b>' + (p.ticks || 12) + '</b> ticks';
+      case 'prod_down': return '<b>' + esc(resLabel(p.res || 'energy')) + '</b> production <b>−' + (p.x || 0) + '</b> for <b>' + (p.ticks || 12) + '</b> ticks';
       case 'no_conf': return 'Put forth a <b>motion of no confidence</b>';
       case 'nat_el': return 'Carry out a <b>national election</b>';
       case 'hex_el': return 'Carry out an <b>election in a chosen hex</b> (reapportions its seats)';
@@ -660,6 +704,10 @@ export async function mountCardCreator(mount) {
     } else if (state.mech === 'double') {
       html += '<div class="fxgroup gd"><div class="gt">' + ax.d.ic + ' ' + (gated ? ax.d.pre + state.reqD + '+ · ' : '') + '“' + esc(state.dside.d.txt || 'unnamed side') + '”</div>' + state.dside.d.fx.map(function (f) { return '<div class="fxline">' + fxText(f.kind, f.p) + '</div>'; }).join('') + '</div>';
       html += '<div class="fxgroup gr"><div class="gt">' + ax.r.ic + ' ' + (gated ? ax.r.pre + state.reqR + '+ · ' : '') + '“' + esc(state.dside.r.txt || 'unnamed side') + '”</div>' + state.dside.r.fx.map(function (f) { return '<div class="fxline">' + fxText(f.kind, f.p) + '</div>'; }).join('') + '</div>';
+    } else if (state.mech === 'bill') {
+      html += '<div class="choice-banner">⚖ Enters committee → floor vote</div>';
+      html += '<div class="fxgroup gr"><div class="gt">✔ If it passes</div>' + state.bill.pass.map(function (f) { return '<div class="fxline">' + fxText(f.kind, f.p) + '</div>'; }).join('') + '</div>';
+      html += '<div class="fxgroup gd"><div class="gt">✘ If it fails</div>' + state.bill.fail.map(function (f) { return '<div class="fxline">' + fxText(f.kind, f.p) + '</div>'; }).join('') + '</div>';
     } else {
       var groups = { d: [], r: [], both: [] };
       state.fx.forEach(function (f) { groups[state.type === 'generic' ? 'both' : f.side].push(fxText(f.kind, f.p)); });
@@ -670,8 +718,9 @@ export async function mountCardCreator(mount) {
     $('pFx').innerHTML = html || '<div class="fxline" style="color:var(--soft)">no effects yet</div>';
 
     var arr = state.mech === 'choice' ? state.copt.reduce(function (a, o) { return a.concat(o.fx); }, [])
-      : state.mech === 'double' ? state.dside.d.fx.concat(state.dside.r.fx) : state.fx;
-    var mechLabel = state.mech === 'choice' ? 'Gov Choice' : state.mech === 'double' ? 'Double Sided' : 'One-Off';
+      : state.mech === 'double' ? state.dside.d.fx.concat(state.dside.r.fx)
+      : state.mech === 'bill' ? state.bill.pass.concat(state.bill.fail) : state.fx;
+    var mechLabel = state.mech === 'choice' ? 'Gov Choice' : state.mech === 'double' ? 'Double Sided' : state.mech === 'bill' ? 'Committee Bill' : 'One-Off';
     var tags = ['<span class="tag">' + mechLabel + '</span>'];
     if (arr.some(function (f) { return f.kind === 'party_gain' || f.kind === 'party_lose'; })) tags.push('<span class="tag" style="color:var(--auto);border-color:color-mix(in srgb,var(--auto) 45%,transparent)">Target Party</span>');
     if (state.mech === 'choice' || arr.some(function (f) { return ['no_conf', 'nat_el', 'hex_el'].indexOf(f.kind) >= 0; })) tags.push('<span class="tag" style="color:var(--nat);border-color:color-mix(in srgb,var(--nat) 45%,transparent)">Force Gov</span>');
@@ -690,6 +739,11 @@ export async function mountCardCreator(mount) {
       v.push(state.type === 'generic' ? ['warn', 'Double Sided needs a stance axis — switch Type off Generic']
         : state.stanceReq === 'gated' ? ['ok', 'Sides gate at ' + ax.d.pre + state.reqD + '+ / ' + ax.r.pre + state.reqR + '+']
         : ['ok', 'No stance required — either side is playable by anyone']);
+    } else if (state.mech === 'bill') {
+      v.push(['ok', 'Bill title: “' + esc(state.name || 'Untitled') + '” — the card name is the bill’s name']);
+      v.push(state.bill.pass.length ? ['ok', 'If passed: ' + state.bill.pass.length + ' / 5 effect' + (state.bill.pass.length === 1 ? '' : 's')] : ['warn', 'Add at least one “if passed” effect']);
+      v.push(state.bill.fail.length ? ['ok', 'If failed: ' + state.bill.fail.length + ' / 5 effect' + (state.bill.fail.length === 1 ? '' : 's')] : ['ok', 'No “if failed” effects — nothing happens if it’s voted down']);
+      if (arr.some(function (f) { return f.kind === 'hex_pop' || f.kind === 'hex_el'; })) v.push(['warn', 'Hex effects need a hex picked on play — a bill has none, so they’ll do nothing']);
     } else {
       v.push(state.fx.length <= 5 ? ['ok', 'Effects: ' + state.fx.length + ' / 5'] : ['warn', 'Too many effects']);
       if (state.type !== 'generic') {
@@ -796,6 +850,7 @@ export async function mountCardCreator(mount) {
     if (state.type !== 'generic' && state.stanceReq === 'gated') { d.reqD = state.reqD; d.reqR = state.reqR; }
     if (state.mech === 'choice') { d.copt = clone(state.copt); }
     else if (state.mech === 'double') d.dside = clone(state.dside);
+    else if (state.mech === 'bill') { d.bpass = clone(state.bill.pass); d.bfail = clone(state.bill.fail); }
     else d.fx = clone(state.fx);
     return d;
   }

@@ -110,7 +110,7 @@ alter table public.nations add column if not exists produce_until_tick int;
 
 create or replace function public.economy_produce()
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_p public.parties%rowtype; v_gov public.governments%rowtype; v_n public.nations%rowtype; v_tick int; v_prod jsonb; v_add jsonb;
+declare v_p public.parties%rowtype; v_gov public.governments%rowtype; v_n public.nations%rowtype; v_tick int; v_prod jsonb; v_add jsonb; v_res text; v_amt numeric;
 begin
   v_p := public._begin_action(0);   -- lock caller's party + spend 1 Action Point
   select * into v_gov from public.governments where nation_id = v_p.nation_id and status = 'active';
@@ -125,16 +125,16 @@ begin
   v_prod := coalesce(v_n.production, '{}'::jsonb);
   -- Each produced resource tops up its own on-hand stockpile; any other on-hand keys are preserved
   -- by the merge. Diplomacy stockpiles like the rest — produced, banked, and spent (e.g. bidding).
-  -- A modifier's Rate Multiplier (schema/70) scales the produced amount before it banks.
-  v_add := jsonb_build_object(
-    'energy',    coalesce((v_n.on_hand->>'energy')::numeric, 0)    + round(coalesce((v_prod->>'energy')::numeric, 0)    * public._mod_rate_multiplier(v_n.id, 'energy')),
-    'food',      coalesce((v_n.on_hand->>'food')::numeric, 0)      + round(coalesce((v_prod->>'food')::numeric, 0)      * public._mod_rate_multiplier(v_n.id, 'food')),
-    'minerals',  coalesce((v_n.on_hand->>'minerals')::numeric, 0)  + round(coalesce((v_prod->>'minerals')::numeric, 0)  * public._mod_rate_multiplier(v_n.id, 'minerals')),
-    'goods',     coalesce((v_n.on_hand->>'goods')::numeric, 0)     + round(coalesce((v_prod->>'goods')::numeric, 0)     * public._mod_rate_multiplier(v_n.id, 'goods')),
-    'services',  coalesce((v_n.on_hand->>'services')::numeric, 0)  + round(coalesce((v_prod->>'services')::numeric, 0)  * public._mod_rate_multiplier(v_n.id, 'services')),
-    'military',  coalesce((v_n.on_hand->>'military')::numeric, 0)  + round(coalesce((v_prod->>'military')::numeric, 0)  * public._mod_rate_multiplier(v_n.id, 'military')),
-    'diplomacy', coalesce((v_n.on_hand->>'diplomacy')::numeric, 0) + round(coalesce((v_prod->>'diplomacy')::numeric, 0) * public._mod_rate_multiplier(v_n.id, 'diplomacy'))
-  );
+  -- ONE formula for every resource: base rate × the modifier Rate Multiplier (schema/70), plus any flat
+  -- resource_add modifier delta (a card's timed production boost), floored at 0 so a cut can't bank
+  -- negative. No modifiers → multiplier 1 and delta 0, i.e. exactly the base rate as before.
+  v_add := '{}'::jsonb;
+  foreach v_res in array array['energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy'] loop
+    v_amt := coalesce((v_n.on_hand->>v_res)::numeric, 0)
+           + greatest(0, round(coalesce((v_prod->>v_res)::numeric, 0) * public._mod_rate_multiplier(v_n.id, v_res))
+                         + public._mod_resource_add(v_n.id, v_res));
+    v_add := jsonb_set(v_add, array[v_res], to_jsonb(v_amt));
+  end loop;
   update public.nations set on_hand = coalesce(on_hand, '{}'::jsonb) || v_add, produce_until_tick = v_tick + 12 where id = v_p.nation_id;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
