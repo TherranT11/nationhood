@@ -29,6 +29,7 @@
 create or replace function public._apply_card_stat(p_nation text, p_stat text, p_delta numeric)
 returns void language plpgsql security definer set search_path = public as $$
 begin
+  if p_stat is null or p_stat = '' then return; end if;   -- malformed effect (no stat named) → nothing to change
   case p_stat
     when 'Growth'       then perform public._nation_stat_add(p_nation, 'stats',   'growth',       p_delta, 1, 100);
     when 'Prosperity'   then perform public._nation_stat_add(p_nation, 'stats',   'prosperity',   p_delta, 1, 100);

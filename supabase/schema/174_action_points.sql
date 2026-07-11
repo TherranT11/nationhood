@@ -123,7 +123,7 @@ begin
   v_def := v_dc.definition;
   v_acts := greatest(1, least(6, coalesce((v_def->>'acts')::int, 1)));   -- the card's Action Points
 
-  -- TODO(purchase-by-stance): once parties can hold a stance, gate the playable side on reqD/reqR here.
+  -- Deferred (purchase-by-stance): once parties can hold a stance, gate the playable side on reqD/reqR here.
   update public.parties   set action_points = v_acts, turn_acted_tick = v_tick
    where id = v_party.id;
   -- Lifecycle (authored on the card): 'shuffle' returns it to the deck to be won again; otherwise it

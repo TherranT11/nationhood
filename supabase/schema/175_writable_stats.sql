@@ -19,6 +19,13 @@
 -- 150 (ministry_stats), 152 (_nation_policy_stat). Idempotent.
 -- ===========================================================================
 
+-- KNOWN ISSUE (one-source): the client display pages (play/government, play/growth, play/bureaucracy)
+-- compute a shown stat as ministry_stats base + Σ in-force policy contributions CLIENT-SIDE — they do
+-- NOT read stat_deltas, and do not call _nation_live_stat. So a card's display-stat effect is stored
+-- here but stays invisible on those pages until either (a) they add the stat_deltas term, or (b) live
+-- stats are exposed through one RPC that the client reads (the proper one-source fix). The real-backed
+-- stats (Growth/Prosperity/Rule of Law/Unemployment/Debt) are unaffected — those move real columns the
+-- client already reads. Flagged for a decision before wiring the display.
 alter table public.nations add column if not exists stat_deltas jsonb not null default '{}'::jsonb;
 
 -- _nation_live_stat, now with the runtime delta term. Same base + policy as before (schema/47), plus
