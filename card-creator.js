@@ -327,8 +327,6 @@ export async function mountCardCreator(mount) {
   }
   var state = freshState();
   var editingId = null;   // set to a card id while editing an existing card (Save → card_update); null = new card
-  // reflect the seeded defaults into the form fields
-  $('fName').value = state.name; $('fCost').value = state.cost; $('fActs').value = state.acts; $('fDesc').value = state.desc;
 
   function markSeg(id, v) { root.querySelectorAll('#' + id + ' button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === String(v)); }); }
   function wireSeg(id, key, cb) {
@@ -353,17 +351,11 @@ export async function mountCardCreator(mount) {
   $('fHandler').innerHTML = '<option value="player">Player who plays it decides</option>' +
     '<option value="hog">Head of Government decides it</option>' +
     MINISTRIES.map(function (m) { return '<option value="' + esc(m) + '">' + esc(m) + ' Minister handles it</option>'; }).join('');
-  $('fHandler').value = state.handler;
   $('fHandler').onchange = function () { state.handler = this.value; renderPreview(); };
-  // initial "on" states
-  markSeg('segType', state.type); markSeg('segLim', state.lim); markSeg('segMech', state.mech);
-  markSeg('segPersist', state.persistV); markSeg('reqD', state.reqD); markSeg('reqR', state.reqR);
-  markSeg('segStance', state.stanceReq); markSeg('segAfter', state.afterPlay);
-  // Stance gate is optional: the D/R level pickers only matter when 'Stance-gated' is chosen. (No
-  // renderPreview here — wireSeg calls it after this callback, and the initial call below predates the
-  // nations load, so rendering here would read NATIONS before it exists.)
+  // Stance gate is optional: the D/R level pickers only matter when 'Stance-gated' is chosen. syncForm()
+  // (called at first paint and on load/reset) is the single place that reflects state into the form —
+  // the initial "on" states, input values and reqGrid visibility all flow from there.
   function syncStance() { $('reqGrid').style.display = state.stanceReq === 'gated' ? '' : 'none'; }
-  syncStance();
 
   // Reflect the whole `state` object back into every form control — the inverse of the input handlers.
   // Called after loadCard() (edit an existing card) or "New card" (reset) so the UI mirrors the data.
@@ -384,6 +376,7 @@ export async function mountCardCreator(mount) {
   // every stored card: choice options / double sides may carry a single {kind,p} instead of an fx[]
   // array (legacy authored shape), and a stored reqD/reqR means the card was Stance-gated.
   function loadCard(id) {
+    if (saving) return;   // don't swap the editor's card out from under an in-flight save
     var c = POOL.find(function (x) { return x.id === id; });
     if (!c) return;
     var d = c.def || {};
@@ -420,7 +413,7 @@ export async function mountCardCreator(mount) {
   }
 
   // Reset the editor to a blank new card (leaves the pool untouched).
-  function newCard() { state = freshState(); editingId = null; syncForm(); updateSaveMode(); }
+  function newCard() { if (saving) return; state = freshState(); editingId = null; syncForm(); updateSaveMode(); }
 
   // Reflect edit-vs-create in the Save button + a "New card" affordance. Kept in one place so the
   // label never drifts from what Save actually does.
@@ -714,7 +707,7 @@ export async function mountCardCreator(mount) {
   }
 
   /* ── live data: nations for the Limiter, existing cards for the chains + pool list ── */
-  var NATIONS = [];   // {id, name}
+  var NATIONS = [];   // {id, name, flag}
   var POOL = [];      // {id, name, def}
   function nationName(id) { var n = NATIONS.find(function (x) { return x.id === id; }); return n ? n.name : ''; }
   function nationFlag(id) { var n = NATIONS.find(function (x) { return x.id === id; }); return (n && n.flag) || ''; }
@@ -812,11 +805,9 @@ export async function mountCardCreator(mount) {
         : state.lim === 'nation'
           ? 'Shuffled into ' + (nationName(state.nation) || state.nation) + '’s deck.'
           : 'Shuffled into every nation’s deck.';
-      if (!editingId) { await loadPool(); }
-      else {
-        // Refresh the pool (name/meta may have changed) but STAY on this card so the editor keeps its state.
-        var keep = editingId; await loadPool(); editingId = keep;
-      }
+      // Refresh the pool list (name/meta may have changed). loadPool leaves `state`/`editingId` alone, so
+      // after an edit the editor stays on this card; after a create it's still a fresh unsaved card.
+      await loadPool();
     } catch (e) {
       msg.className = 'savemsg err'; msg.textContent = 'Save failed: ' + (e.message || e);
     } finally {
@@ -847,8 +838,10 @@ export async function mountCardCreator(mount) {
     }
   };
 
-  // first paint
-  syncAxis(); renderFx(); renderPreview();
+  // first paint — syncForm() reflects the fresh state into every control (the same path load/reset use).
+  // NATIONS/POOL aren't loaded yet, so the preview reads them as empty (safe); loadNations/loadPool then
+  // fill the dropdowns and the final renderPreview repaints with real data.
+  syncForm();
   await loadNations();
   await loadPool();
   renderPreview();
