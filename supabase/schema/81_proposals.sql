@@ -38,7 +38,7 @@ create table if not exists public.proposals (
   id          uuid primary key default gen_random_uuid(),
   nation_id   text not null references public.nations (id) on delete cascade,
   party_id    uuid not null references public.parties (id) on delete cascade,  -- proposer
-  kind        text not null default 'declaration',   -- declaration | law | regime | threshold | reform | no_confidence
+  kind        text not null default 'declaration',   -- declaration | law | regime | threshold | reform | no_confidence | card_bill
   title       text not null,                          -- e.g. "Capital Name → Seyonne"
   payload     jsonb not null default '{}'::jsonb,     -- declaration: {slug, label, value}
   status      text not null default 'voting',         -- agenda | voting | passed | failed
@@ -245,6 +245,8 @@ begin
       perform public._apply_threshold(v_p.nation_id, (v_p.payload->>'pct')::int);   -- writer lives in schema/106
     elsif v_p.kind = 'reform' then
       perform public._apply_reform(v_p.nation_id, v_p.payload->>'dir');              -- writer lives in schema/167
+    elsif v_p.kind = 'card_bill' then
+      perform public._apply_bill_effects(v_p.nation_id, v_p.party_id, v_p.payload->'pass');   -- card-authored "if passed" effects (schema/183)
     end if;
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_p.nation_id, v_p.party_id, 'declaration',
@@ -254,6 +256,9 @@ begin
 
   if p_final then   -- voting closed without a simple majority
     update public.proposals set status = 'failed', resolved_tick = (select current_tick from public.game_state where id) where id = p_proposal;
+    if v_p.kind = 'card_bill' then
+      perform public._apply_bill_effects(v_p.nation_id, v_p.party_id, v_p.payload->'fail');    -- card-authored "if not passed" effects (schema/183)
+    end if;
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_p.nation_id, v_p.party_id, 'declaration',
               'A measure failed for want of a majority in the ' || public._legislature_of(v_p.nation_id) || ': ' || v_p.title || '.', public.current_game_date());
