@@ -364,7 +364,7 @@ drop function if exists public._confidence_collapse(text);
 
 -- ---------------------------------------------------------------------------
 -- The tick. _advance_tick() is the BODY with NO admin gate, so the pg_cron job
--- (every 8h, scheduled at the foot of this file) can run it as the function owner;
+-- (every 6h, scheduled at the foot of this file) can run it as the function owner;
 -- the manual admin button calls advance_tick() — the gated wrapper below. Every
 -- per-nation / per-item step runs in its own sub-block: a single failure is logged
 -- (raise warning) and skipped, so one bad nation can never freeze the world clock.
@@ -650,20 +650,20 @@ end $$;
 grant execute on function public.advance_tick() to authenticated;
 
 -- ---------------------------------------------------------------------------
--- The 8-hour clock. Schedule _advance_tick() via pg_cron (00:00 / 08:00 / 16:00 UTC).
+-- The 6-hour clock. Schedule _advance_tick() via pg_cron (00:00 / 06:00 / 12:00 / 18:00 UTC).
 -- Idempotent — cron.schedule upserts by job name, so a re-apply re-arms the same job —
 -- and wrapped so a project WITHOUT pg_cron (e.g. local dev) still applies the rest of
 -- the schema. The job runs as the function owner, which clears the admin gate that
 -- advance_tick() enforces for clients.
--- ONE SOURCE caveat: the topbar's "Next Tick" countdown (TICK_PERIOD_MS in topbar.js)
+-- ONE SOURCE caveat: the topbar's "Next Tick" countdown (TICK_PERIOD_MS in util.js)
 -- mirrors this cadence client-side. If you change the schedule here, change it there too.
 -- ---------------------------------------------------------------------------
 do $$
 begin
   create extension if not exists pg_cron;
-  perform cron.schedule('nationhood-tick', '0 */8 * * *', 'select public._advance_tick();');
+  perform cron.schedule('nationhood-tick', '0 */6 * * *', 'select public._advance_tick();');
 exception when others then
-  raise notice 'pg_cron not configured (%): enable it, then run cron.schedule(''nationhood-tick'', ''0 */8 * * *'', ''select public._advance_tick();'').', sqlerrm;
+  raise notice 'pg_cron not configured (%): enable it, then run cron.schedule(''nationhood-tick'', ''0 */6 * * *'', ''select public._advance_tick();'').', sqlerrm;
 end $$;
 
 -- RETIRED with Government Confidence — agenda delivery now restores Coalition Health (schema/165).

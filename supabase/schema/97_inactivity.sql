@@ -5,7 +5,7 @@
 -- stamps on every player action / vote / conviction adoption / proposal. It's DERIVED,
 -- never stored — no flag to drift, and any action revives a party automatically. The
 -- ladder (mirrors util.js): an early nudge at 6 days (client), INACTIVE at 7 (sits out
--- elections — resolve_election, schema/60), and DELETED at 21 — the 8-hour tick calls
+-- elections — resolve_election, schema/60), and DELETED at 21 — the tick calls
 -- _purge_inactive_parties() below, which removes the party and its politicians and frees
 -- the nation slot. The admin list/delete remain for manual review at any point.
 

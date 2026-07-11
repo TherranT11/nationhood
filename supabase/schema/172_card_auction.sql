@@ -1,7 +1,7 @@
 -- ===========================================================================
 -- 172 · Cards — Phase 3c: the auction (acquisition). Sealed-bid, per nation, resolved each tick.
 --
--- Cards reach a hand by auction. Per nation, an "auction block" of (parties + 1) cards is drawn from
+-- Cards reach a hand by auction. Per nation, an "auction block" of (active parties + 1) cards is drawn from
 -- the deck (status 'on_block' — the public market). During a tick each party places one SEALED
 -- Influence bid per card; at the next tick each on-block card with bids is awarded to its highest
 -- bidder (tie → earliest bid) into that party's hand, and the block is topped back up from the deck.
@@ -114,8 +114,11 @@ begin
                 public.current_game_date());
     end loop;
 
-    -- 2) top the block up to (parties + 1) by drawing from the deck
-    v_target := (select count(*) from public.parties where nation_id = n.id) + 1;
+    -- 2) top the block up to (active parties + 1) by drawing from the deck. "Active" mirrors the
+    -- election rule (resolve_election, schema/60): a party that has acted within 7 days (INACTIVE_DAYS,
+    -- util.js). A dormant nation contributes 0 → block of 1, so there's always a card on offer.
+    v_target := (select count(*) from public.parties
+                  where nation_id = n.id and last_active_at >= now() - interval '7 days') + 1;
     select count(*) into v_have from public.deck_cards where nation_id = n.id and status = 'on_block';
     v_draw := v_target - v_have;
     if v_draw > 0 then
