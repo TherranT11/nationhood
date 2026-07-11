@@ -2,6 +2,61 @@
 
 All notable changes to Nationhood are recorded here.
 
+## 0.6.1 — 2026-07-11
+
+The card system: a deck, a market, and a hand for every party — political plays authored in
+the Card Creator, won at auction, and played on your turn.
+
+### Cards, the Market & the Hand
+- **Cards** — every nation holds a deck of authored cards. A card fires an event, forces a
+  decision, swings a region, or takes hold as a lasting change. Generic cards enter every
+  nation's deck; nation-specific cards enter one.
+- **The Card Market** — a sealed-bid auction. Each nation blocks up one card per active party
+  plus one; bids are secret and paid in Influence (escrowed on bid, refunded if outbid or
+  cancelled), and the highest bid wins at the next tick, ties to the earliest.
+- **Your Hand** — capped at four cards. A bid reserves a slot, so you can only bid on a new
+  card while your held cards plus your outstanding bids leave room; play or discard to free one.
+- **Seeding & auto-draw** — a newly authored card drops onto any market with an open slot the
+  moment it's saved; an admin "Seed all markets" action fills every block on demand, and the
+  tick keeps them topped up as cards are won and re-drawn.
+
+### Turn Order & Action Points
+- **Turn order** — each nation's parties are dealt a random order and keep it round to round;
+  only the party whose turn it is may play a card.
+- **Action Points** — on your turn, one of three choices: Take 1 Action, Play a Card (banks
+  its 1–6 Action Points), or Discard a Card for +3 Influence. Every former Influence action
+  now costs 1 AP instead; points bank on your turn and expire at your next.
+
+### Card Effects
+- **Immediate effects** — a played card resolves its stat, party-popularity, coalition-health,
+  and election effects at once, with no Influence cost (it was paid for at auction).
+- **Regional & targeted** — pick the rival a party effect lands on; or open a map of your
+  nation and lift your own standing (or cut a rival's) in a chosen hex, shown on the Party page.
+- **Hex elections** — call an election in one hex; its population-derived seats reapportion by
+  regional standing on a 12-tick per-hex cooldown — a regional layer, separate from the
+  national chamber.
+- **Government Choice** — a card can open a decision resolved by a named ministry (else the
+  Head of Government, else the player); each option carries up to three effects, applied when
+  chosen.
+- **Persistent cards** — become a standing national modifier, applying per-tick for as long as
+  they're in play.
+- **On-hand resources** — add or remove Food / Goods / Services / Military from a nation's
+  stockpile, floored at zero.
+
+### The Card Creator (admin)
+- Author a card's name, Influence cost, and Action Points, then pick a mechanic — One-Off (up
+  to 5 effects), Double-Sided (two stance sides, up to 3 effects each), or Government Choice
+  (up to 4 options, up to 3 effects each). Optional stance requirement, persistence, a decision
+  handler, reshuffle-or-discard after play, and card chains (requires / allows another card). A
+  live preview renders the card as you build; saving shuffles it into every relevant deck.
+
+### Other
+- **Floor votes are final** — a cast vote can no longer be changed, and casting now asks for
+  confirmation first.
+- **Tick cadence** — the game clock now advances every 6 hours (was 8): 00:00 / 06:00 / 12:00 /
+  18:00 UTC.
+- **Calcordia** — a Scottish name pool for the nation's generated politicians.
+
 ## 0.5.0 — 2026-07-06
 
 The first full build of the live game system: the tutorial's design carried through to

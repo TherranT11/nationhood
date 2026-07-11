@@ -66,7 +66,6 @@
   .plist .prow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
   .plist .prow:last-child { border-bottom: 0; }
   .plist .pn { font-weight: 700; color: var(--ink); }
-  .plist .pa { color: var(--muted); font-size: 12.5px; }
   .pempty { color: #9a9a9a; font-size: 13px; font-style: italic; padding: 9px 0; border-bottom: 1px solid var(--line); }
 
   .nation-join { width: 100%; padding: 13px; font-size: 15px; margin-top: auto; }
@@ -106,7 +105,6 @@
     import { statLabel, statBand, statName, crimeLabel, crimeBand, regimeLabel, nationRegime } from '/ladders.js';
     import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES, fmtGdp, fmtPop } from '/util.js';
     import { mountGameDate } from '/gamedate.js';
-    import { ideologyLabel } from '/archetypes.js';
 
     mountGameDate(document.querySelector('.gamedate')); // live game date (one source)
     document.getElementById('logout').addEventListener('click', logout);
@@ -177,8 +175,7 @@
       var unit = n.ruling_party ? 'Factions' : 'Parties';
       var inner = list.length
         ? list.map(function (p) {
-            return '<div class="prow"><span class="pn">' + esc(p.name) +
-                   '</span><span class="pa">' + esc(ideologyLabel(p)) + '</span></div>';
+            return '<div class="prow"><span class="pn">' + esc(p.name) + '</span></div>';
           }).join('')
         : '<div class="pempty">No ' + unit.toLowerCase() + ' yet — be the first to ' + (n.ruling_party ? 'form one' : 'found one') + '.</div>';
       elRoster.innerHTML =
