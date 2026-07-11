@@ -27,6 +27,11 @@ declare v_h text := btrim(coalesce(p_handle, ''));
 begin
   if auth.uid() is null then raise exception 'Not signed in.'; end if;
   if v_h !~ '^[A-Za-z0-9_]{2,16}$' then raise exception 'Nickname must be 2–16 letters, digits, or underscores.'; end if;
+  -- No profanity — a basic substring blocklist (handles are alphanumeric, so this catches embedded slurs
+  -- too). Not exhaustive; it's a first-pass filter, not a moderation system.
+  if lower(v_h) ~ '(fuck|shit|cunt|nigg|f[a4]gg|retard|bitch|pussy|whore|rape|nazi|kike|spic|chink|coon|dick|cock)' then
+    raise exception 'That nickname isn''t allowed — please choose another.';
+  end if;
   begin
     update public.profiles set handle = v_h where id = auth.uid();
   exception when unique_violation then

@@ -30,6 +30,11 @@
   .hint { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
 
   .sec-h { margin: 30px 0 12px; }
+  .colorrow { display: flex; align-items: center; gap: 12px; }
+  input.pcolor { width: 56px; height: 44px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; }
+  input.pcolor::-webkit-color-swatch-wrapper { padding: 0; }
+  input.pcolor::-webkit-color-swatch { border: none; border-radius: 8px; }
+  .colorhex { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: var(--muted); text-transform: uppercase; }
   textarea.pdesc {
     width: 100%; font-size: 15px; line-height: 1.5; padding: 14px 16px; border: 1px solid var(--line);
     border-radius: 12px; background: var(--surface); color: var(--ink); outline: none; transition: border-color .15s;
@@ -76,6 +81,14 @@
     <input class="pname abbr" id="pabbr" type="text" maxlength="4" placeholder="e.g. PFP" autocomplete="off" spellcheck="false">
     <div class="hint">2–4 capital letters. Must be unique within the nation.</div>
 
+    <div class="lbl sec-h">Nickname</div>
+    <input class="pname" id="pnick" type="text" maxlength="16" placeholder="e.g. your Discord name" autocomplete="off" spellcheck="false">
+    <div class="hint">Your out-of-character name — a Discord name or any identifier. 2–16 letters, digits or underscores. No profanity.</div>
+
+    <div class="lbl sec-h">Party colour</div>
+    <div class="colorrow"><input class="pcolor" id="pcolor" type="color" value="#5546E8"><span class="colorhex" id="pcolorHex">#5546E8</span></div>
+    <div class="hint">Your party’s accent colour across the game.</div>
+
     <div class="lbl sec-h">Party description</div>
     <textarea class="pdesc" id="pdesc" maxlength="360" rows="4" placeholder="Describe what your party stands for and who they represent."></textarea>
     <div class="hint"><span id="descCount">0</span> / 360</div>
@@ -111,8 +124,15 @@
 
     var pname = document.getElementById('pname');
     var pabbr = document.getElementById('pabbr');
+    var pnick = document.getElementById('pnick');
+    var pcolor = document.getElementById('pcolor');
+    var pcolorHex = document.getElementById('pcolorHex');
     var pdesc = document.getElementById('pdesc');
     var descCount = document.getElementById('descCount');
+    // Nickname: strip to the allowed handle charset as you type (set_handle enforces it server-side too).
+    pnick.addEventListener('input', function () { pnick.value = pnick.value.replace(/[^A-Za-z0-9_]/g, '').slice(0, 16); });
+    // Party colour: keep the hex read-out in step.
+    pcolor.addEventListener('input', function () { pcolorHex.textContent = pcolor.value.toUpperCase(); });
     var join = document.getElementById('join');
     var picked = document.getElementById('picked');
 
@@ -170,7 +190,7 @@
         const { data: { session } } = await supabase.auth.getSession();
         const user = session && session.user;
         const { data: mine } = user ? await supabase.from('parties')
-          .select('id, nation_id, name, abbreviation, description, awaiting_relaunch').eq('user_id', user.id).maybeSingle() : { data: null };
+          .select('id, nation_id, name, abbreviation, description, color, awaiting_relaunch').eq('user_id', user.id).maybeSingle() : { data: null };
         const { data: nat } = await supabase.from('nations')
           .select('name, ruling_party, former_ruling_party').eq('id', nationId).maybeSingle();
 
@@ -183,6 +203,7 @@
             pabbr.value = (mine.abbreviation || '').toUpperCase();
             pdesc.value = mine.description || '';
             descCount.textContent = pdesc.value.length;
+            if (mine.color && /^#[0-9a-fA-F]{6}$/.test(mine.color)) { pcolor.value = mine.color; pcolorHex.textContent = mine.color.toUpperCase(); }
             var rb = document.getElementById('onepartyBanner');
             var ofLarger = nat.former_ruling_party ? ' of <b>' + esc(nat.former_ruling_party) + '</b>' : '';
             rb.innerHTML = '<b>' + esc(nat.name || 'Your nation') + '</b> has restored multiparty politics. Your faction can stand on its own now — rename and rebrand it as a full party to contest the coming elections. Leave it as is and you remain a faction' + ofLarger + '.';
@@ -291,9 +312,17 @@
         });
         if (clash) { fail('A ' + noun + ' with that name or abbreviation already exists in this nation.'); return; }
 
+        // Set the OOC nickname (@handle) first, if one was entered — a bad/taken/profane one stops here
+        // before the party is created, so the message is clear. Empty = keep whatever handle they have.
+        var nick = pnick.value.trim();
+        if (nick) {
+          try { await supabase.rpc('set_handle', { p_handle: nick }); }
+          catch (e) { fail((e && e.message) || 'That nickname isn’t allowed.'); return; }
+        }
+
         // One party per player: upsert on the user so re-creating replaces.
         const { data: created, error } = await supabase.from('parties')
-          .upsert({ user_id: user.id, nation_id: nationId, name: name, abbreviation: abbr, description: pdesc.value.trim() || null }, { onConflict: 'user_id' })
+          .upsert({ user_id: user.id, nation_id: nationId, name: name, abbreviation: abbr, description: pdesc.value.trim() || null, color: pcolor.value }, { onConflict: 'user_id' })
           .select('id').single();
         if (error || !created) {
           // The insert can fail on a name/abbr clash OR the delete cooldown (RLS gate, schema/169)

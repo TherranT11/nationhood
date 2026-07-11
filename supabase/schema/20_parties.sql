@@ -116,7 +116,7 @@ create policy "parties_delete_own" on public.parties for delete using (auth.uid(
 -- WITH CHECK above keeps it pinned to the caller). When standings start changing
 -- server-side, do it via a service-role path (which bypasses these grants).
 revoke insert, update on public.parties from authenticated;
-grant insert (user_id, nation_id, name, abbreviation, description) on public.parties to authenticated;
+grant insert (user_id, nation_id, name, abbreviation, description, color) on public.parties to authenticated;
 grant update (user_id, nation_id, name, abbreviation, description, color, logo_url) on public.parties to authenticated;
 
 -- Archetype crowding penalty — retired. Party popularity no longer has a reach ceiling or floor
