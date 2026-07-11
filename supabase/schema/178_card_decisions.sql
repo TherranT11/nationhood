@@ -113,9 +113,13 @@ begin
   -- single-effect shape ({kind,p}) too via coalesce.
   for e in select value from jsonb_array_elements(
              case when jsonb_typeof(v_opt->'fx') = 'array' then v_opt->'fx' else jsonb_build_array(v_opt) end) loop
-    perform public._apply_card_effect(v_d.nation_id,
-      case when e->>'kind' in ('decider_gain', 'decider_lose') then v_resolver else null end,
-      e->>'kind', e->'p', v_tick);
+    if e->>'kind' = 'bill' then
+      perform public._create_card_bill(v_d.nation_id, v_resolver, e->'p', v_tick);   -- the deciding party introduces the bill (schema/183)
+    else
+      perform public._apply_card_effect(v_d.nation_id,
+        case when e->>'kind' in ('decider_gain', 'decider_lose') then v_resolver else null end,
+        e->>'kind', e->'p', v_tick);
+    end if;
   end loop;
 
   update public.card_decisions set status = 'resolved', chosen_idx = p_option where id = p_decision;

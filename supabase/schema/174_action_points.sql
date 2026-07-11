@@ -166,8 +166,6 @@ begin
   -- pending decision (178). Stance-gated sides still wait on party stance.
   if coalesce(v_def->>'persistV', 'no') = 'yes' then
     perform public._mint_card_modifier(v_dc.nation_id, v_party.id, v_def, v_tick);
-  elsif coalesce(v_def->>'mech', 'oneoff') = 'bill' then
-    perform public._create_card_bill(v_dc.nation_id, v_party.id, v_def, v_tick);   -- seed a bill in committee (schema/183)
   else
     perform public._resolve_card_effects(v_dc.nation_id, v_party.id, p_target, p_hex_q, p_hex_r, v_def, v_tick);
     perform public._create_card_decision(v_dc.nation_id, v_party.id, p_deck_card, v_def, v_tick);
