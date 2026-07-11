@@ -95,6 +95,9 @@
   .cm .c-fx{font-size:11.5px;color:var(--muted);line-height:1.5;flex:1}
   .cm .c-cost{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);margin-top:9px;letter-spacing:.04em}
   .cm .c-cost b{color:var(--inf)}
+  .cm .c-ap{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);margin-top:9px;letter-spacing:.04em}
+  .cm .c-ap b{color:var(--indigo);font-size:11px}
+  .cm .c-ap + .c-cost{margin-top:3px}
 
   /* bid footer (sealed — only your own bid): label + Cancel on top, stepper + Bid below */
   .cm .c-bid{border-top:1px solid var(--line);background:var(--field);padding:10px 11px;display:flex;flex-direction:column;gap:9px}
@@ -230,11 +233,13 @@
   function cardHead(def) {
     var k = kindOf(def);
     var req = reqOf(def);
+    var acts = Math.max(1, Math.min(6, Number(def.acts) || 1));   // Action Points this card grants on play
     return '<div class="stripe ' + k.cls + '"></div><div class="c-body">' +
       '<div class="c-kind ' + k.cls + '">' + esc(k.label) + '</div>' +
       '<div class="c-name">' + esc(def.name || 'Untitled card') + '</div>' +
       (req ? '<div class="c-req">' + esc(req) + '</div>' : '') +
-      '<div class="c-fx">' + (def.desc ? esc(def.desc) : '<span style="color:var(--soft)">No description.</span>') + '</div>';
+      '<div class="c-fx">' + (def.desc ? esc(def.desc) : '<span style="color:var(--soft)">No description.</span>') + '</div>' +
+      '<div class="c-ap">▶ <b>' + acts + '</b> AP on play</div>';
   }
 
   // ---- turn queue: walk the rotation forward from whoever's up now ----
