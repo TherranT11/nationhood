@@ -258,7 +258,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick, selectAll } from '/supabase.js';
-  import { esc, majority, fmtPop, tickToDate } from '/util.js';
+  import { esc, majority, fmtPop, tickToDate, hexSeats } from '/util.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { nationRegime } from '/ladders.js';
   import { nationColors, drawNationMiniMap } from '/hexmap.js';
@@ -489,7 +489,7 @@
   function regionalPolitics(hex) {
     if (!MAP.parties.length) return '';
     var pop = Number(hex.population) || 0;
-    var seatsHere = (MAP.totalSeats > 0 && MAP.natPop > 0) ? Math.round(MAP.totalSeats * pop / MAP.natPop) : 0;
+    var seatsHere = hexSeats(MAP.totalSeats, pop, MAP.natPop);
     // An elected hex (schema/181) shows its real makeup; otherwise seats are projected by national share.
     var elected = (MAP.hexSeats && MAP.hexSeats[hex.q + ',' + hex.r]) || null;
     var held = elected

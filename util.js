@@ -56,6 +56,13 @@ export function majority(seats) {
   return Math.floor((Number(seats) || 0) / 2) + 1;
 }
 
+// A hex's seat count = its population share of the national chamber (round(total · hexpop / natpop)).
+// ONE source for the client-side projection — the Home election modal and the Party page both read it,
+// and it mirrors the apportionment total the server stores per elected hex (hex_election_resolve, 181).
+export function hexSeats(total, hexPop, natPop) {
+  return (Number(total) > 0 && Number(natPop) > 0) ? Math.round(Number(total) * (Number(hexPop) || 0) / Number(natPop)) : 0;
+}
+
 // Party inactivity (wall-clock) over parties.last_active_at (stamped by _lock_party on every
 // action; any action revives the party). Three thresholds, ALL derived from that one timestamp
 // — no stored flag to drift. An early nudge shows from INACTIVE_WARN_DAYS; at INACTIVE_DAYS the

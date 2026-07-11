@@ -192,7 +192,7 @@
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { esc, tickToDate } from '/util.js';
+  import { esc, tickToDate, hexSeats } from '/util.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { drawNationMiniMap } from '/hexmap.js';
 
@@ -449,8 +449,7 @@
       (hr.data || []).forEach(function (row) { var k = row.q + ',' + row.r; (seatsByHex[k] = seatsByHex[k] || []).push(row); cdByHex[k] = Math.max(cdByHex[k] || 0, Number(row.elected_tick) || 0); });
     } catch (e) {}
     var natPop = land.reduce(function (s, h) { return s + (Number(h.population) || 0); }, 0);
-    var partyName = function (pid) { var p = (window.__roster || []).find(function (x) { return x.id === pid; }); return p ? (p.abbreviation || p.name) : '—'; };
-    var hexSeatCount = function (h) { return (natPop > 0 && natSeats > 0) ? Math.round(natSeats * (Number(h.population) || 0) / natPop) : 0; };
+    var hexSeatCount = function (h) { return hexSeats(natSeats, Number(h.population) || 0, natPop); };
     var cooldownLeft = function (h) { var last = cdByHex[h.q + ',' + h.r]; return last ? Math.max(0, last + 12 - (Number(CUR_TICK) || 0)) : 0; };
 
     var sel = null;
@@ -473,7 +472,7 @@
       var cd = cooldownLeft(h), cnt = hexSeatCount(h), k = h.q + ',' + h.r;
       var rows = (seatsByHex[k] || []).slice().sort(function (a, b) { return b.seats - a.seats; });
       var makeup = rows.length
-        ? rows.map(function (rw) { return esc(partyName(rw.party_id)) + ' ' + rw.seats; }).join(' · ')
+        ? rows.map(function (rw) { return esc(partyLabel(rw.party_id)) + ' ' + rw.seats; }).join(' · ')
         : (cnt > 0 ? 'no election held yet — projected split' : 'too small for a seat');
       ov.querySelector('#hexSel').innerHTML =
         '<b>' + (h.name ? esc(h.name) + ' ' : '') + '(' + h.q + ',' + h.r + ')</b> · ' + cnt + ' seat' + (cnt === 1 ? '' : 's') +
