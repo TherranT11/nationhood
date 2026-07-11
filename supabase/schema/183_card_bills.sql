@@ -1,14 +1,14 @@
 -- ===========================================================================
--- 183 · Card bills — a Committee Bill card seeds a real legislative bill in committee.
+-- 183 · Card bills — a 'bill' EFFECT (schema/176 vocabulary) seeds a real legislative bill in committee.
 --
--- A card authored with mech='bill' carries a name (the card's name IS the bill's title) and two effect
--- lists: `bpass` (fire if the bill passes on the floor) and `bfail` (fire if it is voted down). When
--- such a card is played, card_play (schema/174) routes here: _create_card_bill inserts a proposal with
--- kind='card_bill' and status='committee', so it flows through the EXISTING committee lifecycle
--- (schema/154) — it sits 6 ticks, other parties endorse/chat, the proposing party pushes it to the
--- floor, and the floor vote resolves it. On resolution _resolve_proposal (schema/81) calls
--- _apply_bill_effects with the pass or fail list. A bill that expires in committee (never pushed) is
--- marked 'expired', never 'failed', so NEITHER list fires — it never reached a vote.
+-- A bill effect carries its own name and two effect lists: `pass` (fire if the bill passes on the floor)
+-- and `fail` (fire if it is voted down). It is authored inside a Government-Choice option or a
+-- Double-Sided side; when that option is chosen (card_decide, schema/178) the bill is introduced by the
+-- resolving party. _create_card_bill inserts a proposal with kind='card_bill' and status='committee', so
+-- it flows through the EXISTING committee lifecycle (schema/154) — it sits 6 ticks, other parties
+-- endorse/chat, the proposing party pushes it to the floor, and the floor vote resolves it. On resolution
+-- _resolve_proposal (schema/81) calls _apply_bill_effects with the pass or fail list. A bill that expires
+-- in committee (never pushed) is marked 'expired', never 'failed', so NEITHER list fires.
 --
 -- The effects are the same vocabulary the immediate engine / decisions use (_apply_card_effect,
 -- schema/176), applied against the nation with the proposing party as the party target (so a
@@ -34,21 +34,25 @@ begin
 end $$;
 revoke all on function public._apply_bill_effects(text, uuid, jsonb) from public, anon, authenticated;
 
--- Open a Committee Bill card's bill: a proposal in committee (status='committee', opened_tick starts the
--- 6-tick clock) whose payload snapshots the pass/fail effect lists for _resolve_proposal to fire later.
-create or replace function public._create_card_bill(p_nation text, p_played_by uuid, p_def jsonb, p_tick int)
+-- Introduce a bill from a 'bill' effect's params ({name, pass[], fail[]}), sponsored by p_sponsor: a
+-- proposal in committee (status='committee', opened_tick starts the 6-tick clock) whose payload snapshots
+-- the pass/fail lists for _resolve_proposal to fire later. A no-op with no sponsor or no effects at all.
+drop function if exists public._create_card_bill(text, uuid, jsonb, int);   -- param renamed p_played_by → p_sponsor
+create or replace function public._create_card_bill(p_nation text, p_sponsor uuid, p_bill jsonb, p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_name text; v_pass jsonb; v_fail jsonb;
 begin
-  if coalesce(p_def->>'mech', '') <> 'bill' then return; end if;
-  v_name := coalesce(nullif(btrim(p_def->>'name'), ''), 'a bill');
-  v_pass := case when jsonb_typeof(p_def->'bpass') = 'array' then p_def->'bpass' else '[]'::jsonb end;
-  v_fail := case when jsonb_typeof(p_def->'bfail') = 'array' then p_def->'bfail' else '[]'::jsonb end;
+  p_bill := coalesce(p_bill, '{}'::jsonb);
+  if p_sponsor is null then return; end if;
+  v_pass := case when jsonb_typeof(p_bill->'pass') = 'array' then p_bill->'pass' else '[]'::jsonb end;
+  v_fail := case when jsonb_typeof(p_bill->'fail') = 'array' then p_bill->'fail' else '[]'::jsonb end;
+  if jsonb_array_length(v_pass) = 0 and jsonb_array_length(v_fail) = 0 then return; end if;   -- empty bill → nothing to introduce
+  v_name := coalesce(nullif(btrim(p_bill->>'name'), ''), 'a bill');
   insert into public.proposals (nation_id, party_id, kind, title, payload, status, opened_tick)
-    values (p_nation, p_played_by, 'card_bill', v_name,
+    values (p_nation, p_sponsor, 'card_bill', v_name,
             jsonb_build_object('pass', v_pass, 'fail', v_fail), 'committee', p_tick);
   insert into public.events (nation_id, party_id, kind, body, game_date)
-    values (p_nation, p_played_by, 'party', v_name || ' was introduced in committee.', public.current_game_date());
+    values (p_nation, p_sponsor, 'party', v_name || ' was introduced in committee.', public.current_game_date());
 end $$;
 revoke all on function public._create_card_bill(text, uuid, jsonb, int) from public, anon, authenticated;
 

@@ -79,12 +79,36 @@ begin
   if not found then raise exception 'No such card.'; end if;
   if v_owner is distinct from v_pid or v_stat <> 'in_hand' then raise exception 'That card is not in your hand.'; end if;
 
-  update public.deck_cards set status = 'in_deck', party_id = null where id = p_deck_card;   -- discard → back into the nation's deck
+  perform public._card_return_to_deck(p_deck_card);   -- discard → back into the nation's deck (shared helper)
   update public.parties set influence = least(100, influence + 3), action_points = 0, turn_acted_tick = v_tick where id = v_pid;
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_nat, v_pid, 'party', v_pname || ' returned a card to the deck for +3 Influence.', public.current_game_date());
 end $$;
 grant execute on function public.card_discard(uuid) to authenticated;
+
+-- Return a played/held card to its nation's deck (status 'in_deck', unowned) so it can be won again.
+-- The ONE source for "shuffle back": the afterPlay='shuffle' lifecycle, the 'shuffle' effect on a One-Off
+-- (card_play below), and the 'shuffle' effect on a resolved Government-Choice option (schema/178).
+create or replace function public._card_return_to_deck(p_deck_card uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if p_deck_card is null then return; end if;
+  update public.deck_cards set status = 'in_deck', party_id = null where id = p_deck_card;
+end $$;
+revoke all on function public._card_return_to_deck(uuid) from public, anon, authenticated;
+
+-- Does a One-Off card carry a 'shuffle' effect that fires on play? (A generic card fires every effect; a
+-- stance card only its 'both'-sided ones — the same firing rule as _resolve_card_effects, schema/176.)
+-- Choice/Double cards decide their fate elsewhere (a chosen option at decide-time; stance sides deferred),
+-- so this is oneoff-only. Lets card_play express "reshuffle" as an authored effect, not just the toggle.
+create or replace function public._def_fires_shuffle(p_def jsonb)
+returns boolean language sql immutable set search_path = public as $$
+  select coalesce(p_def->>'mech', 'oneoff') = 'oneoff'
+     and exists (select 1 from jsonb_array_elements(coalesce(p_def->'fx', '[]'::jsonb)) e
+                  where e->>'kind' = 'shuffle'
+                    and (p_def->>'type' = 'generic' or coalesce(e->>'side', 'both') = 'both'));
+$$;
+revoke all on function public._def_fires_shuffle(jsonb) from public, anon, authenticated;
 
 -- ── Turn choice 2 of 3: Play a Card — supersedes schema/173's card_play, now the turn choice that
 -- grants the card's Action Points. Keeps the ownership + in_hand + turn gate from 173; ADDS the
@@ -95,7 +119,8 @@ grant execute on function public.card_discard(uuid) to authenticated;
 -- party_lose) lands on — chosen in the Home target picker; NULL when the card targets no party. ──
 drop function if exists public.card_play(uuid);         -- retire the 1-arg overload so p_target isn't ambiguous
 drop function if exists public.card_play(uuid, uuid);   -- retire the pre-hex 2-arg overload
-create or replace function public.card_play(p_deck_card uuid, p_target uuid default null, p_hex_q int default null, p_hex_r int default null)
+create or replace function public.card_play(p_deck_card uuid, p_target uuid default null, p_hex_q int default null, p_hex_r int default null,
+  p_corp uuid default null, p_corp2 uuid default null)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_uid uuid; v_dc record; v_party record; v_def jsonb; v_name text; v_tick int; v_acts int; v_tgt_nat text;
 begin
@@ -146,10 +171,11 @@ begin
   -- Deferred (purchase-by-stance): once parties can hold a stance, gate the playable side on reqD/reqR here.
   update public.parties   set action_points = v_acts, turn_acted_tick = v_tick
    where id = v_party.id;
-  -- Lifecycle (authored on the card): 'shuffle' returns it to the deck to be won again; otherwise it
-  -- is discarded for good ('played' — a public record that it fired).
-  if coalesce(v_def->>'afterPlay', 'discard') = 'shuffle' then
-    update public.deck_cards set status = 'in_deck', party_id = null where id = p_deck_card;
+  -- Lifecycle: the card returns to the deck to be won again if the author set the 'shuffle back' toggle
+  -- OR a firing 'shuffle' effect says so (a One-Off recycler); otherwise it is discarded for good
+  -- ('played' — a public record that it fired). A Choice card that reshuffles does so at decide-time (178).
+  if coalesce(v_def->>'afterPlay', 'discard') = 'shuffle' or public._def_fires_shuffle(v_def) then
+    perform public._card_return_to_deck(p_deck_card);
   else
     update public.deck_cards set status = 'played' where id = p_deck_card;
   end if;
@@ -166,14 +192,12 @@ begin
   -- pending decision (178). Stance-gated sides still wait on party stance.
   if coalesce(v_def->>'persistV', 'no') = 'yes' then
     perform public._mint_card_modifier(v_dc.nation_id, v_party.id, v_def, v_tick);
-  elsif coalesce(v_def->>'mech', 'oneoff') = 'bill' then
-    perform public._create_card_bill(v_dc.nation_id, v_party.id, v_def, v_tick);   -- seed a bill in committee (schema/183)
   else
-    perform public._resolve_card_effects(v_dc.nation_id, v_party.id, p_target, p_hex_q, p_hex_r, v_def, v_tick);
+    perform public._resolve_card_effects(v_dc.nation_id, v_party.id, p_target, p_hex_q, p_hex_r, p_corp, p_corp2, v_def, v_tick);
     perform public._create_card_decision(v_dc.nation_id, v_party.id, p_deck_card, v_def, v_tick);
   end if;
 end $$;
-grant execute on function public.card_play(uuid, uuid, integer, integer) to authenticated;
+grant execute on function public.card_play(uuid, uuid, integer, integer, uuid, uuid) to authenticated;
 
 -- Supersedes schema/173's _advance_turns: same rotation, but as the cursor lands on a party (its new
 -- turn begins) we clear that party's Action Points — unspent AP lasts only until your next turn, then
@@ -194,7 +218,7 @@ begin
       select id into v_next from public.parties where nation_id = n.id order by turn_seq, id limit 1;
     end if;
     update public.nations set turn_party_id = v_next where id = n.id;
-    update public.parties set action_points = 0 where id = v_next;   -- new turn → last turn's unspent AP expires
+    update public.parties set action_points = 0, bids_this_turn = 0 where id = v_next;   -- new turn → unspent AP + the turn's bid count reset
   end loop;
 end $$;
 revoke all on function public._advance_turns() from public, anon, authenticated;

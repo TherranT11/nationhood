@@ -135,12 +135,29 @@
   .hexcv{width:100%;height:100%;display:block}
   .hexhint{position:absolute;left:8px;bottom:8px;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;color:#15151b;background:rgba(255,255,255,.72);padding:3px 7px;border-radius:6px;pointer-events:none}
   .hexsel{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin:11px 0}.hexsel b{color:var(--ink)}
+  .hexstats:empty{display:none}
+  .hexstats{margin:0 0 11px}
+  .hxs-top{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);padding-bottom:6px;border-bottom:1px solid var(--line)}.hxs-top b{color:var(--ink)}
+  .hxs-rows{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+  .hxs-row{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;font-size:12px;padding:4px 6px;border-radius:6px}
+  .hxs-row.me{background:color-mix(in srgb,var(--indigo) 12%,transparent)}
+  .hxs-n{font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hxs-pop{font-variant-numeric:tabular-nums;color:var(--ink)}
+  .hxs-d{font-style:normal;font-size:10px;margin-left:4px;font-variant-numeric:tabular-nums}.hxs-d.up{color:var(--green)}.hxs-d.dn{color:var(--red)}
+  .hxs-s{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--muted);white-space:nowrap}
   .hexmode{display:flex;gap:8px;margin-bottom:9px}.hexmode .hxm{flex:1}
   .hexriv{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}
   .hexbtns{display:flex;gap:8px;margin-top:4px}.hexbtns .hexgo{flex:1;color:#fff;background:var(--indigo);border-color:var(--indigo)}.hexbtns .hexx{flex:0 0 auto}
   .hexov .act{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:8px;padding:9px 11px;cursor:pointer;border:1px solid var(--line);background:var(--field);color:var(--muted)}
   .hexov .act.on{color:#fff;background:var(--indigo);border-color:var(--indigo)}
   .hexov .act:disabled{opacity:.5;cursor:not-allowed}
+  .corplbl{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin:10px 0 5px}
+  .corplist{display:flex;flex-direction:column;gap:5px;max-height:180px;overflow:auto}
+  .corprow{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-transform:none!important;letter-spacing:0!important;text-align:left;width:100%}
+  .corprow .cr-n{font-size:12px;font-weight:700;color:var(--ink)}
+  .corprow.on .cr-n{color:#fff}
+  .corprow .cr-m{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft)}
+  .corprow.on .cr-m{color:rgba(255,255,255,.8)}
 
   .cm .empty{background:var(--surface);border:1px dashed var(--line);border-radius:13px;padding:26px 20px;text-align:center;color:var(--soft);font-size:13px}
   .cm .empty b{display:block;color:var(--muted);font-size:14px;margin-bottom:5px}
@@ -198,7 +215,8 @@
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { esc, tickToDate, hexSeats } from '/util.js';
+  import { esc, tickToDate, hexSeats, fmtPop } from '/util.js';
+  import { regionalApproval } from '/regional.js';   // one source for per-hex party approval
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { drawNationMiniMap } from '/hexmap.js';
 
@@ -354,6 +372,8 @@
     var def = card && card.definition;
     if (card && cardFires(def, ['hex_el'])) { openHexElection(id, def); return; }
     if (card && cardFires(def, ['hex_pop'])) { openHexPicker(id, def); return; }
+    if (card && cardFires(def, ['corp_grow', 'corp_shrink'])) { openCorpPicker(id, def, 'one'); return; }
+    if (card && cardFires(def, ['corp_acquire'])) { openCorpPicker(id, def, 'two'); return; }
     if (!card || !cardFires(def, ['party_gain', 'party_lose'])) { playCard(id); return; }
     var rivals = (window.__roster || []).filter(function (p) { return !PARTY || p.id !== PARTY.id; });
     if (!rivals.length) { playCard(id); return; }   // no rival to hit → play untargeted
@@ -392,12 +412,63 @@
     return paint;
   }
 
+  // Regional stats for the hex picker: national seats + population, every party's national popularity/
+  // seats, the card-driven per-hex bias, and any elected regional seats. Cached for the session.
+  async function loadHexStats() {
+    if (window.__hexStats) return window.__hexStats;
+    var s = { natSeats: 0, natPop: 0, parties: [], biasMap: {}, seatsByHex: {} };
+    try { var nr = await supabase.from('nations').select('legislature_seats').eq('id', NATION_ID).single(); s.natSeats = (nr.data && Number(nr.data.legislature_seats)) || 0; } catch (e) {}
+    try { var pr = await supabase.from('parties').select('id, name, abbreviation, popularity, seats').eq('nation_id', NATION_ID); s.parties = pr.data || []; } catch (e) {}
+    try {
+      var ids = s.parties.map(function (p) { return p.id; });
+      if (ids.length) {
+        var br = await supabase.from('party_hex_bias').select('party_id, q, r, bias').in('party_id', ids);
+        (br.error ? [] : (br.data || [])).forEach(function (row) { (s.biasMap[row.party_id] || (s.biasMap[row.party_id] = {}))[row.q + ',' + row.r] = Number(row.bias) || 0; });
+      }
+    } catch (e) {}
+    try {
+      var sr = await supabase.from('hex_seats').select('q, r, party_id, seats').eq('nation_id', NATION_ID);
+      (sr.error ? [] : (sr.data || [])).forEach(function (row) { (s.seatsByHex[row.q + ',' + row.r] || (s.seatsByHex[row.q + ',' + row.r] = {}))[row.party_id] = Number(row.seats) || 0; });
+    } catch (e) {}
+    var land = await loadHexes();
+    s.natPop = land.reduce(function (a, h) { return a + (Number(h.population) || 0); }, 0);
+    window.__hexStats = s;
+    return s;
+  }
+
+  // Render the selected hex's makeup: population, seats it elects, and every party's approval here (with
+  // its ± swing off national) + its seats here (the elected result, or a proportional projection).
+  function renderHexStats(el, h, stats) {
+    var key = h.q + ',' + h.r;
+    var seatsTot = hexSeats(stats.natSeats, Number(h.population) || 0, stats.natPop);
+    var elected = stats.seatsByHex[key];   // { pid: seats } when this hex has voted, else undefined
+    var mine = PARTY && PARTY.id;
+    var rows = stats.parties.map(function (p) {
+      var reg = regionalApproval(p, h.q, h.r, stats.biasMap);
+      return { p: p, reg: reg, delta: reg - (Number(p.popularity) || 0) };
+    }).sort(function (a, b) { return b.reg - a.reg; });
+    var sumReg = rows.reduce(function (a, x) { return a + x.reg; }, 0);
+    var seatOf = function (x) { return elected ? (elected[x.p.id] || 0) : (sumReg > 0 ? Math.round(seatsTot * x.reg / sumReg) : 0); };
+    el.innerHTML =
+      '<div class="hxs-top"><span>Population <b>' + fmtPop(h.population) + '</b></span>' +
+        '<span>Seats <b>' + seatsTot + '</b> · ' + (elected ? 'elected' : 'projected') + '</span></div>' +
+      '<div class="hxs-rows">' + rows.map(function (x) {
+        var d = (x.delta >= 0 ? '+' : '') + x.delta.toFixed(1);
+        var st = seatOf(x);
+        return '<div class="hxs-row' + (x.p.id === mine ? ' me' : '') + '">' +
+          '<span class="hxs-n">' + esc(x.p.abbreviation || x.p.name || '—') + (x.p.id === mine ? ' (you)' : '') + '</span>' +
+          '<span class="hxs-pop">' + x.reg.toFixed(1) + '% <i class="hxs-d ' + (x.delta >= 0 ? 'up' : 'dn') + '">' + d + '</i></span>' +
+          '<span class="hxs-s">' + st + ' seat' + (st === 1 ? '' : 's') + '</span></div>';
+      }).join('') + '</div>';
+  }
+
   // Interactive hex picker for a hex_pop card: click a land hex, choose to boost your party (+X) or hit
   // a rival (−X) there, then play. The server validates the hex again.
   async function openHexPicker(id, def) {
     var amt = hexAmount(def);
     var land = await loadHexes();
     if (!land.length) { alert('Your nation has no land hexes to target.'); return; }
+    var stats = await loadHexStats();
     var rivals = (window.__roster || []).filter(function (p) { return !PARTY || p.id !== PARTY.id; });
 
     var sel = null, mode = 'self', rival = rivals.length ? rivals[0].id : null;
@@ -408,6 +479,7 @@
         '<div class="hexhd">Choose a hex — <b>' + esc(def.name || 'card') + '</b></div>' +
         '<div class="hexmapwrap"><canvas class="hexcv"></canvas><div class="hexhint">Tap a land hex</div></div>' +
         '<div class="hexsel" id="hexSel">No hex selected</div>' +
+        '<div class="hexstats" id="hexStats"></div>' +
         '<div class="hexmode">' +
           '<button class="act hxm on" data-m="self">Boost my party +' + amt + '</button>' +
           (rivals.length ? '<button class="act hxm" data-m="rival">Hit a rival −' + amt + '</button>' : '') +
@@ -427,6 +499,7 @@
     var repaint = wireHexMap(ov, land, function (h) {
       sel = { q: h.q, r: h.r };
       ov.querySelector('#hexSel').innerHTML = 'Hex <b>' + h.q + ', ' + h.r + '</b>' + (h.name ? ' · ' + esc(h.name) : '');
+      renderHexStats(ov.querySelector('#hexStats'), h, stats);
       repaint(sel); updGo();
     });
     ov.querySelectorAll('.hxm').forEach(function (b) {
@@ -497,6 +570,76 @@
     ov.querySelector('#hexGo').onclick = function () { if (!sel) return; ov.remove(); playCard(id, null, sel.q, sel.r); };
   }
 
+  // Corporation picker for a corp_grow / corp_shrink card ('one' firm, your nation only) or a corp_acquire
+  // card ('two' — an acquirer then a target, any nation). Reads placed firms straight from the table
+  // (RLS: corp_select_all). For acquire the client previews the ≥2× cash rule; the server (schema/185)
+  // re-checks it and rolls the play back with a clear message if it fails.
+  async function openCorpPicker(id, def, mode) {
+    var res;
+    try { res = await supabase.from('corporations').select('id, name, nation_id, category, cash, type').eq('status', 'placed').order('name'); }
+    catch (e) { res = { data: [] }; }
+    var all = (res && res.data) || [];
+    var mine = all.filter(function (c) { return c.nation_id === NATION_ID; });
+    var pool = (mode === 'two') ? all : mine;
+    if (!pool.length) { alert(mode === 'two' ? 'There are no corporations to acquire.' : 'You have no corporations to affect.'); return; }
+
+    var acq = null, tgt = null;   // acq = the firm (grow/shrink) or acquirer; tgt = acquisition target
+    var ov = document.createElement('div'); ov.className = 'hexov';
+    var firmName = function (cid) { var c = pool.find(function (x) { return x.id === cid; }); return c ? c.name : '—'; };
+    var firmCash = function (cid) { var c = pool.find(function (x) { return x.id === cid; }); return c ? Number(c.cash) || 0 : 0; };
+    function row(c, group) {
+      var nat = c.nation_id === NATION_ID ? 'yours' : (NATIONS[c.nation_id] || c.nation_id);
+      return '<button class="act corprow" data-g="' + group + '" data-c="' + c.id + '">' +
+        '<span class="cr-n">' + esc(c.name) + '</span>' +
+        '<span class="cr-m">' + esc(c.category) + ' · ' + esc(nat) + ' · $' + (Number(c.cash) || 0).toFixed(1) + '</span></button>';
+    }
+    var hd = mode === 'two' ? 'Choose the acquirer, then its target' : 'Choose one of your corporations';
+    ov.innerHTML =
+      '<div class="hexbox">' +
+        '<div class="hexhd">' + esc(hd) + ' — <b>' + esc(def.name || 'card') + '</b></div>' +
+        (mode === 'two' ? '<div class="corplbl" id="corpL1">Acquirer</div>' : '') +
+        '<div class="corplist" id="corpList1">' + pool.map(function (c) { return row(c, '1'); }).join('') + '</div>' +
+        (mode === 'two' ? '<div class="corplbl" id="corpL2">Target</div><div class="corplist" id="corpList2"></div>' : '') +
+        '<div class="hexsel" id="corpSel">Nothing selected</div>' +
+        '<div class="hexbtns">' +
+          '<button class="act hexx" id="corpCancel">Cancel</button>' +
+          '<button class="act hexgo" id="corpGo" disabled>Play</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+
+    function paintTargets() {   // acquire: list every OTHER firm as a possible target
+      var l2 = ov.querySelector('#corpList2'); if (!l2) return;
+      l2.innerHTML = pool.filter(function (c) { return c.id !== acq; }).map(function (c) { return row(c, '2'); }).join('');
+      l2.querySelectorAll('.corprow').forEach(function (b) { b.onclick = function () { tgt = b.dataset.c; syncSel(); }; });
+    }
+    function syncSel() {
+      ov.querySelectorAll('#corpList1 .corprow').forEach(function (b) { b.classList.toggle('on', b.dataset.c === acq); });
+      ov.querySelectorAll('#corpList2 .corprow').forEach(function (b) { b.classList.toggle('on', b.dataset.c === tgt); });
+      var go = ov.querySelector('#corpGo'), sel = ov.querySelector('#corpSel');
+      if (mode === 'two') {
+        if (acq && tgt) {
+          var enough = firmCash(acq) >= 2 * firmCash(tgt);
+          sel.innerHTML = '<b>' + esc(firmName(acq)) + '</b> acquires <b>' + esc(firmName(tgt)) + '</b>' +
+            (enough ? '' : '<br><span class="inf">⚠ ' + esc(firmName(acq)) + ' needs ≥2× the target’s cash ($' + (2 * firmCash(tgt)).toFixed(1) + ') — it holds $' + firmCash(acq).toFixed(1) + '</span>');
+          go.disabled = !enough;
+        } else { sel.innerHTML = acq ? 'Now choose a target to acquire' : 'Choose the acquiring corporation'; go.disabled = true; }
+      } else {
+        sel.innerHTML = acq ? 'Selected <b>' + esc(firmName(acq)) + '</b>' : 'Nothing selected';
+        go.disabled = !acq;
+      }
+    }
+    ov.querySelectorAll('#corpList1 .corprow').forEach(function (b) {
+      b.onclick = function () { acq = b.dataset.c; if (mode === 'two') { tgt = null; paintTargets(); } syncSel(); };
+    });
+    ov.querySelector('#corpCancel').onclick = function () { ov.remove(); };
+    ov.querySelector('#corpGo').onclick = function () {
+      if (!acq || (mode === 'two' && !tgt)) return;
+      ov.remove();
+      playCard(id, null, null, null, acq, (mode === 'two' ? tgt : null));
+    };
+  }
+
   function renderActions() {
     var el = document.getElementById('actions'), note = document.getElementById('actNote');
     if (!myTurn()) {
@@ -561,7 +704,7 @@
   // ---- actions (each locks BUSY, then reloads everything) ----
   async function placeBid(id, amount) { await run(function () { return supabase.rpc('card_bid', { p_deck_card: id, p_amount: amount }); }); }
   async function cancelBid(id) { await run(function () { return supabase.rpc('card_bid_cancel', { p_deck_card: id }); }); }
-  async function playCard(id, target, q, r) { await run(function () { return supabase.rpc('card_play', { p_deck_card: id, p_target: target || null, p_hex_q: (q == null ? null : q), p_hex_r: (r == null ? null : r) }); }); }
+  async function playCard(id, target, q, r, corp, corp2) { await run(function () { return supabase.rpc('card_play', { p_deck_card: id, p_target: target || null, p_hex_q: (q == null ? null : q), p_hex_r: (r == null ? null : r), p_corp: corp || null, p_corp2: corp2 || null }); }); }
   async function discardCard(id) { if (!confirm('Discard this card for +3 Influence? It leaves your hand for good.')) return; await run(function () { return supabase.rpc('card_discard', { p_deck_card: id }); }); }
   async function takeAction() { await run(function () { return supabase.rpc('turn_take_action'); }); }
   async function decideCard(id, opt) { await run(function () { return supabase.rpc('card_decide', { p_decision: id, p_option: opt }); }); }

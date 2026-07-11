@@ -80,6 +80,10 @@ begin
     -- Government-Choice decision (card_decide passes it as p_target). Same write, different target source.
     when 'party_gain', 'decider_gain' then if p_target is not null then perform public._apply_party_effect(p_target, p_nation, jsonb_build_object('t', 'Party Popularity', 'v',  v_x)); end if;
     when 'party_lose', 'decider_lose' then if p_target is not null then perform public._apply_party_effect(p_target, p_nation, jsonb_build_object('t', 'Party Popularity', 'v', -v_x)); end if;
+    -- Every party IN GOVERNMENT gains/loses X approval — the coalition-wide swing, through the same
+    -- policy engine the modifier tick uses (schema/91: loops in_government parties, canonical clamps).
+    when 'coal_pop_up'   then perform public._apply_policy_effect(p_nation, jsonb_build_object('t', 'Party Popularity', 'v',  v_x));
+    when 'coal_pop_down' then perform public._apply_policy_effect(p_nation, jsonb_build_object('t', 'Party Popularity', 'v', -v_x));
     when 'coal_up' then
       select id into v_gov from public.governments where nation_id = p_nation and status = 'active';
       if v_gov is not null then perform public._coalition_health_restore(v_gov, 1); end if;
@@ -104,6 +108,20 @@ begin
           p_nation, p_p->>'res',
           case when p_kind = 'prod_up' then v_x else -v_x end,
           (public._to_num(p_p->>'ticks'))::int, p_tick);
+      end if;
+    -- Activate a dormant card into a chosen nation's deck (schema/184), now or after 'ticks' ticks. The
+    -- card ('card'), nation ('nation') and delay ('ticks', default 0 = immediately) are authored on the
+    -- effect. Guarded against a malformed uuid so a bad param can't abort.
+    when 'deck_add' then
+      if p_p->>'card' ~ '^[0-9a-fA-F-]{36}$' then
+        perform public._card_schedule_deck_add((p_p->>'card')::uuid, p_p->>'nation',
+                                               p_tick + coalesce((public._to_num(p_p->>'ticks'))::int, 0), p_tick);
+      end if;
+    -- The playing nation sanctions a target nation ('nation') for a MINIMUM of 'ticks' ticks — an embargo
+    -- that can't be lifted before then (schema/117). Guarded against self/zero-duration.
+    when 'sanction' then
+      if p_p->>'nation' is not null and p_p->>'nation' <> '' and coalesce(public._to_num(p_p->>'ticks'), 0) > 0 then
+        perform public._card_place_sanction(p_nation, p_p->>'nation', p_tick + (public._to_num(p_p->>'ticks'))::int);
       end if;
     when 'cond' then
       v_live := public._nation_live_stat(p_nation, p_p->>'stat');
@@ -151,7 +169,8 @@ revoke all on function public._apply_card_hex(uuid, text, int, int, numeric) fro
 -- (for 'hex_pop': with a rival (p_target) it's −x on that rival there, else +x on the player there).
 drop function if exists public._resolve_card_effects(text, uuid, jsonb, int);        -- pre-target form
 drop function if exists public._resolve_card_effects(text, uuid, uuid, jsonb, int);   -- pre-hex form
-create or replace function public._resolve_card_effects(p_nation text, p_party uuid, p_target uuid, p_q int, p_r int, p_def jsonb, p_tick int)
+drop function if exists public._resolve_card_effects(text, uuid, uuid, int, int, jsonb, int);   -- pre-corp form
+create or replace function public._resolve_card_effects(p_nation text, p_party uuid, p_target uuid, p_q int, p_r int, p_corp uuid, p_corp2 uuid, p_def jsonb, p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_generic boolean; e jsonb; v_x numeric;
 begin
@@ -159,14 +178,20 @@ begin
   if coalesce(p_def->>'mech', 'oneoff') = 'oneoff' then
     for e in select value from jsonb_array_elements(coalesce(p_def->'fx', '[]'::jsonb)) loop
       if v_generic or coalesce(e->>'side', 'both') = 'both' then
+        v_x := coalesce(public._to_num(e->'p'->>'x'), 0);
         if e->>'kind' = 'hex_pop' then
-          v_x := coalesce(public._to_num(e->'p'->>'x'), 0);   -- hex-scoped popularity: you +x, or a rival −x
-          if p_target is not null
+          if p_target is not null   -- hex-scoped popularity: you +x, or a rival −x
             then perform public._apply_card_hex(p_target, p_nation, p_q, p_r, -v_x);
             else perform public._apply_card_hex(p_party,  p_nation, p_q, p_r,  v_x);
           end if;
         elsif e->>'kind' = 'hex_el' then
           perform public.hex_election_resolve(p_nation, p_q, p_r, p_party, p_tick);   -- reapportion the chosen hex
+        -- Corporate effects act on the firm(s) chosen on play (schema/185). grow/shrink use one firm;
+        -- acquire uses two; create founds a state firm from authored sector + name (no pick).
+        elsif e->>'kind' = 'corp_grow' then   perform public._card_corp_growth(p_corp,  v_x::int);
+        elsif e->>'kind' = 'corp_shrink' then perform public._card_corp_growth(p_corp, (-v_x)::int);
+        elsif e->>'kind' = 'corp_acquire' then perform public._card_corp_acquire(p_corp, p_corp2);
+        elsif e->>'kind' = 'corp_create' then perform public._card_create_so_corp(p_nation, e->'p'->>'sector', e->'p'->>'name');
         else
           perform public._apply_card_effect(p_nation, p_target, e->>'kind', e->'p', p_tick);   -- party effects hit the chosen target
         end if;
@@ -174,6 +199,6 @@ begin
     end loop;
   end if;
 end $$;
-revoke all on function public._resolve_card_effects(text, uuid, uuid, int, int, jsonb, int) from public, anon, authenticated;
+revoke all on function public._resolve_card_effects(text, uuid, uuid, int, int, uuid, uuid, jsonb, int) from public, anon, authenticated;
 
 notify pgrst, 'reload schema';

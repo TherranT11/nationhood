@@ -258,7 +258,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { esc, economyPeriod, economyNeed, worldTier, worldPrice, TIER_MULT, TIER_LABEL, RESOURCE_BASE, PRODUCE_COST, PRODUCE_COOLDOWN, fmtGdp } from '/util.js';
-  import { mountTopbar } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
   import { nationRegime, isAuthoritarian } from '/ladders.js';
@@ -586,6 +586,7 @@
       var ec = STATE.nation.economy || {};
       document.getElementById('treasury').textContent = ec.budget != null ? (STATE.currency + ec.budget + 'B') : '—';
     } catch (e) { /* a refresh failure leaves the action's result applied server-side; just re-render */ }
+    setTopbarActions();   // an economy action (produce / sanction / …) spends an Action Point — refresh the top chip
     render();
   }
 

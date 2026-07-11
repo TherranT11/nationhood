@@ -148,7 +148,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { esc, worldPrice } from '/util.js';
-  import { mountTopbar } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
   mountTopbar();
@@ -431,6 +431,7 @@
     var { data } = await supabase.from('trade_agreements')
       .select('*').or('buyer_nation.eq.' + S.nationId + ',seller_nation.eq.' + S.nationId).order('created_at', { ascending:false });
     if (data) S.agreements = data;
+    setTopbarActions();   // commit / draw spend an Action Point — refresh the top chip
     render();
   }
 

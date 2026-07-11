@@ -19,6 +19,9 @@ create table if not exists public.sanctions (
   last_reward_tick int,                                -- last tick the rally reward fired (drives the cooldown)
   primary key (by_nation, target_nation)
 );
+-- A card-placed sanction can lock the embargo in for a minimum run: the earliest tick it may be lifted.
+-- Null / past = liftable now (a minister-placed sanction sets nothing). Enforced in lift_sanction below.
+alter table public.sanctions add column if not exists locked_until_tick int;
 
 alter table public.sanctions enable row level security;
 drop policy if exists "sanctions_select_all" on public.sanctions;
@@ -36,6 +39,23 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 revoke all on function public._trade_sanctioned(text, text) from public, anon, authenticated;
 grant execute on function public._trade_sanctioned(text, text) to authenticated;
+
+-- Place a sanction FROM a played card (schema/176 'sanction' effect): the playing nation embargoes a
+-- target, locked in until p_until. No minister gate, no rally reward/image penalty (those belong to the
+-- Minister's manual action) — a card just imposes the embargo. Re-placing extends the lock, never shortens
+-- it, and re-activates a lifted one. Silent no-op on self / unknown target. INTERNAL (called by the engine).
+create or replace function public._card_place_sanction(p_by text, p_target text, p_until int)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if p_by is null or p_target is null or p_by = p_target then return; end if;
+  if not exists (select 1 from public.nations where id = p_target) then return; end if;
+  insert into public.sanctions (by_nation, target_nation, active, locked_until_tick)
+    values (p_by, p_target, true, p_until)
+  on conflict (by_nation, target_nation) do update
+    set active = true,
+        locked_until_tick = greatest(coalesce(public.sanctions.locked_until_tick, 0), excluded.locked_until_tick);
+end $$;
+revoke all on function public._card_place_sanction(text, text, int) from public, anon, authenticated;
 
 -- Impose a sanction. Minister-of-Trade gated, 3 party actions. Rewards a stand against an
 -- authoritarian regime (once per target per cooldown); penalises sanctioning any other regime.
@@ -102,11 +122,17 @@ grant execute on function public.place_sanction(text) to authenticated;
 -- reward cooldown survives a lift → re-place.
 create or replace function public.lift_sanction(p_target text)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_p public.parties%rowtype; v_tname text;
+declare v_p public.parties%rowtype; v_tname text; v_tick int; v_lock int;
 begin
   v_p := public._lock_party();
   if not public._party_holds_ministry(v_p.id, 'Trade') then
     raise exception 'Only the Minister of Trade can lift sanctions.'; end if;
+  -- A card-imposed minimum run holds the embargo in place until its tick — the Minister can't lift early.
+  select current_tick into v_tick from public.game_state where id;
+  select locked_until_tick into v_lock from public.sanctions
+   where by_nation = v_p.nation_id and target_nation = p_target and active;
+  if coalesce(v_lock, 0) > v_tick then
+    raise exception 'This sanction is locked in for % more tick(s).', v_lock - v_tick; end if;
   update public.sanctions set active = false
    where by_nation = v_p.nation_id and target_nation = p_target and active;
   if not found then raise exception 'You have no active sanction on that nation.'; end if;

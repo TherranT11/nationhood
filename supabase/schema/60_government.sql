@@ -521,6 +521,9 @@ begin
   -- nation that both qualifies and has met the end conditions ends up without it.
   begin perform public._apply_modifier_triggers(v_tick);
   exception when others then raise warning 'tick %: modifier triggers failed — %', v_tick, sqlerrm; end;
+  -- Fire any dormant-card activation whose delay has elapsed (schema/184) — the card enters its deck now.
+  begin perform public._process_card_activations(v_tick);
+  exception when others then raise warning 'tick %: card activations failed — %', v_tick, sqlerrm; end;
   -- Lift any assigned National Modifier whose end conditions are all met (schema/70).
   delete from public.nation_modifiers nm
    where public._modifier_end_met(nm.modifier_id, nm.nation_id, nm.since_tick, v_tick);
