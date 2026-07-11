@@ -85,6 +85,14 @@ drop policy if exists "government_agenda_select_all" on public.government_agenda
 create policy "government_agenda_select_all" on public.government_agenda for select using (true);
 
 -- ---------------------------------------------------------------------------
+-- The nation's Head-of-Government title (declared per nation in schema/80, default 'Prime Minister').
+-- ONE source — read by _head_of_government_label and the "new HoG" announcement in _seat_government.
+create or replace function public._head_of_government_title(p_nation text)
+returns text language sql stable security definer set search_path = public as $$
+  select coalesce(nullif(public.nation_declaration(p_nation, 'head_of_government_title'), ''), 'Prime Minister');
+$$;
+revoke all on function public._head_of_government_title(text) from public, anon, authenticated;
+
 -- _seat_government(...): the ONE place a government is seated. Works out the
 -- membership (a coalition = host + accepted partners; otherwise the formateur
 -- alone), sets Coalition Health at formation (2 hearts + 1 per 2 governing
@@ -108,6 +116,8 @@ declare
   v_members uuid[];
   v_gid uuid; v_obj uuid;
   v_health int;   -- Coalition Health (hearts) at formation — the government's stability gauge
+  v_prev_form uuid;               -- the outgoing government's formateur, to detect a genuinely NEW HoG
+  v_hog_name text; v_party text;  -- the incoming HoG's leader name + party name, for the announcement
 begin
   -- Members: a coalition is the host + its accepted partners; otherwise just the formateur.
   if p_type = 'coalition' then
@@ -129,6 +139,7 @@ begin
   v_health := 2 + coalesce(array_length(v_members, 1), 1) / 2;
 
   -- Retire the sitting government, seat the new one (stamped with the tick it formed).
+  select formateur_party_id into v_prev_form from public.governments where nation_id = p_nation and status = 'active';
   update public.governments set status = 'replaced' where nation_id = p_nation and status = 'active';
   insert into public.governments (nation_id, formateur_party_id, type, coalition_health, coalition_health_max, formed_tick, source_negotiation_id)
     values (p_nation, p_formateur, p_type, v_health, v_health, (select current_tick from public.game_state where id), p_source)
@@ -140,6 +151,23 @@ begin
     -- …and takes on the national objective the host queued for it, if any (schema/139).
     select objective_id into v_obj from public.negotiations where id = p_source;
     if v_obj is not null then perform public._agenda_add(v_gid, v_obj); end if;
+  end if;
+
+  -- Announce a genuinely NEW Head of Government: fires only when the incoming formateur differs from the
+  -- outgoing one (a reshuffle that keeps the same party in power isn't a new HoG). Names the person, the
+  -- party (article-stripped so "The …" parties don't read "the The …"), and the nation's HoG title.
+  if p_formateur is distinct from v_prev_form then
+    select btrim(coalesce(l.first_name, '') || ' ' || coalesce(l.last_name, '')), p.name
+      into v_hog_name, v_party
+      from public.parties p left join lateral public._party_leader(p.id) l on true
+     where p.id = p_formateur;
+    if coalesce(v_hog_name, '') <> '' and coalesce(v_party, '') <> '' then
+      insert into public.events (nation_id, party_id, kind, body, game_date)
+        values (p_nation, p_formateur, 'government',
+                v_hog_name || ' of the ' || public._bare_party(v_party) || ' is now ' ||
+                  public._head_of_government_title(p_nation) || '.',
+                public.current_game_date());
+    end if;
   end if;
 
   return v_health;
@@ -344,7 +372,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select coalesce(nullif(public.nation_declaration(p_nation, 'head_of_government_title'), ''), 'Prime Minister')
+  select public._head_of_government_title(p_nation)
          || ' '
          || coalesce(
               (select nullif(btrim(l.first_name || ' ' || l.last_name), '') from public._party_leader(p_party) l),
