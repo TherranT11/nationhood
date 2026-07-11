@@ -69,6 +69,18 @@
   .cm .actopt.info{cursor:default}
   .cm .actopt.info:hover{border-color:var(--line)}
 
+  /* government decisions (played Choice cards awaiting a resolver) */
+  .cm .deccard{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:15px 17px;margin-bottom:11px}
+  .cm .dechd{font-size:14px;font-weight:800;color:var(--ink);margin-bottom:3px}
+  .cm .decwho{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-bottom:11px}
+  .cm .decwho.mine{color:var(--inf)}
+  .cm .decopts{display:flex;gap:9px;flex-wrap:wrap}
+  .cm .decopt{flex:1;min-width:170px;text-align:left;background:var(--field);border:1px solid var(--line);border-radius:10px;padding:11px 13px;color:var(--ink);font:inherit;font-size:12.5px;line-height:1.4}
+  .cm button.decopt{cursor:pointer}
+  .cm button.decopt:hover:not(:disabled){border-color:var(--indigo)}
+  .cm button.decopt:disabled{opacity:.55;cursor:not-allowed}
+  .cm .decopt.wait{color:var(--muted)}
+
   /* market + hand grids */
   .cm .market{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px}
   .cm .hand{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px}
@@ -141,6 +153,10 @@
       <!-- action container -->
       <div class="sect gap">Your Turn <span class="note" id="actNote"></span></div>
       <div id="actions"></div>
+
+      <!-- government decisions (from played Choice cards) -->
+      <div class="sect gap" id="decSect" style="display:none">Government Decisions <span class="note">a played card demands a choice</span></div>
+      <div id="decisions"></div>
 
       <!-- market -->
       <div class="sect gap">The Market <span class="note" id="marketNote"></span></div>
@@ -299,6 +315,29 @@
     var t = document.getElementById('optTake'); if (t) t.onclick = function () { takeAction(); };
   }
 
+  // Pending Government Choice decisions for the nation. The resolver gets clickable options; everyone
+  // else sees who it's waiting on. Effects fire server-side when the resolver picks (card_decide).
+  function partyLabel(id) { var p = (window.__roster || []).find(function (x) { return x.id === id; }); return p ? (p.abbreviation || p.name) : 'a party'; }
+  function renderDecisions(decs) {
+    var wrap = document.getElementById('decisions'), sect = document.getElementById('decSect');
+    if (!decs.length) { sect.style.display = 'none'; wrap.innerHTML = ''; return; }
+    sect.style.display = '';
+    wrap.innerHTML = decs.map(function (d) {
+      var mine = PARTY && d.resolver_party_id === PARTY.id;
+      var opts = Array.isArray(d.options) ? d.options : [];
+      var who = mine ? 'Your call' : ('Awaiting ' + (d.handler && d.handler !== 'player' ? 'the ' + esc(d.handler) + ' minister (' + esc(partyLabel(d.resolver_party_id)) + ')' : esc(partyLabel(d.resolver_party_id))));
+      return '<div class="deccard"><div class="dechd">' + esc(d.card_name || 'A decision') + '</div>' +
+        '<div class="decwho' + (mine ? ' mine' : '') + '">' + who + '</div>' +
+        '<div class="decopts">' + opts.map(function (o, i) {
+          var label = esc((o && o.txt) || ('Option ' + (i + 1)));
+          return mine
+            ? '<button class="decopt" data-dec="' + d.id + '" data-opt="' + i + '">' + label + '</button>'
+            : '<span class="decopt wait">' + label + '</span>';
+        }).join('') + '</div></div>';
+    }).join('');
+    wrap.querySelectorAll('[data-dec]').forEach(function (b) { b.onclick = function () { decideCard(b.dataset.dec, +b.dataset.opt); }; });
+  }
+
   function renderTimeline(elId, events, world) {
     var el = document.getElementById(elId);
     if (!events.length) { el.innerHTML = '<div class="tlempty">No events yet.</div>'; return; }
@@ -316,6 +355,7 @@
   async function playCard(id) { await run(function () { return supabase.rpc('card_play', { p_deck_card: id }); }); }
   async function discardCard(id) { if (!confirm('Discard this card for +3 Influence? It leaves your hand for good.')) return; await run(function () { return supabase.rpc('card_discard', { p_deck_card: id }); }); }
   async function takeAction() { await run(function () { return supabase.rpc('turn_take_action'); }); }
+  async function decideCard(id, opt) { await run(function () { return supabase.rpc('card_decide', { p_decision: id, p_option: opt }); }); }
   async function run(fn) {
     if (BUSY) return; BUSY = true; setDisabled(true);
     try {
@@ -327,7 +367,7 @@
       alert((e && e.message) || 'That action failed.');
     } finally { BUSY = false; setDisabled(false); }
   }
-  function setDisabled(on) { document.querySelectorAll('.cm .act, .cm .bbtn, .cm .actopt').forEach(function (b) { b.disabled = on; }); }
+  function setDisabled(on) { document.querySelectorAll('.cm .act, .cm .bbtn, .cm .actopt, .cm button.decopt').forEach(function (b) { b.disabled = on; }); }
 
   function setEye() {
     var name = TURN_PARTY && PARTY && TURN_PARTY === PARTY.id ? 'Your Turn'
@@ -342,7 +382,7 @@
       if (p) { PARTY = Object.assign(PARTY, p); setTopbarActions(PARTY.influence); }
     } catch (e) { /* keep the last known party */ }
 
-    var roster = [], market = [], hand = [], bids = {}, events = [], world = [];
+    var roster = [], market = [], hand = [], bids = {}, events = [], world = [], decisions = [];
     try {
       const { data } = await supabase.rpc('nation_turn', { p_nation: NATION_ID });
       TURN_PARTY = data || null;
@@ -379,10 +419,15 @@
         seen[e.body] = 1; return true;
       }).slice(0, 15);
     } catch (e) {}
+    try {
+      const { data } = await supabase.from('card_decisions').select('id, card_name, options, handler, resolver_party_id, played_by_party_id').eq('nation_id', NATION_ID).eq('status', 'pending').order('created_at', { ascending: true });
+      decisions = data || [];
+    } catch (e) {}
 
     setEye();
     renderQueue(roster);
     renderActions();
+    renderDecisions(decisions);
     renderMarket(market, bids);
     renderHand(hand);
     renderTimeline('timeline', events, false);
