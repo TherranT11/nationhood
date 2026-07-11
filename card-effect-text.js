@@ -37,6 +37,10 @@ export function cardEffectText(kind, p, nationName, cardName) {
     case 'prod_down': return '<b>' + esc(resLabel(p.res || 'energy')) + '</b> production <b>−' + (p.x || 0) + '</b> for <b>' + (p.ticks || 12) + '</b> ticks';
     case 'deck_add': return '<b>' + esc(cn(p.card) || 'A dormant card') + '</b> enters <b>' + esc(nn(p.nation) || 'a nation') + '</b>’s deck' + (Number(p.ticks) > 0 ? ' in <b>' + p.ticks + '</b> ticks' : '');
     case 'bill': return 'Introduce committee bill <b>' + esc(p.name || 'untitled') + '</b> (' + ((p.pass || []).length) + ' if-pass, ' + ((p.fail || []).length) + ' if-fail)';
+    case 'corp_grow': return '<b>Add ' + (p.x || 0) + ' growth</b> to one of your corporations (chosen on play)';
+    case 'corp_shrink': return '<b>Cut ' + (p.x || 0) + ' growth</b> from one of your corporations (chosen on play)';
+    case 'corp_acquire': return 'One corporation <b>acquires another</b> (both chosen on play — the buyer needs ≥2× the target’s cash)';
+    case 'corp_create': return 'Found a <b>state-owned ' + esc(p.sector || 'a sector') + '</b> firm named <b>' + esc(p.name || 'untitled') + '</b>';
     case 'no_conf': return 'Put forth a <b>motion of no confidence</b>';
     case 'nat_el': return 'Carry out a <b>national election</b>';
     case 'hex_el': return 'Carry out an <b>election in a chosen hex</b> (reapportions its seats)';

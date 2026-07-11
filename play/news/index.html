@@ -151,6 +151,13 @@
   .hexov .act{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:8px;padding:9px 11px;cursor:pointer;border:1px solid var(--line);background:var(--field);color:var(--muted)}
   .hexov .act.on{color:#fff;background:var(--indigo);border-color:var(--indigo)}
   .hexov .act:disabled{opacity:.5;cursor:not-allowed}
+  .corplbl{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin:10px 0 5px}
+  .corplist{display:flex;flex-direction:column;gap:5px;max-height:180px;overflow:auto}
+  .corprow{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-transform:none!important;letter-spacing:0!important;text-align:left;width:100%}
+  .corprow .cr-n{font-size:12px;font-weight:700;color:var(--ink)}
+  .corprow.on .cr-n{color:#fff}
+  .corprow .cr-m{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft)}
+  .corprow.on .cr-m{color:rgba(255,255,255,.8)}
 
   .cm .empty{background:var(--surface);border:1px dashed var(--line);border-radius:13px;padding:26px 20px;text-align:center;color:var(--soft);font-size:13px}
   .cm .empty b{display:block;color:var(--muted);font-size:14px;margin-bottom:5px}
@@ -365,6 +372,8 @@
     var def = card && card.definition;
     if (card && cardFires(def, ['hex_el'])) { openHexElection(id, def); return; }
     if (card && cardFires(def, ['hex_pop'])) { openHexPicker(id, def); return; }
+    if (card && cardFires(def, ['corp_grow', 'corp_shrink'])) { openCorpPicker(id, def, 'one'); return; }
+    if (card && cardFires(def, ['corp_acquire'])) { openCorpPicker(id, def, 'two'); return; }
     if (!card || !cardFires(def, ['party_gain', 'party_lose'])) { playCard(id); return; }
     var rivals = (window.__roster || []).filter(function (p) { return !PARTY || p.id !== PARTY.id; });
     if (!rivals.length) { playCard(id); return; }   // no rival to hit → play untargeted
@@ -561,6 +570,76 @@
     ov.querySelector('#hexGo').onclick = function () { if (!sel) return; ov.remove(); playCard(id, null, sel.q, sel.r); };
   }
 
+  // Corporation picker for a corp_grow / corp_shrink card ('one' firm, your nation only) or a corp_acquire
+  // card ('two' — an acquirer then a target, any nation). Reads placed firms straight from the table
+  // (RLS: corp_select_all). For acquire the client previews the ≥2× cash rule; the server (schema/185)
+  // re-checks it and rolls the play back with a clear message if it fails.
+  async function openCorpPicker(id, def, mode) {
+    var res;
+    try { res = await supabase.from('corporations').select('id, name, nation_id, category, cash, type').eq('status', 'placed').order('name'); }
+    catch (e) { res = { data: [] }; }
+    var all = (res && res.data) || [];
+    var mine = all.filter(function (c) { return c.nation_id === NATION_ID; });
+    var pool = (mode === 'two') ? all : mine;
+    if (!pool.length) { alert(mode === 'two' ? 'There are no corporations to acquire.' : 'You have no corporations to affect.'); return; }
+
+    var acq = null, tgt = null;   // acq = the firm (grow/shrink) or acquirer; tgt = acquisition target
+    var ov = document.createElement('div'); ov.className = 'hexov';
+    var firmName = function (cid) { var c = pool.find(function (x) { return x.id === cid; }); return c ? c.name : '—'; };
+    var firmCash = function (cid) { var c = pool.find(function (x) { return x.id === cid; }); return c ? Number(c.cash) || 0 : 0; };
+    function row(c, group) {
+      var nat = c.nation_id === NATION_ID ? 'yours' : (NATIONS[c.nation_id] || c.nation_id);
+      return '<button class="act corprow" data-g="' + group + '" data-c="' + c.id + '">' +
+        '<span class="cr-n">' + esc(c.name) + '</span>' +
+        '<span class="cr-m">' + esc(c.category) + ' · ' + esc(nat) + ' · $' + (Number(c.cash) || 0).toFixed(1) + '</span></button>';
+    }
+    var hd = mode === 'two' ? 'Choose the acquirer, then its target' : 'Choose one of your corporations';
+    ov.innerHTML =
+      '<div class="hexbox">' +
+        '<div class="hexhd">' + esc(hd) + ' — <b>' + esc(def.name || 'card') + '</b></div>' +
+        (mode === 'two' ? '<div class="corplbl" id="corpL1">Acquirer</div>' : '') +
+        '<div class="corplist" id="corpList1">' + pool.map(function (c) { return row(c, '1'); }).join('') + '</div>' +
+        (mode === 'two' ? '<div class="corplbl" id="corpL2">Target</div><div class="corplist" id="corpList2"></div>' : '') +
+        '<div class="hexsel" id="corpSel">Nothing selected</div>' +
+        '<div class="hexbtns">' +
+          '<button class="act hexx" id="corpCancel">Cancel</button>' +
+          '<button class="act hexgo" id="corpGo" disabled>Play</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+
+    function paintTargets() {   // acquire: list every OTHER firm as a possible target
+      var l2 = ov.querySelector('#corpList2'); if (!l2) return;
+      l2.innerHTML = pool.filter(function (c) { return c.id !== acq; }).map(function (c) { return row(c, '2'); }).join('');
+      l2.querySelectorAll('.corprow').forEach(function (b) { b.onclick = function () { tgt = b.dataset.c; syncSel(); }; });
+    }
+    function syncSel() {
+      ov.querySelectorAll('#corpList1 .corprow').forEach(function (b) { b.classList.toggle('on', b.dataset.c === acq); });
+      ov.querySelectorAll('#corpList2 .corprow').forEach(function (b) { b.classList.toggle('on', b.dataset.c === tgt); });
+      var go = ov.querySelector('#corpGo'), sel = ov.querySelector('#corpSel');
+      if (mode === 'two') {
+        if (acq && tgt) {
+          var enough = firmCash(acq) >= 2 * firmCash(tgt);
+          sel.innerHTML = '<b>' + esc(firmName(acq)) + '</b> acquires <b>' + esc(firmName(tgt)) + '</b>' +
+            (enough ? '' : '<br><span class="inf">⚠ ' + esc(firmName(acq)) + ' needs ≥2× the target’s cash ($' + (2 * firmCash(tgt)).toFixed(1) + ') — it holds $' + firmCash(acq).toFixed(1) + '</span>');
+          go.disabled = !enough;
+        } else { sel.innerHTML = acq ? 'Now choose a target to acquire' : 'Choose the acquiring corporation'; go.disabled = true; }
+      } else {
+        sel.innerHTML = acq ? 'Selected <b>' + esc(firmName(acq)) + '</b>' : 'Nothing selected';
+        go.disabled = !acq;
+      }
+    }
+    ov.querySelectorAll('#corpList1 .corprow').forEach(function (b) {
+      b.onclick = function () { acq = b.dataset.c; if (mode === 'two') { tgt = null; paintTargets(); } syncSel(); };
+    });
+    ov.querySelector('#corpCancel').onclick = function () { ov.remove(); };
+    ov.querySelector('#corpGo').onclick = function () {
+      if (!acq || (mode === 'two' && !tgt)) return;
+      ov.remove();
+      playCard(id, null, null, null, acq, (mode === 'two' ? tgt : null));
+    };
+  }
+
   function renderActions() {
     var el = document.getElementById('actions'), note = document.getElementById('actNote');
     if (!myTurn()) {
@@ -625,7 +704,7 @@
   // ---- actions (each locks BUSY, then reloads everything) ----
   async function placeBid(id, amount) { await run(function () { return supabase.rpc('card_bid', { p_deck_card: id, p_amount: amount }); }); }
   async function cancelBid(id) { await run(function () { return supabase.rpc('card_bid_cancel', { p_deck_card: id }); }); }
-  async function playCard(id, target, q, r) { await run(function () { return supabase.rpc('card_play', { p_deck_card: id, p_target: target || null, p_hex_q: (q == null ? null : q), p_hex_r: (r == null ? null : r) }); }); }
+  async function playCard(id, target, q, r, corp, corp2) { await run(function () { return supabase.rpc('card_play', { p_deck_card: id, p_target: target || null, p_hex_q: (q == null ? null : q), p_hex_r: (r == null ? null : r), p_corp: corp || null, p_corp2: corp2 || null }); }); }
   async function discardCard(id) { if (!confirm('Discard this card for +3 Influence? It leaves your hand for good.')) return; await run(function () { return supabase.rpc('card_discard', { p_deck_card: id }); }); }
   async function takeAction() { await run(function () { return supabase.rpc('turn_take_action'); }); }
   async function decideCard(id, opt) { await run(function () { return supabase.rpc('card_decide', { p_decision: id, p_option: opt }); }); }

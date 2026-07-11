@@ -229,16 +229,16 @@ begin
       || ', they are expected to expand operations in the ' || p_category || ' sector.');
 end $$;
 
--- RPC: admin creates a firm and, if it's placed now, applies its sector bonus atomically.
-create or replace function public.corp_create(p_nation text, p_name text, p_category text, p_type text,
+-- Place a firm and, if it starts placed, apply its sector bonus + announce it. The NON-gated core that
+-- corp_create (admin) and the card 'corp_create' effect (schema/185) share — ONE source for founding a
+-- firm (director draw + bonus + started event). Returns the new id.
+create or replace function public._corp_place(p_nation text, p_name text, p_category text, p_type text,
   p_size text, p_cash numeric, p_debt numeric, p_drift int, p_status text, p_roll_m int)
 returns uuid language plpgsql security definer set search_path = public as $$
 declare v_corp public.corporations; v_first text; v_last text; v_director text;
 begin
-  if not public.is_admin() then raise exception 'admin only'; end if;
-  -- Seed an NPC director: a random name from the nation's pool + 1D4 Acumen. Applies
-  -- whether the firm is placed now or queued onto the generation list (it carries the
-  -- director through to release). Null name only if the nation has no names seeded yet.
+  -- Seed an NPC director: a random name from the nation's pool + 1D4 Acumen. Applies whether the firm is
+  -- placed now or queued onto the generation list. Null name only if the nation has no names seeded yet.
   select first_name, last_name into v_first, v_last from public._random_name(p_nation);   -- shared draw (schema/50)
   v_director := nullif(btrim(concat_ws(' ', v_first, v_last)), '');
   insert into public.corporations (nation_id, name, category, type, size, cash, debt, drift, status, roll_m, director, acumen)
@@ -250,6 +250,16 @@ begin
     perform public._corp_started_event(v_corp.nation_id, v_corp.name, v_corp.category);  -- a queued firm announces on release instead
   end if;
   return v_corp.id;
+end $$;
+revoke all on function public._corp_place(text, text, text, text, text, numeric, numeric, int, text, int) from public, anon, authenticated;
+
+-- RPC: admin creates a firm (the gated wrapper over _corp_place).
+create or replace function public.corp_create(p_nation text, p_name text, p_category text, p_type text,
+  p_size text, p_cash numeric, p_debt numeric, p_drift int, p_status text, p_roll_m int)
+returns uuid language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'admin only'; end if;
+  return public._corp_place(p_nation, p_name, p_category, p_type, p_size, p_cash, p_debt, p_drift, p_status, p_roll_m);
 end $$;
 
 -- RPC: admin deletes a firm; reverse its sector bonus first if it was placed (the addition is lost).

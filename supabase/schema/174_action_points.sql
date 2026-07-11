@@ -95,7 +95,8 @@ grant execute on function public.card_discard(uuid) to authenticated;
 -- party_lose) lands on — chosen in the Home target picker; NULL when the card targets no party. ──
 drop function if exists public.card_play(uuid);         -- retire the 1-arg overload so p_target isn't ambiguous
 drop function if exists public.card_play(uuid, uuid);   -- retire the pre-hex 2-arg overload
-create or replace function public.card_play(p_deck_card uuid, p_target uuid default null, p_hex_q int default null, p_hex_r int default null)
+create or replace function public.card_play(p_deck_card uuid, p_target uuid default null, p_hex_q int default null, p_hex_r int default null,
+  p_corp uuid default null, p_corp2 uuid default null)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_uid uuid; v_dc record; v_party record; v_def jsonb; v_name text; v_tick int; v_acts int; v_tgt_nat text;
 begin
@@ -167,11 +168,11 @@ begin
   if coalesce(v_def->>'persistV', 'no') = 'yes' then
     perform public._mint_card_modifier(v_dc.nation_id, v_party.id, v_def, v_tick);
   else
-    perform public._resolve_card_effects(v_dc.nation_id, v_party.id, p_target, p_hex_q, p_hex_r, v_def, v_tick);
+    perform public._resolve_card_effects(v_dc.nation_id, v_party.id, p_target, p_hex_q, p_hex_r, p_corp, p_corp2, v_def, v_tick);
     perform public._create_card_decision(v_dc.nation_id, v_party.id, p_deck_card, v_def, v_tick);
   end if;
 end $$;
-grant execute on function public.card_play(uuid, uuid, integer, integer) to authenticated;
+grant execute on function public.card_play(uuid, uuid, integer, integer, uuid, uuid) to authenticated;
 
 -- Supersedes schema/173's _advance_turns: same rotation, but as the cursor lands on a party (its new
 -- turn begins) we clear that party's Action Points — unspent AP lasts only until your next turn, then

@@ -10,6 +10,7 @@
 import { supabase } from '/supabase.js';
 import { esc } from '/util.js';   // shared HTML-escape (one source)
 import { cardEffectText, resLabel } from '/card-effect-text.js';   // one source for effect → text (shared with the legislature pages)
+import { CATEGORIES } from '/corporations.js';   // the real sector list — for the "create a state firm in [sector]" effect
 const cap = function (s) { return (s || '').charAt(0).toUpperCase() + (s || '').slice(1); };   // Title-case a word (one source)
 
 // ---- effect vocabulary (Phase 3 interprets these; the creator only authors them) ----
@@ -47,6 +48,10 @@ const KINDS = {
   prod_up:    { label: 'Increase production of [resource] by X for N ticks' },
   prod_down:  { label: 'Decrease production of [resource] by X for N ticks' },
   deck_add:   { label: 'Activate a dormant card into a nation’s deck (now or in N ticks)' },
+  corp_grow:    { label: 'Add growth to one of your corporations (chosen on play)' },
+  corp_shrink:  { label: 'Cut growth from one of your corporations (chosen on play)' },
+  corp_acquire: { label: 'One corporation acquires another (both chosen on play)' },
+  corp_create:  { label: 'Found a state-owned corp in [sector] named [name]' },
   appoint:    { label: 'HoG must appoint you [Ministry], or…', nested: true },
   hex_el:     { label: 'Carry out an election in a chosen hex' },
   nat_el:     { label: 'Carry out national election' },
@@ -511,6 +516,11 @@ export async function mountCardCreator(mount) {
         NATIONS.map(function (n) { return '<option value="' + esc(n.id) + '"' + (n.id === f.p.nation ? ' selected' : '') + '>' + esc(n.name) + '</option>'; }).join('') + '</select>' +
         '<span class="lbl">deck in</span><input type="number" value="' + (f.p.ticks || 0) + '" data-i="' + i + '" data-f="ticks" min="0" max="120" style="max-width:70px"><span class="lbl">ticks (0 = now)</span>';
     }
+    if (f.kind === 'corp_grow' || f.kind === 'corp_shrink') h = '<span class="lbl">' + (f.kind === 'corp_grow' ? 'add' : 'cut') + '</span>' + num(f.p.x, 'x') + '<span class="lbl">growth · firm chosen on play (your nation)</span>';
+    if (f.kind === 'corp_acquire') h = '<span class="lbl">acquirer &amp; target chosen on play · buyer needs ≥2× the target’s cash</span>';
+    if (f.kind === 'corp_create') h = '<span class="lbl">sector</span>' +
+      '<select data-i="' + i + '" data-f="sector">' + CATEGORIES.map(function (s) { return '<option' + (s === f.p.sector ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') + '</select>' +
+      '<span class="lbl">named</span><input type="text" value="' + esc(f.p.name || '') + '" data-i="' + i + '" data-f="name" placeholder="Firm name…" style="flex:1;min-width:130px">';
     if (f.kind === 'hex_el') h = '<span class="lbl">hex chosen on play · 12-tick cooldown</span>';
     if (f.kind === 'mob_add' || f.kind === 'mob_rem' || f.kind === 'mil_add' || f.kind === 'mil_rem')
       h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px"><span class="lbl">' + ((f.kind === 'mob_add' || f.kind === 'mob_rem') ? '⚠ armed mob — nobody’s soldiers' : '⚑ militia — belongs to a party') + '</span>';
@@ -582,6 +592,9 @@ export async function mountCardCreator(mount) {
       : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 }
       : v === 'deck_add' ? { card: '', nation: '', ticks: 0 }
       : v === 'sanction' ? { nation: '', ticks: 36 }
+      : (v === 'corp_grow' || v === 'corp_shrink') ? { x: 2 }
+      : v === 'corp_acquire' ? {}
+      : v === 'corp_create' ? { sector: CATEGORIES[0], name: '' }
       : v === 'bill' ? { name: '', pass: [{ kind: 'stat_up', p: { stat: 'Growth', x: 5 } }], fail: [{ kind: 'stat_down', p: { stat: 'Growth', x: 3 } }] }
       : (v === 'decider_gain' || v === 'decider_lose' || v === 'coal_pop_up' || v === 'coal_pop_down') ? { x: 2 }
       : { stat: STATS[1], x: 3 };
