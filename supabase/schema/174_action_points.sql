@@ -91,10 +91,12 @@ grant execute on function public.card_discard(uuid) to authenticated;
 -- one-choice guard and, on play, banks the card's `acts` (1–6, default 1 for pre-`acts` cards) as
 -- Action Points to spend this turn. Playing NO LONGER costs Influence — the card was paid for at
 -- auction (schema/172), and actions don't cost Influence. Immediate effects resolve at the end via
--- _resolve_card_effects (schema/176). ──
-create or replace function public.card_play(p_deck_card uuid)
+-- _resolve_card_effects (schema/176). p_target is the rival party a party-scoped effect (party_gain/
+-- party_lose) lands on — chosen in the Home target picker; NULL when the card targets no party. ──
+drop function if exists public.card_play(uuid);   -- retire the 1-arg overload so p_target isn't ambiguous
+create or replace function public.card_play(p_deck_card uuid, p_target uuid default null)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_uid uuid; v_dc record; v_party record; v_def jsonb; v_name text; v_tick int; v_acts int;
+declare v_uid uuid; v_dc record; v_party record; v_def jsonb; v_name text; v_tick int; v_acts int; v_tgt_nat text;
 begin
   v_uid := auth.uid();
   if v_uid is null then raise exception 'Not signed in.'; end if;
@@ -118,6 +120,12 @@ begin
   select current_tick into v_tick from public.game_state where id;
   if (select turn_acted_tick from public.parties where id = v_party.id) = v_tick then
     raise exception 'You have already taken your turn.';
+  end if;
+
+  -- A chosen target must be a party of the SAME nation as the card (party effects are national).
+  if p_target is not null then
+    select nation_id into v_tgt_nat from public.parties where id = p_target;
+    if v_tgt_nat is distinct from v_dc.nation_id then raise exception 'That target is not a party in this nation.'; end if;
   end if;
 
   v_def := v_dc.definition;
@@ -147,11 +155,11 @@ begin
   if coalesce(v_def->>'persistV', 'no') = 'yes' then
     perform public._mint_card_modifier(v_dc.nation_id, v_party.id, v_def, v_tick);
   else
-    perform public._resolve_card_effects(v_dc.nation_id, v_party.id, v_def, v_tick);
+    perform public._resolve_card_effects(v_dc.nation_id, v_party.id, p_target, v_def, v_tick);
     perform public._create_card_decision(v_dc.nation_id, v_party.id, p_deck_card, v_def, v_tick);
   end if;
 end $$;
-grant execute on function public.card_play(uuid) to authenticated;
+grant execute on function public.card_play(uuid, uuid) to authenticated;
 
 -- Supersedes schema/173's _advance_turns: same rotation, but as the cursor lands on a party (its new
 -- turn begins) we clear that party's Action Points — unspent AP lasts only until your next turn, then

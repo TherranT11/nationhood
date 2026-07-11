@@ -116,6 +116,11 @@
   .cm .act.disc{color:var(--muted);background:var(--surface);border-color:var(--line)}
   .cm .act.disc:hover:not(:disabled){color:var(--inf);border-color:color-mix(in srgb,var(--inf) 45%,transparent)}
   .cm .act:disabled{opacity:.55;cursor:not-allowed;filter:none}
+  .cm .handbtns .tgtlbl{flex-basis:100%;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:2px 0}
+  .cm .act.tgt{color:#fff;background:var(--indigo);border-color:var(--indigo)}
+  .cm .act.tgt:hover:not(:disabled){filter:brightness(1.08)}
+  .cm .act.tgtx{color:var(--muted);background:var(--surface);border-color:var(--line);flex:0 0 auto;padding:9px 12px}
+  .cm .handbtns:has(.tgt){flex-wrap:wrap}
 
   .cm .empty{background:var(--surface);border:1px dashed var(--line);border-radius:13px;padding:26px 20px;text-align:center;color:var(--soft);font-size:13px}
   .cm .empty b{display:block;color:var(--muted);font-size:14px;margin-bottom:5px}
@@ -286,8 +291,36 @@
           '<button class="act disc" data-disc="' + c.id + '"' + (canAct ? '' : ' disabled') + ' title="Discard for +3 Influence">Discard · +3⚡</button>' +
         '</div></div>';
     }).join('');
-    el.querySelectorAll('[data-play]').forEach(function (b) { b.onclick = function () { playCard(b.dataset.play); }; });
+    el.querySelectorAll('[data-play]').forEach(function (b) { b.onclick = function () { onPlay(b.dataset.play); }; });
     el.querySelectorAll('[data-disc]').forEach(function (b) { b.onclick = function () { discardCard(b.dataset.disc); }; });
+  }
+
+  // Does this card land a party-scoped effect (party_gain/party_lose) that needs a rival chosen? A
+  // generic card's every effect fires; a stance card only fires its 'both'-sided effects (176), so
+  // only those need a target. Choice-mechanic rewards target the player, not a pick — no picker.
+  function cardTargets(def) {
+    def = def || {};
+    if (def.mech === 'choice' || def.persistV === 'yes') return false;
+    var generic = def.type === 'generic';
+    return (Array.isArray(def.fx) ? def.fx : []).some(function (e) {
+      return (e.kind === 'party_gain' || e.kind === 'party_lose') && (generic || (e.side || 'both') === 'both');
+    });
+  }
+
+  // Play a hand card: if it targets a rival, swap the card's buttons for a party picker; else play now.
+  function onPlay(id) {
+    var card = (window.__hand || []).find(function (x) { return x.id === id; });
+    if (!card || !cardTargets(card.definition)) { playCard(id); return; }
+    var rivals = (window.__roster || []).filter(function (p) { return !PARTY || p.id !== PARTY.id; });
+    if (!rivals.length) { playCard(id); return; }   // no rival to hit → play untargeted
+    var row = document.querySelector('[data-play="' + id + '"]');
+    row = row && row.parentNode;
+    if (!row) { playCard(id); return; }
+    row.innerHTML = '<span class="tgtlbl">Target a party:</span>' +
+      rivals.map(function (p) { return '<button class="act tgt" data-tp="' + p.id + '">' + esc(p.abbreviation || p.name || '—') + '</button>'; }).join('') +
+      '<button class="act tgtx" data-tx="1">Cancel</button>';
+    row.querySelectorAll('[data-tp]').forEach(function (b) { b.onclick = function () { playCard(id, b.dataset.tp); }; });
+    var x = row.querySelector('[data-tx]'); if (x) x.onclick = function () { renderHand(window.__hand || []); };
   }
 
   function renderActions() {
@@ -352,7 +385,7 @@
   // ---- actions (each locks BUSY, then reloads everything) ----
   async function placeBid(id, amount) { await run(function () { return supabase.rpc('card_bid', { p_deck_card: id, p_amount: amount }); }); }
   async function cancelBid(id) { await run(function () { return supabase.rpc('card_bid_cancel', { p_deck_card: id }); }); }
-  async function playCard(id) { await run(function () { return supabase.rpc('card_play', { p_deck_card: id }); }); }
+  async function playCard(id, target) { await run(function () { return supabase.rpc('card_play', { p_deck_card: id, p_target: target || null }); }); }
   async function discardCard(id) { if (!confirm('Discard this card for +3 Influence? It leaves your hand for good.')) return; await run(function () { return supabase.rpc('card_discard', { p_deck_card: id }); }); }
   async function takeAction() { await run(function () { return supabase.rpc('turn_take_action'); }); }
   async function decideCard(id, opt) { await run(function () { return supabase.rpc('card_decide', { p_decision: id, p_option: opt }); }); }
@@ -403,6 +436,7 @@
     try {
       const { data } = await supabase.from('deck_cards').select('id, cards(definition)').eq('party_id', PARTY.id).eq('status', 'in_hand');
       hand = (data || []).map(function (r) { return { id: r.id, definition: (r.cards && r.cards.definition) || {} }; });
+      window.__hand = hand;   // renderHand's target picker reads definitions back from here
     } catch (e) {}
     try {
       const { data } = await supabase.from('events').select('kind, body, game_date, created_at').eq('nation_id', NATION_ID).order('created_at', { ascending: false }).limit(25);

@@ -7,8 +7,8 @@
 --   stat_up / stat_down  → _apply_card_stat: the real-backed stats (Growth/Prosperity/Rule of Law/
 --                          Unemployment/Public Debt) route to _nation_stat_add so the game feels them;
 --                          every other stat routes to _nation_ministry_stat_add (the delta layer, 175).
---   party_gain/party_lose → _apply_party_effect (Party Popularity) on the target. A standalone effect
---                          has no target yet (target-picker UI is a later pass), so it's skipped; the
+--   party_gain/party_lose → _apply_party_effect (Party Popularity) on the target the player picked at
+--                          play (p_target, threaded from card_play). No target chosen → skipped; the
 --                          Government-Choice REWARD targets the player who fired it and applies now.
 --   coal_up / coal_down  → _coalition_health_restore / _coalition_health_drop on the active government.
 --   nat_el               → force a general election (next_election_tick = this tick → resolves next).
@@ -80,7 +80,8 @@ revoke all on function public._apply_card_effect(text, uuid, text, jsonb, int) f
 -- the 'both'-sided effects on a stance card (the d/r sides wait for party stance). Government Choice:
 -- apply the reward to the player now (the options are a decision — Phase 3b-2). Double-Sided: both
 -- sides are stance-gated, so nothing fires yet.
-create or replace function public._resolve_card_effects(p_nation text, p_party uuid, p_def jsonb, p_tick int)
+drop function if exists public._resolve_card_effects(text, uuid, jsonb, int);   -- old form (no target)
+create or replace function public._resolve_card_effects(p_nation text, p_party uuid, p_target uuid, p_def jsonb, p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_mech text; v_generic boolean; e jsonb; v_rk text;
 begin
@@ -89,7 +90,7 @@ begin
   if v_mech = 'oneoff' then
     for e in select value from jsonb_array_elements(coalesce(p_def->'fx', '[]'::jsonb)) loop
       if v_generic or coalesce(e->>'side', 'both') = 'both' then
-        perform public._apply_card_effect(p_nation, null, e->>'kind', e->'p', p_tick);   -- standalone: no target yet
+        perform public._apply_card_effect(p_nation, p_target, e->>'kind', e->'p', p_tick);   -- party effects hit the chosen target
       end if;
     end loop;
   elsif v_mech = 'choice' then
@@ -99,6 +100,6 @@ begin
     end if;
   end if;
 end $$;
-revoke all on function public._resolve_card_effects(text, uuid, jsonb, int) from public, anon, authenticated;
+revoke all on function public._resolve_card_effects(text, uuid, uuid, jsonb, int) from public, anon, authenticated;
 
 notify pgrst, 'reload schema';
