@@ -510,6 +510,17 @@ export async function mountCardCreator(mount) {
   // Decode a Committee-Bill effect's data-i ('bp<i>' pass / 'bf<i>' fail) → { arr: the list, i: index }.
   function billRef(di) { var m = /^b([pf])(\d+)$/.exec(di); return m ? { arr: state.bill[m[1] === 'p' ? 'pass' : 'fail'], i: +m[2] } : null; }
   function kindOpts(f) { return Object.keys(KINDS).map(function (k) { return '<option value="' + k + '"' + (k === f.kind ? ' selected' : '') + '>' + KINDS[k].label + '</option>'; }).join(''); }
+  // Fresh params for a newly-chosen effect kind — ONE source, shared by every effect-row change handler
+  // (top-level, double-side, choice-option, committee-bill), so a new kind is wired up in exactly one place.
+  function defaultFxParams(v) {
+    return v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } }
+      : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } }
+      : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 }
+      : (v === 'prod_up' || v === 'prod_down') ? { res: 'energy', x: 2, ticks: 12 }
+      : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 }
+      : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 }
+      : { stat: STATS[1], x: 3 };
+  }
 
   function renderFx() {
     var wrap = $('fxList'); var ax = axisLabels();
@@ -593,7 +604,7 @@ export async function mountCardCreator(mount) {
         var special = sr ? sr.s.fx[sr.i] : or ? or.o.fx[or.j] : br ? br.arr[br.i] : null;
         if (special) {
           var r = special;
-          if (fd === 'kind') { r.kind = v; if (v !== 'none') r.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_gain', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'prod_up' || v === 'prod_down') ? { res: 'energy', x: 2, ticks: 12 } : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 2 }; renderFx(); }
+          if (fd === 'kind') { r.kind = v; r.p = defaultFxParams(v); renderFx(); }
           else if (fd === 'nk') { r.p.nk = v; r.p.np = r.p.np || {}; renderFx(); }
           else if (fd === 'nstat') { r.p.np = r.p.np || {}; r.p.np.stat = v; }
           else if (fd === 'nx') { r.p.np = r.p.np || {}; r.p.np.x = +v; }
@@ -602,7 +613,7 @@ export async function mountCardCreator(mount) {
         }
         var f = activeArr()[+el.dataset.i];
         if (fd === 'txt' && state.mech === 'choice') { f.txt = v; renderPreview(); return; }
-        if (fd === 'kind') { f.kind = v; f.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : (v === 'prod_up' || v === 'prod_down') ? { res: 'energy', x: 2, ticks: 12 } : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 } : (v === 'decider_gain' || v === 'decider_lose') ? { x: 2 } : { stat: STATS[1], x: 3 }; renderFx(); }
+        if (fd === 'kind') { f.kind = v; f.p = defaultFxParams(v); renderFx(); }
         else if (fd === 'nk') { f.p.nk = v; f.p.np = f.p.np || {}; renderFx(); }
         else if (fd === 'nstat') { f.p.np = f.p.np || {}; f.p.np.stat = v; }
         else if (fd === 'nx') { f.p.np = f.p.np || {}; f.p.np.x = +v; }
