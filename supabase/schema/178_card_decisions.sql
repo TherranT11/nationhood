@@ -106,7 +106,7 @@ begin
   select current_tick into v_tick from public.game_state where id;
   -- Apply the chosen option's effect. Nation/coalition effects land; a party-targeted option is left
   -- untargeted for now (target-picker is a later pass), consistent with the immediate engine.
-  perform public._apply_card_effect(v_d.nation_id, v_resolver, null, v_opt->>'kind', v_opt->'p', v_tick);
+  perform public._apply_card_effect(v_d.nation_id, null, v_opt->>'kind', v_opt->'p', v_tick);
 
   update public.card_decisions set status = 'resolved', chosen_idx = p_option where id = p_decision;
   insert into public.events (nation_id, party_id, kind, body, game_date)

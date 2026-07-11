@@ -43,7 +43,8 @@ revoke all on function public._apply_card_stat(text, text, numeric) from public,
 
 -- Apply ONE authored effect. p_target is the party a party-scoped effect hits (null → skip, no target
 -- chosen). Unresolvable kinds are silent no-ops (see header). Recurses for 'cond'.
-create or replace function public._apply_card_effect(p_nation text, p_party uuid, p_target uuid, p_kind text, p_p jsonb, p_tick int)
+drop function if exists public._apply_card_effect(text, uuid, uuid, text, jsonb, int);   -- retired 6-arg form (dead p_party removed)
+create or replace function public._apply_card_effect(p_nation text, p_target uuid, p_kind text, p_p jsonb, p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_x numeric; v_gov uuid; v_live numeric;
 begin
@@ -67,13 +68,13 @@ begin
       v_live := public._nation_live_stat(p_nation, p_p->>'stat');
       if (p_p->>'dir' = 'above' and v_live >  v_x)
       or (p_p->>'dir' = 'below' and v_live <  v_x) then
-        perform public._apply_card_effect(p_nation, p_party, p_target, p_p->>'nk', p_p->'np', p_tick);
+        perform public._apply_card_effect(p_nation, p_target, p_p->>'nk', p_p->'np', p_tick);
       end if;
     -- no_conf / appoint / hex_el / mob_add / mob_rem / mil_add / mil_rem / event: deferred → no-op.
     else null;
   end case;
 end $$;
-revoke all on function public._apply_card_effect(text, uuid, uuid, text, jsonb, int) from public, anon, authenticated;
+revoke all on function public._apply_card_effect(text, uuid, text, jsonb, int) from public, anon, authenticated;
 
 -- Resolve a played card's IMMEDIATE effects. One-Off: apply every effect on a generic card, and only
 -- the 'both'-sided effects on a stance card (the d/r sides wait for party stance). Government Choice:
@@ -88,13 +89,13 @@ begin
   if v_mech = 'oneoff' then
     for e in select value from jsonb_array_elements(coalesce(p_def->'fx', '[]'::jsonb)) loop
       if v_generic or coalesce(e->>'side', 'both') = 'both' then
-        perform public._apply_card_effect(p_nation, p_party, null, e->>'kind', e->'p', p_tick);   -- standalone: no target yet
+        perform public._apply_card_effect(p_nation, null, e->>'kind', e->'p', p_tick);   -- standalone: no target yet
       end if;
     end loop;
   elsif v_mech = 'choice' then
     v_rk := coalesce(p_def->'reward'->>'kind', 'none');
     if v_rk <> 'none' then
-      perform public._apply_card_effect(p_nation, p_party, p_party, v_rk, p_def->'reward'->'p', p_tick);   -- reward → the player
+      perform public._apply_card_effect(p_nation, p_party, v_rk, p_def->'reward'->'p', p_tick);   -- reward → the player (target = the party)
     end if;
   end if;
 end $$;
