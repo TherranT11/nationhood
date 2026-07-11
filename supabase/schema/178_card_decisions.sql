@@ -122,6 +122,15 @@ begin
     end if;
   end loop;
 
+  -- If the chosen option carries a 'shuffle' effect, the played card returns to the deck to be won again
+  -- (instead of staying discarded) — the conditional recycler: one option recycles, another discards.
+  if v_d.deck_card_id is not null
+     and exists (select 1 from jsonb_array_elements(
+           case when jsonb_typeof(v_opt->'fx') = 'array' then v_opt->'fx' else jsonb_build_array(v_opt) end) e2
+          where e2->>'kind' = 'shuffle') then
+    perform public._card_return_to_deck(v_d.deck_card_id);
+  end if;
+
   update public.card_decisions set status = 'resolved', chosen_idx = p_option where id = p_decision;
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_d.nation_id, v_pid, 'party',

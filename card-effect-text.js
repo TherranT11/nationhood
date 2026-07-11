@@ -41,6 +41,7 @@ export function cardEffectText(kind, p, nationName, cardName) {
     case 'corp_shrink': return '<b>Cut ' + (p.x || 0) + ' growth</b> from one of your corporations (chosen on play)';
     case 'corp_acquire': return 'One corporation <b>acquires another</b> (both chosen on play — the buyer needs ≥2× the target’s cash)';
     case 'corp_create': return 'Found a <b>state-owned ' + esc(p.sector || 'a sector') + '</b> firm named <b>' + esc(p.name || 'untitled') + '</b>';
+    case 'shuffle': return 'This card <b>shuffles back into the deck</b> to be won again';
     case 'no_conf': return 'Put forth a <b>motion of no confidence</b>';
     case 'nat_el': return 'Carry out a <b>national election</b>';
     case 'hex_el': return 'Carry out an <b>election in a chosen hex</b> (reapportions its seats)';

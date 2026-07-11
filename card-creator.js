@@ -48,6 +48,7 @@ const KINDS = {
   prod_up:    { label: 'Increase production of [resource] by X for N ticks' },
   prod_down:  { label: 'Decrease production of [resource] by X for N ticks' },
   deck_add:   { label: 'Activate a dormant card into a nation’s deck (now or in N ticks)' },
+  shuffle:    { label: 'Shuffle this card back into the deck (instead of discarding)' },
   corp_grow:    { label: 'Add growth to one of your corporations (chosen on play)' },
   corp_shrink:  { label: 'Cut growth from one of your corporations (chosen on play)' },
   corp_acquire: { label: 'One corporation acquires another (both chosen on play)' },
@@ -521,6 +522,7 @@ export async function mountCardCreator(mount) {
     if (f.kind === 'corp_create') h = '<span class="lbl">sector</span>' +
       '<select data-i="' + i + '" data-f="sector">' + CATEGORIES.map(function (s) { return '<option' + (s === f.p.sector ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') + '</select>' +
       '<span class="lbl">named</span><input type="text" value="' + esc(f.p.name || '') + '" data-i="' + i + '" data-f="name" placeholder="Firm name…" style="flex:1;min-width:130px">';
+    if (f.kind === 'shuffle') h = '<span class="lbl">↻ this card returns to the deck to be won again</span>';
     if (f.kind === 'hex_el') h = '<span class="lbl">hex chosen on play · 12-tick cooldown</span>';
     if (f.kind === 'mob_add' || f.kind === 'mob_rem' || f.kind === 'mil_add' || f.kind === 'mil_rem')
       h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px"><span class="lbl">' + ((f.kind === 'mob_add' || f.kind === 'mob_rem') ? '⚠ armed mob — nobody’s soldiers' : '⚑ militia — belongs to a party') + '</span>';
@@ -593,7 +595,7 @@ export async function mountCardCreator(mount) {
       : v === 'deck_add' ? { card: '', nation: '', ticks: 0 }
       : v === 'sanction' ? { nation: '', ticks: 36 }
       : (v === 'corp_grow' || v === 'corp_shrink') ? { x: 2 }
-      : v === 'corp_acquire' ? {}
+      : (v === 'corp_acquire' || v === 'shuffle') ? {}
       : v === 'corp_create' ? { sector: CATEGORIES[0], name: '' }
       : v === 'bill' ? { name: '', pass: [{ kind: 'stat_up', p: { stat: 'Growth', x: 5 } }], fail: [{ kind: 'stat_down', p: { stat: 'Growth', x: 3 } }] }
       : (v === 'decider_gain' || v === 'decider_lose' || v === 'coal_pop_up' || v === 'coal_pop_down') ? { x: 2 }
