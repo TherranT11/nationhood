@@ -141,11 +141,15 @@ begin
             case when coalesce(v_def->>'desc', '') <> '' then ' — ' || (v_def->>'desc') else '' end,
           public.current_game_date());
 
-  -- Resolve the card's immediate effects (schema/176). Atomic with the play — a bad effect rolls the
-  -- whole play back. Stance-gated sides + persistence are handled in later phases.
-  perform public._resolve_card_effects(v_dc.nation_id, v_party.id, v_def, v_tick);
-  -- A Government Choice card opens a pending decision its handler resolves later (schema/178).
-  perform public._create_card_decision(v_dc.nation_id, v_party.id, p_deck_card, v_def, v_tick);
+  -- Effects (atomic with the play). A Persistent card becomes a standing national modifier
+  -- (schema/179); otherwise its immediate effects fire now (176) and a Government Choice opens a
+  -- pending decision (178). Stance-gated sides still wait on party stance.
+  if coalesce(v_def->>'persistV', 'no') = 'yes' then
+    perform public._mint_card_modifier(v_dc.nation_id, v_party.id, v_def, v_tick);
+  else
+    perform public._resolve_card_effects(v_dc.nation_id, v_party.id, v_def, v_tick);
+    perform public._create_card_decision(v_dc.nation_id, v_party.id, p_deck_card, v_def, v_tick);
+  end if;
 end $$;
 grant execute on function public.card_play(uuid) to authenticated;
 
