@@ -300,8 +300,8 @@ export async function mountCardCreator(mount) {
     ],
     reward: { kind: 'party_gain', p: { x: 2 } },
     dside: {
-      d: { txt: '', kind: 'no_conf', p: {} },
-      r: { txt: '', kind: 'stat_down', p: { stat: 'Growth', x: 4 } }
+      d: { txt: '', fx: [{ kind: 'no_conf', p: {} }] },
+      r: { txt: '', fx: [{ kind: 'stat_down', p: { stat: 'Growth', x: 4 } }] }
     },
     persistV: 'no', reqCard: '', allowCard: '',
     handler: 'player',      // who resolves the card's decision: 'player' (holder decides) or a ministry name
@@ -396,6 +396,9 @@ export async function mountCardCreator(mount) {
     return h;
   }
   function activeArr() { return state.mech === 'choice' ? state.copt : state.fx; }
+  // Decode a double-sided effect's data-i ('dd0'…/'dr0'…) → { s: the side, i: effect index }, else null.
+  // One source for the encoding the side rows render and the change/delete handlers read.
+  function sideRef(di) { return /^d[dr]\d+$/.test(di) ? { s: state.dside[di.charAt(1) === 'd' ? 'd' : 'r'], i: +di.slice(2) } : null; }
   function kindOpts(f) { return Object.keys(KINDS).map(function (k) { return '<option value="' + k + '"' + (k === f.kind ? ' selected' : '') + '>' + KINDS[k].label + '</option>'; }).join(''); }
 
   function renderFx() {
@@ -420,17 +423,22 @@ export async function mountCardCreator(mount) {
       var ab = $('addFx'); ab.style.display = 'block'; ab.textContent = '+ Add Option'; ab.disabled = state.copt.length >= 4;
     } else if (state.mech === 'double') {
       function sideBlock(key, ref, cls, side, lvl) {
-        var f = state.dside[key];
+        var s = state.dside[key];
         var gate = state.stanceReq === 'gated' ? ' (' + side.pre + lvl + '+)' : '';
+        var effRows = s.fx.map(function (f, i) {
+          var del = s.fx.length > 1 ? '<button class="del" data-i="' + ref + i + '">✕</button>' : '';
+          return '<div class="fx-top" style="margin-top:9px"><span class="n">' + (i + 1) + '</span>' +
+            '<select data-i="' + ref + i + '" data-f="kind">' + kindOpts(f) + '</select>' + del + '</div>' +
+            '<div class="fx-params">' + fxParamsHTML(f, ref + i) + '</div>';
+        }).join('');
+        var add = s.fx.length < 3 ? '<button class="addfx sideadd" data-add="' + key + '" style="margin-top:9px">+ Add effect (' + s.fx.length + '/3)</button>' : '';
         return '<div class="opt ' + cls + '">' +
-          '<div class="opt-h">' + side.ic + ' ' + side.name + ' side' + gate + ' — its own name + effect:</div>' +
-          '<input type="text" value="' + esc(f.txt || '') + '" data-i="' + ref + '" data-f="txt" placeholder="Name this side of the card…">' +
-          '<div class="fx-top" style="margin-top:9px"><span class="n">→</span>' +
-          '<select data-i="' + ref + '" data-f="kind">' + kindOpts(f) + '</select></div>' +
-          '<div class="fx-params">' + fxParamsHTML(f, ref) + '</div></div>';
+          '<div class="opt-h">' + side.ic + ' ' + side.name + ' side' + gate + ' — its own name + up to 3 effects:</div>' +
+          '<input type="text" value="' + esc(s.txt || '') + '" data-i="' + ref + '" data-f="txt" placeholder="Name this side of the card…">' +
+          effRows + add + '</div>';
       }
       wrap.innerHTML = sideBlock('d', 'dd', 'dside-d', ax.d, state.reqD) + sideBlock('r', 'dr', 'dside-r', ax.r, state.reqR);
-      $('fxCount').textContent = 'two sides · one named effect each';
+      $('fxCount').textContent = 'two sides · up to 3 effects each';
       $('addFx').style.display = 'none';
     } else {
       wrap.innerHTML = state.fx.map(function (f, i) {
@@ -450,11 +458,14 @@ export async function mountCardCreator(mount) {
 
     wrap.querySelectorAll('select,input').forEach(function (el) {
       el.onchange = el.oninput = function () {
-        var fd = el.dataset.f, v = el.value;
-        var special = el.dataset.i === 'rw' ? state.reward : el.dataset.i === 'dd' ? state.dside.d : el.dataset.i === 'dr' ? state.dside.r : null;
+        var fd = el.dataset.f, v = el.value, di = el.dataset.i;
+        // Double-sided side NAME (side-level, not an effect).
+        if (di === 'dd' || di === 'dr') { state.dside[di === 'dd' ? 'd' : 'r'].txt = v; renderPreview(); return; }
+        // Single-effect owners: the choice reward ('rw'), or a double-side effect ('dd0'…/'dr0'…).
+        var sr = sideRef(di);
+        var special = di === 'rw' ? state.reward : (sr ? sr.s.fx[sr.i] : null);
         if (special) {
           var r = special;
-          if (fd === 'txt') { r.txt = v; renderPreview(); return; }
           if (fd === 'kind') { r.kind = v; if (v !== 'none') r.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_gain', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : { stat: STATS[1], x: 2 }; renderFx(); }
           else if (fd === 'nk') { r.p.nk = v; r.p.np = r.p.np || {}; renderFx(); }
           else if (fd === 'nstat') { r.p.np = r.p.np || {}; r.p.np.stat = v; }
@@ -476,7 +487,15 @@ export async function mountCardCreator(mount) {
       b.onclick = function () { state.fx[+b.dataset.i].side = b.dataset.s; renderFx(); renderPreview(); };
     });
     wrap.querySelectorAll('.del').forEach(function (b) {
-      b.onclick = function () { activeArr().splice(+b.dataset.i, 1); renderFx(); renderPreview(); };
+      b.onclick = function () {
+        var sr = sideRef(b.dataset.i);
+        if (sr) sr.s.fx.splice(sr.i, 1);
+        else activeArr().splice(+b.dataset.i, 1);
+        renderFx(); renderPreview();
+      };
+    });
+    wrap.querySelectorAll('.sideadd').forEach(function (b) {
+      b.onclick = function () { var s = state.dside[b.dataset.add]; if (s.fx.length < 3) { s.fx.push({ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); renderFx(); renderPreview(); } };
     });
   }
   $('addFx').onclick = function () {
@@ -544,8 +563,8 @@ export async function mountCardCreator(mount) {
         html += '<div class="fxgroup grw"><div class="gt">◈ Played-by reward — whoever asks, profits</div><div class="fxline">' + rt + '</div></div>';
       }
     } else if (state.mech === 'double') {
-      html += '<div class="fxgroup gd"><div class="gt">' + ax.d.ic + ' ' + (gated ? ax.d.pre + state.reqD + '+ · ' : '') + '“' + esc(state.dside.d.txt || 'unnamed side') + '”</div><div class="fxline">' + fxText(state.dside.d.kind, state.dside.d.p) + '</div></div>';
-      html += '<div class="fxgroup gr"><div class="gt">' + ax.r.ic + ' ' + (gated ? ax.r.pre + state.reqR + '+ · ' : '') + '“' + esc(state.dside.r.txt || 'unnamed side') + '”</div><div class="fxline">' + fxText(state.dside.r.kind, state.dside.r.p) + '</div></div>';
+      html += '<div class="fxgroup gd"><div class="gt">' + ax.d.ic + ' ' + (gated ? ax.d.pre + state.reqD + '+ · ' : '') + '“' + esc(state.dside.d.txt || 'unnamed side') + '”</div>' + state.dside.d.fx.map(function (f) { return '<div class="fxline">' + fxText(f.kind, f.p) + '</div>'; }).join('') + '</div>';
+      html += '<div class="fxgroup gr"><div class="gt">' + ax.r.ic + ' ' + (gated ? ax.r.pre + state.reqR + '+ · ' : '') + '“' + esc(state.dside.r.txt || 'unnamed side') + '”</div>' + state.dside.r.fx.map(function (f) { return '<div class="fxline">' + fxText(f.kind, f.p) + '</div>'; }).join('') + '</div>';
     } else {
       var groups = { d: [], r: [], both: [] };
       state.fx.forEach(function (f) { groups[state.type === 'generic' ? 'both' : f.side].push(fxText(f.kind, f.p)); });
@@ -555,7 +574,7 @@ export async function mountCardCreator(mount) {
     }
     $('pFx').innerHTML = html || '<div class="fxline" style="color:var(--soft)">no effects yet</div>';
 
-    var arr = state.mech === 'choice' ? state.copt : state.mech === 'double' ? [state.dside.d, state.dside.r] : state.fx;
+    var arr = state.mech === 'choice' ? state.copt : state.mech === 'double' ? state.dside.d.fx.concat(state.dside.r.fx) : state.fx;
     var mechLabel = state.mech === 'choice' ? 'Gov Choice' : state.mech === 'double' ? 'Double Sided' : 'One-Off';
     var tags = ['<span class="tag">' + mechLabel + '</span>'];
     if (arr.some(function (f) { return f.kind === 'party_gain' || f.kind === 'party_lose'; })) tags.push('<span class="tag" style="color:var(--auto);border-color:color-mix(in srgb,var(--auto) 45%,transparent)">Target Party</span>');
