@@ -318,26 +318,15 @@
     el.querySelectorAll('[data-disc]').forEach(function (b) { b.onclick = function () { discardCard(b.dataset.disc); }; });
   }
 
-  // Does this card land a party-scoped effect (party_gain/party_lose) that needs a rival chosen? A
-  // generic card's every effect fires; a stance card only fires its 'both'-sided effects (176), so
-  // only those need a target. Choice-mechanic rewards target the player, not a pick — no picker.
-  function cardTargets(def) {
+  // Does this card fire an effect of one of these kinds on play? A generic card's every effect fires;
+  // a stance card only its 'both'-sided effects (176); choice/persistent cards never fire fx on play.
+  // The one predicate behind the play-time pickers: party target (party_gain/lose), hex (hex_pop/hex_el).
+  function cardFires(def, kinds) {
     def = def || {};
     if (def.mech === 'choice' || def.persistV === 'yes') return false;
     var generic = def.type === 'generic';
     return (Array.isArray(def.fx) ? def.fx : []).some(function (e) {
-      return (e.kind === 'party_gain' || e.kind === 'party_lose') && (generic || (e.side || 'both') === 'both');
-    });
-  }
-
-  // Does this card carry a hex_pop effect (pick a hex on play, then boost self or hit a rival there)?
-  // Same side-gating as cardTargets: a generic card's effects all fire; a stance card only its 'both'.
-  function cardNeedsHex(def) {
-    def = def || {};
-    if (def.mech === 'choice' || def.persistV === 'yes') return false;
-    var generic = def.type === 'generic';
-    return (Array.isArray(def.fx) ? def.fx : []).some(function (e) {
-      return e.kind === 'hex_pop' && (generic || (e.side || 'both') === 'both');
+      return kinds.indexOf(e.kind) >= 0 && (generic || (e.side || 'both') === 'both');
     });
   }
   function hexAmount(def) {
@@ -345,12 +334,14 @@
     return Math.max(0, Number(e && e.p && e.p.x) || 0);
   }
 
-  // Play a hand card: a hex card opens the map picker; a party-target card swaps in a party picker;
-  // anything else plays straight through.
+  // Play a hand card: a hex_el card opens the election modal; a hex_pop card opens the boost/hit map
+  // picker; a party-target card swaps in a party picker; anything else plays straight through.
   function onPlay(id) {
     var card = (window.__hand || []).find(function (x) { return x.id === id; });
-    if (card && cardNeedsHex(card.definition)) { openHexPicker(id, card.definition); return; }
-    if (!card || !cardTargets(card.definition)) { playCard(id); return; }
+    var def = card && card.definition;
+    if (card && cardFires(def, ['hex_el'])) { openHexElection(id, def); return; }
+    if (card && cardFires(def, ['hex_pop'])) { openHexPicker(id, def); return; }
+    if (!card || !cardFires(def, ['party_gain', 'party_lose'])) { playCard(id); return; }
     var rivals = (window.__roster || []).filter(function (p) { return !PARTY || p.id !== PARTY.id; });
     if (!rivals.length) { playCard(id); return; }   // no rival to hit → play untargeted
     var row = document.querySelector('[data-play="' + id + '"]');
@@ -363,22 +354,40 @@
     var x = row.querySelector('[data-tx]'); if (x) x.onclick = function () { renderHand(window.__hand || []); };
   }
 
-  // Interactive hex picker for a hex_pop card. Opens a modal map of your nation (reusing the
-  // Party-page renderer); click a land hex, choose to boost your party (+X) or hit a rival (−X) there,
-  // then play. The nation's hexes are fetched once and cached. The server validates the hex again.
-  async function openHexPicker(id, def) {
-    var amt = hexAmount(def);
+  // The nation's land hexes, fetched once and cached (includes population for the election modal).
+  async function loadHexes() {
     if (!window.__hexes) {
       try {
-        var res = await supabase.from('world_hexes').select('q, r, terrain, nation_id, name').eq('nation_id', NATION_ID);
+        var res = await supabase.from('world_hexes').select('q, r, terrain, nation_id, name, population').eq('nation_id', NATION_ID);
         window.__hexes = res.error ? [] : (res.data || []);
       } catch (e) { window.__hexes = []; }
     }
-    var land = (window.__hexes || []).filter(function (h) { return h.terrain === 'land'; });
+    return (window.__hexes || []).filter(function (h) { return h.terrain === 'land'; });
+  }
+  // Paint the nation map into an overlay and wire click → onPick(hex) (own land only). Returns a
+  // repaint(sel) fn that redraws with a selection ring. Shared by the hex-pop and hex-election modals.
+  function wireHexMap(ov, land, onPick) {
+    var cv = ov.querySelector('.hexcv'), wrap = ov.querySelector('.hexmapwrap'), mapObj = null;
+    function paint(sel) { mapObj = drawNationMiniMap(cv, wrap, { hexes: land, natColor: {}, viewedId: NATION_ID, mode: 'nation', selected: sel }); }
+    requestAnimationFrame(function () { paint(null); });   // wait for the wrap to have layout
+    cv.onclick = function (e) {
+      if (!mapObj) return;
+      var rect = cv.getBoundingClientRect();
+      var h = mapObj.hexAt(e.clientX - rect.left, e.clientY - rect.top);
+      if (h && h.nation_id === NATION_ID) onPick(h);   // only your own land is selectable
+    };
+    return paint;
+  }
+
+  // Interactive hex picker for a hex_pop card: click a land hex, choose to boost your party (+X) or hit
+  // a rival (−X) there, then play. The server validates the hex again.
+  async function openHexPicker(id, def) {
+    var amt = hexAmount(def);
+    var land = await loadHexes();
     if (!land.length) { alert('Your nation has no land hexes to target.'); return; }
     var rivals = (window.__roster || []).filter(function (p) { return !PARTY || p.id !== PARTY.id; });
 
-    var sel = null, mode = 'self', rival = rivals.length ? rivals[0].id : null, mapObj = null;
+    var sel = null, mode = 'self', rival = rivals.length ? rivals[0].id : null;
     var ov = document.createElement('div');
     ov.className = 'hexov';
     ov.innerHTML =
@@ -400,21 +409,13 @@
       '</div>';
     document.body.appendChild(ov);
 
-    var cv = ov.querySelector('.hexcv'), wrap = ov.querySelector('.hexmapwrap');
-    function paint() { mapObj = drawNationMiniMap(cv, wrap, { hexes: land, natColor: {}, viewedId: NATION_ID, mode: 'nation', selected: sel }); }
-    requestAnimationFrame(paint);   // wait for the wrap to have layout before sizing the canvas
     function updRiv() { ov.querySelectorAll('.rv').forEach(function (b) { b.classList.toggle('on', b.dataset.r === rival); }); }
     function updGo() { ov.querySelector('#hexGo').disabled = !(sel && (mode === 'self' || rival)); }
-
-    cv.onclick = function (e) {
-      if (!mapObj) return;
-      var rect = cv.getBoundingClientRect();
-      var h = mapObj.hexAt(e.clientX - rect.left, e.clientY - rect.top);
-      if (!h || h.nation_id !== NATION_ID) return;   // only your own land is targetable
+    var repaint = wireHexMap(ov, land, function (h) {
       sel = { q: h.q, r: h.r };
       ov.querySelector('#hexSel').innerHTML = 'Hex <b>' + h.q + ', ' + h.r + '</b>' + (h.name ? ' · ' + esc(h.name) : '');
-      paint(); updGo();
-    };
+      repaint(sel); updGo();
+    });
     ov.querySelectorAll('.hxm').forEach(function (b) {
       b.onclick = function () {
         mode = b.dataset.m;
@@ -432,6 +433,56 @@
       ov.remove();
       playCard(id, tgt, sel.q, sel.r);
     };
+  }
+
+  // Interactive election modal for a hex_el card: the map of your nation; tap a hex to see its seat
+  // count and current makeup (elected result, or the population projection if it hasn't voted) plus its
+  // 12-tick cooldown; hold the election in a hex that's off cooldown and big enough for a seat. The
+  // server reapportions the hex's seats by regional standing (181) and re-enforces the cooldown.
+  async function openHexElection(id, def) {
+    var land = await loadHexes();
+    if (!land.length) { alert('Your nation has no land hexes.'); return; }
+    var natSeats = 0, seatsByHex = {}, cdByHex = {};
+    try { var nr = await supabase.from('nations').select('legislature_seats').eq('id', NATION_ID).single(); natSeats = (nr.data && Number(nr.data.legislature_seats)) || 0; } catch (e) {}
+    try {
+      var hr = await supabase.from('hex_seats').select('q, r, party_id, seats, elected_tick').eq('nation_id', NATION_ID);
+      (hr.data || []).forEach(function (row) { var k = row.q + ',' + row.r; (seatsByHex[k] = seatsByHex[k] || []).push(row); cdByHex[k] = Math.max(cdByHex[k] || 0, Number(row.elected_tick) || 0); });
+    } catch (e) {}
+    var natPop = land.reduce(function (s, h) { return s + (Number(h.population) || 0); }, 0);
+    var partyName = function (pid) { var p = (window.__roster || []).find(function (x) { return x.id === pid; }); return p ? (p.abbreviation || p.name) : '—'; };
+    var hexSeatCount = function (h) { return (natPop > 0 && natSeats > 0) ? Math.round(natSeats * (Number(h.population) || 0) / natPop) : 0; };
+    var cooldownLeft = function (h) { var last = cdByHex[h.q + ',' + h.r]; return last ? Math.max(0, last + 12 - (Number(CUR_TICK) || 0)) : 0; };
+
+    var sel = null;
+    var ov = document.createElement('div');
+    ov.className = 'hexov';
+    ov.innerHTML =
+      '<div class="hexbox">' +
+        '<div class="hexhd">Hold an election — <b>' + esc(def.name || 'card') + '</b></div>' +
+        '<div class="hexmapwrap"><canvas class="hexcv"></canvas><div class="hexhint">Tap a hex to see its seats</div></div>' +
+        '<div class="hexsel" id="hexSel">Tap a hex to see its current seats</div>' +
+        '<div class="hexbtns">' +
+          '<button class="act hexx" id="hexCancel">Cancel</button>' +
+          '<button class="act hexgo" id="hexGo" disabled>Hold election here</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+
+    var repaint = wireHexMap(ov, land, function (h) {
+      sel = { q: h.q, r: h.r };
+      var cd = cooldownLeft(h), cnt = hexSeatCount(h), k = h.q + ',' + h.r;
+      var rows = (seatsByHex[k] || []).slice().sort(function (a, b) { return b.seats - a.seats; });
+      var makeup = rows.length
+        ? rows.map(function (rw) { return esc(partyName(rw.party_id)) + ' ' + rw.seats; }).join(' · ')
+        : (cnt > 0 ? 'no election held yet — projected split' : 'too small for a seat');
+      ov.querySelector('#hexSel').innerHTML =
+        '<b>' + (h.name ? esc(h.name) + ' ' : '') + '(' + h.q + ',' + h.r + ')</b> · ' + cnt + ' seat' + (cnt === 1 ? '' : 's') +
+        '<br>' + makeup + (cd > 0 ? '<br><span class="inf">on cooldown — ' + cd + ' tick' + (cd === 1 ? '' : 's') + ' left</span>' : '');
+      repaint(sel);
+      ov.querySelector('#hexGo').disabled = !(cnt > 0 && cd === 0);
+    });
+    ov.querySelector('#hexCancel').onclick = function () { ov.remove(); };
+    ov.querySelector('#hexGo').onclick = function () { if (!sel) return; ov.remove(); playCard(id, null, sel.q, sel.r); };
   }
 
   function renderActions() {

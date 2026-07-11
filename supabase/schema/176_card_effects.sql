@@ -126,6 +126,8 @@ begin
             then perform public._apply_card_hex(p_target, p_nation, p_q, p_r, -v_x);
             else perform public._apply_card_hex(p_party,  p_nation, p_q, p_r,  v_x);
           end if;
+        elsif e->>'kind' = 'hex_el' then
+          perform public.hex_election_resolve(p_nation, p_q, p_r, p_party, p_tick);   -- reapportion the chosen hex
         else
           perform public._apply_card_effect(p_nation, p_target, e->>'kind', e->'p', p_tick);   -- party effects hit the chosen target
         end if;
