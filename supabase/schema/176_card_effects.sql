@@ -79,8 +79,10 @@ begin
     from public.politicians where party_id = v_form and status = 'Party Leader' order by created_at limit 1;
   if v_leader is null then return; end if;                      -- the HoG's party has no seeded leader → no-op
   select first_name, last_name into v_first, v_last from public._random_name(p_nation);   -- successor from the name pool
-  v_new := nullif(btrim(concat_ws(' ', v_first, v_last)), '');
-  if v_new is null then return; end if;                         -- nation has no names seeded → leave the incumbent
+  -- Need BOTH a given name and a surname: politicians.first_name/last_name are NOT NULL, so a partial
+  -- pool (e.g. surnames but no given names) must leave the incumbent rather than blank a component.
+  if coalesce(btrim(v_first), '') = '' or coalesce(btrim(v_last), '') = '' then return; end if;
+  v_new := v_first || ' ' || v_last;
   update public.politicians set first_name = v_first, last_name = v_last where id = v_leader;
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (p_nation, v_form, 'party',
