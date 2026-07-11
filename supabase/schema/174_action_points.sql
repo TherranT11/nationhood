@@ -97,16 +97,29 @@ begin
 end $$;
 revoke all on function public._card_return_to_deck(uuid) from public, anon, authenticated;
 
--- Does a One-Off card carry a 'shuffle' effect that fires on play? (A generic card fires every effect; a
--- stance card only its 'both'-sided ones — the same firing rule as _resolve_card_effects, schema/176.)
--- Choice/Double cards decide their fate elsewhere (a chosen option at decide-time; stance sides deferred),
--- so this is oneoff-only. Lets card_play express "reshuffle" as an authored effect, not just the toggle.
+-- ONE source for the play-time firing rule: a generic card fires every effect; a stance card fires only
+-- its 'both'-sided ones (the d/r sides wait for party stance). Read by the effect resolver (schema/176)
+-- and by both "does the card carry a firing effect of kind X" checks below — so the rule lives once.
+create or replace function public._card_side_fires(p_def jsonb, p_side text)
+returns boolean language sql immutable set search_path = public as $$
+  select p_def->>'type' = 'generic' or coalesce(p_side, 'both') = 'both';
+$$;
+revoke all on function public._card_side_fires(jsonb, text) from public, anon, authenticated;
+
+-- Does the card carry a FIRING effect (the rule above) of any of these kinds? One exists-scan, backing
+-- card_play's "needs a hex" gate and the "reshuffles on play" check below.
+create or replace function public._def_fires_kind(p_def jsonb, p_kinds text[])
+returns boolean language sql immutable set search_path = public as $$
+  select exists (select 1 from jsonb_array_elements(coalesce(p_def->'fx', '[]'::jsonb)) e
+                  where e->>'kind' = any(p_kinds) and public._card_side_fires(p_def, e->>'side'));
+$$;
+revoke all on function public._def_fires_kind(jsonb, text[]) from public, anon, authenticated;
+
+-- A One-Off card reshuffles on play if it carries a firing 'shuffle' effect. Choice/Double cards decide
+-- their fate elsewhere (a chosen option at decide-time; stance sides deferred), so this is oneoff-only.
 create or replace function public._def_fires_shuffle(p_def jsonb)
 returns boolean language sql immutable set search_path = public as $$
-  select coalesce(p_def->>'mech', 'oneoff') = 'oneoff'
-     and exists (select 1 from jsonb_array_elements(coalesce(p_def->'fx', '[]'::jsonb)) e
-                  where e->>'kind' = 'shuffle'
-                    and (p_def->>'type' = 'generic' or coalesce(e->>'side', 'both') = 'both'));
+  select coalesce(p_def->>'mech', 'oneoff') = 'oneoff' and public._def_fires_kind(p_def, array['shuffle']);
 $$;
 revoke all on function public._def_fires_shuffle(jsonb) from public, anon, authenticated;
 
@@ -162,9 +175,7 @@ begin
   -- validated against the nation's land downstream (schema/176/181); an atomic play rolls back on a bad hex.
   if coalesce(v_def->>'persistV', 'no') <> 'yes'
      and (p_hex_q is null or p_hex_r is null)
-     and exists (select 1 from jsonb_array_elements(coalesce(v_def->'fx', '[]'::jsonb)) e
-                  where e.value->>'kind' in ('hex_pop', 'hex_el')
-                    and (v_def->>'type' = 'generic' or coalesce(e.value->>'side', 'both') = 'both')) then
+     and public._def_fires_kind(v_def, array['hex_pop', 'hex_el']) then
     raise exception 'Pick a hex on the map to play this card.';
   end if;
 

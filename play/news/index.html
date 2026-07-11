@@ -587,9 +587,9 @@
     var ov = document.createElement('div'); ov.className = 'hexov';
     var firmName = function (cid) { var c = pool.find(function (x) { return x.id === cid; }); return c ? c.name : '—'; };
     var firmCash = function (cid) { var c = pool.find(function (x) { return x.id === cid; }); return c ? Number(c.cash) || 0 : 0; };
-    function row(c, group) {
+    function row(c) {
       var nat = c.nation_id === NATION_ID ? 'yours' : (NATIONS[c.nation_id] || c.nation_id);
-      return '<button class="act corprow" data-g="' + group + '" data-c="' + c.id + '">' +
+      return '<button class="act corprow" data-c="' + c.id + '">' +
         '<span class="cr-n">' + esc(c.name) + '</span>' +
         '<span class="cr-m">' + esc(c.category) + ' · ' + esc(nat) + ' · $' + (Number(c.cash) || 0).toFixed(1) + '</span></button>';
     }
@@ -598,7 +598,7 @@
       '<div class="hexbox">' +
         '<div class="hexhd">' + esc(hd) + ' — <b>' + esc(def.name || 'card') + '</b></div>' +
         (mode === 'two' ? '<div class="corplbl" id="corpL1">Acquirer</div>' : '') +
-        '<div class="corplist" id="corpList1">' + pool.map(function (c) { return row(c, '1'); }).join('') + '</div>' +
+        '<div class="corplist" id="corpList1">' + pool.map(function (c) { return row(c); }).join('') + '</div>' +
         (mode === 'two' ? '<div class="corplbl" id="corpL2">Target</div><div class="corplist" id="corpList2"></div>' : '') +
         '<div class="hexsel" id="corpSel">Nothing selected</div>' +
         '<div class="hexbtns">' +
@@ -610,7 +610,7 @@
 
     function paintTargets() {   // acquire: list every OTHER firm as a possible target
       var l2 = ov.querySelector('#corpList2'); if (!l2) return;
-      l2.innerHTML = pool.filter(function (c) { return c.id !== acq; }).map(function (c) { return row(c, '2'); }).join('');
+      l2.innerHTML = pool.filter(function (c) { return c.id !== acq; }).map(function (c) { return row(c); }).join('');
       l2.querySelectorAll('.corprow').forEach(function (b) { b.onclick = function () { tgt = b.dataset.c; syncSel(); }; });
     }
     function syncSel() {

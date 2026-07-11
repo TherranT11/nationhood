@@ -172,12 +172,11 @@ drop function if exists public._resolve_card_effects(text, uuid, uuid, jsonb, in
 drop function if exists public._resolve_card_effects(text, uuid, uuid, int, int, jsonb, int);   -- pre-corp form
 create or replace function public._resolve_card_effects(p_nation text, p_party uuid, p_target uuid, p_q int, p_r int, p_corp uuid, p_corp2 uuid, p_def jsonb, p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_generic boolean; e jsonb; v_x numeric;
+declare e jsonb; v_x numeric;
 begin
-  v_generic := (p_def->>'type' = 'generic');
   if coalesce(p_def->>'mech', 'oneoff') = 'oneoff' then
     for e in select value from jsonb_array_elements(coalesce(p_def->'fx', '[]'::jsonb)) loop
-      if v_generic or coalesce(e->>'side', 'both') = 'both' then
+      if public._card_side_fires(p_def, e->>'side') then
         v_x := coalesce(public._to_num(e->'p'->>'x'), 0);
         if e->>'kind' = 'hex_pop' then
           if p_target is not null   -- hex-scoped popularity: you +x, or a rival −x
