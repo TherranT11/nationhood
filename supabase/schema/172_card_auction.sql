@@ -126,19 +126,30 @@ begin
          and exists (select 1 from public.card_bids b where b.deck_card_id = dc.id)
        for update of dc   -- lock the card so a bid can't land mid-resolution (it'd lose its escrow)
     loop
+      -- HARD hand-limit guarantee: award to the highest bidder who still has an open slot (holds < 4),
+      -- counting cards won earlier in THIS resolution (_hand_count is live). A bidder already at 4 is
+      -- skipped and refunded — so a party can never finish holding more than 4, even if the bid gate
+      -- (schema/180) was bypassed. If EVERY bidder is at the cap, nobody wins and all are refunded; the
+      -- card stays on the block to re-auction.
       select party_id, amount into w from public.card_bids
-        where deck_card_id = c.id order by amount desc, created_at asc limit 1;   -- top bid, tie → earliest
-      update public.deck_cards set status = 'in_hand', party_id = w.party_id where id = c.id;  -- winner's escrow already spent
-      update public.parties p set influence = least(100, p.influence + b.amount)   -- refund the losers
-        from public.card_bids b
-       where b.deck_card_id = c.id and b.party_id = p.id and b.party_id <> w.party_id;
+        where deck_card_id = c.id and public._hand_count(party_id) < 4
+        order by amount desc, created_at asc limit 1;   -- top eligible bid, tie → earliest
+      if w.party_id is not null then
+        update public.deck_cards set status = 'in_hand', party_id = w.party_id where id = c.id;  -- winner's escrow already spent
+        update public.parties p set influence = least(100, p.influence + b.amount)   -- refund everyone else (incl. capped higher bidders)
+          from public.card_bids b
+         where b.deck_card_id = c.id and b.party_id = p.id and b.party_id <> w.party_id;
+        select name into v_pname from public.parties where id = w.party_id;
+        v_cname := coalesce(c.definition->>'name', 'a card');
+        insert into public.events (nation_id, party_id, kind, body, game_date)
+          values (n.id, w.party_id, 'party',
+                  v_pname || ' won ' || v_cname || ' at auction for ' || w.amount || ' Influence.',
+                  public.current_game_date());
+      else
+        update public.parties p set influence = least(100, p.influence + b.amount)   -- all bidders capped → refund all, no award
+          from public.card_bids b where b.deck_card_id = c.id and b.party_id = p.id;
+      end if;
       delete from public.card_bids where deck_card_id = c.id;
-      select name into v_pname from public.parties where id = w.party_id;
-      v_cname := coalesce(c.definition->>'name', 'a card');
-      insert into public.events (nation_id, party_id, kind, body, game_date)
-        values (n.id, w.party_id, 'party',
-                v_pname || ' won ' || v_cname || ' at auction for ' || w.amount || ' Influence.',
-                public.current_game_date());
     end loop;
 
     -- 2) top the block back up (active parties + 1) — shared refiller.

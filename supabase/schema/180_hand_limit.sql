@@ -13,6 +13,10 @@
 -- logic is unchanged. Depends on: 172 (card_bid, card_bids), 170 (deck_cards), 20 (parties). Idempotent.
 -- ===========================================================================
 
+-- Per-turn bid counter — reset to 0 when the party's turn begins (schema/174 _advance_turns), bumped by
+-- each NEW bid in card_bid below. Caps a party at 3 cards bid on per turn.
+alter table public.parties add column if not exists bids_this_turn int not null default 0;
+
 -- The one source for a party's hand size (cards it currently holds).
 create or replace function public._hand_count(p_party uuid)
 returns int language sql stable security definer set search_path = public as $$
@@ -25,7 +29,7 @@ revoke all on function public._hand_count(uuid) from public, anon, authenticated
 -- raising an existing bid on this card consumes no new slot. Everything else is unchanged from 172.
 create or replace function public.card_bid(p_deck_card uuid, p_amount int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_uid uuid; v_pid uuid; v_pnation text; v_inf int; v_dc record; v_base int; v_old int; v_net int; v_reserved int;
+declare v_uid uuid; v_pid uuid; v_pnation text; v_inf int; v_dc record; v_base int; v_old int; v_net int; v_reserved int; v_bids int;
 begin
   v_uid := auth.uid();
   if v_uid is null then raise exception 'Not signed in.'; end if;
@@ -48,8 +52,17 @@ begin
 
   -- Lock the party row FIRST: it serialises this party's concurrent bids, so the reservation count
   -- below can't be raced by a second bid on a different card each seeing an empty count and both
-  -- slipping under the cap. (Same lock also guards the escrow.)
-  select influence into v_inf from public.parties where id = v_pid for update;
+  -- slipping under the cap. (Same lock also guards the escrow + the per-turn bid counter.)
+  select influence, bids_this_turn into v_inf, v_bids from public.parties where id = v_pid for update;
+
+  -- Is this a NEW bid or a raise on an existing one? (A raise consumes neither a hand slot nor a per-turn
+  -- bid; only a first bid on a card does.)
+  select amount into v_old from public.card_bids where deck_card_id = p_deck_card and party_id = v_pid;
+
+  -- Per-turn limit: at most 3 different cards bid on per turn. Raises don't count.
+  if v_old is null and v_bids >= 3 then
+    raise exception 'You can bid on at most 3 cards per turn.';
+  end if;
 
   -- Reservation gate: this bid needs a free slot. Held cards + bids on OTHER cards must be < 4, leaving
   -- room for this one. (A raise on this card is already reserved, so it's excluded from the count.)
@@ -60,11 +73,13 @@ begin
   end if;
 
   -- Escrow the net move (refund the old bid, charge the new).
-  select amount into v_old from public.card_bids where deck_card_id = p_deck_card and party_id = v_pid;
   v_net := p_amount - coalesce(v_old, 0);
   if v_inf < v_net then raise exception 'Not enough Influence for that bid.'; end if;
 
-  update public.parties set influence = influence - v_net where id = v_pid;
+  update public.parties
+     set influence = influence - v_net,
+         bids_this_turn = bids_this_turn + (case when v_old is null then 1 else 0 end)   -- count only a first bid on this card
+   where id = v_pid;
   insert into public.card_bids (deck_card_id, party_id, amount) values (p_deck_card, v_pid, p_amount)
     on conflict (deck_card_id, party_id) do update set amount = excluded.amount, created_at = now();
 end $$;

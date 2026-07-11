@@ -192,7 +192,7 @@ begin
       select id into v_next from public.parties where nation_id = n.id order by turn_seq, id limit 1;
     end if;
     update public.nations set turn_party_id = v_next where id = n.id;
-    update public.parties set action_points = 0 where id = v_next;   -- new turn → last turn's unspent AP expires
+    update public.parties set action_points = 0, bids_this_turn = 0 where id = v_next;   -- new turn → unspent AP + the turn's bid count reset
   end loop;
 end $$;
 revoke all on function public._advance_turns() from public, anon, authenticated;
