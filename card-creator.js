@@ -300,10 +300,9 @@ export async function mountCardCreator(mount) {
       { side: 'both', kind: 'cond', p: { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } }
     ],
     copt: [
-      { txt: '', kind: 'stat_up', p: { stat: 'Immigration', x: 8 } },
-      { txt: '', kind: 'stat_down', p: { stat: 'Minority Rights', x: 4 } }
+      { txt: '', fx: [{ kind: 'stat_up', p: { stat: 'Immigration', x: 8 } }] },
+      { txt: '', fx: [{ kind: 'stat_down', p: { stat: 'Minority Rights', x: 4 } }] }
     ],
-    reward: { kind: 'party_gain', p: { x: 2 } },
     dside: {
       d: { txt: '', fx: [{ kind: 'no_conf', p: {} }] },
       r: { txt: '', fx: [{ kind: 'stat_down', p: { stat: 'Growth', x: 4 } }] }
@@ -404,27 +403,29 @@ export async function mountCardCreator(mount) {
   // Decode a double-sided effect's data-i ('dd0'…/'dr0'…) → { s: the side, i: effect index }, else null.
   // One source for the encoding the side rows render and the change/delete handlers read.
   function sideRef(di) { return /^d[dr]\d+$/.test(di) ? { s: state.dside[di.charAt(1) === 'd' ? 'd' : 'r'], i: +di.slice(2) } : null; }
+  // Decode a Government-Choice option effect's data-i ('o<opt>_<eff>') → { o: the option, j: effect index }.
+  function optRef(di) { var m = /^o(\d+)_(\d+)$/.exec(di); return m ? { o: state.copt[+m[1]], j: +m[2] } : null; }
   function kindOpts(f) { return Object.keys(KINDS).map(function (k) { return '<option value="' + k + '"' + (k === f.kind ? ' selected' : '') + '>' + KINDS[k].label + '</option>'; }).join(''); }
 
   function renderFx() {
     var wrap = $('fxList'); var ax = axisLabels();
     if (state.mech === 'choice') {
       var LET = ['A', 'B', 'C', 'D'], CLS = ['a', 'b', 'c', 'd'];
-      var rewardOpts = '<option value="none"' + (state.reward.kind === 'none' ? ' selected' : '') + '>— no reward —</option>' + kindOpts(state.reward);
-      wrap.innerHTML = state.copt.map(function (f, i) {
+      wrap.innerHTML = state.copt.map(function (o, i) {
         var del = state.copt.length > 2 ? '<button class="del" data-i="' + i + '" style="float:right;margin-top:-2px">✕</button>' : '';
+        var effRows = o.fx.map(function (f, j) {
+          var ed = o.fx.length > 1 ? '<button class="del" data-i="o' + i + '_' + j + '">✕</button>' : '';
+          return '<div class="fx-top" style="margin-top:9px"><span class="n">' + (j + 1) + '</span>' +
+            '<select data-i="o' + i + '_' + j + '" data-f="kind">' + kindOpts(f) + '</select>' + ed + '</div>' +
+            '<div class="fx-params">' + fxParamsHTML(f, 'o' + i + '_' + j) + '</div>';
+        }).join('');
+        var add = o.fx.length < 3 ? '<button class="addfx optadd" data-add="' + i + '" style="margin-top:9px">+ Add effect (' + o.fx.length + '/3)</button>' : '';
         return '<div class="opt ' + CLS[i] + '">' + del +
           '<div class="opt-h">Option ' + LET[i] + ' — the government may:</div>' +
-          '<input type="text" value="' + esc(f.txt || '') + '" data-i="' + i + '" data-f="txt" placeholder="What this choice looks like in the news…">' +
-          '<div class="fx-top" style="margin-top:9px"><span class="n">→</span>' +
-          '<select data-i="' + i + '" data-f="kind">' + kindOpts(f) + '</select></div>' +
-          '<div class="fx-params">' + fxParamsHTML(f, i) + '</div></div>';
-      }).join('') +
-      '<div class="rw"><div class="opt-h">◈ Party that played this event gets:</div>' +
-        '<div class="fx-top"><span class="n">→</span><select data-i="rw" data-f="kind">' + rewardOpts + '</select></div>' +
-        (state.reward.kind !== 'none' ? '<div class="fx-params">' + fxParamsHTML(state.reward, 'rw') + '</div>' : '') +
-      '</div>';
-      $('fxCount').textContent = state.copt.length + ' / 4 options · 1 effect each · + reward';
+          '<input type="text" value="' + esc(o.txt || '') + '" data-i="' + i + '" data-f="txt" placeholder="What this choice looks like in the news…">' +
+          effRows + add + '</div>';
+      }).join('');
+      $('fxCount').textContent = state.copt.length + ' / 4 options · up to 3 effects each';
       var ab = $('addFx'); ab.style.display = 'block'; ab.textContent = '+ Add Option'; ab.disabled = state.copt.length >= 4;
     } else if (state.mech === 'double') {
       function sideBlock(key, ref, cls, side, lvl) {
@@ -466,9 +467,9 @@ export async function mountCardCreator(mount) {
         var fd = el.dataset.f, v = el.value, di = el.dataset.i;
         // Double-sided side NAME (side-level, not an effect).
         if (di === 'dd' || di === 'dr') { state.dside[di === 'dd' ? 'd' : 'r'].txt = v; renderPreview(); return; }
-        // Single-effect owners: the choice reward ('rw'), or a double-side effect ('dd0'…/'dr0'…).
-        var sr = sideRef(di);
-        var special = di === 'rw' ? state.reward : (sr ? sr.s.fx[sr.i] : null);
+        // Single-effect owners: a double-side effect ('dd0'…/'dr0'…) or a choice-option effect ('o0_0'…).
+        var sr = sideRef(di), or = optRef(di);
+        var special = sr ? sr.s.fx[sr.i] : (or ? or.o.fx[or.j] : null);
         if (special) {
           var r = special;
           if (fd === 'kind') { r.kind = v; if (v !== 'none') r.p = v === 'cond' ? { stat: 'Crime', dir: 'above', x: 50, nk: 'party_gain', np: { x: 2 } } : v === 'appoint' ? { min: 'Interior', nk: 'stat_down', np: { stat: 'Growth', x: 3 } } : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 } : { stat: STATS[1], x: 2 }; renderFx(); }
@@ -493,18 +494,22 @@ export async function mountCardCreator(mount) {
     });
     wrap.querySelectorAll('.del').forEach(function (b) {
       b.onclick = function () {
-        var sr = sideRef(b.dataset.i);
+        var di = b.dataset.i, sr = sideRef(di), or = optRef(di);
         if (sr) sr.s.fx.splice(sr.i, 1);
-        else activeArr().splice(+b.dataset.i, 1);
+        else if (or) or.o.fx.splice(or.j, 1);
+        else activeArr().splice(+di, 1);
         renderFx(); renderPreview();
       };
     });
     wrap.querySelectorAll('.sideadd').forEach(function (b) {
       b.onclick = function () { var s = state.dside[b.dataset.add]; if (s.fx.length < 3) { s.fx.push({ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); renderFx(); renderPreview(); } };
     });
+    wrap.querySelectorAll('.optadd').forEach(function (b) {
+      b.onclick = function () { var o = state.copt[+b.dataset.add]; if (o.fx.length < 3) { o.fx.push({ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); renderFx(); renderPreview(); } };
+    });
   }
   $('addFx').onclick = function () {
-    if (state.mech === 'choice') { if (state.copt.length < 4) { state.copt.push({ txt: '', kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); renderFx(); renderPreview(); } }
+    if (state.mech === 'choice') { if (state.copt.length < 4) { state.copt.push({ txt: '', fx: [{ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }] }); renderFx(); renderPreview(); } }
     else if (state.mech === 'oneoff' && state.fx.length < 5) { state.fx.push({ side: 'both', kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); renderFx(); renderPreview(); }
   };
 
@@ -559,14 +564,10 @@ export async function mountCardCreator(mount) {
     if (state.mech === 'choice') {
       var LET = ['A', 'B', 'C', 'D'], GCL = ['ga', 'gb2', 'gc', 'gd2'];
       html += '<div class="choice-banner">⚖ Holder plays → government must choose</div>';
-      state.copt.forEach(function (f, i) {
-        html += '<div class="fxgroup ' + GCL[i] + '"><div class="gt">' + LET[i] + ' · ' + esc(f.txt || 'untitled option') + '</div>' +
-          '<div class="fxline">' + fxText(f.kind, f.p) + '</div></div>';
+      state.copt.forEach(function (o, i) {
+        html += '<div class="fxgroup ' + GCL[i] + '"><div class="gt">' + LET[i] + ' · ' + esc(o.txt || 'untitled option') + '</div>' +
+          o.fx.map(function (f) { return '<div class="fxline">' + fxText(f.kind, f.p) + '</div>'; }).join('') + '</div>';
       });
-      if (state.reward.kind !== 'none') {
-        var rt = fxText(state.reward.kind, state.reward.p).replace('Targeted party <b>gains', 'You <b>gain').replace('Targeted party <b>loses', 'You <b>lose');
-        html += '<div class="fxgroup grw"><div class="gt">◈ Played-by reward — whoever asks, profits</div><div class="fxline">' + rt + '</div></div>';
-      }
     } else if (state.mech === 'double') {
       html += '<div class="fxgroup gd"><div class="gt">' + ax.d.ic + ' ' + (gated ? ax.d.pre + state.reqD + '+ · ' : '') + '“' + esc(state.dside.d.txt || 'unnamed side') + '”</div>' + state.dside.d.fx.map(function (f) { return '<div class="fxline">' + fxText(f.kind, f.p) + '</div>'; }).join('') + '</div>';
       html += '<div class="fxgroup gr"><div class="gt">' + ax.r.ic + ' ' + (gated ? ax.r.pre + state.reqR + '+ · ' : '') + '“' + esc(state.dside.r.txt || 'unnamed side') + '”</div>' + state.dside.r.fx.map(function (f) { return '<div class="fxline">' + fxText(f.kind, f.p) + '</div>'; }).join('') + '</div>';
@@ -579,7 +580,8 @@ export async function mountCardCreator(mount) {
     }
     $('pFx').innerHTML = html || '<div class="fxline" style="color:var(--soft)">no effects yet</div>';
 
-    var arr = state.mech === 'choice' ? state.copt : state.mech === 'double' ? state.dside.d.fx.concat(state.dside.r.fx) : state.fx;
+    var arr = state.mech === 'choice' ? state.copt.reduce(function (a, o) { return a.concat(o.fx); }, [])
+      : state.mech === 'double' ? state.dside.d.fx.concat(state.dside.r.fx) : state.fx;
     var mechLabel = state.mech === 'choice' ? 'Gov Choice' : state.mech === 'double' ? 'Double Sided' : 'One-Off';
     var tags = ['<span class="tag">' + mechLabel + '</span>'];
     if (arr.some(function (f) { return f.kind === 'party_gain' || f.kind === 'party_lose'; })) tags.push('<span class="tag" style="color:var(--auto);border-color:color-mix(in srgb,var(--auto) 45%,transparent)">Target Party</span>');
@@ -591,9 +593,8 @@ export async function mountCardCreator(mount) {
     if (state.mech === 'choice') {
       v.push(state.copt.length >= 2 && state.copt.length <= 4 ? ['ok', 'Options: ' + state.copt.length + ' / 4'] : ['warn', 'Choice cards need 2–4 options']);
       v.push(state.copt.every(function (f) { return (f.txt || '').trim().length > 0; }) ? ['ok', 'All options titled'] : ['warn', 'Every option needs text — the government reads these aloud']);
-      var sigs = state.copt.map(function (f) { return f.kind + JSON.stringify(f.p); });
+      var sigs = state.copt.map(function (o) { return JSON.stringify(o.fx); });
       v.push(new Set(sigs).size === sigs.length ? ['ok', 'Options differ — a real dilemma'] : ['warn', 'Two options do the same thing — no dilemma, no card']);
-      v.push(state.reward.kind !== 'none' ? ['ok', 'Played-by reward set — every holder has a reason to fire it'] : ['warn', 'No reward — governments will buy this card just to bury it']);
     } else if (state.mech === 'double') {
       var dn = (state.dside.d.txt || '').trim(), rn = (state.dside.r.txt || '').trim();
       v.push(dn && rn ? ['ok', 'Both sides named'] : ['warn', 'Each side needs its own name — it’s what the news prints']);
@@ -695,7 +696,7 @@ export async function mountCardCreator(mount) {
     if (state.lim === 'nation') d.nation = state.nation;              // only meaningful when nation-limited
     // Stance gates only when a stance card is explicitly Stance-gated; otherwise the card needs no stance.
     if (state.type !== 'generic' && state.stanceReq === 'gated') { d.reqD = state.reqD; d.reqR = state.reqR; }
-    if (state.mech === 'choice') { d.copt = clone(state.copt); d.reward = clone(state.reward); }
+    if (state.mech === 'choice') { d.copt = clone(state.copt); }
     else if (state.mech === 'double') d.dside = clone(state.dside);
     else d.fx = clone(state.fx);
     return d;

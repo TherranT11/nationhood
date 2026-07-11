@@ -85,7 +85,7 @@ revoke all on function public._create_card_decision(text, uuid, uuid, jsonb, int
 -- closes. Only the decision's resolver (or an admin) may call it.
 create or replace function public.card_decide(p_decision uuid, p_option int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_uid uuid; v_pid uuid; v_pname text; v_d record; v_opt jsonb; v_tick int; v_resolver uuid;
+declare v_uid uuid; v_pid uuid; v_pname text; v_d record; v_opt jsonb; v_tick int; v_resolver uuid; e jsonb;
 begin
   v_uid := auth.uid();
   if v_uid is null then raise exception 'Not signed in.'; end if;
@@ -104,9 +104,13 @@ begin
 
   v_opt := v_d.options -> p_option;
   select current_tick into v_tick from public.game_state where id;
-  -- Apply the chosen option's effect. Nation/coalition effects land; a party-targeted option is left
-  -- untargeted for now (target-picker is a later pass), consistent with the immediate engine.
-  perform public._apply_card_effect(v_d.nation_id, null, v_opt->>'kind', v_opt->'p', v_tick);
+  -- Apply every effect on the chosen option (an option carries up to 3). Nation/coalition effects land;
+  -- a party-targeted option is left untargeted for now (target-picker is a later pass), consistent with
+  -- the immediate engine. Supports the legacy single-effect shape ({kind,p}) too via coalesce.
+  for e in select value from jsonb_array_elements(
+             case when jsonb_typeof(v_opt->'fx') = 'array' then v_opt->'fx' else jsonb_build_array(v_opt) end) loop
+    perform public._apply_card_effect(v_d.nation_id, null, e->>'kind', e->'p', v_tick);
+  end loop;
 
   update public.card_decisions set status = 'resolved', chosen_idx = p_option where id = p_decision;
   insert into public.events (nation_id, party_id, kind, body, game_date)

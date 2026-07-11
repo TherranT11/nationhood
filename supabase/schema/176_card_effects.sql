@@ -105,19 +105,18 @@ end $$;
 revoke all on function public._apply_card_hex(uuid, text, int, int, numeric) from public, anon, authenticated;
 
 -- Resolve a played card's IMMEDIATE effects. One-Off: apply every effect on a generic card, and only
--- the 'both'-sided effects on a stance card (the d/r sides wait for party stance). Government Choice:
--- apply the reward to the player now (the options are a decision — Phase 3b-2). Double-Sided: both
--- sides are stance-gated, so nothing fires yet. p_q/p_r are the hex chosen on play (for a 'hex_pop'
--- effect): with a chosen rival (p_target) it's −x on that rival there, otherwise +x on the player there.
+-- the 'both'-sided effects on a stance card (the d/r sides wait for party stance). Government Choice
+-- fires nothing on play — it opens a decision (schema/178) whose chosen option's effects resolve then.
+-- Double-Sided: both sides are stance-gated, so nothing fires yet. p_q/p_r are the hex chosen on play
+-- (for 'hex_pop': with a rival (p_target) it's −x on that rival there, else +x on the player there).
 drop function if exists public._resolve_card_effects(text, uuid, jsonb, int);        -- pre-target form
 drop function if exists public._resolve_card_effects(text, uuid, uuid, jsonb, int);   -- pre-hex form
 create or replace function public._resolve_card_effects(p_nation text, p_party uuid, p_target uuid, p_q int, p_r int, p_def jsonb, p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_mech text; v_generic boolean; e jsonb; v_rk text; v_x numeric;
+declare v_generic boolean; e jsonb; v_x numeric;
 begin
-  v_mech := coalesce(p_def->>'mech', 'oneoff');
   v_generic := (p_def->>'type' = 'generic');
-  if v_mech = 'oneoff' then
+  if coalesce(p_def->>'mech', 'oneoff') = 'oneoff' then
     for e in select value from jsonb_array_elements(coalesce(p_def->'fx', '[]'::jsonb)) loop
       if v_generic or coalesce(e->>'side', 'both') = 'both' then
         if e->>'kind' = 'hex_pop' then
@@ -133,11 +132,6 @@ begin
         end if;
       end if;
     end loop;
-  elsif v_mech = 'choice' then
-    v_rk := coalesce(p_def->'reward'->>'kind', 'none');
-    if v_rk <> 'none' then
-      perform public._apply_card_effect(p_nation, p_party, v_rk, p_def->'reward'->'p', p_tick);   -- reward → the player (target = the party)
-    end if;
   end if;
 end $$;
 revoke all on function public._resolve_card_effects(text, uuid, uuid, int, int, jsonb, int) from public, anon, authenticated;
