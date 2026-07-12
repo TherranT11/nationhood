@@ -38,23 +38,8 @@
   .cm .tlempty{color:var(--soft);font-size:12.5px;padding:6px 0}
   .cm .err{color:var(--red);font-size:12.5px;padding:8px 0}
 
-  /* card queue — the live turn rotation */
-  .cm .queuecard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 18px 12px}
-  .cm .qrow{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
-  .cm .qtick{flex:none;min-width:132px;background:var(--field);border:1px solid var(--line);border-radius:10px;padding:9px 11px}
-  .cm .qtick.now{border-color:var(--inf);background:color-mix(in srgb,var(--inf) 8%,var(--field))}
-  .cm .qtick.me{border-color:var(--indigo)}
-  .cm .qtick.now.me{border-color:var(--inf)}
-  .cm .qmo{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.08em;color:var(--soft);display:flex;align-items:center;gap:6px;text-transform:uppercase}
-  .cm .qtick.now .qmo{color:var(--inf)}
-  .cm .qsw{width:8px;height:8px;border-radius:2px;flex:none}
-  .cm .qp{font-size:12.5px;font-weight:800;color:var(--ink);margin-top:5px;line-height:1.25}
-  .cm .qyou{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.08em;color:var(--indigo)}
-  .cm .qtick.now .qyou{color:var(--inf)}
-
-  /* action container — the three turn choices */
+  /* action container — the three monthly choices */
   .cm .actbox{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
-  .cm .actbox.off{opacity:.75}
   .cm .actbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
   .cm .apbadge{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--inf);background:color-mix(in srgb,var(--inf) 12%,transparent);border:1px solid color-mix(in srgb,var(--inf) 40%,transparent);border-radius:8px;padding:6px 11px}
   .cm .actstat{font-size:13px;color:var(--muted)}
@@ -172,7 +157,7 @@
     <div class="phead">
       <span class="eye" id="eye">The Party</span>
       <h1>Home</h1>
-      <p>Your nation and the world at a glance — the turn queue, the card market, and the cards in your hand. You play cards on your party's turn.</p>
+      <p>Your nation and the world at a glance — the card market and the cards in your hand. Each month you take one action: bid on cards, play a card, or discard a card.</p>
     </div>
 
     <div class="cm">
@@ -188,12 +173,8 @@
         </div>
       </div>
 
-      <!-- turn queue -->
-      <div class="sect gap">Turn Queue <span class="note">your nation's rotation · one party acts each tick</span></div>
-      <div class="queuecard"><div class="qrow" id="queue"><div class="tlempty">Loading…</div></div></div>
-
       <!-- action container -->
-      <div class="sect gap">Your Turn <span class="note" id="actNote"></span></div>
+      <div class="sect gap">This Month <span class="note" id="actNote"></span></div>
       <div id="actions"></div>
 
       <!-- government decisions (from played Choice cards) -->
@@ -217,7 +198,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { esc, tickToDate, hexSeats, fmtPop } from '/util.js';
   import { regionalApproval } from '/regional.js';   // one source for per-hex party approval
-  import { ideologyLabel, partyColor } from '/archetypes.js';
+  import { ideologyLabel } from '/archetypes.js';
   import { drawNationMiniMap } from '/hexmap.js';
 
   mountTopbar();
@@ -225,17 +206,21 @@
 
   var PARTY = null, NATION_ID = null, NATION_NAME = '', BUSY = false;
   var draft = {};                 // per-market-card intended bid amount
-  var CUR_TICK = 1;               // for month labels on the queue + eyebrow
-  var TURN_PARTY = null;          // id of the party whose turn it is now (nation_turn)
+  var CUR_TICK = 1;               // current month, for the eyebrow + the one-action-per-tick gate
+  var BIDS = {};                  // my live bids this tick: deck_card_id → amount (the "bidding this month" marker)
   var NATIONS = {};               // nation id → name, for the world timeline tags
   var NATION_FLAG = '';           // this nation's flag URL, stamped on its nation-specific cards
   // Party micro-actions stay off the World Timeline — it's for nation-scale news.
   var LOCAL_KINDS = { rally:1, fundraise:1, attack:1, adblitz:1, recruit:1, party:1 };
 
-  function myTurn() { return TURN_PARTY != null && PARTY && TURN_PARTY === PARTY.id; }
-  function hasChosen() { return PARTY && Number(PARTY.turn_acted_tick) === Number(CUR_TICK); }   // one choice per turn
+  // Every party acts every month, taking ONE of three mutually-exclusive actions (schema/187):
+  //   • bid on cards   — repeatable this month; live bids ARE the "chose to bid" marker
+  //   • play a card    — banks the card's Action Points; stamps turn_acted_tick
+  //   • discard a card — +3 Influence, back to the deck; stamps turn_acted_tick
+  function hasActed() { return PARTY && Number(PARTY.turn_acted_tick) === Number(CUR_TICK); }   // played/discarded this month
+  function bidCount() { return Object.keys(BIDS).length; }                                       // live bids this month
+  function canCardAct() { return !hasActed() && bidCount() === 0; }   // play/discard barred once you've acted or bid
   function apLeft() { return (PARTY && Number(PARTY.action_points)) || 0; }
-  function shortMonth(tick) { return tickToDate(tick).split(',')[0].slice(0, 3); }
 
   // Card kind → label + colour class, from the stored definition (one source: the Card Creator's fields).
   function kindOf(def) {
@@ -264,35 +249,17 @@
       '<div class="c-ap">▶ <b>' + acts + '</b> AP on play</div>';
   }
 
-  // ---- turn queue: walk the rotation forward from whoever's up now ----
-  function renderQueue(roster) {
-    var el = document.getElementById('queue');
-    if (!roster.length) { el.innerHTML = '<div class="tlempty">No parties in this nation yet.</div>'; return; }
-    var idx = 0;
-    for (var i = 0; i < roster.length; i++) { if (roster[i].id === TURN_PARTY) { idx = i; break; } }
-    var n = Math.min(12, Math.max(roster.length, 5));   // at least a few months out, at most one screenful
-    var out = '';
-    for (var j = 0; j < n; j++) {
-      var p = roster[(idx + j) % roster.length];
-      var now = j === 0, me = p.id === (PARTY && PARTY.id);
-      out += '<div class="qtick' + (now ? ' now' : '') + (me ? ' me' : '') + '">' +
-        '<div class="qmo"><span class="qsw" style="background:' + esc(partyColor(p)) + '"></span>' +
-          esc(shortMonth(CUR_TICK + j)) + (now ? ' · NOW' : '') + '</div>' +
-        '<div class="qp">' + esc(p.abbreviation || p.name || '—') + '</div>' +
-        (me ? '<div class="qyou">You</div>' : '') +
-      '</div>';
-    }
-    el.innerHTML = out;
-  }
-
   function renderMarket(cards, myBids) {
     var el = document.getElementById('market');
     // A bid reserves a hand slot (server: schema/180). Held cards + cards you're already bidding on
     // fill toward the cap of 4; at the cap you can't bid on a NEW card until you play or discard one.
     var reserved = (window.__hand || []).length + Object.keys(myBids).length;
     var full = reserved >= 4;
+    var locked = hasActed();   // played/discarded this month → bidding is closed
     document.getElementById('marketNote').innerHTML = 'sealed bids · you have <span class="inf">⚡' + (PARTY.influence || 0) + '</span> · ' +
-      (full ? '<span class="inf">hand full (4/4)</span> — play or discard to bid on a new card' : 'highest bid wins at the next tick');
+      (locked ? '<span class="inf">action taken</span> — no bidding this month'
+       : full ? '<span class="inf">hand full (4/4)</span> — play or discard to bid on a new card'
+       : 'highest bid wins at next month’s auction');
     if (!cards.length) { el.innerHTML = '<div class="empty"><b>The market is quiet.</b>No cards are up for auction here yet.</div>'; return; }
     el.innerHTML = cards.map(function (c) {
       var def = c.definition || {};
@@ -302,8 +269,10 @@
       if (draft[c.id] == null) draft[c.id] = Math.max(cost, mine);
       var v = draft[c.id];
       var noRoom = !mine && full;                  // a bid on a NEW card, but no free slot
-      var bidDis = noRoom || v > afford;
-      var bidTitle = noRoom ? ' title="Hand full — play or discard a card first"' : (v > afford ? ' title="Not enough Influence"' : '');
+      var bidDis = locked || noRoom || v > afford;
+      var bidTitle = locked ? ' title="You’ve taken this month’s action — no bidding"'
+        : noRoom ? ' title="Hand full — play or discard a card first"'
+        : (v > afford ? ' title="Not enough Influence"' : '');
       return '<div class="cardc">' + cardHead(def) +
         '<div class="c-cost">Base ⚡<b>' + cost + '</b></div></div>' +
         '<div class="c-bid">' +
@@ -330,11 +299,11 @@
 
   function renderHand(cards) {
     var el = document.getElementById('hand');
-    var canAct = myTurn() && !hasChosen();   // play/discard IS your turn choice — only before you've chosen
+    var canAct = canCardAct();   // play/discard is this month's action — only before you've bid/played/discarded
     document.getElementById('handNote').innerHTML = cards.length + '/4 held · ' +
-      (myTurn()
-        ? (hasChosen() ? 'turn taken — you hold <span class="inf">' + apLeft() + ' AP</span>' : '<span class="inf">your turn</span> — play or discard a card')
-        : 'not your turn — you act on your party’s turn');
+      (hasActed() ? 'action taken — you hold <span class="inf">' + apLeft() + ' AP</span>'
+       : bidCount() > 0 ? 'bidding this month — cancel your bids to play or discard instead'
+       : '<span class="inf">your move</span> — play or discard a card');
     if (!cards.length) { el.innerHTML = '<div class="empty"><b>Your hand is empty.</b>Win cards at auction to hold them here.</div>'; return; }
     el.innerHTML = cards.map(function (c) {
       var def = c.definition || {};
@@ -642,27 +611,27 @@
 
   function renderActions() {
     var el = document.getElementById('actions'), note = document.getElementById('actNote');
-    if (!myTurn()) {
-      var who = (window.__roster || []).find(function (x) { return x.id === TURN_PARTY; });
-      note.textContent = 'waiting';
-      el.innerHTML = '<div class="actbox off"><div class="actbar"><span class="actstat">It’s <b>' +
-        esc(who ? (who.abbreviation || who.name) : 'another party') + '</b>’s turn — your turn comes round the rotation above.</span></div></div>';
+    var ap = apLeft();
+    if (hasActed()) {   // played or discarded this month
+      note.innerHTML = '<span class="inf">action taken</span>';
+      el.innerHTML = '<div class="actbox"><div class="actbar"><span class="apbadge">▶ ' + ap + ' AP</span>' +
+        '<span class="actstat">You’ve taken this month’s action. Spend Action Points on moves across the game — each costs <b>1 AP</b>.</span></div></div>';
       return;
     }
-    if (hasChosen()) {
-      note.innerHTML = '<span class="inf">turn taken</span>';
-      el.innerHTML = '<div class="actbox"><div class="actbar"><span class="apbadge">▶ ' + apLeft() + ' AP</span>' +
-        '<span class="actstat">Turn taken. Spend Action Points on moves across the game — each costs <b>1 AP</b>.</span></div></div>';
+    if (bidCount() > 0) {   // committed to bidding this month
+      note.innerHTML = '<span class="inf">bidding</span>';
+      el.innerHTML = '<div class="actbox"><div class="actbar"><span class="apbadge">▶ ' + ap + ' AP</span>' +
+        '<span class="actstat">You’re bidding this month (<b>' + bidCount() + '</b> live). Top bids win at next month’s auction — or cancel every bid to play or discard instead.</span></div></div>';
       return;
     }
     note.textContent = 'choose one';
-    el.innerHTML = '<div class="actbox"><div class="actbar"><span class="actstat">It’s your turn — <b>choose one</b>. Actions cost <b>1 AP</b> each, no Influence.</span></div>' +
+    el.innerHTML = '<div class="actbox"><div class="actbar"><span class="apbadge">▶ ' + ap + ' AP</span>' +
+      '<span class="actstat">Each month, <b>choose one</b> — bid, play, or discard.</span></div>' +
       '<div class="actrow">' +
-        '<button class="actopt" id="optTake"><div class="an">Take 1 Action</div><div class="ad">Bank 1 AP · spend it on one move this turn</div></button>' +
+        '<div class="actopt info"><div class="an">Bid on Cards</div><div class="ad">Sealed bids in The Market below · win at next month’s auction</div></div>' +
         '<div class="actopt info"><div class="an">Play a Card</div><div class="ad">Use ▸ Play on a hand card below · banks that card’s AP</div></div>' +
-        '<div class="actopt info"><div class="an">Discard a Card</div><div class="ad">Use ▸ Discard on a hand card below · +3 Influence</div></div>' +
+        '<div class="actopt info"><div class="an">Discard a Card</div><div class="ad">Use ▸ Discard on a hand card below · +3 Influence, back to the deck</div></div>' +
       '</div></div>';
-    var t = document.getElementById('optTake'); if (t) t.onclick = function () { takeAction(); };
   }
 
   // Pending Government Choice decisions for the nation. The resolver gets clickable options; everyone
@@ -705,8 +674,7 @@
   async function placeBid(id, amount) { await run(function () { return supabase.rpc('card_bid', { p_deck_card: id, p_amount: amount }); }); }
   async function cancelBid(id) { await run(function () { return supabase.rpc('card_bid_cancel', { p_deck_card: id }); }); }
   async function playCard(id, target, q, r, corp, corp2) { await run(function () { return supabase.rpc('card_play', { p_deck_card: id, p_target: target || null, p_hex_q: (q == null ? null : q), p_hex_r: (r == null ? null : r), p_corp: corp || null, p_corp2: corp2 || null }); }); }
-  async function discardCard(id) { if (!confirm('Discard this card for +3 Influence? It leaves your hand for good.')) return; await run(function () { return supabase.rpc('card_discard', { p_deck_card: id }); }); }
-  async function takeAction() { await run(function () { return supabase.rpc('turn_take_action'); }); }
+  async function discardCard(id) { if (!confirm('Return this card to the deck for +3 Influence? It leaves your hand.')) return; await run(function () { return supabase.rpc('card_discard', { p_deck_card: id }); }); }
   async function decideCard(id, opt) { await run(function () { return supabase.rpc('card_decide', { p_decision: id, p_option: opt }); }); }
   async function run(fn) {
     if (BUSY) return; BUSY = true; setDisabled(true);
@@ -722,13 +690,11 @@
   function setDisabled(on) { document.querySelectorAll('.cm .act, .cm .bbtn, .cm .actopt, .cm button.decopt').forEach(function (b) { b.disabled = on; }); }
 
   function setEye() {
-    var name = TURN_PARTY && PARTY && TURN_PARTY === PARTY.id ? 'Your Turn'
-             : (function () { var p = (window.__roster || []).find(function (x) { return x.id === TURN_PARTY; }); return p ? esc(p.abbreviation || p.name) + '’s Turn' : '—'; })();
-    document.getElementById('eye').innerHTML = esc(NATION_NAME) + ' · ' + esc(tickToDate(CUR_TICK)) + ' · ' + name;
+    document.getElementById('eye').innerHTML = esc(NATION_NAME) + ' · ' + esc(tickToDate(CUR_TICK));
   }
 
   async function loadAll() {
-    // Refresh the party (influence changes with bids/plays), then rotation / market / hand / timelines.
+    // Refresh the party (influence changes with bids/plays), then market / hand / timelines.
     try {
       const { data: p } = await supabase.from('parties').select('id, name, archetype, nation_id, influence, action_points, turn_acted_tick').eq('user_id', PARTY.user_id).single();
       if (p) { PARTY = Object.assign(PARTY, p); setTopbarActions(PARTY.influence); }
@@ -736,11 +702,7 @@
 
     var roster = [], market = [], hand = [], bids = {}, events = [], world = [], decisions = [];
     try {
-      const { data } = await supabase.rpc('nation_turn', { p_nation: NATION_ID });
-      TURN_PARTY = data || null;
-    } catch (e) { TURN_PARTY = null; }
-    try {
-      const { data } = await supabase.from('parties').select('id, name, abbreviation, archetype, color, turn_seq').eq('nation_id', NATION_ID).order('turn_seq', { ascending: true }).order('id', { ascending: true });
+      const { data } = await supabase.from('parties').select('id, name, abbreviation, archetype, color').eq('nation_id', NATION_ID).order('name', { ascending: true }).order('id', { ascending: true });
       roster = data || [];
     } catch (e) {}
     window.__roster = roster;
@@ -777,8 +739,8 @@
       decisions = data || [];
     } catch (e) {}
 
+    BIDS = bids;   // live bids drive the "bidding this month" gate (renderActions/renderHand/renderMarket)
     setEye();
-    renderQueue(roster);
     renderActions();
     renderDecisions(decisions);
     renderMarket(market, bids);
