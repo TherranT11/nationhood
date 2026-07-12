@@ -38,9 +38,26 @@
     justify-content:center;font-weight:700;font-size:12px;color:var(--accent)}
 
   /* map area */
-  .map-area{flex:1;position:relative;overflow:hidden;background:#a9cfdd;cursor:grab;user-select:none}
+  .map-area{flex:1;position:relative;overflow:hidden;background:#a9cfdd;cursor:grab;user-select:none;
+    touch-action:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
   .map-area.grabbing{cursor:grabbing}
   .map-area svg.world{display:block;width:100%;height:100%}
+
+  /* Hamburger + backdrop: desktop hides them; mobile turns the sidebar into a slide-in drawer. */
+  .hamburger{display:none;width:34px;height:34px;align-items:center;justify-content:center;flex:none;
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--text);cursor:pointer}
+  .hamburger svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+  .backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:35}
+  .backdrop.show{display:block}
+  @media (max-width:640px){
+    /* Off-canvas drawer instead of an always-on 216px column. */
+    .side{position:fixed;top:0;left:0;bottom:0;z-index:40;transform:translateX(-100%);
+      transition:transform .25s ease;box-shadow:2px 0 18px rgba(0,0,0,.45)}
+    .side.open{transform:translateX(0)}
+    .hamburger{display:flex}
+    .topbar{padding:0 10px;gap:10px}
+    .zoombtn{width:38px;height:38px;font-size:22px}
+  }
 
   /* Constant-size label overlay (positioned by JS from world coords → screen). */
   .labels{position:absolute;inset:0;pointer-events:none;z-index:6;overflow:hidden}
@@ -101,6 +118,9 @@
 
     <!-- topbar -->
     <div class="topbar">
+      <button class="hamburger" id="hamburger" aria-label="Menu">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
       <div style="display:flex;align-items:center;gap:8px">
         <div class="brand__crest" style="width:20px;height:20px;border-radius:4px;font-size:11px" id="tbCrest">🦅</div>
         <span style="font-weight:700;font-size:13px" id="tbName">Nationhood</span>
@@ -123,6 +143,9 @@
     <div class="chip" id="hoverChip" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:10;color:var(--text);font-size:11px;display:none"></div>
     <div class="mono" style="position:absolute;bottom:14px;right:14px;z-index:10;font-size:9px;letter-spacing:.12em;color:rgba(20,20,30,.55)">DRAG TO PAN · SCROLL / ± TO ZOOM</div>
   </main>
+
+  <!-- Mobile drawer backdrop (tap to close). -->
+  <div class="backdrop" id="backdrop"></div>
 </div>
 
 <script type="module">
@@ -154,6 +177,12 @@ document.getElementById('nav').innerHTML = NAV.map(function (n) {
   return '<a class="nav-item' + (on ? ' on' : '') + '" href="' + n[1] + '">' +
     '<svg viewBox="0 0 24 24" aria-hidden="true">' + n[2] + '</svg>' + esc(n[0]) + '</a>';
 }).join('');
+
+/* ---------------- MOBILE DRAWER ---------------- */
+var sideEl = document.querySelector('.side'), backdropEl = document.getElementById('backdrop');
+function drawer(open) { sideEl.classList.toggle('open', open); backdropEl.classList.toggle('show', open); }
+document.getElementById('hamburger').onclick = function () { drawer(!sideEl.classList.contains('open')); };
+backdropEl.onclick = function () { drawer(false); };
 
 /* ---------------- HEX GEOMETRY ---------------- */
 const S = 16;   // hex size (px, at zoom 1)
@@ -332,6 +361,38 @@ function zoomAt(factor, cxp, cyp) {
 document.getElementById('zoomIn').onclick = function () { zoomAt(1.2, mapArea.clientWidth / 2, mapArea.clientHeight / 2); };
 document.getElementById('zoomOut').onclick = function () { zoomAt(1 / 1.2, mapArea.clientWidth / 2, mapArea.clientHeight / 2); };
 mapArea.addEventListener('wheel', function (e) { e.preventDefault(); var rect = mapArea.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - rect.left, e.clientY - rect.top); }, { passive: false });
+
+/* ---------------- TOUCH: one finger pans, two fingers pinch-zoom ---------------- */
+var touch = null;   // { px, py, sx, sy } for a 1-finger pan, or { dist, mx, my } for a 2-finger pinch
+function touchDist(t) { var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.hypot(dx, dy); }
+function touchMid(t, rect) { return { x: (t[0].clientX + t[1].clientX) / 2 - rect.left, y: (t[0].clientY + t[1].clientY) / 2 - rect.top }; }
+mapArea.addEventListener('touchstart', function (e) {
+  var rect = mapArea.getBoundingClientRect();
+  if (e.touches.length === 1) { touch = { mode: 'pan', sx: e.touches[0].clientX, sy: e.touches[0].clientY, px: pan.x, py: pan.y }; }
+  else if (e.touches.length >= 2) { var m = touchMid(e.touches, rect); touch = { mode: 'pinch', dist: touchDist(e.touches), mx: m.x, my: m.y }; }
+}, { passive: true });
+mapArea.addEventListener('touchmove', function (e) {
+  if (!touch) return;
+  e.preventDefault();
+  var rect = mapArea.getBoundingClientRect();
+  if (touch.mode === 'pan' && e.touches.length === 1) {
+    pan = { x: touch.px + (e.touches[0].clientX - touch.sx), y: touch.py + (e.touches[0].clientY - touch.sy) };
+    applyTransform();
+  } else if (touch.mode === 'pinch' && e.touches.length >= 2) {
+    var m = touchMid(e.touches, rect), d = touchDist(e.touches);
+    // Follow the fingers (pan by the midpoint's drift) and zoom by the spread ratio around that midpoint.
+    pan.x += m.x - touch.mx; pan.y += m.y - touch.my;
+    if (touch.dist > 0) zoomAt(d / touch.dist, m.x, m.y); else applyTransform();
+    touch.dist = d; touch.mx = m.x; touch.my = m.y;
+  }
+}, { passive: false });
+function endTouch(e) {
+  // If one finger of a pinch lifts, hand the remaining finger a fresh pan anchor (no jump).
+  if (touch && e.touches.length === 1) { touch = { mode: 'pan', sx: e.touches[0].clientX, sy: e.touches[0].clientY, px: pan.x, py: pan.y }; }
+  else if (!e.touches.length) { touch = null; }
+}
+mapArea.addEventListener('touchend', endTouch);
+mapArea.addEventListener('touchcancel', endTouch);
 </script>
 </body>
 </html>
