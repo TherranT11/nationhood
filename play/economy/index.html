@@ -22,6 +22,10 @@
      bar + faint tint + coloured label); the value stays high-contrast for readability. */
   .stat{background:color-mix(in srgb, var(--c, var(--line)) 9%, var(--surface));border:1px solid var(--line);border-left:3px solid var(--c, var(--line));border-radius:9px;padding:7px 11px 7px 9px;font-family:'Space Mono',monospace;font-size:10px;color:var(--c, var(--soft));font-weight:700;letter-spacing:.02em}
   .stat b{display:block;color:var(--ink);font-size:15px;font-weight:700;margin-top:1px;letter-spacing:0}
+  /* On-hand stockpiles: one uniform grid so every resource tile is the same width. */
+  .onhand-lab{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft);font-weight:700;margin:14px 0 7px}
+  .ohgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px}
+  @media(max-width:640px){.ohgrid{grid-template-columns:repeat(3,1fr)}}
 
   .panel{background:var(--surface);border:1px solid var(--line);border-radius:15px;margin-top:18px;overflow:hidden}
   .panel-h{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
@@ -300,11 +304,11 @@
 
   function renderStats(n){
     var oh = n.on_hand || {};
-    // GDP + the spendable on-hand stockpiles (energy/food/minerals/services/goods/military). Each
-    // container is colour-coded by resource (a left accent bar + tint + coloured label) for quick
-    // identification. [label, value, colour].
-    var rows = [
-      ['GDP',      STATE.currency + fmtGdp(n.gdp), '#5546E8'],
+    // GDP sits on its own; below it the spendable on-hand stockpiles
+    // (energy/food/minerals/services/goods/military) render in ONE uniform grid so every tile is the
+    // same width. Each is colour-coded by resource (left accent bar + tint + coloured label). [label,
+    // value, colour].
+    var res = [
       ['Energy',   fmt(num(oh.energy)),   '#e0a91e'],
       ['Food',     fmt(num(oh.food)),     '#16915a'],
       ['Minerals', fmt(num(oh.minerals)), '#8b93a7'],
@@ -312,9 +316,10 @@
       ['Goods',    fmt(num(oh.goods)),    '#e0820e'],
       ['Military', fmt(num(oh.military)), '#c42b2b']
     ];
-    return '<div class="stats">' + rows.map(function(r){
-      return '<div class="stat" style="--c:' + r[2] + '">' + r[0] + '<b>' + r[1] + '</b></div>';
-    }).join('') + '</div>';
+    function tile(r){ return '<div class="stat" style="--c:' + r[2] + '">' + r[0] + '<b>' + r[1] + '</b></div>'; }
+    return '<div class="stats">' + tile(['GDP', STATE.currency + fmtGdp(n.gdp), '#5546E8']) + '</div>' +
+      '<div class="onhand-lab">On Hand</div>' +
+      '<div class="ohgrid">' + res.map(tile).join('') + '</div>';
   }
 
   function demandRow(d){
