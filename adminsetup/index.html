@@ -2010,38 +2010,50 @@
       el.innerHTML = scText(f.source, f.target, f.per, f.amount, f.reference);
     }
     ['scSource', 'scTarget', 'scPer', 'scDir', 'scAmount', 'scRef'].forEach(function (id) {
-      var el = document.getElementById(id); if (el) el.addEventListener('input', scUpdatePreview);
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('input', function () { scUpdatePreview(); document.getElementById('scNote').textContent = ''; });
     });
     async function loadConnectors() {
       scUpdatePreview();
       var box = document.getElementById('scList');
-      var res = await supabase.from('stat_connectors').select('*').order('created_at', { ascending: true });
-      if (res.error) { box.innerHTML = '<p class="empty">Couldn’t load (' + esc(res.error.message) + ').</p>'; return; }
-      var data = res.data || [];
-      if (!data.length) { box.innerHTML = '<p class="empty">No connectors yet.</p>'; return; }
-      box.innerHTML = data.map(function (c) {
-        return '<div class="sc-item"><div class="sc-txt">' + scText(c.source, c.target, c.per, c.amount, c.reference) + '</div>' +
-          '<button class="sc-del" data-id="' + esc(c.id) + '" type="button">Remove</button></div>';
-      }).join('');
-      box.querySelectorAll('.sc-del').forEach(function (b) {
-        b.addEventListener('click', async function () {
-          b.disabled = true;
-          var d = await supabase.from('stat_connectors').delete().eq('id', b.dataset.id);
-          if (d.error) { b.disabled = false; alert(d.error.message); return; }
-          loadConnectors();
+      try {
+        var res = await supabase.from('stat_connectors').select('*').order('created_at', { ascending: true });
+        if (res.error) throw res.error;
+        var data = res.data || [];
+        if (!data.length) { box.innerHTML = '<p class="empty">No connectors yet.</p>'; return; }
+        box.innerHTML = data.map(function (c) {
+          return '<div class="sc-item"><div class="sc-txt">' + scText(c.source, c.target, c.per, c.amount, c.reference) + '</div>' +
+            '<button class="sc-del" data-id="' + esc(c.id) + '" type="button">Remove</button></div>';
+        }).join('');
+        box.querySelectorAll('.sc-del').forEach(function (b) {
+          b.addEventListener('click', async function () {
+            b.disabled = true;
+            try {
+              var d = await supabase.from('stat_connectors').delete().eq('id', b.dataset.id);
+              if (d.error) throw d.error;
+              loadConnectors();
+            } catch (e) { b.disabled = false; alert((e && e.message) || 'Couldn’t remove that connector.'); }
+          });
         });
-      });
+      } catch (e) {
+        box.innerHTML = '<p class="empty">Couldn’t load connectors (' + esc((e && e.message) || 'unknown error') + ').</p>';
+      }
     }
     document.getElementById('scAdd').addEventListener('click', async function () {
-      var note = document.getElementById('scNote'), f = scForm();
-      if (!f.per) { note.textContent = 'The “increases by” distance must be non-zero.'; return; }
+      var btn = this, note = document.getElementById('scNote'), f = scForm();
+      if (!(f.per > 0)) { note.textContent = 'The “increases by” distance must be greater than zero.'; return; }
       if (!f.amount) { note.textContent = 'The change amount must be non-zero.'; return; }
-      this.disabled = true; note.textContent = 'Saving…';
-      var ins = await supabase.from('stat_connectors').insert(f);
-      this.disabled = false;
-      if (ins.error) { note.textContent = 'Failed: ' + ins.error.message; return; }
-      note.textContent = 'Added.';
-      loadConnectors();
+      btn.disabled = true; note.textContent = 'Saving…';
+      try {
+        var ins = await supabase.from('stat_connectors').insert(f);
+        if (ins.error) throw ins.error;
+        note.textContent = 'Added.';
+        loadConnectors();
+      } catch (e) {
+        note.textContent = 'Failed: ' + ((e && e.message) || 'couldn’t save that connector.');
+      } finally {
+        btn.disabled = false;
+      }
     });
 
     // ---- Left-hand tab switching ----

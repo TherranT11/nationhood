@@ -26,13 +26,17 @@ create table if not exists public.stat_connectors (
   id         uuid primary key default gen_random_uuid(),
   source     text not null,                 -- the stat whose rise drives the change
   target     text not null,                 -- the stat that changes
-  per        numeric not null default 1,    -- [Y] the source distance per step (must be non-zero)
+  per        numeric not null default 1,    -- [Y] the source distance per step (must be > 0; direction is carried by amount's sign)
   amount     numeric not null default 1,    -- [A] signed change to the target per step (+ raise, − lower)
   reference  numeric not null default 0,    -- the source value the steps are measured FROM
-  note       text,
-  created_at timestamptz not null default now(),
-  constraint stat_connectors_per_nonzero check (per <> 0)
+  created_at timestamptz not null default now()
 );
+-- Idempotent convergence for a DB that ran an earlier draft of this file (dropped the unused note
+-- column; the distance is a positive magnitude, so the check is per > 0, not merely non-zero).
+alter table public.stat_connectors drop column if exists note;
+alter table public.stat_connectors drop constraint if exists stat_connectors_per_nonzero;
+alter table public.stat_connectors drop constraint if exists stat_connectors_per_positive;
+alter table public.stat_connectors add  constraint stat_connectors_per_positive check (per > 0);
 
 -- World-readable (the coupling rules are public game data); only an admin may write. Mirrors the
 -- nations table's own is_admin() gate (schema/10).
@@ -83,33 +87,28 @@ begin
 end $$;
 revoke all on function public._nation_stat_connectors(text, text) from public, anon, authenticated;
 
--- nation_stat_values — SUPERSEDES schema/177. Same base resolution, now with the connector term folded
--- into EVERY stat: a stat that only has a connector contribution (no base / policy / delta) still shows,
--- while a truly-empty stat with no connector stays "--" (NULL).
+-- nation_stat_values — SUPERSEDES schema/177. The VALUE of every stat comes from the one router,
+-- _nation_stat_raw, plus its connector term; v_has only decides the "--" case. A stat with real backing
+-- (a derived stat, an authored base / policy / delta, or a mirror) always shows; a stat with none shows
+-- only when a connector gives it a value, and a truly-empty stat stays "--" (NULL).
 create or replace function public.nation_stat_values(p_nation text, p_stats text[])
 returns jsonb language plpgsql stable security definer set search_path = public as $$
-declare v_out jsonb := '{}'::jsonb; s text; v numeric; c numeric; n public.nations%rowtype; v_has boolean;
+declare v_out jsonb := '{}'::jsonb; s text; c numeric; n public.nations%rowtype; v_has boolean;
 begin
   select * into n from public.nations where id = p_nation;
   if not found then return v_out; end if;
   foreach s in array coalesce(p_stats, array[]::text[]) loop
-    v := null; v_has := false;
-    if s = 'Budget Balance' then
-      v := public._nation_budget_balance(p_nation); v_has := true;
-    elsif s = 'Tax Burden' then
-      v := public._nation_tax_burden(p_nation); v_has := true;
-    elsif s = 'Public Debt' then
-      v := public._to_num(n.economy->>'debt'); v_has := (v is not null);
-    elsif public._to_num(n.ministry_stats->>s) is not null
-       or public._to_num(n.stat_deltas->>s) is not null
-       or coalesce(public._nation_policy_stat(p_nation, s), 0) <> 0
-       or s in ('Growth', 'Prosperity', 'Rule of Law') then   -- mirrors always have a real backing
-      v := public._nation_live_stat(p_nation, s); v_has := true;
-    end if;
-    -- The connector term applies to every stat — even one with no base (then it stands alone).
-    c := public._nation_stat_connectors(p_nation, s);
-    if c is not null and c <> 0 then v := coalesce(v, 0) + c; v_has := true; end if;
-    if v_has and v is not null then v_out := jsonb_set(v_out, array[s], to_jsonb(round(v, 2))); end if;
+    -- Does the stat have any real backing (for the "--" distinction)?
+    v_has := s in ('Budget Balance', 'Tax Burden')
+          or (s = 'Public Debt' and public._to_num(n.economy->>'debt') is not null)
+          or public._to_num(n.ministry_stats->>s) is not null
+          or public._to_num(n.stat_deltas->>s) is not null
+          or coalesce(public._nation_policy_stat(p_nation, s), 0) <> 0
+          or s in ('Growth', 'Prosperity', 'Rule of Law');   -- mirrors always have a real backing
+    c := public._nation_stat_connectors(p_nation, s);         -- applies to every stat, even an un-backed one
+    if not v_has and coalesce(c, 0) = 0 then continue; end if; -- no base, no connector → "--"
+    v_out := jsonb_set(v_out, array[s],
+      to_jsonb(round(public._nation_stat_raw(p_nation, s) + coalesce(c, 0), 2)));
   end loop;
   return v_out;
 end $$;
