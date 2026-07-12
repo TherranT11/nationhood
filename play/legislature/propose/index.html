@@ -138,7 +138,7 @@
   // ---- Law mode: pick a policy + the option to enact, preview its effects for this
   // nation, then queue it or send it to the floor (mirrors the declaration flow). ----
   var lawBusy = false;
-  async function renderLawMode(currentPolicies, nation, pendingPolicies, partySeats) {
+  async function renderLawMode(currentPolicies, nation, pendingPolicies, partySeats, partyAP) {
     currentPolicies = currentPolicies || {};
     pendingPolicies = pendingPolicies || {};   // policyId → true for a bill already on the floor/agenda
     var noSeats = Number(partySeats) < 1;      // a party with no legislature seats can't author a bill (server enforces too)
@@ -340,7 +340,7 @@
       var blocked = !!pendingPolicies[curPolicy().id];
       // Proposing costs 1 Action Point, +1 per rung beyond the first (server: propose_law, schema/92).
       var rungs = sel.proposed == null ? 0 : Math.abs(sel.proposed - inForceIdx());
-      var ap = Math.max(0, Number(party.action_points) || 0);
+      var ap = Math.max(0, Number(partyAP) || 0);
       var canAfford = rungs > 0 && ap >= rungs;
       var ok = !noSeats && !blocked && sel.proposed != null && sel.proposed !== inForceIdx() && canAfford && !lawBusy;
       document.getElementById('l-cost').textContent = rungs > 0 ? (rungs + ' AP') : '—';
@@ -600,7 +600,7 @@
         const { data: impl } = await supabase.from('nation_law_implementations').select('policy_id').eq('nation_id', party.nation_id);
         (impl || []).forEach(function (r) { pendingPolicies[r.policy_id] = true; });
       } catch (e) { /* leave empty → server still blocks a duplicate */ }
-      renderLawMode((nation && nation.policies) || {}, nation || {}, pendingPolicies, (party && party.seats) || 0);
+      renderLawMode((nation && nation.policies) || {}, nation || {}, pendingPolicies, (party && party.seats) || 0, (party && party.action_points) || 0);
     }
   })();
 </script>
