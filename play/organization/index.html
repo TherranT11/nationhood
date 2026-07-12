@@ -382,14 +382,14 @@
   }
 
   async function load() {
-    var org = (await supabase.from('organizations').select('id, host_nation, name, emblem, org_type, charter, status, founded_tick, charter_articles').eq('id', ORG_ID).maybeSingle()).data;
+    var org = (await supabase.from('organizations').select('id, host_nation, name, emblem, org_type, status, founded_tick, charter_articles').eq('id', ORG_ID).maybeSingle()).data;
     if (!org) { document.getElementById('statusWrap').innerHTML = '<div class="empty">Organization not found.</div>'; return; }
     O = org;
     MEMBERS = (await supabase.from('organization_members').select('nation_id, role').eq('org_id', ORG_ID)).data || [];
     INVITES = (await supabase.from('organization_invitations').select('nation_id, status').eq('org_id', ORG_ID)).data || [];
     VOTES = (await supabase.from('organization_charter_votes').select('nation_id, article, option').eq('org_id', ORG_ID)).data || [];   // RLS: members only
     MSGS = (await supabase.from('organization_messages').select('nation_id, body, created_at').eq('org_id', ORG_ID).order('created_at', { ascending: true }).limit(200)).data || [];
-    LAWS = (await supabase.from('organization_laws').select('sector, law_id, status, proposed_by').eq('org_id', ORG_ID)).data || [];   // public register
+    LAWS = (await supabase.from('organization_laws').select('sector, law_id, status').eq('org_id', ORG_ID)).data || [];   // public register
     LAWVOTES = (await supabase.from('organization_law_votes').select('sector, law_id, nation_id, vote').eq('org_id', ORG_ID)).data || [];   // RLS: members only
 
     document.title = (O.name || 'Organization') + ' · Nationhood';

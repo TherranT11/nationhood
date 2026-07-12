@@ -108,7 +108,7 @@ begin
   if not (v_cat ? p_sector) or not (v_cat->p_sector @> to_jsonb(p_law)) then
     raise exception 'No such law.'; end if;
 
-  select status into v_cur from public.organization_laws where org_id = p_org and sector = p_sector and law_id = p_law;
+  select status into v_cur from public.organization_laws where org_id = p_org and sector = p_sector and law_id = p_law for update;   -- lock any existing row (serialise with concurrent votes/re-proposes)
   if v_cur = 'proposed' then raise exception 'That law is already on the Agenda.'; end if;
   if v_cur = 'enacted' then raise exception 'That law is already enacted.'; end if;
 
@@ -117,7 +117,8 @@ begin
     values (p_org, p_sector, p_law, 'proposed', v_nation, v_tick)
     on conflict (org_id, sector, law_id) do update set status = 'proposed', proposed_by = v_nation, proposed_tick = v_tick, resolved_tick = null;
   delete from public.organization_law_votes where org_id = p_org and sector = p_sector and law_id = p_law;   -- fresh Agenda item
-  insert into public.organization_law_votes (org_id, sector, law_id, nation_id, vote) values (p_org, p_sector, p_law, v_nation, 'aye');
+  insert into public.organization_law_votes (org_id, sector, law_id, nation_id, vote) values (p_org, p_sector, p_law, v_nation, 'aye')
+    on conflict (org_id, sector, law_id, nation_id) do update set vote = 'aye', created_at = now();
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_nation, v_pid, 'party',
@@ -143,7 +144,10 @@ begin
   if not exists (select 1 from public.organization_members where org_id = p_org and nation_id = v_nation) then
     raise exception 'Only a member may vote.'; end if;
 
-  select status into v_status from public.organization_laws where org_id = p_org and sector = p_sector and law_id = p_law;
+  -- Lock the law row: serialises concurrent votes on the SAME law, so each vote's tally (in
+  -- _org_resolve_law) sees every earlier committed vote — otherwise two simultaneous Ayes could each
+  -- count before the other commits and a law with a majority could stall at 'proposed'.
+  select status into v_status from public.organization_laws where org_id = p_org and sector = p_sector and law_id = p_law for update;
   if v_status is null then raise exception 'That law is not on the Agenda.'; end if;
   if v_status <> 'proposed' then raise exception 'That vote has already closed.'; end if;
 
