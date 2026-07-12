@@ -93,10 +93,8 @@ begin
   v_d := jsonb_set(v_d, array[p_resource], 'true'::jsonb);
   update public.nations set demands = v_d where id = v_p.nation_id;
 
-  insert into public.events (nation_id, party_id, kind, body, game_date)
-    values (v_p.nation_id, v_p.id, 'economy',
-            'The government settled the nation''s ' || p_resource || ' demand for ' || v_period || '.',
-            public.current_game_date());
+  -- No feed event: settling a demand is a routine bookkeeping step already reflected in the Economy
+  -- page's demand tracker, so a per-settle "the government settled …" line was just noise.
 
   return jsonb_build_object('resource', p_resource, 'need', v_need, 'demands', v_d);
 end $$;
