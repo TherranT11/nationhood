@@ -69,8 +69,9 @@
   /* Level of detail: nation names by default; fade to cities once zoomed in. */
   .natlabel{opacity:1}.labels.zoomed .natlabel{opacity:0}
   .citylabel{opacity:0}.labels.zoomed .citylabel{opacity:1}
-  /* City dots ride with the map but only show once zoomed in. */
-  svg.world .citydot{opacity:0;transition:opacity .28s ease}
+  /* City dots ride with the map but only show once zoomed in. pointer-events:none so they never
+     intercept a click meant for the nation hex beneath them (even while invisible at opacity 0). */
+  svg.world .citydot{opacity:0;pointer-events:none;transition:opacity .28s ease}
   svg.world.zoomed .citydot{opacity:1}
 
   /* Nation snapshot panel (click a nation) — real data, styled to Home2's dark theme. */
@@ -355,7 +356,7 @@ function applyTransform() {
   if (myNation) {
     land.filter(function (h) { return h.nation_id === myNation; }).forEach(function (h) {
       var p = axialToPix(h.q, h.r, S, 0, 0);
-      body += '<polygon points="' + corners(p.x, p.y) + '" fill="none" stroke="#f0a03c" stroke-opacity=".55" stroke-width="1.6"/>';
+      body += '<polygon points="' + corners(p.x, p.y) + '" fill="none" stroke="#f0a03c" stroke-opacity=".55" stroke-width="1.6" pointer-events="none"/>';
     });
   }
   // Cities (real rows with coordinates). Dots ride with the SVG (fade in when zoomed); the NAMES live
