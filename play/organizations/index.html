@@ -54,10 +54,12 @@
   .fbtn.ratify{color:color-mix(in srgb,var(--blue) 74%,var(--ink));background:color-mix(in srgb,var(--blue) 10%,transparent);border-color:color-mix(in srgb,var(--blue) 42%,var(--line))}
   .fbtn:hover:not(:disabled){filter:brightness(1.15)}
   .fbtn:disabled{opacity:.4;cursor:not-allowed}
+  a.fbtn{text-decoration:none;display:inline-block}
   .fnote{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);line-height:1.6}
 
   /* established organizations */
-  .orgcard{display:flex;align-items:center;gap:13px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin-bottom:10px}
+  .orgcard{display:flex;align-items:center;gap:13px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin-bottom:10px;text-decoration:none;color:inherit}
+  a.orgcard:hover{border-color:var(--soft)}
   .orgcard .oic{font-size:22px}
   .orgcard .onm{font-size:14.5px;font-weight:800}
   .orgcard .om{margin-left:auto;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
@@ -123,7 +125,6 @@
     } finally { BUSY = false; }
   }
   async function respond(org, accept) { await act(function () { return supabase.rpc('respond_invitation', { p_org: org, p_accept: accept }); }); }
-  async function ratify(org) { await act(function () { return supabase.rpc('ratify_organization', { p_org: org }); }); }
 
   // A founding org's banner: header + step tracker + charter quote + delegation chips + the action row.
   function renderFounding(o, members, invites) {
@@ -133,11 +134,11 @@
     var pending  = invites.filter(function (i) { return i.status === 'pending'; });
     var totalInv = invites.length;
     var cost = (0.2 * totalInv);
-    var ready = accepted.length >= MIN_ACCEPT;
     var myInv = invites.find(function (i) { return i.nation_id === ME; });
+    var inConvention = pending.length === 0;   // all invitations answered → the Convention is under way
 
-    var stage = isHost ? (ready ? 'Ready to Ratify' : 'Awaiting Responses')
-      : (myInv && myInv.status === 'pending') ? 'Awaiting Your Response' : 'Awaiting Ratification';
+    var stage = (myInv && myInv.status === 'pending') ? 'Awaiting Your Response'
+      : inConvention ? 'In Convention' : 'Awaiting Responses';
 
     // Delegation chips: the founding host first, then accepted, then still-pending, then declined (struck).
     var chips = '<span class="fchip you">' + esc(natName(o.host_nation)) + ' · Founder' + (isHost ? ' — you' : '') + '</span>';
@@ -145,25 +146,22 @@
     pending.forEach(function (i) { chips += '<span class="fchip">' + esc(natName(i.nation_id)) + (i.nation_id === ME ? ' — you' : '') + '</span>'; });
     declined.forEach(function (i) { chips += '<span class="fchip dec">' + esc(natName(i.nation_id)) + '</span>'; });
 
-    // Action row: the host ratifies (once ready); an invited nation's FA minister accepts/declines; everyone
-    // else sees a read-only line saying what the org is waiting on.
+    // Action row: an invited FA minister accepts/declines here (quick); the Charter Convention voting +
+    // ratification live on the org's own page, reached by the Open link (always present for those involved).
+    var openLink = '<a class="fbtn ratify" href="/play/organization/?id=' + esc(o.id) + '">Enter the Convention →</a>';
     var action;
-    if (isHost && AM_FA) {
-      action = '<button class="fbtn ratify" data-ratify="' + o.id + '"' + (ready ? '' : ' disabled') + '>Ratify — Found the Organization →</button>' +
-        '<span class="fnote">' + (ready ? accepted.length + ' accepted · founded on ratification'
-          : accepted.length + ' of ' + MIN_ACCEPT + ' acceptances needed to ratify') + '</span>';
-    } else if (myInv && myInv.status === 'pending' && AM_FA) {
+    if (myInv && myInv.status === 'pending' && AM_FA) {
       action = '<button class="fbtn go" data-acc="' + o.id + '">Accept — Join</button>' +
         '<button class="fbtn no" data-dec="' + o.id + '">Decline</button>' +
         '<span class="fnote">answering costs 1 AP</span>';
     } else if (myInv && myInv.status === 'pending') {
       action = '<span class="fnote">You are invited — your Minister of Foreign Affairs answers this invitation.</span>';
+    } else if (isHost) {
+      action = openLink + '<span class="fnote">vote on the charter, then ratify to found it — once ' + MIN_ACCEPT + ' accept</span>';
     } else if (myInv && myInv.status === 'accepted') {
-      action = '<span class="fnote">You have accepted — awaiting the host’s ratification.</span>';
+      action = openLink + '<span class="fnote">vote on the charter · awaiting the host’s ratification</span>';
     } else if (myInv && myInv.status === 'declined') {
       action = '<span class="fnote">You declined this invitation.</span>';
-    } else if (isHost) {
-      action = '<span class="fnote">Your Minister of Foreign Affairs ratifies once ' + MIN_ACCEPT + ' nations accept.</span>';
     } else {
       action = '<span class="fnote">Awaiting the host’s ratification.</span>';
     }
@@ -173,12 +171,13 @@
         '<span class="onm">' + esc(o.name) + '</span>' +
         '<span class="chip-t">' + esc(o.org_type || 'General') + '</span>' +
         '<span class="chip-t">Host: ' + esc(natName(o.host_nation)) + (isHost ? ' — you' : '') + '</span>' +
-        '<span class="fstage' + (ready ? ' ready' : '') + '">◉ ' + stage + '</span></div>' +
+        '<span class="fstage">◉ ' + stage + '</span></div>' +
       '<div class="fsteps">' +
         '<span class="fstep done">✓ Invitations sent — ' + totalInv + ' · ' + CUR + cost.toFixed(1) + 'bn</span>' +
         '<span class="fstep ' + (pending.length ? 'now' : 'done') + '">' + (pending.length ? '◉ ' : '✓ ') + 'Responses — ' +
           accepted.length + ' accepted, ' + declined.length + ' declined' + (pending.length ? ', ' + pending.length + ' pending' : '') + '</span>' +
-        '<span class="fstep ' + (ready ? 'now' : '') + '">' + (ready ? '◉ ' : '') + 'Ratification</span>' +
+        '<span class="fstep ' + (inConvention ? 'now' : '') + '">' + (inConvention ? '◉ ' : '') + 'Charter Convention</span>' +
+        '<span class="fstep">Ratification</span>' +
       '</div>' +
       (o.charter ? '<div class="fquote">“' + esc(o.charter) + '”</div>' : '') +
       '<div class="fdels"><span class="fdl">Delegations</span>' + chips + '</div>' +
@@ -188,10 +187,10 @@
   function renderEstablished(o, members) {
     var mine = members.find(function (m) { return m.nation_id === ME; });
     var role = mine ? (mine.role === 'founder' ? 'Founder' : 'Member') : 'Not a member';
-    return '<div class="orgcard"><span class="oic">' + esc(o.emblem || '🕊') + '</span>' +
+    return '<a class="orgcard" href="/play/organization/?id=' + esc(o.id) + '"><span class="oic">' + esc(o.emblem || '🕊') + '</span>' +
       '<div><div class="onm">' + esc(o.name) + '</div>' +
         '<div class="fnote">' + esc(o.org_type || 'General') + ' · host ' + esc(natName(o.host_nation)) + '</div></div>' +
-      '<span class="om">' + members.length + ' member' + (members.length === 1 ? '' : 's') + ' · ' + role + '</span></div>';
+      '<span class="om">' + members.length + ' member' + (members.length === 1 ? '' : 's') + ' · ' + role + ' →</span></a>';
   }
 
   async function loadOrgs() {
@@ -245,7 +244,6 @@
         '<div class="ed">An organization appears here once its host ratifies it.<br>Charter one from the Nation page, or accept an invitation above.</div></div>';
 
     // Wire the action buttons.
-    document.querySelectorAll('[data-ratify]').forEach(function (b) { b.onclick = function () { if (!b.disabled) ratify(b.dataset.ratify); }; });
     document.querySelectorAll('[data-acc]').forEach(function (b) { b.onclick = function () { respond(b.dataset.acc, true); }; });
     document.querySelectorAll('[data-dec]').forEach(function (b) { b.onclick = function () { if (confirm('Decline this invitation?')) respond(b.dataset.dec, false); }; });
   }

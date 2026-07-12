@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Organization · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
+<style>
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased}
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
+  .back{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);text-decoration:none}
+  .back:hover{color:var(--ink)}
+  .mono{font-family:'Space Mono',monospace}
+
+  /* status header */
+  .status{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 22px;margin:12px 0 18px}
+  .strow{display:flex;align-items:center;gap:15px;flex-wrap:wrap}
+  .strow .oic{font-size:28px;line-height:1}
+  .strow .onm{font-size:19px;font-weight:800;letter-spacing:-.01em}
+  .strow .osub{font-family:'Space Mono',monospace;font-size:8.5px;color:var(--soft);letter-spacing:.05em;text-transform:uppercase;margin-top:3px}
+  .spacer{flex:1}
+  .hstat{text-align:right;font-family:'Space Mono',monospace;min-width:74px}
+  .hstat .v{font-size:14px;font-weight:700}
+  .hstat .k{font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-top:2px}
+  .stage{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:color-mix(in srgb,var(--blue) 70%,var(--ink));background:color-mix(in srgb,var(--blue) 12%,transparent);border:1px solid color-mix(in srgb,var(--blue) 40%,var(--line));border-radius:7px;padding:5px 10px}
+  .stage.ready{color:color-mix(in srgb,var(--green) 70%,var(--ink));background:color-mix(in srgb,var(--green) 12%,transparent);border-color:color-mix(in srgb,var(--green) 40%,var(--line))}
+  .charterline{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+  .art{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);background:var(--field);border:1px solid var(--line2);border-radius:6px;padding:5px 10px}
+
+  .layout{display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:start}
+  @media(max-width:1000px){.layout{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:16px}
+  .sect{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin:0 0 13px;display:flex;align-items:baseline;gap:10px}
+  .sect .note{letter-spacing:.03em;font-size:9px;font-weight:400;text-transform:none;color:var(--soft)}
+
+  /* convention voting */
+  .article{border:1px solid var(--line2);border-radius:12px;background:var(--field);padding:12px 14px;margin-bottom:10px}
+  .arttop{display:flex;align-items:baseline;gap:9px;margin-bottom:9px}
+  .artnm{font-size:13px;font-weight:700}
+  .artst{margin-left:auto;font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .artst.decided{color:color-mix(in srgb,var(--green) 72%,var(--ink))}
+  .opts{display:flex;gap:8px;flex-wrap:wrap}
+  .opt{flex:1 1 150px;text-align:left;border:1px solid var(--line2);border-radius:9px;background:var(--surface);padding:9px 11px;cursor:pointer;color:var(--ink)}
+  .opt:hover:not(:disabled){border-color:var(--soft)}
+  .opt:disabled{cursor:default}
+  .opt.mine{border-color:color-mix(in srgb,var(--amber) 55%,var(--line));background:color-mix(in srgb,var(--amber) 8%,var(--surface))}
+  .opt.win{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--green) 45%,transparent)}
+  .opt .ol{font-size:12px;font-weight:600}
+  .optb{display:flex;align-items:center;gap:7px;margin-top:6px}
+  .obar{flex:1;height:6px;background:var(--field);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+  .obar > i{display:block;height:100%;background:color-mix(in srgb,var(--blue) 55%,var(--line))}
+  .ocount{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;color:var(--soft)}
+  .ballotnote{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);margin-top:4px;line-height:1.6}
+
+  .frow{display:flex;align-items:center;gap:13px;margin-top:6px;flex-wrap:wrap}
+  .btn{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-radius:9px;padding:10px 18px;cursor:pointer;border:1px solid var(--line2);background:var(--field);color:var(--ink)}
+  .btn.ratify{color:color-mix(in srgb,var(--blue) 74%,var(--ink));background:color-mix(in srgb,var(--blue) 10%,transparent);border-color:color-mix(in srgb,var(--blue) 42%,var(--line))}
+  .btn.go{color:color-mix(in srgb,var(--green) 72%,var(--ink));background:color-mix(in srgb,var(--green) 10%,transparent);border-color:color-mix(in srgb,var(--green) 40%,var(--line))}
+  .btn.no{color:color-mix(in srgb,var(--red) 72%,var(--ink));background:color-mix(in srgb,var(--red) 8%,transparent);border-color:color-mix(in srgb,var(--red) 36%,var(--line))}
+  .btn:hover:not(:disabled){filter:brightness(1.15)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .fnote{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);line-height:1.6}
+
+  /* roster */
+  .roster{display:flex;flex-direction:column;gap:0}
+  .rrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+  .rrow:first-child{border-top:none}
+  .rname{font-size:13px;font-weight:600}
+  .rrole{margin-left:auto;font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .rrole.founder{color:var(--amber)}
+
+  /* assembly floor chat */
+  .chat{background:var(--surface);border:1px solid var(--line);border-radius:16px;display:flex;flex-direction:column;height:600px;position:sticky;top:16px}
+  .chead{padding:13px 17px;border-bottom:1px solid var(--line)}
+  .chead .cn{font-size:14px;font-weight:800}
+  .chead .cr{font-family:'Space Mono',monospace;font-size:8.5px;color:var(--soft);letter-spacing:.05em;text-transform:uppercase;margin-top:2px}
+  .msgs{flex:1;overflow-y:auto;padding:14px 15px;display:flex;flex-direction:column;gap:9px}
+  .msg{max-width:90%;padding:8px 12px;border-radius:11px;font-size:12.5px;line-height:1.5;align-self:flex-start;background:var(--field);border:1px solid var(--line2);border-bottom-left-radius:4px}
+  .msg.you{align-self:flex-end;background:color-mix(in srgb,var(--amber) 8%,var(--surface));border-color:color-mix(in srgb,var(--amber) 30%,var(--line));border-bottom-left-radius:11px;border-bottom-right-radius:4px}
+  .msg .who{font-family:'Space Mono',monospace;font-size:7.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--blue);margin-bottom:3px}
+  .msg.you .who{color:var(--amber)}
+  .msg .tm{font-family:'Space Mono',monospace;font-size:7px;color:var(--soft);margin-left:6px}
+  .cempty{margin:auto;text-align:center;font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);line-height:1.8;padding:0 20px}
+  .cinput{display:flex;gap:8px;padding:11px 13px;border-top:1px solid var(--line)}
+  .cinput input{flex:1;background:var(--field);border:1px solid var(--line2);border-radius:9px;color:var(--ink);font-size:12.5px;padding:9px 12px;outline:none;font-family:'Archivo',sans-serif}
+  .cinput input:focus{border-color:var(--soft)}
+  .cinput input:disabled{opacity:.5}
+  .send{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);background:var(--field);border:1px solid var(--line2);border-radius:9px;padding:0 15px;cursor:pointer}
+  .send:disabled{opacity:.4;cursor:not-allowed}
+
+  .empty{border:1px dashed var(--line2);border-radius:14px;padding:26px 20px;text-align:center;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div>
+
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <a class="back" href="/play/organizations/">← International Organizations</a>
+
+    <div id="statusWrap"><div class="empty">Loading…</div></div>
+
+    <div class="layout" id="layout" style="display:none">
+      <div id="leftcol"></div>
+      <div class="chat">
+        <div class="chead"><div class="cn">The Assembly Floor</div><div class="cr" id="floorMembers"></div></div>
+        <div class="msgs" id="msgs"></div>
+        <div class="cinput">
+          <input type="text" id="chatIn" placeholder="Address the Assembly…" maxlength="500" disabled>
+          <button class="send" id="sendBtn" disabled>Send</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { esc, tickToDate } from '/util.js';
+  import { mountTopbar } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+
+  mountTopbar();
+  mountSidenav();
+
+  // The six charter articles + their options — labels only; the ids mirror schema/189's catalog (the
+  // server validates every vote, so this list is display, not authority).
+  var ARTICLES = [
+    { id:'accession', label:'Accession', opts:[{id:'open',label:'Open — any nation may apply'},{id:'closed',label:'Closed — invitation only'}] },
+    { id:'voting',    label:'Voting',    opts:[{id:'equal',label:'One Member, One Vote'},{id:'gdp',label:'Weighted by GDP'}] },
+    { id:'admission', label:'Admission', opts:[{id:'majority',label:'Simple Majority'},{id:'unanimous',label:'Unanimous'}] },
+    { id:'chair',     label:'Chair / Seat', opts:[{id:'rotating',label:'Rotating host'},{id:'fixed',label:'Fixed — the founder'}] },
+    { id:'expulsion', label:'Expulsion', opts:[{id:'unanimous',label:'Unanimous − Accused'},{id:'majority',label:'Simple Majority'},{id:'none',label:'None'}] },
+    { id:'dues',      label:'Dues',      opts:[{id:'gdp',label:'Flat % of GDP'},{id:'fixed',label:'Fixed sum'},{id:'none',label:'None'}] }
+  ];
+  var ARTLABEL = {}; ARTICLES.forEach(function (a) { ARTLABEL[a.id] = {}; ARTLABEL[a.id]._ = a.label; a.opts.forEach(function (o) { ARTLABEL[a.id][o.id] = o.label; }); });
+  var MIN_ACCEPT = 2;
+
+  var ORG_ID = new URLSearchParams(location.search).get('id');
+  var ME = null, CUR_TICK = 1, AM_FA = false, NATIONS = {}, BUSY = false;
+  var O = null, MEMBERS = [], INVITES = [], VOTES = [], MSGS = [];
+
+  function natName(id) { return NATIONS[id] || id; }
+  function amMember() { return MEMBERS.some(function (m) { return m.nation_id === ME; }); }
+  function isHost() { return O && O.host_nation === ME; }
+
+  // Strict-plurality winner of an article among current votes, or null (no votes / tie) — mirrors the server.
+  function winnerOf(article) {
+    var t = {};
+    VOTES.forEach(function (v) { if (v.article === article) t[v.option] = (t[v.option] || 0) + 1; });
+    var max = -1, who = null, tied = false;
+    Object.keys(t).forEach(function (opt) { if (t[opt] > max) { max = t[opt]; who = opt; tied = false; } else if (t[opt] === max) { tied = true; } });
+    return tied || who === null ? null : who;
+  }
+  function countOf(article, opt) { return VOTES.filter(function (v) { return v.article === article && v.option === opt; }).length; }
+  function myVote(article) { var v = VOTES.find(function (x) { return x.article === article && x.nation_id === ME; }); return v && v.option; }
+  function acceptedCount() { return INVITES.filter(function (i) { return i.status === 'accepted'; }).length; }
+  function allDecided() { return ARTICLES.every(function (a) { return winnerOf(a.id) !== null; }); }
+
+  async function run(fn) {
+    if (BUSY) return; BUSY = true;
+    try { const { error } = await fn(); if (error) throw error; await load(); }
+    catch (e) { alert((e && e.message) || 'That action failed.'); }
+    finally { BUSY = false; }
+  }
+  function castVote(article, opt) { run(function () { return supabase.rpc('cast_charter_ballot', { p_org: ORG_ID, p_votes: (function () { var o = {}; o[article] = opt; return o; })() }); }); }
+  function ratify() { run(function () { return supabase.rpc('ratify_organization', { p_org: ORG_ID }); }); }
+  function respond(accept) { run(function () { return supabase.rpc('respond_invitation', { p_org: ORG_ID, p_accept: accept }); }); }
+
+  function ageText() {
+    if (!O || O.founded_tick == null) return '';
+    var d = Math.max(0, CUR_TICK - O.founded_tick), y = Math.floor(d / 12), t = d % 12;
+    return 'Age ' + y + 'y ' + t + 't';
+  }
+  function myStatus() {
+    if (isHost()) return 'Founder';
+    if (amMember()) return 'Member';
+    var inv = INVITES.find(function (i) { return i.nation_id === ME; });
+    if (inv) return inv.status === 'pending' ? 'Invited' : (inv.status === 'accepted' ? 'Accepted' : 'Declined');
+    return 'Observer';
+  }
+
+  function renderStatus() {
+    var founding = O.status === 'founding';
+    var ready = acceptedCount() >= MIN_ACCEPT && allDecided();
+    var sub = founding
+      ? (O.org_type || 'General') + ' · Charter Convention · Host ' + esc(natName(O.host_nation))
+      : (O.org_type || 'General') + ' · Founded ' + esc(O.founded_tick != null ? tickToDate(O.founded_tick) : '—') + ' · ' + ageText();
+    var stageHtml = founding
+      ? '<span class="stage' + (ready ? ' ready' : '') + '">◉ ' + (ready ? 'Ready to Ratify' : 'In Convention') + '</span>'
+      : '<span class="stage ready">◉ Active</span>';
+    document.getElementById('statusWrap').innerHTML =
+      '<div class="status"><div class="strow"><span class="oic">' + esc(O.emblem || '🕊') + '</span>' +
+        '<div><div class="onm">' + esc(O.name) + '</div><div class="osub">' + sub + '</div></div>' +
+        '<div class="spacer"></div>' +
+        '<div class="hstat"><div class="v">' + MEMBERS.length + '</div><div class="k">Members</div></div>' +
+        '<div class="hstat"><div class="v" style="color:var(--amber)">' + esc(myStatus()) + '</div><div class="k">Your Status</div></div>' +
+        stageHtml + '</div>' +
+        (!founding && O.charter_articles ? '<div class="charterline">' + ARTICLES.map(function (a) {
+          var pick = O.charter_articles[a.id];
+          return '<span class="art">' + esc(a.label) + ': ' + esc((ARTLABEL[a.id] && ARTLABEL[a.id][pick]) || pick || '—') + '</span>';
+        }).join('') + '</div>' : '') +
+      '</div>';
+  }
+
+  function renderConvention() {
+    // The Convention: members' Foreign Affairs ministers vote on each article; a strict plurality decides.
+    var canVote = amMember() && AM_FA;
+    var rows = ARTICLES.map(function (a) {
+      var win = winnerOf(a.id), mine = myVote(a.id);
+      var opts = a.opts.map(function (o) {
+        var c = countOf(a.id, o.id), tot = MEMBERS.length || 1;
+        return '<button class="opt' + (mine === o.id ? ' mine' : '') + (win === o.id ? ' win' : '') + '"' +
+          ' data-art="' + a.id + '" data-opt="' + o.id + '"' + (canVote ? '' : ' disabled') + '>' +
+          '<div class="ol">' + esc(o.label) + '</div>' +
+          '<div class="optb"><span class="obar"><i style="width:' + Math.round(100 * c / tot) + '%"></i></span>' +
+          '<span class="ocount">' + c + '</span></div></button>';
+      }).join('');
+      return '<div class="article"><div class="arttop"><span class="artnm">' + esc(a.label) + '</span>' +
+        '<span class="artst' + (win ? ' decided' : '') + '">' + (win ? 'Decided · ' + esc(ARTLABEL[a.id][win]) : 'Undecided') + '</span></div>' +
+        '<div class="opts">' + opts + '</div></div>';
+    }).join('');
+
+    var canRatify = isHost() && AM_FA && acceptedCount() >= MIN_ACCEPT && allDecided();
+    var actionNote = !allDecided() ? 'every article needs a clear majority'
+      : acceptedCount() < MIN_ACCEPT ? (acceptedCount() + ' of ' + MIN_ACCEPT + ' acceptances needed')
+      : 'charter settled · ' + acceptedCount() + ' members';
+    var myInv = INVITES.find(function (i) { return i.nation_id === ME; });
+    var action = '';
+    if (isHost() && AM_FA) {
+      action = '<div class="frow"><button class="btn ratify" id="ratifyBtn"' + (canRatify ? '' : ' disabled') + '>Ratify — Found the Organization →</button><span class="fnote">' + actionNote + '</span></div>';
+    } else if (myInv && myInv.status === 'pending' && AM_FA) {
+      action = '<div class="frow"><button class="btn go" id="accBtn">Accept — Join</button><button class="btn no" id="decBtn">Decline</button><span class="fnote">answering costs 1 AP</span></div>';
+    } else if (!AM_FA && (amMember() || (myInv && myInv.status === 'pending'))) {
+      action = '<div class="frow"><span class="fnote">Your Minister of Foreign Affairs casts your nation’s votes and answers for you.</span></div>';
+    }
+
+    return '<div class="card"><div class="sect">Charter Convention <span class="note">' +
+        (canVote ? 'cast your nation’s vote on each article — a clear majority decides' : 'members vote on each article — a clear majority decides') + '</span></div>' +
+      rows +
+      '<div class="ballotnote">' + (amMember()
+        ? (AM_FA ? 'You vote for ' + esc(natName(ME)) + '. Change a vote any time before ratification.' : 'Only your Foreign Affairs minister may vote.')
+        : 'Only member nations vote in the convention.') + '</div>' +
+      action + '</div>';
+  }
+
+  function renderRoster() {
+    var rows = MEMBERS.slice().sort(function (a, b) { return (a.role === 'founder' ? 0 : 1) - (b.role === 'founder' ? 0 : 1) || natName(a.nation_id).localeCompare(natName(b.nation_id)); })
+      .map(function (m) {
+        return '<div class="rrow"><span class="rname">' + esc(natName(m.nation_id)) + (m.nation_id === ME ? ' — you' : '') + '</span>' +
+          '<span class="rrole' + (m.role === 'founder' ? ' founder' : '') + '">' + (m.role === 'founder' ? 'Founder' : 'Member') + '</span></div>';
+      }).join('');
+    return '<div class="card"><div class="sect">Members <span class="note">' + MEMBERS.length + ' seated</span></div><div class="roster">' + rows + '</div></div>';
+  }
+
+  function renderChat() {
+    var floor = document.getElementById('floorMembers');
+    floor.textContent = MEMBERS.map(function (m) { return natName(m.nation_id); }).join(' · ');
+    var box = document.getElementById('msgs');
+    if (!amMember()) {
+      box.innerHTML = '<div class="cempty">The Assembly Floor is open to member nations.<br>Join the organization to take the floor.</div>';
+      return;
+    }
+    box.innerHTML = MSGS.length ? MSGS.map(function (m) {
+      var you = m.nation_id === ME;
+      return '<div class="msg' + (you ? ' you' : '') + '"><div class="who">' + esc(natName(m.nation_id)) +
+        '<span class="tm">' + esc((m.created_at || '').slice(11, 16)) + '</span></div>' + esc(m.body) + '</div>';
+    }).join('') : '<div class="cempty">No one has spoken yet.<br>Open the floor.</div>';
+    box.scrollTop = box.scrollHeight;
+    var input = document.getElementById('chatIn'), btn = document.getElementById('sendBtn');
+    input.disabled = false; btn.disabled = false;
+  }
+
+  function wire() {
+    document.querySelectorAll('.opt[data-art]').forEach(function (b) {
+      b.onclick = function () { if (!b.disabled) castVote(b.dataset.art, b.dataset.opt); };
+    });
+    var r = document.getElementById('ratifyBtn'); if (r) r.onclick = function () { if (!r.disabled) ratify(); };
+    var a = document.getElementById('accBtn'); if (a) a.onclick = function () { respond(true); };
+    var d = document.getElementById('decBtn'); if (d) d.onclick = function () { if (confirm('Decline this invitation?')) respond(false); };
+  }
+
+  async function load() {
+    var org = (await supabase.from('organizations').select('id, host_nation, name, emblem, org_type, charter, status, founded_tick, charter_articles').eq('id', ORG_ID).maybeSingle()).data;
+    if (!org) { document.getElementById('statusWrap').innerHTML = '<div class="empty">Organization not found.</div>'; return; }
+    O = org;
+    MEMBERS = (await supabase.from('organization_members').select('nation_id, role').eq('org_id', ORG_ID)).data || [];
+    INVITES = (await supabase.from('organization_invitations').select('nation_id, status').eq('org_id', ORG_ID)).data || [];
+    VOTES = (await supabase.from('organization_charter_votes').select('nation_id, article, option').eq('org_id', ORG_ID)).data || [];   // RLS: members only
+    MSGS = (await supabase.from('organization_messages').select('nation_id, body, created_at').eq('org_id', ORG_ID).order('created_at', { ascending: true }).limit(200)).data || [];
+
+    document.title = (O.name || 'Organization') + ' · Nationhood';
+    renderStatus();
+    document.getElementById('leftcol').innerHTML =
+      (O.status === 'founding' ? renderConvention() : '') + renderRoster();
+    document.getElementById('layout').style.display = '';
+    wire();
+    renderChat();
+  }
+
+  async function sendMsg() {
+    var input = document.getElementById('chatIn'); var body = input.value.trim();
+    if (!body || BUSY) return;
+    input.value = '';
+    await run(function () { return supabase.rpc('post_org_message', { p_org: ORG_ID, p_body: body }); });
+  }
+
+  (async () => {
+    if (!isConfigured) return;
+    const user = await requireUser();
+    if (!user) return;
+    if (!ORG_ID) { document.getElementById('statusWrap').innerHTML = '<div class="empty">No organization selected.</div>'; return; }
+    try {
+      const { data: party } = await supabase.from('parties').select('nation_id').eq('user_id', user.id).single();
+      if (!party) { window.location.replace('/nation-select/'); return; }
+      ME = party.nation_id;
+      try { const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle(); CUR_TICK = (gs && gs.current_tick) || 1; } catch (e) {}
+      const { data: nats } = await supabase.from('nations').select('id, name');
+      (nats || []).forEach(function (n) { NATIONS[n.id] = n.name; });
+      try { const { data: fa } = await supabase.rpc('is_foreign_affairs_minister'); AM_FA = fa === true; } catch (e) {}
+
+      document.getElementById('sendBtn').onclick = sendMsg;
+      document.getElementById('chatIn').addEventListener('keydown', function (e) { if (e.key === 'Enter') sendMsg(); });
+
+      await load();
+    } catch (e) {
+      document.getElementById('statusWrap').innerHTML = '<div class="empty">Couldn’t load this organization. Refresh to try again.</div>';
+    }
+  })();
+</script>
+</body>
+</html>
