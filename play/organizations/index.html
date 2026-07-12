@@ -125,6 +125,7 @@
     } finally { BUSY = false; }
   }
   async function respond(org, accept) { await act(function () { return supabase.rpc('respond_invitation', { p_org: org, p_accept: accept }); }); }
+  async function leaveCharter(org) { if (!confirm('Withdraw your nation from these charter talks? The organization carries on without you.')) return; await act(function () { return supabase.rpc('leave_charter', { p_org: org }); }); }
 
   // A founding org's banner: header + step tracker + charter quote + delegation chips + the action row.
   function renderFounding(o, members, invites) {
@@ -159,7 +160,8 @@
     } else if (isHost) {
       action = openLink + '<span class="fnote">vote on the charter, then ratify to found it — once ' + MIN_ACCEPT + ' accept</span>';
     } else if (myInv && myInv.status === 'accepted') {
-      action = openLink + '<span class="fnote">vote on the charter · awaiting the host’s ratification</span>';
+      action = openLink + '<button class="fbtn no" data-leave="' + o.id + '">Leave Charter</button>' +
+        '<span class="fnote">vote on the charter · awaiting the host’s ratification</span>';
     } else if (myInv && myInv.status === 'declined') {
       action = '<span class="fnote">You declined this invitation.</span>';
     } else {
@@ -244,6 +246,7 @@
         '<div class="ed">An organization appears here once its host ratifies it.<br>Charter one from the Nation page, or accept an invitation above.</div></div>';
 
     // Wire the action buttons.
+    document.querySelectorAll('[data-leave]').forEach(function (b) { b.onclick = function () { leaveCharter(b.dataset.leave); }; });
     document.querySelectorAll('[data-acc]').forEach(function (b) { b.onclick = function () { respond(b.dataset.acc, true); }; });
     document.querySelectorAll('[data-dec]').forEach(function (b) { b.onclick = function () { if (confirm('Decline this invitation?')) respond(b.dataset.dec, false); }; });
   }
