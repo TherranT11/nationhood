@@ -104,6 +104,20 @@
   .np-ev .etxt{flex:1;font-size:11.5px;color:var(--muted);line-height:1.4}
   .np-ev .etag{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase;white-space:nowrap}
 
+  /* Event markers: an orange pulsing "!" over a nation's capital when something is happening there
+     this in-game month. Constant on-screen size (positioned by JS), clickable to open the nation. */
+  .markers{position:absolute;inset:0;pointer-events:none;z-index:7;overflow:hidden}
+  .evmarker{position:absolute;left:0;top:0;width:24px;height:24px;margin:-12px 0 0 -12px;pointer-events:auto;cursor:pointer;will-change:transform}
+  .evmarker .dot{position:absolute;inset:0;border-radius:50%;background:#e5604c;border:2px solid #fff;
+    display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:14px;
+    font-family:'JetBrains Mono',monospace;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .evmarker .ring{position:absolute;inset:0;border-radius:50%;border:2px solid #e5604c;animation:evpulse 1.8s ease-out infinite}
+  .evmarker .cnt{position:absolute;top:-5px;right:-5px;min-width:15px;height:15px;border-radius:8px;background:#fff;
+    color:#e5604c;font-family:'JetBrains Mono',monospace;font-weight:900;font-size:9px;line-height:1;
+    display:flex;align-items:center;justify-content:center;padding:0 3px;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+  @keyframes evpulse{0%{transform:scale(1);opacity:.7}70%{transform:scale(2.2);opacity:0}100%{transform:scale(2.2);opacity:0}}
+  @media(prefers-reduced-motion:reduce){.evmarker .ring{animation:none;opacity:0}}
+
   .chip{font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 8px;border-radius:5px;
     border:1px solid var(--line);background:var(--panel);color:var(--muted)}
   .zoombtn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:var(--panel);
@@ -145,6 +159,7 @@
   <main class="map-area" id="mapArea">
     <svg class="world" id="worldSvg"></svg>
     <div class="labels" id="labels"></div>
+    <div class="markers" id="markers"></div>
     <div class="loading" id="loading">Loading the world…</div>
 
     <!-- topbar -->
@@ -184,7 +199,7 @@
 
 <script type="module">
 import { supabase, isConfigured, requireUser, selectAll } from '/supabase.js';
-import { esc, declaredValue, fmtGdp, fmtPop, loadHogTitleSlot } from '/util.js';
+import { esc, declaredValue, fmtGdp, fmtPop, loadHogTitleSlot, tickToDate } from '/util.js';
 import { axialToPix, nationColors } from '/hexmap.js';
 import { regimeText, nationRegime, statName, statLabel, statBand, crimeLabel, crimeBand, crimeValue } from '/ladders.js';
 
@@ -232,6 +247,7 @@ var pan = { x: 0, y: 0 }, zoom = 1.1, minZoom = 0.35, drag = null;
 var svgEl = document.getElementById('worldSvg'), worldG = null;
 var mapArea = document.getElementById('mapArea'), hoverChip = document.getElementById('hoverChip');
 var overlayEl = document.getElementById('labels');
+var markerEl = document.getElementById('markers');
 var natPanel = document.getElementById('natPanel');
 var pointerMoved = false;   // set while dragging/pinching so a pan doesn't register as a nation click
 var handleMapTap = null;    // set once the world loads: opens/closes the nation panel for a tapped element
@@ -251,6 +267,16 @@ function positionLabels() {
     el.style.transform = 'translate(' + x + 'px,' + y + 'px)' + anchor;
   }
 }
+// Event markers keep a constant on-screen size too — place each over its capital's world coords.
+function positionMarkers() {
+  if (!markerEl) return;
+  var kids = markerEl.children;
+  for (var i = 0; i < kids.length; i++) {
+    var el = kids[i];
+    el.style.transform = 'translate(' + (parseFloat(el.getAttribute('data-x')) * zoom + pan.x) + 'px,' +
+      (parseFloat(el.getAttribute('data-y')) * zoom + pan.y) + 'px)';
+  }
+}
 // Level of detail: below the threshold show nation names; at/above it show city names + dots.
 function updateLod() {
   var zoomed = zoom >= ZOOM_CITY;
@@ -261,6 +287,7 @@ function updateLod() {
 function applyTransform() {
   if (worldG) worldG.setAttribute('transform', 'translate(' + pan.x + ',' + pan.y + ') scale(' + zoom + ')');
   positionLabels();
+  positionMarkers();
   updateLod();
 }
 
@@ -499,6 +526,63 @@ function applyTransform() {
     if (nid) openNation(nid); else closeNation();
   };
   worldG.addEventListener('click', function (e) { if (!pointerMoved) handleMapTap(e.target); });
+
+  /* ---------------- EVENT MARKERS (what's happening this in-game month) ---------------- */
+  // Capital pixel position per nation: its declared capital city if we have one, else the land centroid.
+  var capPos = {};
+  cities.forEach(function (c) {
+    if (c.q == null || c.r == null) return;
+    if (capitalByNation[c.nation_id] && capitalByNation[c.nation_id] === c.name) {
+      var cp = axialToPix(c.q, c.r, S, 0, 0); capPos[c.nation_id] = { x: cp.x, y: cp.y };
+    }
+  });
+  Object.keys(natSum).forEach(function (nid) { if (!capPos[nid]) { var s = natSum[nid]; if (s.n) capPos[nid] = { x: s.x / s.n, y: s.y / s.n }; } });
+
+  try {
+    // "Now" = the current in-game month (one source: tickToDate mirrors public.current_game_date()).
+    var curDate = null;
+    const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle();
+    if (gs && gs.current_tick != null) curDate = tickToDate(gs.current_tick);
+    if (curDate) {
+      const { data: evs } = await supabase.from('events').select('nation_id, party_id, kind, body').eq('game_date', curDate);
+      var curEvents = evs || [];
+      // Author nation for each event's party (statements are broadcast under the author's party_id).
+      var partyNation = {}, pids = curEvents.map(function (e) { return e.party_id; }).filter(Boolean);
+      if (pids.length) {
+        const { data: ps } = await supabase.from('parties').select('id, nation_id').in('id', pids);
+        (ps || []).forEach(function (p) { partyNation[p.id] = p.nation_id; });
+      }
+      // Tally per nation: a domestic event counts for its own nation; a statement counts for its author
+      // AND any nation it names. Broadcast statement copies (same author + body) are counted once.
+      var liveByNation = {}, seenDecl = {};
+      curEvents.forEach(function (e) {
+        var targets = {};
+        if (e.kind === 'declaration') {
+          var key = (e.party_id || '') + '|' + (e.body || '');
+          if (seenDecl[key]) return; seenDecl[key] = 1;
+          var author = partyNation[e.party_id];
+          if (author) targets[author] = 1;
+          nations.forEach(function (N) { if (N.name && e.body && e.body.indexOf(N.name) >= 0) targets[N.id] = 1; });
+        } else if (e.nation_id) {
+          targets[e.nation_id] = 1;
+        }
+        Object.keys(targets).forEach(function (nid) { liveByNation[nid] = (liveByNation[nid] || 0) + 1; });
+      });
+
+      var mk = '';
+      Object.keys(liveByNation).forEach(function (nid) {
+        var pos = capPos[nid]; if (!pos) return;
+        var cnt = liveByNation[nid];
+        mk += '<div class="evmarker" data-x="' + pos.x + '" data-y="' + pos.y + '" data-nid="' + esc(nid) + '" title="' + esc(natById[nid] ? natById[nid].name : nid) + '">' +
+          '<span class="ring"></span><span class="dot">!</span>' + (cnt > 1 ? '<span class="cnt">' + cnt + '</span>' : '') + '</div>';
+      });
+      markerEl.innerHTML = mk;
+      Array.prototype.forEach.call(markerEl.querySelectorAll('.evmarker'), function (el) {
+        el.addEventListener('click', function (ev) { ev.stopPropagation(); openNation(el.getAttribute('data-nid')); });
+      });
+      positionMarkers();
+    }
+  } catch (e) {}
 })();
 
 /* ---------------- PAN / ZOOM ---------------- */
