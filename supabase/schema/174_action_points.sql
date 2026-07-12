@@ -125,7 +125,7 @@ revoke all on function public._def_fires_shuffle(jsonb) from public, anon, authe
 
 -- ── Turn choice 2 of 3: Play a Card — supersedes schema/173's card_play, now the turn choice that
 -- grants the card's Action Points. Keeps the ownership + in_hand + turn gate from 173; ADDS the
--- one-choice guard and, on play, banks the card's `acts` (1–6, default 1 for pre-`acts` cards) as
+-- one-choice guard and, on play, banks the card's `acts` (1–10, default 1 for pre-`acts` cards) as
 -- Action Points to spend this turn. Playing NO LONGER costs Influence — the card was paid for at
 -- auction (schema/172), and actions don't cost Influence. Immediate effects resolve at the end via
 -- _resolve_card_effects (schema/176). p_target is the rival party a party-scoped effect (party_gain/
@@ -168,7 +168,7 @@ begin
   end if;
 
   v_def := v_dc.definition;
-  v_acts := greatest(1, least(6, coalesce((v_def->>'acts')::int, 1)));   -- the card's Action Points
+  v_acts := greatest(1, least(10, coalesce((v_def->>'acts')::int, 1)));   -- the card's Action Points (1–10)
 
   -- A hex_pop / hex_el effect needs a hex picked on play. If the card carries one (generic, or a
   -- 'both'-sided stance effect) but no hex was chosen, stop before consuming the card. The hex is

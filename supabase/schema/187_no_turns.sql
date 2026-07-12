@@ -156,7 +156,7 @@ begin
   end if;
 
   v_def := v_dc.definition;
-  v_acts := greatest(1, least(6, coalesce((v_def->>'acts')::int, 1)));   -- the card's Action Points
+  v_acts := greatest(1, least(10, coalesce((v_def->>'acts')::int, 1)));   -- the card's Action Points (1–10)
 
   -- A hex_pop / hex_el effect needs a hex picked on play. If the card carries one (generic, or a
   -- 'both'-sided stance effect) but no hex was chosen, stop before consuming the card.
