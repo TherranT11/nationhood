@@ -177,12 +177,16 @@ begin
     update public.deck_cards set status = 'played' where id = p_deck_card;
   end if;
 
+  -- The generic "X played <card>" event — skipped when a hex_pop effect will fire, since it narrates
+  -- itself with the territory, the raise and the new standing (schema/176). Persistent cards keep it.
   v_name := coalesce(v_def->>'name', 'a card');
-  insert into public.events (nation_id, party_id, kind, body, game_date)
-  values (v_dc.nation_id, v_party.id, 'party',
-          v_party.name || ' played ' || v_name ||
-            case when coalesce(v_def->>'desc', '') <> '' then ' — ' || (v_def->>'desc') else '' end,
-          public.current_game_date());
+  if coalesce(v_def->>'persistV', 'no') = 'yes' or not public._def_fires_kind(v_def, array['hex_pop']) then
+    insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_dc.nation_id, v_party.id, 'party',
+            v_party.name || ' played ' || v_name ||
+              case when coalesce(v_def->>'desc', '') <> '' then ' — ' || (v_def->>'desc') else '' end,
+            public.current_game_date());
+  end if;
 
   -- Effects (atomic with the play).
   if coalesce(v_def->>'persistV', 'no') = 'yes' then

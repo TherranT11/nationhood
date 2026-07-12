@@ -115,7 +115,7 @@ revoke all on function public._refill_card_block(text) from public, anon, authen
 -- Security definer; runs with no auth context (bypasses RLS) like the rest of the tick.
 create or replace function public._resolve_card_auctions(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
-declare n record; c record; w record; v_pname text; v_cname text;
+declare n record; c record; w record;
 begin
   for n in select id from public.nations where not coalesce(dormant, false) loop
     -- 1) award each on-block card that drew bids
@@ -139,12 +139,7 @@ begin
         update public.parties p set influence = least(100, p.influence + b.amount)   -- refund everyone else (incl. capped higher bidders)
           from public.card_bids b
          where b.deck_card_id = c.id and b.party_id = p.id and b.party_id <> w.party_id;
-        select name into v_pname from public.parties where id = w.party_id;
-        v_cname := coalesce(c.definition->>'name', 'a card');
-        insert into public.events (nation_id, party_id, kind, body, game_date)
-          values (n.id, w.party_id, 'party',
-                  v_pname || ' won ' || v_cname || ' at auction for ' || w.amount || ' Influence.',
-                  public.current_game_date());
+        -- (no event: winning a card at auction is a private hand movement, not nation news)
       else
         update public.parties p set influence = least(100, p.influence + b.amount)   -- all bidders capped → refund all, no award
           from public.card_bids b where b.deck_card_id = c.id and b.party_id = p.id;
