@@ -205,7 +205,7 @@ const TEMPLATE = `
   </div>
   <div class="frow">
     <div><label>Influence Cost (base auction value)</label><input type="number" id="fCost" min="0" max="20" style="width:100%"></div>
-    <div><label>Number of Actions (1–6 — granted when played)</label><input type="number" id="fActs" min="1" max="6" style="width:100%"></div>
+    <div><label>Number of Actions (1–10 — granted when played)</label><input type="number" id="fActs" min="1" max="10" style="width:100%"></div>
   </div>
   <div class="frow single">
     <div><label>Description (flavor — shown on card)</label><textarea id="fDesc"></textarea></div>
@@ -419,7 +419,7 @@ export async function mountCardCreator(mount) {
     if (!c) return;
     var d = c.def || {};
     var s = freshState();
-    s.name = d.name || ''; s.cost = Number(d.cost) || 0; s.acts = Math.max(1, Math.min(6, Number(d.acts) || 1)); s.desc = d.desc || '';
+    s.name = d.name || ''; s.cost = Number(d.cost) || 0; s.acts = Math.max(1, Math.min(10, Number(d.acts) || 1)); s.desc = d.desc || '';
     s.type = d.type || 'dr'; s.lim = (d.lim === 'nation') ? 'nation' : 'all'; s.nation = d.nation || '';
     // Dormant is now its own flag; a legacy lim='dormant' card maps to dormant + an 'all' limiter.
     s.dormant = (d.dormant === 'yes' || d.lim === 'dormant') ? 'yes' : 'no';
@@ -466,7 +466,7 @@ export async function mountCardCreator(mount) {
     $(id).oninput = function (e) {
       if (id === 'fName') state.name = e.target.value;
       if (id === 'fCost') state.cost = +e.target.value;
-      if (id === 'fActs') state.acts = Math.max(1, Math.min(6, +e.target.value || 1));
+      if (id === 'fActs') state.acts = Math.max(1, Math.min(10, +e.target.value || 1));
       if (id === 'fDesc') state.desc = e.target.value;
       renderPreview();
     };
