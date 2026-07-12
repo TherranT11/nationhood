@@ -31,14 +31,6 @@
   .bhero__desc{color:var(--muted);font-size:13.5px;line-height:1.55;margin-top:10px;max-width:640px}
   .bhero__chart{width:100%;height:120px;display:block;margin-top:14px}
 
-  /* Head of Government discount notice — green when the player controls the HoG. */
-  .hog{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:18px}
-  .hog--mine{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 40%,var(--surface))}
-  .hog__ico{width:28px;height:28px;flex:none;stroke:var(--soft);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
-  .hog--mine .hog__ico{stroke:var(--green)}
-  .hog__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:3px}
-  .hog--mine .hog__k{color:var(--green)}
-  .hog__t{font-size:14px;font-weight:600;color:var(--ink);line-height:1.5}
 
   .lawshd{font-size:17px;font-weight:900;letter-spacing:-.01em;margin-bottom:10px}
   .lawlist{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px 16px}
@@ -78,15 +70,6 @@
           <line x1="0" y1="96" x2="300" y2="96" stroke="var(--green)" stroke-width="1.5" stroke-dasharray="4 5" vector-effect="non-scaling-stroke"/>
           <line id="bureauLine" x1="0" y1="60" x2="300" y2="60" stroke="var(--soft)" stroke-width="2" vector-effect="non-scaling-stroke" hidden/>
         </svg>
-      </div>
-
-      <!-- Head of Government discount — highlighted green when the player controls the HoG. -->
-      <div class="hog" id="hogCard">
-        <svg class="hog__ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        <div>
-          <div class="hog__k">Head of Government</div>
-          <div class="hog__t" id="hogText">Laws affecting Bureaucracy cost 20% less Influence if your party controls the Head of Government.</div>
-        </div>
       </div>
 
       <div class="lawshd">Laws Affecting Bureaucracy</div>
@@ -159,16 +142,6 @@
               '<span class="law__val law__val--' + (up ? 'up' : 'down') + '">' + (up ? '+' : '−') + (Math.round(Math.abs(it.amount) * 10) / 10) + '</span></div>';
           }).join('')
         : '<div class="lawempty">No active laws affecting Bureaucracy.</div>';
-
-      // Does the player's party control the Head of Government (the formateur of the active
-      // government)? If so, its law changes here are discounted — surface that in green.
-      try {
-        const { data: govt } = await supabase.from('governments').select('formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
-        if (govt && govt.formateur_party_id === party.id) {
-          document.getElementById('hogCard').classList.add('hog--mine');
-          document.getElementById('hogText').textContent = 'Your party controls the Head of Government — laws affecting Bureaucracy cost 20% less Influence.';
-        }
-      } catch (e) { /* leave the default (neutral) notice */ }
     } catch (e) { /* placeholders already shown; topbar still renders */ }
   })();
 </script>
