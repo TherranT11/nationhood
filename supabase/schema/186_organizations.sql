@@ -111,7 +111,8 @@ begin
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_nation, v_p.id, 'party',
-      v_p.name || ' chartered ' || left(v_name, 48) || ', inviting ' || v_cnt || ' nation' ||
+      'The government of ' || coalesce((select name from public.nations where id = v_nation), v_nation) ||
+        ' has chartered ' || left(v_name, 48) || ', inviting ' || v_cnt || ' nation' ||
         (case when v_cnt = 1 then '' else 's' end) || ' to join.',
       public.current_game_date());
   return v_org;
