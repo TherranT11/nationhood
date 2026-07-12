@@ -42,6 +42,20 @@
   .map-area.grabbing{cursor:grabbing}
   .map-area svg.world{display:block;width:100%;height:100%}
 
+  /* Constant-size label overlay (positioned by JS from world coords → screen). */
+  .labels{position:absolute;inset:0;pointer-events:none;z-index:6;overflow:hidden}
+  .natlabel,.citylabel{position:absolute;left:0;top:0;white-space:nowrap;font-family:'IBM Plex Sans',sans-serif;
+    font-weight:700;color:#15151b;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff;transition:opacity .28s ease;will-change:transform}
+  .natlabel{font-size:15px;letter-spacing:.02em}
+  .citylabel{font-size:11.5px}
+  .citylabel.cap{font-size:12.5px}
+  /* Level of detail: nation names by default; fade to cities once zoomed in. */
+  .natlabel{opacity:1}.labels.zoomed .natlabel{opacity:0}
+  .citylabel{opacity:0}.labels.zoomed .citylabel{opacity:1}
+  /* City dots ride with the map but only show once zoomed in. */
+  svg.world .citydot{opacity:0;transition:opacity .28s ease}
+  svg.world.zoomed .citydot{opacity:1}
+
   .chip{font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 8px;border-radius:5px;
     border:1px solid var(--line);background:var(--panel);color:var(--muted)}
   .zoombtn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:var(--panel);
@@ -82,6 +96,7 @@
   <!-- ============ MAP AREA ============ -->
   <main class="map-area" id="mapArea">
     <svg class="world" id="worldSvg"></svg>
+    <div class="labels" id="labels"></div>
     <div class="loading" id="loading">Loading the world…</div>
 
     <!-- topbar -->
@@ -152,8 +167,34 @@ function corners(cx, cy) {
 var pan = { x: 0, y: 0 }, zoom = 1.1, minZoom = 0.35, drag = null;
 var svgEl = document.getElementById('worldSvg'), worldG = null;
 var mapArea = document.getElementById('mapArea'), hoverChip = document.getElementById('hoverChip');
+var overlayEl = document.getElementById('labels');
+var ZOOM_CITY = 1.6;   // at/above this zoom, nation names fade out and city names + dots fade in
 
-function applyTransform() { if (worldG) worldG.setAttribute('transform', 'translate(' + pan.x + ',' + pan.y + ') scale(' + zoom + ')'); }
+// Position every overlay label from its stored world coords (data-x/data-y) → screen space, so the
+// text stays a constant on-screen size while the SVG map scales underneath it.
+function positionLabels() {
+  if (!overlayEl) return;
+  var kids = overlayEl.children;
+  for (var i = 0; i < kids.length; i++) {
+    var el = kids[i];
+    var x = parseFloat(el.getAttribute('data-x')) * zoom + pan.x;
+    var y = parseFloat(el.getAttribute('data-y')) * zoom + pan.y;
+    var anchor = el.className.indexOf('natlabel') >= 0 ? ' translate(-50%,-50%)' : ' translateY(-50%)';
+    el.style.transform = 'translate(' + x + 'px,' + y + 'px)' + anchor;
+  }
+}
+// Level of detail: below the threshold show nation names; at/above it show city names + dots.
+function updateLod() {
+  var zoomed = zoom >= ZOOM_CITY;
+  if (overlayEl) overlayEl.classList.toggle('zoomed', zoomed);
+  if (svgEl) svgEl.classList.toggle('zoomed', zoomed);
+}
+
+function applyTransform() {
+  if (worldG) worldG.setAttribute('transform', 'translate(' + pan.x + ',' + pan.y + ') scale(' + zoom + ')');
+  positionLabels();
+  updateLod();
+}
 
 /* ---------------- LOAD + RENDER ---------------- */
 (async function () {
@@ -205,10 +246,14 @@ function applyTransform() { if (worldG) worldG.setAttribute('transform', 'transl
   // so a big sparse world stays light. Draw land + any authored sea rows.
   var body = '';
   var bMinX = Infinity, bMaxX = -Infinity, bMinY = Infinity, bMaxY = -Infinity;   // land bounds → fit zoom
+  var natSum = {};   // nation_id → { x, y, n } running centroid of its land hexes (for the nation label)
   hexes.forEach(function (h) {
     var p = axialToPix(h.q, h.r, S, 0, 0);
     var isLand = h.terrain === 'land';
-    if (isLand) { if (p.x < bMinX) bMinX = p.x; if (p.x > bMaxX) bMaxX = p.x; if (p.y < bMinY) bMinY = p.y; if (p.y > bMaxY) bMaxY = p.y; }
+    if (isLand) {
+      if (p.x < bMinX) bMinX = p.x; if (p.x > bMaxX) bMaxX = p.x; if (p.y < bMinY) bMinY = p.y; if (p.y > bMaxY) bMaxY = p.y;
+      if (h.nation_id) { var s = natSum[h.nation_id] || (natSum[h.nation_id] = { x: 0, y: 0, n: 0 }); s.x += p.x; s.y += p.y; s.n++; }
+    }
     var fill = isLand ? (h.nation_id ? (colorOf[h.nation_id] || '#9a8f7d') : LAND_NEUTRAL) : waterTone(h.q, h.r);
     var nm = h.nation_id && natById[h.nation_id] ? natById[h.nation_id].name : (isLand ? 'Unclaimed' : '');
     body += '<polygon points="' + corners(p.x, p.y) + '" fill="' + fill + '" stroke="#fff" stroke-opacity="' + (isLand ? 0.35 : 0.22) + '" stroke-width="1" data-nation="' + esc(nm) + '"/>';
@@ -220,17 +265,30 @@ function applyTransform() { if (worldG) worldG.setAttribute('transform', 'transl
       body += '<polygon points="' + corners(p.x, p.y) + '" fill="none" stroke="#f0a03c" stroke-opacity=".55" stroke-width="1.6"/>';
     });
   }
-  // Cities (real rows with coordinates). ★ marks the nation's declared capital.
+  // Cities (real rows with coordinates). Dots ride with the SVG (fade in when zoomed); the NAMES live
+  // in the constant-size overlay so they don't overlap or shrink. ★ marks the nation's declared capital.
+  var cityLabels = [];
   cities.filter(function (c) { return c.q != null && c.r != null; }).forEach(function (c) {
     var p = axialToPix(c.q, c.r, S, 0, 0);
     var isCap = capitalByNation[c.nation_id] && capitalByNation[c.nation_id] === c.name;
-    body += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (isCap ? 3.4 : 2.4) + '" fill="#1a1a1a"/>' +
-      '<text x="' + (p.x + 6) + '" y="' + (p.y + 4) + '" font-size="' + (isCap ? 12 : 10.5) + '" font-weight="700" fill="#1a1a1a" stroke="#fff" stroke-width="3" paint-order="stroke" style="font-family:\'IBM Plex Sans\',sans-serif">' + (isCap ? '★ ' : '') + esc(c.name) + '</text>';
+    body += '<circle class="citydot" cx="' + p.x + '" cy="' + p.y + '" r="' + (isCap ? 3.4 : 2.4) + '" fill="#1a1a1a"/>';
+    cityLabels.push({ x: p.x + 6, y: p.y, text: (isCap ? '★ ' : '') + c.name, cap: isCap });
   });
 
   svgEl.innerHTML = '<g id="world">' + body + '</g>';
   worldG = document.getElementById('world');
   document.getElementById('loading').style.display = 'none';
+
+  // Build the constant-size label overlay: one nation name at each nation's centroid, plus every city
+  // name. CSS cross-fades the two sets as the LOD threshold is crossed; positionLabels() places them.
+  var natLabels = [];
+  Object.keys(natSum).forEach(function (nid) {
+    var s = natSum[nid], nm = natById[nid] ? natById[nid].name : '';
+    if (nm && s.n) natLabels.push({ x: s.x / s.n, y: s.y / s.n, text: nm });
+  });
+  overlayEl.innerHTML =
+    natLabels.map(function (l) { return '<div class="natlabel" data-x="' + l.x + '" data-y="' + l.y + '">' + esc(l.text) + '</div>'; }).join('') +
+    cityLabels.map(function (l) { return '<div class="citylabel' + (l.cap ? ' cap' : '') + '" data-x="' + l.x + '" data-y="' + l.y + '">' + esc(l.text) + '</div>'; }).join('');
 
   // Floor the zoom-out at "the whole world roughly fills the viewport" (with a little sea margin), so
   // the map can never shrink to a distant speck. Falls back to the default floor if bounds are empty.
