@@ -11,27 +11,63 @@
 <link rel="stylesheet" href="/play.css">
 <style>
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased}
-
-  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
-
   .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
   .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
   .eye b{color:var(--soft);font-weight:700}
 
-  /* Stat strip — the nation's standing in international bodies, as one rounded band of tiles.
-     Empty everywhere for now: no organizations exist until the diplomacy layer lands. */
+  /* summary strip — this nation's standing at a glance */
   .strip{display:flex;flex-wrap:wrap;align-items:stretch;gap:0;border:1px solid var(--line);
     border-radius:16px;background:var(--surface);margin-top:14px;padding:6px 6px;overflow:hidden}
-  .stat{flex:1 1 130px;min-width:130px;padding:14px 18px;display:flex;flex-direction:column;gap:4px}
+  .stat{flex:1 1 150px;min-width:150px;padding:14px 18px;display:flex;flex-direction:column;gap:4px}
   .stat .v{font-family:'Space Mono',monospace;font-weight:700;font-size:22px;line-height:1;letter-spacing:-.01em}
   .stat .l{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
   .stat.c-mem  .v{color:var(--blue)}
-  .stat.c-found .v{color:var(--amber)}
   .stat.c-prog .v{color:var(--amber)}
-  .stat.c-dues .v{color:var(--amber)}
-  .stat.c-inv  .v{color:#b45cd6}
+  .stat.c-cost .v{color:var(--amber)}
 
-  .intro{font-size:13.5px;color:var(--muted);margin:22px 0 0;max-width:70ch}
+  .sect{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin:26px 0 12px}
+
+  /* founding-in-progress banner */
+  .founding{background:linear-gradient(180deg,color-mix(in srgb,var(--blue) 6%,var(--surface)),var(--surface));
+    border:1px solid color-mix(in srgb,var(--blue) 34%,var(--line));border-radius:16px;padding:18px 20px;margin-bottom:16px}
+  .fhead{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+  .fhead .oic{font-size:23px;line-height:1}
+  .fhead .onm{font-size:16px;font-weight:800;letter-spacing:-.01em}
+  .chip-t{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;border-radius:6px;padding:4px 8px;border:1px solid var(--line2);color:var(--muted);background:var(--field)}
+  .fstage{margin-left:auto;font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:color-mix(in srgb,var(--blue) 70%,var(--ink));background:color-mix(in srgb,var(--blue) 12%,transparent);border:1px solid color-mix(in srgb,var(--blue) 40%,var(--line));border-radius:7px;padding:5px 10px}
+  .fstage.ready{color:color-mix(in srgb,var(--green) 70%,var(--ink));background:color-mix(in srgb,var(--green) 12%,transparent);border-color:color-mix(in srgb,var(--green) 40%,var(--line))}
+  .fsteps{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0 12px;font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .fstep{color:var(--soft);border:1px solid var(--line2);border-radius:7px;padding:5px 10px;background:var(--field)}
+  .fstep.done{color:color-mix(in srgb,var(--green) 72%,var(--ink));border-color:color-mix(in srgb,var(--green) 42%,var(--line))}
+  .fstep.now{color:color-mix(in srgb,var(--blue) 72%,var(--ink));border-color:color-mix(in srgb,var(--blue) 42%,var(--line));background:color-mix(in srgb,var(--blue) 8%,var(--field))}
+  .fquote{font-size:13px;color:var(--muted);font-style:italic;line-height:1.55;border-left:2px solid color-mix(in srgb,var(--blue) 40%,var(--line));padding-left:12px;margin-bottom:13px}
+  .fdels{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .fdl{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-right:3px}
+  .fchip{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;border-radius:7px;padding:4px 9px;border:1px solid var(--line2);background:var(--field);color:var(--muted)}
+  .fchip.you{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,var(--line))}
+  .fchip.acc{color:color-mix(in srgb,var(--green) 75%,var(--ink));border-color:color-mix(in srgb,var(--green) 45%,var(--line))}
+  .fchip.dec{color:color-mix(in srgb,var(--red) 72%,var(--ink));border-color:color-mix(in srgb,var(--red) 40%,var(--line));text-decoration:line-through}
+  .frow{display:flex;align-items:center;gap:13px;margin-top:15px;flex-wrap:wrap}
+  .fbtn{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-radius:9px;padding:10px 18px;cursor:pointer;border:1px solid var(--line2);background:var(--field);color:var(--ink)}
+  .fbtn.go{color:color-mix(in srgb,var(--green) 72%,var(--ink));background:color-mix(in srgb,var(--green) 10%,transparent);border-color:color-mix(in srgb,var(--green) 40%,var(--line))}
+  .fbtn.no{color:color-mix(in srgb,var(--red) 72%,var(--ink));background:color-mix(in srgb,var(--red) 8%,transparent);border-color:color-mix(in srgb,var(--red) 36%,var(--line))}
+  .fbtn.ratify{color:color-mix(in srgb,var(--blue) 74%,var(--ink));background:color-mix(in srgb,var(--blue) 10%,transparent);border-color:color-mix(in srgb,var(--blue) 42%,var(--line))}
+  .fbtn:hover:not(:disabled){filter:brightness(1.15)}
+  .fbtn:disabled{opacity:.4;cursor:not-allowed}
+  a.fbtn{text-decoration:none;display:inline-block}
+  .fnote{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);line-height:1.6}
+
+  /* established organizations */
+  .orgcard{display:flex;align-items:center;gap:13px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin-bottom:10px;text-decoration:none;color:inherit}
+  a.orgcard:hover{border-color:var(--soft)}
+  .orgcard .oic{font-size:22px}
+  .orgcard .onm{font-size:14.5px;font-weight:800}
+  .orgcard .om{margin-left:auto;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+
+  .empty{border:1px dashed var(--line2);border-radius:14px;padding:26px 20px;text-align:center}
+  .empty .et{font-size:13.5px;font-weight:600;color:var(--muted)}
+  .empty .ed{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);margin-top:6px;letter-spacing:.03em;line-height:1.8}
+  .intro{font-size:13px;color:var(--muted);margin:22px 0 0;max-width:72ch}
 </style>
 </head>
 <body>
@@ -44,13 +80,16 @@
 
     <div class="strip" id="strip">
       <div class="stat c-mem"><span class="v" id="sMem">0</span><span class="l">Memberships</span></div>
-      <div class="stat c-found"><span class="v" id="sFound">0</span><span class="l">Founder Seat</span></div>
-      <div class="stat c-prog"><span class="v" id="sProg">0</span><span class="l">Under Programme</span></div>
-      <div class="stat c-dues"><span class="v" id="sDues">$0.00bn/yr</span><span class="l">Total Dues</span></div>
-      <div class="stat c-inv"><span class="v" id="sInv">0</span><span class="l">Open Invitation</span></div>
+      <div class="stat c-prog"><span class="v" id="sProg">0</span><span class="l">Founding in Progress</span></div>
+      <div class="stat c-cost"><span class="v" id="sCost">$0.0bn</span><span class="l">Founding Costs Paid</span></div>
     </div>
 
-    <p class="intro">Your standing in international bodies at a glance. Your Minister of Foreign Affairs can charter a new organization from the Nation page; invited nations answer on the world timeline.</p>
+    <div id="foundingWrap"></div>
+
+    <div class="sect">Established Organizations</div>
+    <div id="establishedWrap"><div class="empty"><div class="et">Loading…</div></div></div>
+
+    <p class="intro">Your Minister of Foreign Affairs charters an organization from the Nation page and invites other nations. Invited nations answer here; once at least two accept, the host ratifies to found it.</p>
   </main>
 </div>
 
@@ -61,14 +100,154 @@
   import { mountSidenav } from '/sidenav.js';
 
   mountTopbar();
-  mountSidenav();  // left rail (desktop) / bottom bar (mobile); active item from the URL
+  mountSidenav();
 
-  // Read-only standing strip, computed from the org tables (schema/186, world-readable):
-  //   Memberships     — orgs this nation belongs to
-  //   Founder Seats   — those it founded (role 'founder')
-  //   Under Programme — memberships still in 'founding' (not yet active)
-  //   Total Dues      — Σ dues of its memberships ($bn/yr; 0 until a dues mechanic lands)
-  //   Open Invitations— pending invitations addressed to this nation
+  var ME = null;            // my nation id
+  var CUR = '$';            // currency symbol
+  var AM_FA = false;        // my party holds the Foreign Affairs portfolio (can respond / ratify)
+  var NATIONS = {};         // nation id → name
+  var BUSY = false;
+  var MIN_ACCEPT = 2;       // acceptances the host needs before ratifying (mirrors schema/188)
+
+  function natName(id) { return NATIONS[id] || id; }
+
+  // Run an org RPC (respond / ratify), then reload. Locks buttons so a double-click can't double-fire.
+  async function act(fn) {
+    if (BUSY) return; BUSY = true;
+    document.querySelectorAll('.fbtn').forEach(function (b) { b.disabled = true; });
+    try {
+      const { error } = await fn();
+      if (error) throw error;
+      await loadOrgs();
+    } catch (e) {
+      alert((e && e.message) || 'That action failed.');
+      document.querySelectorAll('.fbtn').forEach(function (b) { b.disabled = false; });
+    } finally { BUSY = false; }
+  }
+  async function respond(org, accept) { await act(function () { return supabase.rpc('respond_invitation', { p_org: org, p_accept: accept }); }); }
+
+  // A founding org's banner: header + step tracker + charter quote + delegation chips + the action row.
+  function renderFounding(o, members, invites) {
+    var isHost = o.host_nation === ME;
+    var accepted = invites.filter(function (i) { return i.status === 'accepted'; });
+    var declined = invites.filter(function (i) { return i.status === 'declined'; });
+    var pending  = invites.filter(function (i) { return i.status === 'pending'; });
+    var totalInv = invites.length;
+    var cost = (0.2 * totalInv);
+    var myInv = invites.find(function (i) { return i.nation_id === ME; });
+    var inConvention = pending.length === 0;   // all invitations answered → the Convention is under way
+
+    var stage = (myInv && myInv.status === 'pending') ? 'Awaiting Your Response'
+      : inConvention ? 'In Convention' : 'Awaiting Responses';
+
+    // Delegation chips: the founding host first, then accepted, then still-pending, then declined (struck).
+    var chips = '<span class="fchip you">' + esc(natName(o.host_nation)) + ' · Founder' + (isHost ? ' — you' : '') + '</span>';
+    accepted.forEach(function (i) { chips += '<span class="fchip acc">' + esc(natName(i.nation_id)) + ' ✓' + (i.nation_id === ME ? ' — you' : '') + '</span>'; });
+    pending.forEach(function (i) { chips += '<span class="fchip">' + esc(natName(i.nation_id)) + (i.nation_id === ME ? ' — you' : '') + '</span>'; });
+    declined.forEach(function (i) { chips += '<span class="fchip dec">' + esc(natName(i.nation_id)) + '</span>'; });
+
+    // Action row: an invited FA minister accepts/declines here (quick); the Charter Convention voting +
+    // ratification live on the org's own page, reached by the Open link (always present for those involved).
+    var openLink = '<a class="fbtn ratify" href="/play/organization/?id=' + esc(o.id) + '">Enter the Convention →</a>';
+    var action;
+    if (myInv && myInv.status === 'pending' && AM_FA) {
+      action = '<button class="fbtn go" data-acc="' + o.id + '">Accept — Join</button>' +
+        '<button class="fbtn no" data-dec="' + o.id + '">Decline</button>' +
+        '<span class="fnote">answering costs 1 AP</span>';
+    } else if (myInv && myInv.status === 'pending') {
+      action = '<span class="fnote">You are invited — your Minister of Foreign Affairs answers this invitation.</span>';
+    } else if (isHost) {
+      action = openLink + '<span class="fnote">vote on the charter, then ratify to found it — once ' + MIN_ACCEPT + ' accept</span>';
+    } else if (myInv && myInv.status === 'accepted') {
+      action = openLink + '<span class="fnote">vote on the charter · awaiting the host’s ratification</span>';
+    } else if (myInv && myInv.status === 'declined') {
+      action = '<span class="fnote">You declined this invitation.</span>';
+    } else {
+      action = '<span class="fnote">Awaiting the host’s ratification.</span>';
+    }
+
+    return '<div class="founding">' +
+      '<div class="fhead"><span class="oic">' + esc(o.emblem || '🕊') + '</span>' +
+        '<span class="onm">' + esc(o.name) + '</span>' +
+        '<span class="chip-t">' + esc(o.org_type || 'General') + '</span>' +
+        '<span class="chip-t">Host: ' + esc(natName(o.host_nation)) + (isHost ? ' — you' : '') + '</span>' +
+        '<span class="fstage">◉ ' + stage + '</span></div>' +
+      '<div class="fsteps">' +
+        '<span class="fstep done">✓ Invitations sent — ' + totalInv + ' · ' + CUR + cost.toFixed(1) + 'bn</span>' +
+        '<span class="fstep ' + (pending.length ? 'now' : 'done') + '">' + (pending.length ? '◉ ' : '✓ ') + 'Responses — ' +
+          accepted.length + ' accepted, ' + declined.length + ' declined' + (pending.length ? ', ' + pending.length + ' pending' : '') + '</span>' +
+        '<span class="fstep ' + (inConvention ? 'now' : '') + '">' + (inConvention ? '◉ ' : '') + 'Charter Convention</span>' +
+        '<span class="fstep">Ratification</span>' +
+      '</div>' +
+      (o.charter ? '<div class="fquote">“' + esc(o.charter) + '”</div>' : '') +
+      '<div class="fdels"><span class="fdl">Delegations</span>' + chips + '</div>' +
+      '<div class="frow">' + action + '</div></div>';
+  }
+
+  function renderEstablished(o, members) {
+    var mine = members.find(function (m) { return m.nation_id === ME; });
+    var role = mine ? (mine.role === 'founder' ? 'Founder' : 'Member') : 'Not a member';
+    return '<a class="orgcard" href="/play/organization/?id=' + esc(o.id) + '"><span class="oic">' + esc(o.emblem || '🕊') + '</span>' +
+      '<div><div class="onm">' + esc(o.name) + '</div>' +
+        '<div class="fnote">' + esc(o.org_type || 'General') + ' · host ' + esc(natName(o.host_nation)) + '</div></div>' +
+      '<span class="om">' + members.length + ' member' + (members.length === 1 ? '' : 's') + ' · ' + role + ' →</span></a>';
+  }
+
+  async function loadOrgs() {
+    // Orgs this nation touches: ones it hosts, is a member of, or was invited to.
+    var hosted = (await supabase.from('organizations').select('id').eq('host_nation', ME)).data || [];
+    var myMem  = (await supabase.from('organization_members').select('org_id').eq('nation_id', ME)).data || [];
+    var myInv  = (await supabase.from('organization_invitations').select('org_id').eq('nation_id', ME)).data || [];
+    var ids = {};
+    hosted.forEach(function (o) { ids[o.id] = 1; });
+    myMem.forEach(function (m) { ids[m.org_id] = 1; });
+    myInv.forEach(function (i) { ids[i.org_id] = 1; });
+    var orgIds = Object.keys(ids);
+
+    var orgs = orgIds.length ? ((await supabase.from('organizations').select('id, host_nation, name, emblem, org_type, charter, status, founded_tick').in('id', orgIds)).data || []) : [];
+    var members = orgIds.length ? ((await supabase.from('organization_members').select('org_id, nation_id, role').in('org_id', orgIds)).data || []) : [];
+    var invites = orgIds.length ? ((await supabase.from('organization_invitations').select('org_id, nation_id, status').in('org_id', orgIds)).data || []) : [];
+    var memByOrg = {}, invByOrg = {};
+    members.forEach(function (m) { (memByOrg[m.org_id] = memByOrg[m.org_id] || []).push(m); });
+    invites.forEach(function (i) { (invByOrg[i.org_id] = invByOrg[i.org_id] || []).push(i); });
+
+    // Summary tiles.
+    var activeMemberships = members.filter(function (m) {
+      var o = orgs.find(function (x) { return x.id === m.org_id; });
+      return m.nation_id === ME && o && o.status === 'active';
+    }).length;
+    var founding = orgs.filter(function (o) { return o.status === 'founding'; });
+    // Founding costs I've paid = $0.2bn per invitation across the orgs I host (paid at charter time).
+    var hostedInvites = invites.filter(function (i) {
+      var o = orgs.find(function (x) { return x.id === i.org_id; });
+      return o && o.host_nation === ME;
+    }).length;
+    document.getElementById('sMem').textContent = activeMemberships;
+    document.getElementById('sProg').textContent = founding.length;
+    document.getElementById('sCost').textContent = CUR + (0.2 * hostedInvites).toFixed(1) + 'bn';
+
+    // Founding-in-progress banners (host first, then by name).
+    founding.sort(function (a, b) {
+      var ah = a.host_nation === ME ? 0 : 1, bh = b.host_nation === ME ? 0 : 1;
+      return ah - bh || (a.name || '').localeCompare(b.name || '');
+    });
+    document.getElementById('foundingWrap').innerHTML = founding.map(function (o) {
+      return renderFounding(o, memByOrg[o.id] || [], invByOrg[o.id] || []);
+    }).join('');
+
+    // Established (active) orgs.
+    var active = orgs.filter(function (o) { return o.status === 'active'; })
+      .sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
+    document.getElementById('establishedWrap').innerHTML = active.length
+      ? active.map(function (o) { return renderEstablished(o, memByOrg[o.id] || []); }).join('')
+      : '<div class="empty"><div class="et">No established organizations yet</div>' +
+        '<div class="ed">An organization appears here once its host ratifies it.<br>Charter one from the Nation page, or accept an invitation above.</div></div>';
+
+    // Wire the action buttons.
+    document.querySelectorAll('[data-acc]').forEach(function (b) { b.onclick = function () { respond(b.dataset.acc, true); }; });
+    document.querySelectorAll('[data-dec]').forEach(function (b) { b.onclick = function () { if (confirm('Decline this invitation?')) respond(b.dataset.dec, false); }; });
+  }
+
   (async () => {
     if (!isConfigured) return;
     const user = await requireUser();
@@ -76,30 +255,20 @@
     try {
       const { data: party } = await supabase.from('parties').select('nation_id').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
-      const nid = party.nation_id;
-      const { data: home } = await supabase.from('nations').select('name, economy').eq('id', nid).single();
-      const nationName = (home && home.name) || nid;
-      const currency = (home && home.economy && home.economy.currency) || '$';
-      document.getElementById('eye').innerHTML = 'Diplomacy · International Organizations — <b>' + esc(nationName) + '</b>';
+      ME = party.nation_id;
+      const { data: home } = await supabase.from('nations').select('name, economy').eq('id', ME).single();
+      CUR = (home && home.economy && home.economy.currency) || '$';
+      document.getElementById('eye').innerHTML = 'Diplomacy · International Organizations — <b>' + esc((home && home.name) || ME) + '</b>';
 
-      // My memberships + the orgs behind them (status + dues), and my pending invitations.
-      const mine = (await supabase.from('organization_members').select('org_id, role').eq('nation_id', nid)).data || [];
-      const orgIds = mine.map(function (m) { return m.org_id; });
-      const orgs = orgIds.length ? ((await supabase.from('organizations').select('id, status, dues').in('id', orgIds)).data || []) : [];
-      const byId = {}; orgs.forEach(function (o) { byId[o.id] = o; });
-      const invited = (await supabase.from('organization_invitations').select('org_id').eq('nation_id', nid).eq('status', 'pending')).data || [];
+      const { data: nats } = await supabase.from('nations').select('id, name');
+      (nats || []).forEach(function (n) { NATIONS[n.id] = n.name; });
 
-      const memberships = mine.length;
-      const founder = mine.filter(function (m) { return m.role === 'founder'; }).length;
-      const programme = mine.filter(function (m) { var o = byId[m.org_id]; return o && o.status === 'founding'; }).length;
-      const dues = orgs.reduce(function (a, o) { return a + (Number(o.dues) || 0); }, 0);
+      try { const { data: fa } = await supabase.rpc('is_foreign_affairs_minister'); AM_FA = fa === true; } catch (e) { AM_FA = false; }
 
-      document.getElementById('sMem').textContent = memberships;
-      document.getElementById('sFound').textContent = founder;
-      document.getElementById('sProg').textContent = programme;
-      document.getElementById('sDues').textContent = currency + dues.toFixed(2) + 'bn/yr';
-      document.getElementById('sInv').textContent = invited.length;
-    } catch (e) { /* leave the zeroed strip as-is on a read failure */ }
+      await loadOrgs();
+    } catch (e) {
+      document.getElementById('establishedWrap').innerHTML = '<div class="empty"><div class="et">Couldn’t load organizations.</div><div class="ed">Refresh to try again.</div></div>';
+    }
   })();
 </script>
 </body>

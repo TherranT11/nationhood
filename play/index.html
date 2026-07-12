@@ -1454,7 +1454,7 @@
     var body = document.getElementById('industrializeBody'), max = indMax();
     IND.qty = Math.max(max > 0 ? 1 : 0, Math.min(IND.qty, max));
     var costLine = max < 1
-      ? '<p class="exp-warn">' + (partyActions < 1 ? 'No Action Points left — take your turn first.'
+      ? '<p class="exp-warn">' + (partyActions < 1 ? 'No Action Points left — play a card first.'
           : (IND.energy < 1 ? 'No Energy on hand to industrialize.' : 'No Minerals on hand to industrialize.')) + '</p>'
       : '<div class="exp-cost">Cost: <b>' + IND.qty + ' Energy · ' + IND.qty + ' Minerals · 1 AP</b> → <b>+' + IND.qty + ' Goods</b></div>';
     body.innerHTML =
@@ -1501,7 +1501,7 @@
     var body = document.getElementById('serviceBody'), max = svcMax();
     SVC.qty = Math.max(max > 0 ? 1 : 0, Math.min(SVC.qty, max));
     var costLine = max < 1
-      ? '<p class="exp-warn">' + (partyActions < 1 ? 'No Action Points left — take your turn first.'
+      ? '<p class="exp-warn">' + (partyActions < 1 ? 'No Action Points left — play a card first.'
           : (SVC.energy < 1 ? 'No Energy on hand for services.' : 'No Food on hand for services.')) + '</p>'
       : '<div class="exp-cost">Cost: <b>' + SVC.qty + ' Energy · ' + SVC.qty + ' Food · 1 AP</b> → <b>+' + SVC.qty + ' Services</b></div>';
     body.innerHTML =
