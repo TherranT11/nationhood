@@ -38,9 +38,17 @@
     justify-content:center;font-weight:700;font-size:12px;color:var(--accent)}
 
   /* map area */
-  .map-area{flex:1;position:relative;overflow:hidden;background:#a9cfdd;cursor:grab;user-select:none}
+  .map-area{flex:1;position:relative;overflow:hidden;background:#a9cfdd;cursor:grab;user-select:none;
+    touch-action:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
   .map-area.grabbing{cursor:grabbing}
   .map-area svg.world{display:block;width:100%;height:100%}
+
+  /* On phones the fixed sidebar would swallow the screen — drop it and let the map go full-bleed. */
+  @media (max-width:640px){
+    .side{display:none}
+    .topbar{padding:0 10px;gap:10px}
+    .zoombtn{width:38px;height:38px;font-size:22px}
+  }
 
   /* Constant-size label overlay (positioned by JS from world coords → screen). */
   .labels{position:absolute;inset:0;pointer-events:none;z-index:6;overflow:hidden}
@@ -332,6 +340,38 @@ function zoomAt(factor, cxp, cyp) {
 document.getElementById('zoomIn').onclick = function () { zoomAt(1.2, mapArea.clientWidth / 2, mapArea.clientHeight / 2); };
 document.getElementById('zoomOut').onclick = function () { zoomAt(1 / 1.2, mapArea.clientWidth / 2, mapArea.clientHeight / 2); };
 mapArea.addEventListener('wheel', function (e) { e.preventDefault(); var rect = mapArea.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - rect.left, e.clientY - rect.top); }, { passive: false });
+
+/* ---------------- TOUCH: one finger pans, two fingers pinch-zoom ---------------- */
+var touch = null;   // { px, py, sx, sy } for a 1-finger pan, or { dist, mx, my } for a 2-finger pinch
+function touchDist(t) { var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.hypot(dx, dy); }
+function touchMid(t, rect) { return { x: (t[0].clientX + t[1].clientX) / 2 - rect.left, y: (t[0].clientY + t[1].clientY) / 2 - rect.top }; }
+mapArea.addEventListener('touchstart', function (e) {
+  var rect = mapArea.getBoundingClientRect();
+  if (e.touches.length === 1) { touch = { mode: 'pan', sx: e.touches[0].clientX, sy: e.touches[0].clientY, px: pan.x, py: pan.y }; }
+  else if (e.touches.length >= 2) { var m = touchMid(e.touches, rect); touch = { mode: 'pinch', dist: touchDist(e.touches), mx: m.x, my: m.y }; }
+}, { passive: true });
+mapArea.addEventListener('touchmove', function (e) {
+  if (!touch) return;
+  e.preventDefault();
+  var rect = mapArea.getBoundingClientRect();
+  if (touch.mode === 'pan' && e.touches.length === 1) {
+    pan = { x: touch.px + (e.touches[0].clientX - touch.sx), y: touch.py + (e.touches[0].clientY - touch.sy) };
+    applyTransform();
+  } else if (touch.mode === 'pinch' && e.touches.length >= 2) {
+    var m = touchMid(e.touches, rect), d = touchDist(e.touches);
+    // Follow the fingers (pan by the midpoint's drift) and zoom by the spread ratio around that midpoint.
+    pan.x += m.x - touch.mx; pan.y += m.y - touch.my;
+    if (touch.dist > 0) zoomAt(d / touch.dist, m.x, m.y); else applyTransform();
+    touch.dist = d; touch.mx = m.x; touch.my = m.y;
+  }
+}, { passive: false });
+function endTouch(e) {
+  // If one finger of a pinch lifts, hand the remaining finger a fresh pan anchor (no jump).
+  if (touch && e.touches.length === 1) { touch = { mode: 'pan', sx: e.touches[0].clientX, sy: e.touches[0].clientY, px: pan.x, py: pan.y }; }
+  else if (!e.touches.length) { touch = null; }
+}
+mapArea.addEventListener('touchend', endTouch);
+mapArea.addEventListener('touchcancel', endTouch);
 </script>
 </body>
 </html>
