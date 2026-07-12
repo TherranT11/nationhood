@@ -111,7 +111,7 @@
 </div>
 
 <script type="module">
-import { supabase, isConfigured, requireUser } from '/supabase.js';
+import { supabase, isConfigured, requireUser, selectAll } from '/supabase.js';
 import { esc, declaredValue } from '/util.js';
 import { axialToPix, nationColors } from '/hexmap.js';
 
@@ -169,8 +169,10 @@ function applyTransform() { if (worldG) worldG.setAttribute('transform', 'transl
 
   var nations = [], hexes = [], cities = [], capSlot = null;
   try { const { data } = await supabase.from('nations').select('id, name, color, flag, declarations'); nations = data || []; } catch (e) {}
-  try { const { data } = await supabase.from('world_hexes').select('q, r, terrain, nation_id, name, population'); hexes = data || []; } catch (e) {}
-  try { const { data } = await supabase.from('cities').select('nation_id, name, q, r'); cities = data || []; } catch (e) {}
+  // world_hexes can exceed PostgREST's 1000-row cap on a large map, so page through it (selectAll) —
+  // a plain .select() would silently drop hexes past 1000 and render them as open sea.
+  try { const { data } = await selectAll('world_hexes', 'q, r, terrain, nation_id, name, population'); hexes = data || []; } catch (e) {}
+  try { const { data } = await selectAll('cities', 'nation_id, name, q, r'); cities = data || []; } catch (e) {}
   try { const { data } = await supabase.from('declarations').select('slug, options, default_index, custom_allowed').eq('slug', 'capital_name').maybeSingle(); capSlot = data || null; } catch (e) {}
 
   var natById = {}; nations.forEach(function (n) { natById[n.id] = n; });
