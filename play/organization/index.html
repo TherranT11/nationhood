@@ -32,6 +32,7 @@
   .art{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);background:var(--field);border:1px solid var(--line2);border-radius:6px;padding:5px 10px}
 
   .layout{display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:start}
+  .layout.solo{grid-template-columns:1fr}   /* active view: chat sits above, full width */
   @media(max-width:1000px){.layout{grid-template-columns:1fr}}
   .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:16px}
   .sect{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin:0 0 13px;display:flex;align-items:baseline;gap:10px}
@@ -80,8 +81,9 @@
   .brnm{font-size:13px;font-weight:700}
   .brtag{font-family:'Space Mono',monospace;font-size:7.5px;color:var(--soft);letter-spacing:.05em;text-transform:uppercase}
   .brlock{margin-left:auto;font-family:'Space Mono',monospace;font-size:7.5px;color:var(--soft);letter-spacing:.05em}
-  .blaw{padding:11px 14px;border-top:1px solid var(--line)}
-  .blaw:first-of-type{border-top:none}
+  .brlaws{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+  .blaw{padding:11px 14px;border-top:1px solid var(--line);border-left:1px solid var(--line)}
+  .blaw:first-child{border-left:none}
   .blaw .bn{font-size:12.5px;font-weight:700}
   .blaw .bd{font-family:'Space Mono',monospace;font-size:8px;color:var(--soft);line-height:1.5;margin-top:3px;letter-spacing:.02em}
   .blaw .brow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
@@ -95,9 +97,21 @@
   .enacted{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--green) 72%,var(--ink))}
   .agtally{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--blue)}
   .lnote{font-family:'Space Mono',monospace;font-size:8px;color:var(--soft);letter-spacing:.04em}
+  .govnote{font-size:11px;color:var(--muted);line-height:1.55;padding:11px 14px;border-top:1px solid var(--line);background:color-mix(in srgb,var(--indigo) 5%,transparent)}
+  .govnote b{color:color-mix(in srgb,var(--indigo) 55%,var(--ink))}
+
+  /* upcoming agenda (read-only summary of the open law votes) */
+  .dk{display:flex;align-items:flex-start;gap:11px;padding:10px 0;border-top:1px solid var(--line)}
+  .dk:first-child{border-top:none}
+  .dk .dic{font-size:15px;width:22px;text-align:center;flex:none}
+  .dk .dn{font-size:12.5px;font-weight:700}
+  .dk .dd{font-family:'Space Mono',monospace;font-size:8.5px;color:var(--soft);margin-top:2px;letter-spacing:.03em;line-height:1.5}
+  .dk .dwhen{margin-left:auto;font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.08em;color:var(--blue);white-space:nowrap}
+  .dkempty{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);letter-spacing:.03em;padding:4px 0}
 
   /* assembly floor chat */
   .chat{background:var(--surface);border:1px solid var(--line);border-radius:16px;display:flex;flex-direction:column;height:600px;position:sticky;top:16px}
+  .chat.top{position:static;height:340px;margin-bottom:16px}   /* active view: floor above the laws */
   .chead{padding:13px 17px;border-bottom:1px solid var(--line)}
   .chead .cn{font-size:14px;font-weight:800}
   .chead .cr{font-family:'Space Mono',monospace;font-size:8.5px;color:var(--soft);letter-spacing:.05em;text-transform:uppercase;margin-top:2px}
@@ -128,9 +142,11 @@
 
     <div id="statusWrap"><div class="empty">Loading…</div></div>
 
+    <div id="topSlot"></div><!-- active view: the Assembly Floor is moved here, above the laws -->
+
     <div class="layout" id="layout" style="display:none">
       <div id="leftcol"></div>
-      <div class="chat">
+      <div class="chat" id="chatBox">
         <div class="chead"><div class="cn">The Assembly Floor</div><div class="cr" id="floorMembers"></div></div>
         <div class="msgs" id="msgs"></div>
         <div class="cinput">
@@ -170,7 +186,8 @@
     { id:'gov', nm:'Governance', col:'#b07cf0', tag:'the constitutional sector', laws:[
       { id:'secretariat', nm:'The Standing Secretariat', d:'Permanent staff and budget · the Assembly acts between sessions' },
       { id:'sessions',    nm:'Standing Sessions',        d:'The Assembly convenes every month · agenda capacity +1' },
-      { id:'chapters',    nm:'Regional Chapters',        d:'Charter regional sub-assemblies — siblings, continent by continent' } ] },
+      { id:'chapters',    nm:'Regional Chapters',        d:'Charter regional sub-assemblies — siblings, continent by continent' } ],
+      note: '<b>The road to a world organization runs up this ladder.</b> Locked above: <b>II — The Council</b> (permanent seats &amp; veto), the Tribunal, Observer Status · <b>III — Peacekeeping</b>, Compulsory Arbitration · <b>IV — Collective Security</b> · <b>V — sealed.</b> Levels unlock with the Assembly’s age.' },
     { id:'eco', nm:'Economic', col:'#4caf6d', tag:'trade among members', laws:[
       { id:'tariff', nm:'Tariff Courtesy', d:'Members cut tariffs 10% for each other' },
       { id:'fair',   nm:'The Trade Fair',  d:'Annual exposition, rotating host · Prosperity +1 each year' },
@@ -247,20 +264,26 @@
 
   function renderStatus() {
     var founding = O.status === 'founding';
-    var ready = acceptedCount() >= MIN_ACCEPT && allDecided();
+    var ca = O.charter_articles || {};
+    var accession = ca.accession === 'closed' ? 'Closed Organization' : (ca.accession === 'open' ? 'Open Organization' : null);
     var sub = founding
       ? (O.org_type || 'General') + ' · Charter Convention · Host ' + esc(natName(O.host_nation))
-      : (O.org_type || 'General') + ' · Founded ' + esc(O.founded_tick != null ? tickToDate(O.founded_tick) : '—') + ' · ' + ageText();
-    var stageHtml = founding
-      ? '<span class="stage' + (ready ? ' ready' : '') + '">◉ ' + (ready ? 'Ready to Ratify' : 'In Convention') + '</span>'
-      : '<span class="stage ready">◉ Active</span>';
+      : (O.org_type || 'General') + (accession ? ' · ' + accession : '') + ' · Founded ' + esc(O.founded_tick != null ? tickToDate(O.founded_tick) : '—') + ' · ' + ageText();
+    // Members + Your Status always; an active org also shows Applications and Secretary-General (both
+    // deferred subsystems — honest current values: no applications yet, no S-G elected). A founding org
+    // shows its convention stage instead.
+    var stats = '<div class="hstat"><div class="v">' + MEMBERS.length + '</div><div class="k">Members</div></div>';
+    if (!founding) stats += '<div class="hstat"><div class="v">0</div><div class="k">Applications</div></div>';
+    stats += '<div class="hstat"><div class="v" style="color:var(--amber)">' + esc(myStatus()) + '</div><div class="k">Your Status</div></div>';
+    if (!founding) stats += '<div class="hstat"><div class="v" style="color:var(--soft)">Vacant</div><div class="k">Secretary-General</div></div>';
+    if (founding) {
+      var ready = acceptedCount() >= MIN_ACCEPT && allDecided();
+      stats += '<span class="stage' + (ready ? ' ready' : '') + '">◉ ' + (ready ? 'Ready to Ratify' : 'In Convention') + '</span>';
+    }
     document.getElementById('statusWrap').innerHTML =
       '<div class="status"><div class="strow"><span class="oic">' + esc(O.emblem || '🕊') + '</span>' +
         '<div><div class="onm">' + esc(O.name) + '</div><div class="osub">' + sub + '</div></div>' +
-        '<div class="spacer"></div>' +
-        '<div class="hstat"><div class="v">' + MEMBERS.length + '</div><div class="k">Members</div></div>' +
-        '<div class="hstat"><div class="v" style="color:var(--amber)">' + esc(myStatus()) + '</div><div class="k">Your Status</div></div>' +
-        stageHtml + '</div>' +
+        '<div class="spacer"></div>' + stats + '</div>' +
         (!founding && O.charter_articles ? '<div class="charterline">' + ARTICLES.map(function (a) {
           var pick = O.charter_articles[a.id];
           return '<span class="art">' + esc(a.label) + ': ' + esc((ARTLABEL[a.id] && ARTLABEL[a.id][pick]) || pick || '—') + '</span>';
@@ -364,10 +387,29 @@
       }).join('');
       return '<div class="branch"><div class="brhead"><span class="brdot" style="background:' + br.col + '"></span>' +
         '<span class="brnm">' + esc(br.nm) + ' · Level I</span><span class="brtag">' + esc(br.tag) + '</span>' +
-        '<span class="brlock">🔒 II–V · with age</span></div>' + laws + '</div>';
+        '<span class="brlock">🔒 II–V · with age</span></div>' +
+        '<div class="brlaws">' + laws + '</div>' +
+        (br.note ? '<div class="govnote">' + br.note + '</div>' : '') + '</div>';
     }).join('');
     return '<div class="card"><div class="sect">Laws of the Assembly <span class="note">Level I · propose a law, members vote, a majority enacts it' +
       (enacted ? ' · ' + enacted + ' enacted' : '') + (agenda ? ' · ' + agenda + ' on the agenda' : '') + '</span></div>' + branches + '</div>';
+  }
+
+  // Upcoming Agenda — a READ-ONLY summary of the laws currently on the floor (the Aye/Nay voting itself
+  // stays inline on each law above: one source). No fabricated tick items; the org's business is its votes.
+  function renderAgenda() {
+    var open = [];
+    LAWS_CAT.forEach(function (br) { br.laws.forEach(function (l) {
+      var row = lawRow(br.id, l.id);
+      if (row && row.status === 'proposed') open.push({ br: br, l: l });
+    }); });
+    var body = open.length ? open.map(function (o) {
+      var t = lawTally(o.br.id, o.l.id);
+      var dd = o.br.nm + ' · Level I' + (amMember() ? ' · ' + t.aye + ' aye · ' + t.nay + ' nay' : '');
+      return '<div class="dk"><span class="dic">📜</span><div><div class="dn">Law Vote: ' + esc(o.l.nm) + '</div>' +
+        '<div class="dd">' + esc(dd) + '</div></div><span class="dwhen">On the floor</span></div>';
+    }).join('') : '<div class="dkempty">No business before the Assembly — move a law from the sectors above.</div>';
+    return '<div class="card"><div class="sect">Upcoming Agenda <span class="note">open votes on the floor · cast Aye or Nay on each law above</span></div>' + body + '</div>';
   }
 
   function wire() {
@@ -394,9 +436,18 @@
 
     document.title = (O.name || 'Organization') + ' · Nationhood';
     renderStatus();
-    document.getElementById('leftcol').innerHTML =
-      (O.status === 'founding' ? renderConvention() : renderLaws()) + renderRoster();
-    document.getElementById('layout').style.display = '';
+    // Founding: convention + roster on the left, the Floor as a right sidebar. Active: the Floor moves
+    // full-width above, and the left column becomes the laws + the agenda summary (mockup layout).
+    var founding = O.status === 'founding';
+    var layout = document.getElementById('layout'), chatBox = document.getElementById('chatBox');
+    if (founding) {
+      layout.classList.remove('solo'); chatBox.classList.remove('top'); layout.appendChild(chatBox);
+      document.getElementById('leftcol').innerHTML = renderConvention() + renderRoster();
+    } else {
+      layout.classList.add('solo'); chatBox.classList.add('top'); document.getElementById('topSlot').appendChild(chatBox);
+      document.getElementById('leftcol').innerHTML = renderLaws() + renderAgenda();
+    }
+    layout.style.display = '';
     wire();
     renderChat();
   }
