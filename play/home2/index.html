@@ -22,9 +22,10 @@
     display:flex;flex-direction:column;padding:14px 10px}
   .brand{display:flex;gap:10px;align-items:flex-start;padding:2px 6px 14px;border-bottom:1px solid var(--line);margin-bottom:10px}
   .brand__crest{width:36px;height:36px;border-radius:6px;background:#123524;border:1px solid #2c5c40;
-    display:flex;align-items:center;justify-content:center;font-size:16px;flex:none}
+    display:flex;align-items:center;justify-content:center;font-size:16px;flex:none;overflow:hidden}
+  .brand__crest img{width:100%;height:100%;object-fit:cover}
   .brand__name{font-weight:700;font-size:13px;line-height:1.25}
-  .brand__sub{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--dim);margin-top:3px}
+  .brand__sub{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--dim);margin-top:3px;text-transform:uppercase}
   .nav{overflow-y:auto;flex:1}
   .nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;color:var(--muted);
     font-family:'JetBrains Mono',monospace;font-size:12.5px;cursor:pointer;position:relative;text-decoration:none}
@@ -40,8 +41,6 @@
   .map-area{flex:1;position:relative;overflow:hidden;background:#a9cfdd;cursor:grab;user-select:none}
   .map-area.grabbing{cursor:grabbing}
   .map-area svg.world{display:block;width:100%;height:100%}
-  .pulse{animation:pulse 1.8s ease-out infinite}
-  @keyframes pulse{0%{r:11;opacity:.7}70%{r:20;opacity:0}100%{r:20;opacity:0}}
 
   .chip{font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 8px;border-radius:5px;
     border:1px solid var(--line);background:var(--panel);color:var(--muted)}
@@ -55,13 +54,8 @@
   .tb-stat .k{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--dim)}
   .tb-stat .v{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700}
 
-  /* event popup */
-  .evpop{position:absolute;width:260px;z-index:20;background:#181820;border:1px solid var(--line);border-radius:10px;
-    box-shadow:0 10px 30px rgba(0,0,0,.45);overflow:hidden}
-  .evpop__hd{padding:7px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
-  .evpop__body{padding:10px 12px}
-  .evpop__bang{width:22px;height:22px;min-width:22px;border-radius:11px;background:#e5604c;display:flex;align-items:center;
-    justify-content:center;font-weight:900;font-size:13px;color:#fff}
+  .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim);background:#a9cfdd;z-index:5}
 </style>
 </head>
 <body>
@@ -69,18 +63,18 @@
   <!-- ============ SIDEBAR ============ -->
   <aside class="side">
     <div class="brand">
-      <div class="brand__crest">🦅</div>
+      <div class="brand__crest" id="brandCrest">🦅</div>
       <div>
-        <div class="brand__name">The National Justice Party</div>
-        <div class="brand__sub">FAITH / RELIGIOUS · AL-QADIR</div>
+        <div class="brand__name" id="brandName">Loading…</div>
+        <div class="brand__sub" id="brandSub"></div>
       </div>
     </div>
     <nav class="nav" id="nav"></nav>
     <div class="side__foot">
-      <div class="side__avatar">AB</div>
+      <div class="side__avatar">◆</div>
       <div>
-        <div style="font-size:12px;font-weight:600">Chapter II</div>
-        <div class="mono" style="font-size:9px;color:var(--dim)">TERM 1 · MONTH 7</div>
+        <div style="font-size:12px;font-weight:600">World Map</div>
+        <div class="mono" style="font-size:9px;color:var(--dim)">REAL TERRITORY</div>
       </div>
     </div>
   </aside>
@@ -88,21 +82,19 @@
   <!-- ============ MAP AREA ============ -->
   <main class="map-area" id="mapArea">
     <svg class="world" id="worldSvg"></svg>
+    <div class="loading" id="loading">Loading the world…</div>
 
     <!-- topbar -->
     <div class="topbar">
       <div style="display:flex;align-items:center;gap:8px">
-        <div style="width:20px;height:20px;border-radius:4px;background:#123524;border:1px solid #2c5c40;font-size:11px;display:flex;align-items:center;justify-content:center">🦅</div>
-        <span style="font-weight:700;font-size:13px">The National Justice Party</span>
+        <div class="brand__crest" style="width:20px;height:20px;border-radius:4px;font-size:11px" id="tbCrest">🦅</div>
+        <span style="font-weight:700;font-size:13px" id="tbName">Nationhood</span>
       </div>
       <div style="width:1px;height:22px;background:var(--line)"></div>
       <div style="display:flex;gap:16px;align-items:center;flex:1">
-        <div class="tb-stat"><span class="k">ECONOMIC GROWTH </span><span class="v" style="color:var(--green)">+3.1%</span></div>
-        <div class="tb-stat"><span class="k">BUDGET </span><span class="v" style="color:var(--red)">−$0.1bn</span></div>
-        <div class="tb-stat"><span class="k">APPROVAL </span><span class="v">41%</span></div>
-      </div>
-      <div class="chip" style="display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--text)">
-        NEWS <span id="newsCount" style="background:var(--red);color:#fff;border-radius:8px;font-size:9px;padding:1px 6px;font-weight:700">0</span>
+        <div class="tb-stat"><span class="k">NATIONS </span><span class="v" id="tbNations">—</span></div>
+        <div class="tb-stat"><span class="k">TERRITORY </span><span class="v" id="tbHexes">—</span></div>
+        <div class="tb-stat"><span class="k">CITIES </span><span class="v" id="tbCities">—</span></div>
       </div>
     </div>
 
@@ -114,214 +106,161 @@
 
     <!-- hover chip + hint -->
     <div class="chip" id="hoverChip" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:10;color:var(--text);font-size:11px;display:none"></div>
-    <div class="mono" style="position:absolute;bottom:14px;right:14px;z-index:10;font-size:9px;letter-spacing:.12em;color:rgba(20,20,30,.55)">DRAG TO PAN · CLICK ! FOR EVENTS</div>
-
-    <div id="popRoot"></div>
+    <div class="mono" style="position:absolute;bottom:14px;right:14px;z-index:10;font-size:9px;letter-spacing:.12em;color:rgba(20,20,30,.55)">DRAG TO PAN · SCROLL / ± TO ZOOM</div>
   </main>
 </div>
 
-<script>
-(function () {
-  var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]; }); };
+<script type="module">
+import { supabase, isConfigured, requireUser } from '/supabase.js';
+import { esc, declaredValue } from '/util.js';
+import { axialToPix, nationColors } from '/hexmap.js';
 
-  /* ---------------- NAV ---------------- */
-  var NAV = [
-    ['Home','/play/news/','<path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/>'],
-    ['Party','/play/party/','<path d="M4 21V4"/><path d="M4 4c3-2 6 2 9 0s6-2 9 0v9c-3 2-6-2-9 0s-6 2-9 0"/>'],
-    ['Nation','/play/','<path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/>'],
-    ['Government','/play/government/','<path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/>'],
-    ['Coalition','/play/coalition/','<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2 20a6 6 0 0 1 10-4M22 20a6 6 0 0 0-10-4"/>'],
-    ['Legislature','/play/legislature/','<path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/>'],
-    ['Policies','/play/policies/','<path d="M7 3h10a1 1 0 011 1v16l-3-2-3 2-3-2-3 2V4a1 1 0 011-1z"/><path d="M9 8h6M9 12h5"/>'],
-    ['Elections','/play/elections/','<path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/>'],
-    ['Economy','/play/economy/','<path d="M4 19h16"/><path d="M4 15l4-4 3 3 5-6"/><path d="M16 8h2v2"/>'],
-    ['Corporations','/play/corporations/','<path d="M3 21h18"/><path d="M6 21V5a1 1 0 011-1h6a1 1 0 011 1v16"/><path d="M14 21V10h4a1 1 0 011 1v10"/><path d="M9 8h2M9 12h2M9 16h2"/>'],
-    ['Intl. Organizations','/play/organizations/','<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.2"/><path d="M12 3v5.8M12 15.2V21M3 12h5.8M15.2 12H21"/>',true],
-    ['World','/play/world/','<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>'],
-    ['Conflict','/play/conflict/','<path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/>'],
-    ['Forum','/play/forum/','<path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/>'],
-    ['Wiki','/play/wiki/','<path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/>'],
-    ['Home2','/play/home2/','<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>']
-  ];
-  document.getElementById('nav').innerHTML = NAV.map(function (n) {
-    var on = n[1] === '/play/home2/';
-    return '<a class="nav-item' + (on ? ' on' : '') + '" href="' + n[1] + '">' +
-      '<svg viewBox="0 0 24 24" aria-hidden="true">' + n[2] + '</svg>' + esc(n[0]) +
-      (n[3] ? '<span class="dot"></span>' : '') + '</a>';
-  }).join('');
+/* ---------------- NAV ---------------- */
+const NAV = [
+  ['Home','/play/news/','<path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/>'],
+  ['Party','/play/party/','<path d="M4 21V4"/><path d="M4 4c3-2 6 2 9 0s6-2 9 0v9c-3 2-6-2-9 0s-6 2-9 0"/>'],
+  ['Nation','/play/','<path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/>'],
+  ['Government','/play/government/','<path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/>'],
+  ['Coalition','/play/coalition/','<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2 20a6 6 0 0 1 10-4M22 20a6 6 0 0 0-10-4"/>'],
+  ['Legislature','/play/legislature/','<path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/>'],
+  ['Policies','/play/policies/','<path d="M7 3h10a1 1 0 011 1v16l-3-2-3 2-3-2-3 2V4a1 1 0 011-1z"/><path d="M9 8h6M9 12h5"/>'],
+  ['Elections','/play/elections/','<path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/>'],
+  ['Economy','/play/economy/','<path d="M4 19h16"/><path d="M4 15l4-4 3 3 5-6"/><path d="M16 8h2v2"/>'],
+  ['Corporations','/play/corporations/','<path d="M3 21h18"/><path d="M6 21V5a1 1 0 011-1h6a1 1 0 011 1v16"/><path d="M14 21V10h4a1 1 0 011 1v10"/><path d="M9 8h2M9 12h2M9 16h2"/>'],
+  ['Intl. Organizations','/play/organizations/','<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.2"/><path d="M12 3v5.8M12 15.2V21M3 12h5.8M15.2 12H21"/>'],
+  ['World','/play/world/','<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>'],
+  ['Conflict','/play/conflict/','<path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/>'],
+  ['Forum','/play/forum/','<path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/>'],
+  ['Wiki','/play/wiki/','<path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/>'],
+  ['Home2','/play/home2/','<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>']
+];
+document.getElementById('nav').innerHTML = NAV.map(function (n) {
+  var on = n[1] === '/play/home2/';
+  return '<a class="nav-item' + (on ? ' on' : '') + '" href="' + n[1] + '">' +
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' + n[2] + '</svg>' + esc(n[0]) + '</a>';
+}).join('');
 
-  /* ---------------- HEX GRID ---------------- */
-  var COLS = 42, ROWS = 27, S = 17;
-  var hexX = function (q, r) { return Math.sqrt(3) * S * (q + (r % 2 ? 0.5 : 0)) + S; };
-  var hexY = function (r) { return 1.5 * S * r + S; };
-  var kk = function (q, r) { return q + ',' + r; };
-  var corners = function (cx, cy) {
-    var out = [];
-    for (var i = 0; i < 6; i++) { var a = Math.PI / 180 * (60 * i - 30); out.push((cx + S * Math.cos(a)).toFixed(1) + ',' + (cy + S * Math.sin(a)).toFixed(1)); }
-    return out.join(' ');
-  };
-  var neighbors = function (q, r) {
-    return (r % 2 === 0)
-      ? [[q+1,r],[q-1,r],[q,r-1],[q-1,r-1],[q,r+1],[q-1,r+1]]
-      : [[q+1,r],[q-1,r],[q+1,r-1],[q,r-1],[q+1,r+1],[q,r+1]];
-  };
-  function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+/* ---------------- HEX GEOMETRY ---------------- */
+const S = 16;   // hex size (px, at zoom 1)
+// Pointy-top hexagon corners around a centre, matching axialToPix's pointy-top layout.
+function corners(cx, cy) {
+  var out = [];
+  for (var i = 0; i < 6; i++) { var a = Math.PI / 180 * (60 * i - 30); out.push((cx + S * Math.cos(a)).toFixed(1) + ',' + (cy + S * Math.sin(a)).toFixed(1)); }
+  return out.join(' ');
+}
 
-  /* ---------------- WORLD ---------------- */
-  var NATION_DEFS = [
-    { name:'Al-Qadir',  color:'#d9a944', seed:[20,18], size:26, player:true },
-    { name:'Ostmark',   color:'#4a4a52', seed:[23,9],  size:18 },
-    { name:'Seyonne',   color:'#6b4fd0', seed:[17,11], size:18 },
-    { name:'Rosmoor',   color:'#e05c5c', seed:[12,7],  size:13 },
-    { name:'Calcordia', color:'#3b4fd9', seed:[13,3],  size:7 },
-    { name:'Inisvane',  color:'#3ecf8e', seed:[6,4],   size:7 },
-    { name:'Calveth',   color:'#2fa39a', seed:[26,5],  size:8 },
-    { name:'Aontas',    color:'#c9cc4e', seed:[32,3],  size:16 },
-    { name:'Aranzar',   color:'#d94f4f', seed:[4,17],  size:11 },
-    { name:'Estrella',  color:'#d4c944', seed:[7,20],  size:15 },
-    { name:'Etelia',    color:'#7a72c9', seed:[28,21], size:14 },
-    { name:'Unclaimed', color:'#e6dfc8', seed:[34,13], size:12, neutral:true },
-    { name:'Unclaimed', color:'#e6dfc8', seed:[12,16], size:10, neutral:true },
-    { name:'Unclaimed', color:'#e6dfc8', seed:[38,21], size:8,  neutral:true }
-  ];
-  var CITIES = [
-    { name:'Madinat al-Qadir', q:20, r:18, capital:true },
-    { name:'Bandar Rish',      q:22, r:20 },
-    { name:'Ostgrad',          q:23, r:9 },
-    { name:'Aubertin',         q:18, r:10 },
-    { name:'Marivelle',        q:17, r:13 },
-    { name:'Loxbridge',        q:12, r:6 },
-    { name:'Vella Estrella',   q:7,  r:20 }
-  ];
-  var EVENTS = [
-    { id:'wra', q:20, r:18, nation:'Al-Qadir', tag:'LEGISLATURE', title:"Workers' Rights Act",
-      desc:"Sign or veto the Workers' Rights Act that was approved by the Grand National Assembly." },
-    { id:'garrison', q:23, r:9, nation:'Ostmark', tag:'CONFLICT', title:'Garrison on the Frontier',
-      desc:'Ostmark has moved two divisions to your shared border. The General Staff requests instructions.' },
-    { id:'trade', q:17, r:13, nation:'Seyonne', tag:'TRADE', title:'Ports-for-Grain Offer',
-      desc:'Seyonne proposes harbor access in exchange for wheat quotas. The Bazaar is watching.' },
-    { id:'ships', q:7, r:20, nation:'Estrella', tag:'INTERIOR', title:'Refugee Ships',
-      desc:'Three vessels fleeing the Estrellan civil war request harbor. Four thousand souls aboard.' }
-  ];
+var pan = { x: 0, y: 0 }, zoom = 1.1, drag = null;
+var svgEl = document.getElementById('worldSvg'), worldG = null;
+var mapArea = document.getElementById('mapArea'), hoverChip = document.getElementById('hoverChip');
 
-  function buildWorld() {
-    var rng = mulberry32(42), owner = {};
-    NATION_DEFS.forEach(function (n, idx) {
-      var frontier = [n.seed], grown = 0;
-      while (grown < n.size && frontier.length) {
-        var i = Math.floor(rng() * frontier.length);
-        var cell = frontier.splice(i, 1)[0], q = cell[0], r = cell[1], k = kk(q, r);
-        if (owner[k] !== undefined) continue;
-        if (q < 1 || r < 1 || q >= COLS - 1 || r >= ROWS - 1) continue;
-        owner[k] = idx; grown++;
-        neighbors(q, r).forEach(function (nb) { if (owner[kk(nb[0], nb[1])] === undefined) frontier.push(nb); });
-      }
-    });
-    return owner;
+function applyTransform() { if (worldG) worldG.setAttribute('transform', 'translate(' + pan.x + ',' + pan.y + ') scale(' + zoom + ')'); }
+
+/* ---------------- LOAD + RENDER ---------------- */
+(async function () {
+  if (!isConfigured) { document.getElementById('loading').textContent = 'Supabase isn’t configured.'; return; }
+  const user = await requireUser();
+  if (!user) return;   // redirected to login
+
+  var myNation = null, myPartyName = '';
+  try {
+    const { data: party } = await supabase.from('parties').select('name, nation_id').eq('user_id', user.id).maybeSingle();
+    if (party) { myNation = party.nation_id; myPartyName = party.name || ''; }
+  } catch (e) {}
+
+  var nations = [], hexes = [], cities = [], capSlot = null;
+  try { const { data } = await supabase.from('nations').select('id, name, color, flag, declarations'); nations = data || []; } catch (e) {}
+  try { const { data } = await supabase.from('world_hexes').select('q, r, terrain, nation_id, name, population'); hexes = data || []; } catch (e) {}
+  try { const { data } = await supabase.from('cities').select('nation_id, name, q, r'); cities = data || []; } catch (e) {}
+  try { const { data } = await supabase.from('declarations').select('slug, options, default_index, custom_allowed').eq('slug', 'capital_name').maybeSingle(); capSlot = data || null; } catch (e) {}
+
+  var natById = {}; nations.forEach(function (n) { natById[n.id] = n; });
+  var colorOf = nationColors(nations);   // { nationId: '#rrggbb' } — stored colour or stable palette
+  // Each nation's capital name (one source: the capital_name declaration), for the ★ marker.
+  var capitalByNation = {};
+  nations.forEach(function (n) { var c = capSlot ? declaredValue(capSlot, n.declarations || {}) : null; if (c && c !== '—') capitalByNation[n.id] = c; });
+
+  // Brand + topbar from real data.
+  var myNat = myNation ? natById[myNation] : null;
+  document.getElementById('brandName').textContent = myPartyName || (myNat ? myNat.name : 'Nationhood');
+  document.getElementById('brandSub').textContent = myNat ? myNat.name : 'The World';
+  document.getElementById('tbName').textContent = myNat ? myNat.name : 'The World';
+  if (myNat && myNat.flag) {
+    document.getElementById('brandCrest').innerHTML = '<img src="' + esc(myNat.flag) + '" alt="">';
+    document.getElementById('tbCrest').innerHTML = '<img src="' + esc(myNat.flag) + '" alt="">';
   }
-  var owner = buildWorld();
-  var waterTone = function (q, r) { return ((q * 7 + r * 13) % 5 < 2) ? '#b9dae6' : '#a9cfdd'; };
+  document.getElementById('tbNations').textContent = nations.length;
+  document.getElementById('tbHexes').textContent = hexes.filter(function (h) { return h.terrain === 'land'; }).length;
+  document.getElementById('tbCities').textContent = cities.filter(function (c) { return c.q != null && c.r != null; }).length;
 
-  /* ---------------- RENDER MAP ---------------- */
-  var svgEl = document.getElementById('worldSvg');
+  var land = hexes.filter(function (h) { return h.terrain === 'land'; });
+  if (!land.length) { document.getElementById('loading').textContent = 'No world map has been drawn yet (adminsetup → World Map).'; return; }
+
+  // Water fill mirrors the shared renderer's tint (hexmap.js): a subtle 2-tone by (q+r) parity.
+  var waterTone = function (q, r) { return ((q + r) % 2 === 0) ? '#b9dae6' : '#a9cfdd'; };
+  var LAND_NEUTRAL = '#e9e3d4';   // unclaimed land
+
+  // Sea hexes are drawn only where a 'sea' row exists; everywhere else the page background is the sea,
+  // so a big sparse world stays light. Draw land + any authored sea rows.
   var body = '';
-  for (var r = 0; r < ROWS; r++) for (var q = 0; q < COLS; q++) {
-    var o = owner[kk(q, r)], n = o !== undefined ? NATION_DEFS[o] : null;
-    var fill = n ? n.color : waterTone(q, r);
-    body += '<polygon points="' + corners(hexX(q, r), hexY(r)) + '" fill="' + fill + '" stroke="#fff" stroke-opacity="' + (n ? 0.35 : 0.25) + '" stroke-width="1" data-nation="' + (n && !n.neutral ? esc(n.name) : '') + '"/>';
+  hexes.forEach(function (h) {
+    var p = axialToPix(h.q, h.r, S, 0, 0);
+    var isLand = h.terrain === 'land';
+    var fill = isLand ? (h.nation_id ? (colorOf[h.nation_id] || '#9a8f7d') : LAND_NEUTRAL) : waterTone(h.q, h.r);
+    var nm = h.nation_id && natById[h.nation_id] ? natById[h.nation_id].name : (isLand ? 'Unclaimed' : '');
+    body += '<polygon points="' + corners(p.x, p.y) + '" fill="' + fill + '" stroke="#fff" stroke-opacity="' + (isLand ? 0.35 : 0.22) + '" stroke-width="1" data-nation="' + esc(nm) + '"/>';
+  });
+  // Player-nation outline glow.
+  if (myNation) {
+    land.filter(function (h) { return h.nation_id === myNation; }).forEach(function (h) {
+      var p = axialToPix(h.q, h.r, S, 0, 0);
+      body += '<polygon points="' + corners(p.x, p.y) + '" fill="none" stroke="#f0a03c" stroke-opacity=".55" stroke-width="1.6"/>';
+    });
   }
-  // player-nation outline glow
-  Object.keys(owner).forEach(function (k) {
-    if (!NATION_DEFS[owner[k]].player) return;
-    var p = k.split(',').map(Number);
-    body += '<polygon points="' + corners(hexX(p[0], p[1]), hexY(p[1])) + '" fill="none" stroke="#f0a03c" stroke-opacity=".5" stroke-width="1.4"/>';
+  // Cities (real rows with coordinates). ★ marks the nation's declared capital.
+  cities.filter(function (c) { return c.q != null && c.r != null; }).forEach(function (c) {
+    var p = axialToPix(c.q, c.r, S, 0, 0);
+    var isCap = capitalByNation[c.nation_id] && capitalByNation[c.nation_id] === c.name;
+    body += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (isCap ? 3.4 : 2.4) + '" fill="#1a1a1a"/>' +
+      '<text x="' + (p.x + 6) + '" y="' + (p.y + 4) + '" font-size="' + (isCap ? 12 : 10.5) + '" font-weight="700" fill="#1a1a1a" stroke="#fff" stroke-width="3" paint-order="stroke" style="font-family:\'IBM Plex Sans\',sans-serif">' + (isCap ? '★ ' : '') + esc(c.name) + '</text>';
   });
-  // cities
-  CITIES.forEach(function (c) {
-    var x = hexX(c.q, c.r), y = hexY(c.r);
-    body += '<circle cx="' + x + '" cy="' + y + '" r="' + (c.capital ? 3.4 : 2.4) + '" fill="#1a1a1a"/>' +
-      '<text x="' + (x + 6) + '" y="' + (y + 4) + '" font-size="' + (c.capital ? 12 : 10.5) + '" font-weight="700" fill="#1a1a1a" stroke="#fff" stroke-width="3" paint-order="stroke" style="font-family:\'IBM Plex Sans\',sans-serif">' + (c.capital ? '★ ' : '') + esc(c.name) + '</text>';
-  });
-  // event markers
-  EVENTS.forEach(function (ev) {
-    var x = hexX(ev.q, ev.r), y = hexY(ev.r) - 14;
-    body += '<g class="evmarker" data-id="' + ev.id + '" style="cursor:pointer">' +
-      '<circle class="pulse" cx="' + x + '" cy="' + y + '" r="11" fill="none" stroke="#e5604c" stroke-width="2"/>' +
-      '<circle cx="' + x + '" cy="' + y + '" r="10" fill="#e5604c" stroke="#fff" stroke-width="2"/>' +
-      '<text x="' + x + '" y="' + (y + 4.5) + '" text-anchor="middle" font-size="13" font-weight="900" fill="#fff" style="font-family:\'JetBrains Mono\',monospace">!</text></g>';
-  });
+
   svgEl.innerHTML = '<g id="world">' + body + '</g>';
-  var worldG = document.getElementById('world');
-  document.getElementById('newsCount').textContent = EVENTS.length;
+  worldG = document.getElementById('world');
+  document.getElementById('loading').style.display = 'none';
 
-  /* ---------------- PAN / ZOOM ---------------- */
-  var pan = { x: -150, y: -120 }, zoom = 1.15, drag = null, openEvent = null;
-  var mapArea = document.getElementById('mapArea'), popRoot = document.getElementById('popRoot');
-
-  function applyTransform() {
-    worldG.setAttribute('transform', 'translate(' + pan.x + ',' + pan.y + ') scale(' + zoom + ')');
-    if (openEvent) positionPopup();
-  }
+  // Centre the view on the player's nation (else the whole world's centroid).
+  var focus = (myNation ? land.filter(function (h) { return h.nation_id === myNation; }) : []);
+  if (!focus.length) focus = land;
+  var cx = 0, cy = 0;
+  focus.forEach(function (h) { var p = axialToPix(h.q, h.r, S, 0, 0); cx += p.x; cy += p.y; });
+  cx /= focus.length; cy /= focus.length;
+  pan = { x: mapArea.clientWidth / 2 - cx * zoom, y: mapArea.clientHeight / 2 - cy * zoom };
   applyTransform();
 
-  mapArea.addEventListener('mousedown', function (e) {
-    if (e.target.closest('.evmarker')) return;   // markers handle their own click
-    drag = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y };
-    mapArea.classList.add('grabbing');
-  });
-  window.addEventListener('mousemove', function (e) {
-    if (!drag) return;
-    pan = { x: drag.px + (e.clientX - drag.sx), y: drag.py + (e.clientY - drag.sy) };
-    applyTransform();
-  });
-  window.addEventListener('mouseup', function () { drag = null; mapArea.classList.remove('grabbing'); });
-
-  document.getElementById('zoomIn').onclick = function () { zoom = Math.min(2.2, Math.round((zoom + 0.2) * 100) / 100); applyTransform(); };
-  document.getElementById('zoomOut').onclick = function () { zoom = Math.max(0.6, Math.round((zoom - 0.2) * 100) / 100); applyTransform(); };
-
-  // hover nation chip (delegated)
-  var hoverChip = document.getElementById('hoverChip');
+  // Hover-nation chip (delegated).
   worldG.addEventListener('mouseover', function (e) {
     if (e.target.tagName !== 'polygon') return;
     var nm = e.target.getAttribute('data-nation');
     if (nm) { hoverChip.textContent = nm; hoverChip.style.display = ''; } else { hoverChip.style.display = 'none'; }
   });
-  mapArea.addEventListener('mouseleave', function () { hoverChip.style.display = 'none'; });
-
-  /* ---------------- EVENT POPUP ---------------- */
-  function positionPopup() {
-    var ev = EVENTS.filter(function (e) { return e.id === openEvent; })[0];
-    var pop = document.getElementById('evpop'); if (!ev || !pop) return;
-    pop.style.left = (hexX(ev.q, ev.r) * zoom + pan.x - 130) + 'px';
-    pop.style.top = ((hexY(ev.r) - 14) * zoom + pan.y - 128) + 'px';
-  }
-  function renderPopup() {
-    var ev = EVENTS.filter(function (e) { return e.id === openEvent; })[0];
-    if (!ev) { popRoot.innerHTML = ''; return; }
-    popRoot.innerHTML =
-      '<div class="evpop" id="evpop">' +
-        '<div class="evpop__hd"><span class="mono" style="font-size:10px;letter-spacing:.12em;color:var(--orange)">★ ' + esc(ev.nation.toUpperCase()) + '</span><span class="chip">' + esc(ev.tag) + '</span></div>' +
-        '<div class="evpop__body"><div style="display:flex;gap:8px;align-items:flex-start">' +
-          '<div class="evpop__bang">!</div>' +
-          '<div><div style="font-weight:700;font-size:13px">' + esc(ev.title) + '</div>' +
-          '<div style="font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.45">' + esc(ev.desc) + '</div></div></div>' +
-          '<div style="display:flex;gap:6px;margin-top:10px;justify-content:flex-end">' +
-            '<button class="chip" id="evLater" style="cursor:pointer">LATER</button>' +
-            '<button class="chip" style="cursor:pointer;color:#0a0d13;background:var(--orange);border:none;font-weight:700">OPEN</button>' +
-          '</div></div></div>';
-    positionPopup();
-    document.getElementById('evLater').onclick = function () { openEvent = null; renderPopup(); };
-  }
-  // marker clicks
-  Array.prototype.forEach.call(document.querySelectorAll('.evmarker'), function (g) {
-    g.addEventListener('click', function (e) {
-      e.stopPropagation();
-      var id = g.getAttribute('data-id');
-      openEvent = (openEvent === id) ? null : id;
-      renderPopup();
-    });
-  });
 })();
+
+/* ---------------- PAN / ZOOM ---------------- */
+mapArea.addEventListener('mousedown', function (e) { drag = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y }; mapArea.classList.add('grabbing'); });
+window.addEventListener('mousemove', function (e) { if (!drag) return; pan = { x: drag.px + (e.clientX - drag.sx), y: drag.py + (e.clientY - drag.sy) }; applyTransform(); });
+window.addEventListener('mouseup', function () { drag = null; mapArea.classList.remove('grabbing'); });
+mapArea.addEventListener('mouseleave', function () { hoverChip.style.display = 'none'; });
+
+function zoomAt(factor, cxp, cyp) {
+  var nz = Math.max(0.35, Math.min(3, Math.round(zoom * factor * 100) / 100));
+  // keep the point under the cursor fixed
+  pan.x = cxp - (cxp - pan.x) * (nz / zoom);
+  pan.y = cyp - (cyp - pan.y) * (nz / zoom);
+  zoom = nz; applyTransform();
+}
+document.getElementById('zoomIn').onclick = function () { zoomAt(1.2, mapArea.clientWidth / 2, mapArea.clientHeight / 2); };
+document.getElementById('zoomOut').onclick = function () { zoomAt(1 / 1.2, mapArea.clientWidth / 2, mapArea.clientHeight / 2); };
+mapArea.addEventListener('wheel', function (e) { e.preventDefault(); var rect = mapArea.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - rect.left, e.clientY - rect.top); }, { passive: false });
 </script>
 </body>
 </html>
