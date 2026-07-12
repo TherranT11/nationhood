@@ -702,7 +702,9 @@
   // names first, word-bounded) so inserted markup is never re-scanned; possessives ("Calcordia's") keep
   // the trailing text outside the coloured span.
   function decorateBody(body) {
-    var safe = esc(body || '');
+    // Escape first, then turn **…** into bold (the server wraps a card's title this way), then colour
+    // the nation mentions. The bold pass runs on escaped text, so no author markup can inject HTML.
+    var safe = esc(body || '').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
     var names = Object.keys(NATIONS).map(function (id) { return { id: id, name: NATIONS[id] }; })
       .filter(function (x) { return x.name; }).sort(function (a, b) { return b.name.length - a.name.length; });
     if (!names.length) return safe;
