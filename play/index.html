@@ -428,6 +428,13 @@
   </div>
 </div>
 
+<div class="amodal" id="serviceModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Service Economy</b><button class="amodal__x" id="serviceClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list" id="serviceBody"><p class="empty">Loading…</p></div>
+  </div>
+</div>
+
 <div class="amodal" id="deployModal" hidden>
   <div class="amodal__panel">
     <div class="amodal__hd"><b>Deploy the Military</b><button class="amodal__x" id="deployClose" type="button" aria-label="Close">&times;</button></div>
@@ -1275,16 +1282,19 @@
     if (!isEconDevMin) { el.innerHTML = ''; return; }
     el.innerHTML = '<section class="panel leadbar">' +
       '<div class="glance-hd"><span>Minister of Economic Development &middot; This Week’s Action</span></div>' +
-      '<p class="leadbar__sub">Your party holds the Economic Development portfolio. Launch a national initiative to permanently raise a production output, or industrialize raw stock into finished Goods.</p>' +
+      '<p class="leadbar__sub">Your party holds the Economic Development portfolio. Launch a national initiative to permanently raise a production output, industrialize raw stock into finished Goods, or grow the service economy.</p>' +
       '<div class="leadbar__grid">' +
         '<button class="lead" type="button" id="econdev-initiative" data-cost="2"><b>Initiative</b><span class="lead__lane">National Initiatives</span><span class="lead__desc">Enact a national programme — a lasting boost to a resource.</span></button>' +
         '<button class="lead" type="button" id="econdev-industrialize" data-cost="2"><b>Industrialize</b><span class="lead__lane">Production</span><span class="lead__desc">Forge Goods from raw stock — 1 Energy + 1 Mineral each · 1 AP.</span></button>' +
+        '<button class="lead" type="button" id="econdev-service" data-cost="2"><b>Service Economy</b><span class="lead__lane">Production</span><span class="lead__desc">Grow Services from raw stock — 1 Energy + 1 Food each · 1 AP.</span></button>' +
       '</div></section>';
     el.querySelectorAll('.lead').forEach(stampCost);
     var b = document.getElementById('econdev-initiative');
     if (b) b.addEventListener('click', function () { var t = document.getElementById('homeInitiatives'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
     var ind = document.getElementById('econdev-industrialize');
     if (ind) { actionBtns.push(ind); ind.addEventListener('click', function () { if (!ind.disabled) openIndustrialize(); }); }
+    var svc = document.getElementById('econdev-service');
+    if (svc) { actionBtns.push(svc); svc.addEventListener('click', function () { if (!svc.disabled) openServiceEconomy(); }); }
   }
 
   // INDUSTRIALIZE — the Minister of Economic Development forges finished Goods from raw stock: each
@@ -1332,6 +1342,53 @@
       var qty = IND.qty; if (qty < 1) return; closeIndustrialize();
       performAction(function () { return supabase.rpc('economy_industrialize', { p_goods: qty }); },
         function (d) { var n = d.goods || qty; return 'Industrialized — +' + n + ' Good' + (n === 1 ? '' : 's') + '.'; });
+    };
+  }
+
+  // SERVICE ECONOMY — the mirror of Industrialize one tier up: each Service burns 1 Energy + 1 Food
+  // (on_hand) and the run costs 1 AP. Quantity capped by whichever raw runs out first. Fires
+  // economy_service_economy (schema/114) through performAction.
+  var serviceModal = document.getElementById('serviceModal');
+  var closeService = wireModalClose(serviceModal, 'serviceClose');
+  var SVC = { energy: 0, food: 0, services: 0, qty: 1 };
+  function openServiceEconomy() {
+    if (acting || !feedCtx) return;
+    document.getElementById('serviceBody').innerHTML = '<p class="empty">Loading…</p>';
+    serviceModal.hidden = false;
+    loadServiceEconomy();
+  }
+  async function loadServiceEconomy() {
+    try {
+      const { data: nrow } = await supabase.from('nations').select('on_hand').eq('id', feedCtx.nationId).maybeSingle();
+      var oh = (nrow || {}).on_hand || {};
+      SVC.energy = Number(oh.energy) || 0; SVC.food = Number(oh.food) || 0; SVC.services = Number(oh.services) || 0;
+      SVC.qty = 1;
+      renderServiceEconomy();
+    } catch (e) { document.getElementById('serviceBody').innerHTML = '<p class="empty">Couldn’t load. Try again.</p>'; }
+  }
+  function svcMax() { return partyActions >= 1 ? Math.max(0, Math.min(SVC.energy, SVC.food)) : 0; }   // 1 AP flat; qty capped by raw stock
+  function renderServiceEconomy() {
+    var body = document.getElementById('serviceBody'), max = svcMax();
+    SVC.qty = Math.max(max > 0 ? 1 : 0, Math.min(SVC.qty, max));
+    var costLine = max < 1
+      ? '<p class="exp-warn">' + (partyActions < 1 ? 'No Action Points left — take your turn first.'
+          : (SVC.energy < 1 ? 'No Energy on hand for services.' : 'No Food on hand for services.')) + '</p>'
+      : '<div class="exp-cost">Cost: <b>' + SVC.qty + ' Energy · ' + SVC.qty + ' Food · 1 AP</b> → <b>+' + SVC.qty + ' Services</b></div>';
+    body.innerHTML =
+      '<div class="u-status">On hand: <b>' + SVC.energy + ' Energy</b> · <b>' + SVC.food + ' Food</b> · <b>' + SVC.services + ' Services</b> — you have <b>' + partyActions + ' AP</b></div>' +
+      '<label class="exp-lab">How many Services to create</label>' +
+      '<div class="exp-step"><button type="button" id="svcMinus"' + (SVC.qty <= 1 ? ' disabled' : '') + '>−</button><span id="svcQty">' + SVC.qty + '</span>' +
+        '<button type="button" id="svcPlus"' + (SVC.qty >= max ? ' disabled' : '') + '>+</button><span class="exp-max">max ' + max + '</span></div>' +
+      costLine +
+      '<div class="noco__btns"><button class="noco__btn noco__cancel" id="svcCancel" type="button">Cancel</button>' +
+        '<button class="noco__btn noco__confirm" id="svcGo" type="button"' + (max > 0 ? '' : ' disabled') + '>Create ' + SVC.qty + ' Service' + (SVC.qty === 1 ? '' : 's') + '</button></div>';
+    document.getElementById('svcMinus').onclick = function () { if (SVC.qty > 1) { SVC.qty--; renderServiceEconomy(); } };
+    document.getElementById('svcPlus').onclick = function () { if (SVC.qty < svcMax()) { SVC.qty++; renderServiceEconomy(); } };
+    document.getElementById('svcCancel').onclick = closeService;
+    document.getElementById('svcGo').onclick = function () {
+      var qty = SVC.qty; if (qty < 1) return; closeService();
+      performAction(function () { return supabase.rpc('economy_service_economy', { p_services: qty }); },
+        function (d) { var n = d.services || qty; return 'Service economy grew — +' + n + ' Service' + (n === 1 ? '' : 's') + '.'; });
     };
   }
 

@@ -241,6 +241,41 @@ begin
 end $$;
 grant execute on function public.economy_industrialize(int) to authenticated;
 
+-- SERVICE ECONOMY — the Minister of Economic Development forges finished Services from raw stock: each
+-- Service burns 1 Energy + 1 Food (on_hand) and the run costs 1 Action Point. The mirror of
+-- economy_industrialize, one tier up the value chain (Energy + Food → Services instead of Energy +
+-- Minerals → Goods). The nation row is locked so two concurrent runs can't overdraw the stock.
+create or replace function public.economy_service_economy(p_services int)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_p public.parties%rowtype; v_nation text; v_name text; v_energy numeric; v_food numeric;
+begin
+  if coalesce(p_services, 0) < 1 then raise exception 'Choose how many Services to create.'; end if;
+
+  v_p := public._begin_action(0);   -- lock caller's party + spend 1 Action Point
+  v_nation := v_p.nation_id;
+  if not public._party_holds_ministry(v_p.id, 'Economic Development') then
+    raise exception 'Only the Minister of Economic Development can grow the service economy.'; end if;
+
+  select name, coalesce((on_hand->>'energy')::numeric, 0), coalesce((on_hand->>'food')::numeric, 0)
+    into v_name, v_energy, v_food
+    from public.nations where id = v_nation for update;
+  if v_energy < p_services then raise exception 'Not enough Energy (need %, have %).', p_services, v_energy; end if;
+  if v_food    < p_services then raise exception 'Not enough Food (need %, have %).', p_services, v_food; end if;
+
+  perform public._nation_stat_add(v_nation, 'on_hand', 'energy',   -p_services, 0, null);
+  perform public._nation_stat_add(v_nation, 'on_hand', 'food',     -p_services, 0, null);
+  perform public._nation_stat_add(v_nation, 'on_hand', 'services',  p_services, 0, null);
+
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_nation, v_p.id, 'economy',
+      'Nation of ' || v_name || ' has grown its service economy, creating ' || p_services || ' services.',
+      public.current_game_date());
+
+  return jsonb_build_object('services', p_services, 'actions', v_p.influence);
+end $$;
+grant execute on function public.economy_service_economy(int) to authenticated;
+
 -- Advance Society: invest in living standards for +1 Prosperity. Costs (Prosperity ÷ 5 + 5)
 -- Goods from on-hand — the richer you are, the dearer it gets — and may be done once per
 -- year. Head-of-government gated. The once-a-year lock is a year stamp that auto-expires.
