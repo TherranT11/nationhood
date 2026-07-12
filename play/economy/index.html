@@ -401,7 +401,7 @@
     }).join('');
     return '<div class="panel"><div class="panel-h"><div class="ph-t">World Markets<span class="sub">global supply sets the going rate for every importer</span></div><span class="ph-tag">Scarcity tiers</span></div>' +
       '<div class="wm">' + cards + '</div>' +
-      '<div class="wm-foot">Tier = world production ÷ world demand. Food, Goods and Services have a unit demand, so their rate moves; Energy, Minerals and Military have no consumption sink yet and hold at Normal. Your trades move stock, not the tier — only big events do.</div></div>';
+      '<div class="wm-foot">Tier = world production ÷ world demand. Food, Goods and Services move on each nation’s unit demand; Energy and Minerals move on the world’s downstream output (Energy = Goods + Services made, Minerals = Goods made). Only Military has no consumption sink yet and holds at Normal. Your trades move stock, not the tier — only big events do.</div></div>';
   }
 
   function partners(){
