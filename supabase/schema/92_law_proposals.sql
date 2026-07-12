@@ -190,7 +190,7 @@ create or replace function public.propose_law(p_policy uuid, p_option int,
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_party public.parties%rowtype; v_name text; v_opt text; v_def jsonb;
-  v_tick int; v_curopt int; v_levels int; v_cost int; v_pid uuid; v_i int;
+  v_tick int; v_curopt int; v_extra int; v_swing numeric; v_cost int; v_pid uuid; v_i int;
   v_title text; v_intro text;
 begin
   select policy_name, option_name into v_name, v_opt from public._check_law(p_policy, p_option);
@@ -210,12 +210,13 @@ begin
   v_curopt := public._nation_policy_option(v_party.nation_id, p_policy);
   if v_curopt = p_option then raise exception 'That policy is already set to that option.'; end if;
 
-  -- Cost is Action Points, not Influence: 1 for the move, +1 per rung BEYOND the first (base spent by
-  -- _begin_action above). A multi-rung leap costs more of your turn. If the party can't afford the extra,
-  -- _spend_action_point raises and the whole proposal rolls back.
-  v_levels := abs(p_option - v_curopt);
-  for v_i in 2 .. v_levels loop perform public._spend_action_point(v_party.id); end loop;
-  v_cost := v_levels;   -- the Action-Point cost (1 per rung moved), echoed to the client
+  -- Cost is Action Points: 1 base (spent by _begin_action above) + 1 per 5 points of party-popularity
+  -- swing the vote carries (popRaise × rungs moved). A more divisive change costs more of your turn. If
+  -- the party can't afford the extra, _spend_action_point raises and the whole proposal rolls back.
+  v_swing := abs(coalesce((v_def->>'popRaise')::numeric, 0) * (p_option - v_curopt));
+  v_extra := floor(v_swing / 5)::int;
+  for v_i in 1 .. v_extra loop perform public._spend_action_point(v_party.id); end loop;
+  v_cost := 1 + v_extra;   -- total Action-Point cost, echoed to the client
 
   -- One live bill per policy. Lock the nation row (the no-confidence idiom) so two parties can't both
   -- slip a competing bill in, then refuse if one is already in committee, on the agenda, or on the floor.

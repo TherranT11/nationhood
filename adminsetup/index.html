@@ -722,7 +722,7 @@
               <h2 style="margin:0">Policies</h2>
               <button class="btn btn-solid" id="polNew" type="button">+ New policy</button>
             </div>
-            <p class="sub" style="margin:8px 0 14px">A policy populates every nation. An <b>On/Off</b> policy toggles for a flat influence cost, each state carrying its own stat effects. A <b>Spectrum</b> policy is an ordered ladder of <b>levels</b> — moving between them costs influence and takes implementation time, and each level’s effects sum across the levels crossed. Effects are stored now and applied once the ministry-stat backend lands.</p>
+            <p class="sub" style="margin:8px 0 14px">A policy populates every nation. An <b>On/Off</b> policy toggles between two states, each carrying its own stat effects. A <b>Spectrum</b> policy is an ordered ladder of <b>levels</b> — moving between them takes implementation time, and each level’s effects sum across the levels crossed. Proposing a change costs Action Points, scaled by the popularity the vote swings (set below). Effects are stored now and applied once the ministry-stat backend lands.</p>
             <div id="polList"><p class="empty">Loading…</p></div>
           </div>
           <div class="panel" id="polEditorPanel" hidden>
@@ -2622,7 +2622,6 @@
     var polCache = [], P = null, polEditingId = null;
     // The new definition shape (author + store only — no live application yet):
     //   { name, desc, type:'binary'|'spectrum',
-    //     influence,            // binary: cost to switch · spectrum: BASE influence to change
     //     impl,                 // spectrum: BASE implementation time (months)
     //     popRaise,             // vote-popularity swing per rung for voting to RAISE the policy
     //     binary:  [ {name:'Off', effects}, {name:'On', effects} ], binDefault,
@@ -2631,7 +2630,7 @@
     // crossing N levels costs N×(base+N−1) influence, sums each crossed level's effects, and
     // adds +1 month implementation per 10 Bureaucracy (rounded up).
     function blankPolicy(){ return {
-      name:'New policy', desc:'', type:'spectrum', influence:5, impl:1, popRaise:0, defaultIdx:0, binDefault:0,
+      name:'New policy', desc:'', type:'spectrum', impl:1, popRaise:0, defaultIdx:0, binDefault:0,
       binary:[ {name:'Off',effects:[]}, {name:'On',effects:[]} ],
       spectrum:[ {name:'Level A',desc:'',effects:[]},
                  {name:'Level B',desc:'',effects:[polEff('Budget Balance',0)]} ]
@@ -2828,19 +2827,13 @@
         '<div class="f" style="margin-bottom:0"><label>Type</label><div class="seg" id="pol-typeSeg"><span data-v="binary" class="'+(P.type==='binary'?'on':'')+'">On/Off</span><span data-v="spectrum" class="'+(P.type==='spectrum'?'on':'')+'">Spectrum</span></div></div>';
       box.appendChild(idc);
 
-      // Cost card — On/Off is a single influence cost; Spectrum carries the base influence and
-      // base implementation time the level-change engine will scale (deferred).
+      // Cost card — implementation time only. Proposing a change costs Action Points, computed from the
+      // vote's popularity swing (1 + 1 per 5 popularity, propose_law schema/92) — not an authored cost.
       var cc=document.createElement('div'); cc.className='card';
-      if (P.type==='binary'){
-        cc.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
-          '<div class="f" style="margin-bottom:0"><label>Influence cost to switch</label><input type="number" id="pol-inf" min="0" step="1" value="'+(P.influence!=null?P.influence:0)+'"></div>'+
-          '<div class="f" style="margin-bottom:0"><label>Implementation time (months)</label><input type="number" id="pol-impl" min="0" step="1" value="'+(P.impl!=null?P.impl:0)+'"></div></div>';
-      } else {
-        cc.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
-          '<div class="f" style="margin-bottom:0"><label>Base influence to change</label><input type="number" id="pol-inf" min="0" step="1" value="'+(P.influence!=null?P.influence:0)+'"></div>'+
-          '<div class="f" style="margin-bottom:0"><label>Base implementation time (months)</label><input type="number" id="pol-impl" min="0" step="1" value="'+(P.impl!=null?P.impl:0)+'"></div></div>'+
-          '<p class="hint" style="margin:8px 0 0">Crossing N levels costs N×(base+N−1) influence and sums each crossed level’s effects; implementation adds +1 month per 10 Bureaucracy (rounded up). Applied once the level-change engine lands.</p>';
-      }
+      cc.innerHTML='<div class="f" style="margin-bottom:0"><label>'+(P.type==='binary'?'Implementation time (months)':'Base implementation time (months)')+'</label>'+
+        '<input type="number" id="pol-impl" min="0" step="1" value="'+(P.impl!=null?P.impl:0)+'" style="max-width:220px"></div>'+
+        (P.type==='binary' ? '' :
+          '<p class="hint" style="margin:8px 0 0">Crossing N levels sums each crossed level’s effects; implementation adds +1 month per 10 Bureaucracy (rounded up). Applied once the level-change engine lands.</p>');
       // Vote-popularity: one directional number per policy. A party's popularity moves by this
       // per rung for voting to RAISE the policy (− = raising is unpopular); lowering flips the
       // sign, and voting against is the mirror. Computed on the propose page + bill view.
@@ -2863,7 +2856,6 @@
       box.querySelector('#pol-name').oninput=function(e){ P.name=e.target.value; renderPolPrev(); };
       box.querySelector('#pol-desc').oninput=function(e){ P.desc=e.target.value; };
       box.querySelectorAll('#pol-typeSeg span').forEach(function(s){ s.onclick=function(){ P.type=s.dataset.v; renderPolEditor(); renderPolPrev(); }; });
-      var inf=box.querySelector('#pol-inf'); if(inf)inf.oninput=function(e){ P.influence=parseInt(e.target.value,10)||0; renderPolPrev(); };
       var impl=box.querySelector('#pol-impl'); if(impl)impl.oninput=function(e){ P.impl=parseInt(e.target.value,10)||0; };
       var pr=box.querySelector('#pol-poprais'); if(pr)pr.oninput=function(e){ P.popRaise=parseFloat(e.target.value)||0; renderPolPrev(); };
       var ao=box.querySelector('#pol-addOpt'); if(ao)ao.onclick=function(){ P.spectrum.push({name:'Level '+String.fromCharCode(65+P.spectrum.length),desc:'',effects:[]}); renderPolEditor(); renderPolPrev(); };
@@ -2922,8 +2914,8 @@
     function renderPolPrev(){
       var box=document.getElementById('polPrev');
       var typeLabel=P.type==='spectrum'
-        ? ('Spectrum · '+P.spectrum.length+' levels · base '+(P.influence||0)+' Inf · '+(P.impl||0)+' mo')
-        : ('On/Off · '+(P.influence||0)+' Inf');
+        ? ('Spectrum · '+P.spectrum.length+' levels · '+(P.impl||0)+' mo')
+        : 'On/Off';
       var html='<div class="pvname">'+esc(P.name||'Untitled policy')+'</div><span class="pvtype">'+typeLabel+'</span>';
       polOpts().forEach(function(o,i){
         var isStart=P.type==='spectrum' && i===P.defaultIdx;   // only spectrum has a starting level
