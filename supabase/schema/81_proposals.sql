@@ -597,7 +597,10 @@ begin
   update public.nations set no_confidence_until_tick = v_tick + 12 where id = v_party.nation_id;   -- nation-wide cooldown
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_party.nation_id, v_party.id, 'declaration',
-            v_party.name || ' tabled a vote of no confidence in ' || coalesce(v_hogname, 'the government') || '.', public.current_game_date());
+            'In ' || coalesce((select name from public.nations where id = v_party.nation_id), v_party.nation_id) ||
+              ', a Motion of No Confidence is being put forth by ' || v_party.name ||
+              ' to bring an end to the current government.',
+            public.current_game_date());
 
   return jsonb_build_object('id', v_pid, 'scheduled_tick', v_sched, 'actions', v_party.influence, 'until', v_tick + 12);
 end $$;
