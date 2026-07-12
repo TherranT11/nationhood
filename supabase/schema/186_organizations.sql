@@ -4,8 +4,8 @@
 -- A nation's Minister of Foreign Affairs charters an organization (name, emblem, type, charter) and
 -- invites other nations to join. This migration lays the founding step only: it creates the org
 -- (status 'founding'), seats the host as its founding member, records a pending invitation for each
--- invited nation, and charges the host $0.2bn per invitation — added to Public Debt (the treasury is
--- retired). How invitations RESOLVE (accept/decline) and how an org turns 'active' is a separate,
+-- invited nation, and charges the host 5 Diplomacy (an on-hand resource) to found it. How invitations
+-- RESOLVE (accept/decline) and how an org turns 'active' is a separate,
 -- deliberately-not-automated step to be built later.
 --
 -- Depends on: 10 (nations), 20 (parties), 40 (_begin_action, events, current_game_date), 05
@@ -68,13 +68,13 @@ $$;
 grant execute on function public.is_foreign_affairs_minister() to authenticated;
 
 -- found_organization: the Minister of Foreign Affairs charters a new organization and invites nations.
--- Costs 1 Action Point + $0.2bn per invited nation, added to the host's Public Debt. The host becomes
+-- Costs 1 Action Point + 5 Diplomacy (on-hand). The host becomes
 -- the founding member; every invited nation gets a pending invitation. Returns the new org id.
 create or replace function public.found_organization(p_name text, p_emblem text, p_type text, p_charter text, p_invited text[])
 returns uuid language plpgsql security definer set search_path = public as $$
 declare
   v_p public.parties%rowtype; v_nation text; v_tick int; v_org uuid; v_name text; v_charter text;
-  v_inv text[]; v_n text; v_cnt int; v_cost numeric;
+  v_inv text[]; v_n text; v_cnt int;
 begin
   v_name := btrim(coalesce(p_name, ''));
   v_charter := btrim(coalesce(p_charter, ''));
@@ -93,7 +93,11 @@ begin
   if v_cnt = 0 then raise exception 'Invite at least one other nation.'; end if;
 
   select current_tick into v_tick from public.game_state where id;
-  v_cost := 0.2 * v_cnt;   -- $0.2bn per invitation, debt-financed
+
+  -- Founding an organization costs 5 Diplomacy (an on-hand resource). Gate before creating anything.
+  if coalesce((select (on_hand->>'diplomacy')::numeric from public.nations where id = v_nation), 0) < 5 then
+    raise exception 'Founding an organization costs 5 Diplomacy — your nation doesn''t have enough.';
+  end if;
 
   insert into public.organizations (host_nation, name, emblem, org_type, charter, status, founded_tick)
     values (v_nation, left(v_name, 48),
@@ -107,7 +111,7 @@ begin
     insert into public.organization_invitations (org_id, nation_id) values (v_org, v_n);
   end loop;
 
-  perform public._nation_stat_add(v_nation, 'economy', 'debt', v_cost, 0, null);   -- invitation cost → Public Debt
+  perform public._nation_stat_add(v_nation, 'on_hand', 'diplomacy', -5, 0, null);   -- founding costs 5 Diplomacy
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_nation, v_p.id, 'party',

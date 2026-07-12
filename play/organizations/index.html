@@ -81,7 +81,7 @@
     <div class="strip" id="strip">
       <div class="stat c-mem"><span class="v" id="sMem">0</span><span class="l">Memberships</span></div>
       <div class="stat c-prog"><span class="v" id="sProg">0</span><span class="l">Founding in Progress</span></div>
-      <div class="stat c-cost"><span class="v" id="sCost">$0.0bn</span><span class="l">Founding Costs Paid</span></div>
+      <div class="stat c-cost"><span class="v" id="sCost">0</span><span class="l">Diplomacy Spent Founding</span></div>
     </div>
 
     <div id="foundingWrap"></div>
@@ -219,14 +219,11 @@
       return m.nation_id === ME && o && o.status === 'active';
     }).length;
     var founding = orgs.filter(function (o) { return o.status === 'founding'; });
-    // Founding costs I've paid = $0.2bn per invitation across the orgs I host (paid at charter time).
-    var hostedInvites = invites.filter(function (i) {
-      var o = orgs.find(function (x) { return x.id === i.org_id; });
-      return o && o.host_nation === ME;
-    }).length;
+    // Diplomacy I've spent founding = 5 per organization I host (charged at charter time, schema/186).
+    var hostedOrgs = orgs.filter(function (o) { return o.host_nation === ME; }).length;
     document.getElementById('sMem').textContent = activeMemberships;
     document.getElementById('sProg').textContent = founding.length;
-    document.getElementById('sCost').textContent = CUR + (0.2 * hostedInvites).toFixed(1) + 'bn';
+    document.getElementById('sCost').textContent = 5 * hostedOrgs;
 
     // Founding-in-progress banners (host first, then by name).
     founding.sort(function (a, b) {
