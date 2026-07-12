@@ -201,16 +201,40 @@ drop function if exists public._resolve_card_effects(text, uuid, uuid, jsonb, in
 drop function if exists public._resolve_card_effects(text, uuid, uuid, int, int, jsonb, int);   -- pre-corp form
 create or replace function public._resolve_card_effects(p_nation text, p_party uuid, p_target uuid, p_q int, p_r int, p_corp uuid, p_corp2 uuid, p_def jsonb, p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
-declare e jsonb; v_x numeric;
+declare e jsonb; v_x numeric; v_old numeric; v_new numeric; v_pop numeric; v_stand numeric; v_hexname text; v_pname text; v_tname text;
 begin
   if coalesce(p_def->>'mech', 'oneoff') = 'oneoff' then
     for e in select value from jsonb_array_elements(coalesce(p_def->'fx', '[]'::jsonb)) loop
       if public._card_side_fires(p_def, e->>'side') then
         v_x := coalesce(public._to_num(e->'p'->>'x'), 0);
         if e->>'kind' = 'hex_pop' then
-          if p_target is not null   -- hex-scoped popularity: you +x, or a rival −x
-            then perform public._apply_card_hex(p_target, p_nation, p_q, p_r, -v_x);
-            else perform public._apply_card_hex(p_party,  p_nation, p_q, p_r,  v_x);
+          -- Narrate the campaign. Standing in a hex = national popularity + hex bias, floored at 0 (the
+          -- same rule hex elections use, schema/181). Report the ACTUAL move (new − old bias), which is
+          -- what the ±40 cap allowed, not the raw x.
+          select name into v_hexname from public.world_hexes where nation_id = p_nation and q = p_q and r = p_r;
+          if p_target is not null then   -- a rival loses standing here
+            v_old := coalesce((select bias from public.party_hex_bias where party_id = p_target and q = p_q and r = p_r), 0);
+            perform public._apply_card_hex(p_target, p_nation, p_q, p_r, -v_x);
+            v_new := coalesce((select bias from public.party_hex_bias where party_id = p_target and q = p_q and r = p_r), 0);
+            select coalesce(popularity, 0), name into v_pop, v_tname from public.parties where id = p_target;
+            select name into v_pname from public.parties where id = p_party;
+            v_stand := greatest(0, v_pop + v_new);
+            insert into public.events (nation_id, party_id, kind, body, game_date) values
+              (p_nation, p_party, 'party',
+               v_pname || ' has campaigned against ' || coalesce(v_tname, 'a rival') || ' in ' || coalesce(v_hexname, 'a territory') ||
+               ', cutting their popularity by ' || round(v_old - v_new) || '% down to ' || round(v_stand) || '%.',
+               public.current_game_date());
+          else                           -- the player raises their own standing here
+            v_old := coalesce((select bias from public.party_hex_bias where party_id = p_party and q = p_q and r = p_r), 0);
+            perform public._apply_card_hex(p_party, p_nation, p_q, p_r, v_x);
+            v_new := coalesce((select bias from public.party_hex_bias where party_id = p_party and q = p_q and r = p_r), 0);
+            select coalesce(popularity, 0), name into v_pop, v_pname from public.parties where id = p_party;
+            v_stand := greatest(0, v_pop + v_new);
+            insert into public.events (nation_id, party_id, kind, body, game_date) values
+              (p_nation, p_party, 'party',
+               v_pname || ' has conducted a national campaign in ' || coalesce(v_hexname, 'a territory') ||
+               ', raising their popularity by ' || round(v_new - v_old) || '% up to ' || round(v_stand) || '%.',
+               public.current_game_date());
           end if;
         elsif e->>'kind' = 'hex_el' then
           perform public.hex_election_resolve(p_nation, p_q, p_r, p_party, p_tick);   -- reapportion the chosen hex
