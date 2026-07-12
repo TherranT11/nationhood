@@ -69,6 +69,8 @@
   .roster{display:flex;flex-direction:column;gap:0}
   .rrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
   .rrow:first-child{border-top:none}
+  .rflag{width:22px;height:15px;border-radius:3px;object-fit:cover;border:1px solid var(--line2);flex:none}
+  .rflag--none{background:var(--field);display:inline-block}
   .rname{font-size:13px;font-weight:600}
   .rrole{margin-left:auto;font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
   .rrole.founder{color:var(--amber)}
@@ -210,10 +212,14 @@
   ];
 
   var ORG_ID = new URLSearchParams(location.search).get('id');
-  var ME = null, CUR_TICK = 1, AM_FA = false, NATIONS = {}, BUSY = false;
+  var ME = null, CUR_TICK = 1, AM_FA = false, NATIONS = {}, FLAGS = {}, BUSY = false;
   var O = null, MEMBERS = [], INVITES = [], VOTES = [], MSGS = [], LAWS = [], LAWVOTES = [];
 
   function natName(id) { return NATIONS[id] || id; }
+  function flagOf(id) {
+    var f = FLAGS[id];
+    return f ? '<img class="rflag" src="' + esc(f) + '" alt="">' : '<span class="rflag rflag--none"></span>';
+  }
   function amMember() { return MEMBERS.some(function (m) { return m.nation_id === ME; }); }
   function isHost() { return O && O.host_nation === ME; }
 
@@ -239,6 +245,7 @@
   function castVote(article, opt) { run(function () { return supabase.rpc('cast_charter_ballot', { p_org: ORG_ID, p_votes: (function () { var o = {}; o[article] = opt; return o; })() }); }); }
   function ratify() { run(function () { return supabase.rpc('ratify_organization', { p_org: ORG_ID }); }); }
   function respond(accept) { run(function () { return supabase.rpc('respond_invitation', { p_org: ORG_ID, p_accept: accept }); }); }
+  function leaveCharter() { if (confirm('Withdraw your nation from these charter talks? The organization carries on without you.')) run(function () { return supabase.rpc('leave_charter', { p_org: ORG_ID }); }); }
   // Cancel a founding charter (host only): deletes the org + its invitations/votes/messages, then leaves
   // for the register — the detail page has nothing left to show.
   async function cancelCharter() {
@@ -331,6 +338,8 @@
         '<button class="btn no" id="cancelBtn">Cancel Charter</button><span class="fnote">' + actionNote + '</span></div>';
     } else if (myInv && myInv.status === 'pending' && AM_FA) {
       action = '<div class="frow"><button class="btn go" id="accBtn">Accept — Join</button><button class="btn no" id="decBtn">Decline</button><span class="fnote">answering costs 1 AP</span></div>';
+    } else if (amMember() && !isHost() && AM_FA) {   // accepted member — may withdraw from the talks
+      action = '<div class="frow"><button class="btn no" id="leaveBtn">Leave Charter</button><span class="fnote">withdraw ' + esc(natName(ME)) + ' from the convention — the organization carries on</span></div>';
     } else if (!AM_FA && (amMember() || (myInv && myInv.status === 'pending'))) {
       action = '<div class="frow"><span class="fnote">Your Minister of Foreign Affairs casts your nation’s votes and answers for you.</span></div>';
     }
@@ -344,13 +353,21 @@
       action + '</div>';
   }
 
+  function rrow(nid, roleLabel, founder) {
+    return '<div class="rrow">' + flagOf(nid) + '<span class="rname">' + esc(natName(nid)) + (nid === ME ? ' — you' : '') + '</span>' +
+      '<span class="rrole' + (founder ? ' founder' : '') + '">' + roleLabel + '</span></div>';
+  }
   function renderRoster() {
-    var rows = MEMBERS.slice().sort(function (a, b) { return (a.role === 'founder' ? 0 : 1) - (b.role === 'founder' ? 0 : 1) || natName(a.nation_id).localeCompare(natName(b.nation_id)); })
-      .map(function (m) {
-        return '<div class="rrow"><span class="rname">' + esc(natName(m.nation_id)) + (m.nation_id === ME ? ' — you' : '') + '</span>' +
-          '<span class="rrole' + (m.role === 'founder' ? ' founder' : '') + '">' + (m.role === 'founder' ? 'Founder' : 'Member') + '</span></div>';
-      }).join('');
-    return '<div class="card"><div class="sect">Members <span class="note">' + MEMBERS.length + ' seated</span></div><div class="roster">' + rows + '</div></div>';
+    var seated = MEMBERS.slice().sort(function (a, b) { return (a.role === 'founder' ? 0 : 1) - (b.role === 'founder' ? 0 : 1) || natName(a.nation_id).localeCompare(natName(b.nation_id)); })
+      .map(function (m) { return rrow(m.nation_id, m.role === 'founder' ? 'Founder' : 'Member', m.role === 'founder'); }).join('');
+    var pending = INVITES.filter(function (i) { return i.status === 'pending'; })
+      .sort(function (a, b) { return natName(a.nation_id).localeCompare(natName(b.nation_id)); });
+    var invited = pending.map(function (i) { return rrow(i.nation_id, 'Invited', false); }).join('');
+    return '<div class="card"><div class="sect">Members <span class="note">' + MEMBERS.length + ' seated' +
+        (pending.length ? ' · ' + pending.length + ' invited' : '') + '</span></div>' +
+      '<div class="roster">' + seated + '</div>' +
+      (invited ? '<div class="sect" style="margin-top:15px">Invited Members <span class="note">awaiting a response</span></div><div class="roster">' + invited + '</div>' : '') +
+      '</div>';
   }
 
   function renderChat() {
@@ -430,6 +447,7 @@
     });
     var r = document.getElementById('ratifyBtn'); if (r) r.onclick = function () { if (!r.disabled) ratify(); };
     var cx = document.getElementById('cancelBtn'); if (cx) cx.onclick = cancelCharter;
+    var lv = document.getElementById('leaveBtn'); if (lv) lv.onclick = leaveCharter;
     var a = document.getElementById('accBtn'); if (a) a.onclick = function () { respond(true); };
     var d = document.getElementById('decBtn'); if (d) d.onclick = function () { if (confirm('Decline this invitation?')) respond(false); };
     document.querySelectorAll('[data-prop]').forEach(function (b) { b.onclick = function () { if (!b.disabled) proposeLaw(b.dataset.s, b.dataset.l); }; });
@@ -482,8 +500,8 @@
       if (!party) { window.location.replace('/nation-select/'); return; }
       ME = party.nation_id;
       try { const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle(); CUR_TICK = (gs && gs.current_tick) || 1; } catch (e) {}
-      const { data: nats } = await supabase.from('nations').select('id, name');
-      (nats || []).forEach(function (n) { NATIONS[n.id] = n.name; });
+      const { data: nats } = await supabase.from('nations').select('id, name, flag');
+      (nats || []).forEach(function (n) { NATIONS[n.id] = n.name; FLAGS[n.id] = n.flag; });
       try { const { data: fa } = await supabase.rpc('is_foreign_affairs_minister'); AM_FA = fa === true; } catch (e) {}
 
       document.getElementById('sendBtn').onclick = sendMsg;

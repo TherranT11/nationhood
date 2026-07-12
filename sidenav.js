@@ -55,6 +55,7 @@ const CSS = `
 .nav__i.disabled{opacity:.45;pointer-events:none}
 /* Unvoted-floor-measure indicator on the Legislature item (rail: far right). */
 .nav__dot{margin-left:auto;width:8px;height:8px;border-radius:50%;background:var(--red,#C42B2B);flex:none}
+.nav__dot.amber{background:var(--amber,#e0920e)}
 .side__foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}
 .me{display:flex;align-items:center;gap:10px;padding:8px 10px;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em}
 .me__dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex:none}
@@ -69,6 +70,7 @@ const CSS = `
   .botnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:70;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px;padding-bottom:calc(6px + env(safe-area-inset-bottom));justify-content:space-around;align-items:stretch}
   .botnav__i{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;min-width:0;color:var(--muted);text-decoration:none;background:none;border:none;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;position:relative}
   .botnav__dot{position:absolute;top:4px;left:calc(50% + 6px);width:8px;height:8px;border-radius:50%;background:var(--red,#C42B2B)}
+  .botnav__dot.amber{background:var(--amber,#e0920e)}
   .botnav__i svg{width:22px;height:22px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .botnav__i .l{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.02em}
   .botnav__i.active{color:var(--indigo)}
@@ -95,17 +97,22 @@ function isActive(path, href) {
   return path === href || path.indexOf(href) === 0;
 }
 
-// The Legislature item carries a hidden red dot, shown by updateLegDot() when the party has a
-// floor measure it hasn't voted on.
-function legDot(it, cls) { return it.href === '/play/legislature/' ? '<span class="' + cls + '" data-legdot hidden></span>' : ''; }
+// Per-item attention dots, revealed after mount by their update fns:
+//   • Legislature (red)         — a floor measure this party hasn't voted on (updateLegDot).
+//   • Intl. Organizations (amber) — a founding org this nation is invited to / in (updateOrgDot).
+function itemDot(it, cls) {
+  if (it.href === '/play/legislature/')   return '<span class="' + cls + '" data-legdot hidden></span>';
+  if (it.href === '/play/organizations/') return '<span class="' + cls + ' amber" data-orgdot hidden></span>';
+  return '';
+}
 function railItem(it, path) {
   const cls = 'nav__i' + (isActive(path, it.href) ? ' active' : '') + (it.href ? '' : ' disabled');
   const tag = it.href ? 'a' : 'span';
   const href = it.href ? ' href="' + it.href + '"' : '';
-  return '<' + tag + ' class="' + cls + '"' + href + '>' + svgEl(it.svg) + '<span class="label">' + it.label + '</span>' + legDot(it, 'nav__dot') + '</' + tag + '>';
+  return '<' + tag + ' class="' + cls + '"' + href + '>' + svgEl(it.svg) + '<span class="label">' + it.label + '</span>' + itemDot(it, 'nav__dot') + '</' + tag + '>';
 }
 function botItem(it, path) {
-  return '<a class="botnav__i' + (isActive(path, it.href) ? ' active' : '') + '" href="' + it.href + '">' + svgEl(it.svg) + '<span class="l">' + it.label + '</span>' + legDot(it, 'botnav__dot') + '</a>';
+  return '<a class="botnav__i' + (isActive(path, it.href) ? ' active' : '') + '" href="' + it.href + '">' + svgEl(it.svg) + '<span class="l">' + it.label + '</span>' + itemDot(it, 'botnav__dot') + '</a>';
 }
 function moreRow(it, path) {
   const cls = 'msi' + (isActive(path, it.href) ? ' active' : '') + (it.href ? '' : ' disabled');
@@ -160,6 +167,7 @@ export function mountSidenav() {
   }
 
   updateLegDot();   // reveal the Legislature dot if there's a floor measure this party hasn't voted on
+  updateOrgDot();   // reveal the Intl. Organizations dot if this nation is invited to a founding org
 }
 
 // Non-fatal: a failure (or no session) just leaves the dot hidden. Runs once per page mount.
@@ -172,6 +180,24 @@ async function updateLegDot() {
     if (!party) return;
     if (await hasUnvotedFloorMeasure(party.nation_id, party.id)) {
       document.querySelectorAll('[data-legdot]').forEach(function (el) { el.hidden = false; });
+    }
+  } catch (e) { /* leave the dot hidden */ }
+}
+
+// Amber Intl. Organizations dot: this nation holds an unsettled invitation (pending or accepted) to an
+// organization still in its charter convention — shown until the nation leaves or the org is founded.
+async function updateOrgDot() {
+  if (!isConfigured) return;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: party } = await supabase.from('parties').select('nation_id').eq('user_id', user.id).maybeSingle();
+    if (!party) return;
+    const { data: invs } = await supabase.from('organization_invitations').select('org_id').eq('nation_id', party.nation_id).in('status', ['pending', 'accepted']);
+    if (!invs || !invs.length) return;
+    const { data: orgs } = await supabase.from('organizations').select('id, status').in('id', invs.map(function (i) { return i.org_id; }));
+    if (orgs && orgs.some(function (o) { return o.status === 'founding'; })) {
+      document.querySelectorAll('[data-orgdot]').forEach(function (el) { el.hidden = false; });
     }
   } catch (e) { /* leave the dot hidden */ }
 }
