@@ -85,7 +85,7 @@
       <div class="phead">
         <span class="eye" id="tnation">The Nation</span>
         <h1>Constitutional Reform</h1>
-        <p>The parliamentary track that liberalises the nation, one reform at a time. Each reform is a bill the chamber votes on — its Influence cost is paid the moment it’s proposed, whether or not it passes.</p>
+        <p>The parliamentary track that liberalises the nation, one reform at a time. Each reform is a bill the chamber votes on — proposing it costs 1 Action Point, spent the moment it’s proposed, whether or not it passes.</p>
       </div>
 
       <div id="content"><p class="hint">Loading the reform track…</p></div>
@@ -98,9 +98,9 @@
   <div class="sheet">
     <h3 id="shTitle">Propose</h3>
     <p class="sub" id="shSub"></p>
-    <div class="row"><span>Cost</span><b id="shCost">⚡0</b></div>
-    <div class="row"><span>Your Influence</span><b id="shHave">⚡0</b></div>
-    <p class="warn">The cost is spent even if the vote fails.</p>
+    <div class="row"><span>Cost</span><b id="shCost">1 AP</b></div>
+    <div class="row"><span>Your Action Points</span><b id="shHave">0 AP</b></div>
+    <p class="warn">The Action Point is spent even if the vote fails.</p>
     <div class="sheetact">
       <button class="btn" id="shAgenda" type="button">To the Agenda</button>
       <button class="btn primary" id="shFloor" type="button">To the Floor</button>
@@ -116,7 +116,7 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { nationRegime, regimeLabel, REGIME_TYPE_LABEL } from '/ladders.js';
-  import { reformName, reformCost, repealCost } from '/reforms.js';
+  import { reformName } from '/reforms.js';
   import { proposeReformAdvance, proposeReformRepeal } from '/proposals.js';
 
   mountTopbar();
@@ -134,7 +134,7 @@
   })();
 
   async function load(user) {
-    const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, influence').eq('user_id', user.id).single();
+    const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, influence, action_points').eq('user_id', user.id).single();
     if (error || !party) { window.location.replace('/nation-select/'); return; }
     ST.party = party;
     setTopbarActions(party.influence);
@@ -191,14 +191,14 @@
       let cls = 'locked', tag = 'Locked';
       if (pending && n === pendN) { cls = 'floor'; tag = pendDir === 'repeal' ? 'Repeal on the ' + pending.status : 'On the ' + pending.status; }
       else if (n <= reform) { cls = 'done'; tag = 'Enacted'; }
-      else if (n === reform + 1 && !pending) { cls = 'next'; tag = 'Next · ⚡' + reformCost(n); }
+      else if (n === reform + 1 && !pending) { cls = 'next'; tag = 'Next · 1 AP'; }
       const pipInner = cls === 'done' ? '✓' : String(n);
       rungs +=
         '<div class="rung ' + cls + '">' +
           '<div class="pip">' + pipInner + '</div>' +
           '<div class="rung__body"><div class="rung__name">' + esc(reformName(type, n) || ('Reform ' + n)) + '</div>' +
             '<div class="rung__tag">' + tag + '</div></div>' +
-          (cls === 'done' ? '' : '<div class="rung__cost">⚡' + reformCost(n) + '</div>') +
+          (cls === 'done' ? '' : '<div class="rung__cost">1 AP</div>') +
         '</div>';
     }
 
@@ -208,11 +208,10 @@
   }
 
   function footer(type, reform, pending) {
-    const infl = Number(ST.party.influence) || 0;
+    const ap = Number(ST.party.action_points) || 0;
     // A democracy at reform 0 can still "repeal" — that's the backslide (abolish the republic →
-    // autocracy). Its cost is the cheapest repeal (reform 0 → repealCost(1)).
+    // autocracy). Every reform proposal costs 1 Action Point (flat).
     const canBackslide = reform < 1 && type === 'democracy';
-    const advN = reform + 1, advCost = reformCost(advN), repCost = repealCost(Math.max(1, reform));
     const fatigued = ST.tick < ST.lock;
 
     // Advance button state
@@ -220,14 +219,14 @@
     if (reform >= 15) { advDis = 'hidden'; }
     else if (pending) { advDis = 'disabled'; }
     else if (fatigued) { advDis = 'disabled'; }
-    else if (infl < advCost) { advDis = 'disabled'; advHint = 'Need ⚡' + advCost + ' — you have ⚡' + infl; }
+    else if (ap < 1) { advDis = 'disabled'; advHint = 'Need 1 Action Point to propose a reform.'; }
 
     // Repeal button state — hidden only at the floor of a type that CAN'T backslide.
     let repDis = '';
     if (reform < 1 && !canBackslide) { repDis = 'hidden'; }
     else if (pending) { repDis = 'disabled'; }
     else if (fatigued) { repDis = 'disabled'; }
-    else if (infl < repCost) { repDis = 'disabled'; }
+    else if (ap < 1) { repDis = 'disabled'; }
 
     let hint = '';
     if (pending) hint = '<div class="hint">' + esc(pending.title) + ' is before the chamber — vote in the Legislature. One reform bill at a time.</div>';
@@ -237,8 +236,8 @@
     else if (canBackslide) hint = '<div class="hint warn">At Illiberal Democracy, a repeal abolishes the republic — the nation backslides into a Competitive Autocracy.</div>';
 
     return '<div class="actions">' +
-      (advDis === 'hidden' ? '' : '<button class="btn primary" id="advBtn"' + (advDis === 'disabled' ? ' disabled' : '') + '>Propose Next Reform <span class="cost">⚡' + advCost + '</span></button>') +
-      (repDis === 'hidden' ? '' : '<button class="btn danger" id="repBtn"' + (repDis === 'disabled' ? ' disabled' : '') + '>' + (canBackslide ? 'Abolish the Republic' : 'Propose Repeal') + ' <span class="cost">⚡' + repCost + '</span></button>') +
+      (advDis === 'hidden' ? '' : '<button class="btn primary" id="advBtn"' + (advDis === 'disabled' ? ' disabled' : '') + '>Propose Next Reform <span class="cost">1 AP</span></button>') +
+      (repDis === 'hidden' ? '' : '<button class="btn danger" id="repBtn"' + (repDis === 'disabled' ? ' disabled' : '') + '>' + (canBackslide ? 'Abolish the Republic' : 'Propose Repeal') + ' <span class="cost">1 AP</span></button>') +
       hint + '</div>';
   }
 
@@ -258,18 +257,17 @@
     if (backslide) {
       document.getElementById('shTitle').textContent = 'Abolish the Republic';
       document.getElementById('shSub').textContent = 'Repeal the last protections — the republic collapses into an autocracy (Competitive Autocracy). This changes the regime type.';
-      document.getElementById('shCost').textContent = '⚡' + repealCost(1);
+      document.getElementById('shCost').textContent = '1 AP';
     } else {
       const n = mode === 'advance' ? reform + 1 : reform;
-      const cost = mode === 'advance' ? reformCost(n) : repealCost(n);
       const name = reformName(reg.type, n) || ('Reform ' + n);
       document.getElementById('shTitle').textContent = (mode === 'advance' ? 'Propose: ' : 'Repeal: ') + name;
       document.getElementById('shSub').textContent = mode === 'advance'
         ? 'Enact the next reform on the track (Reform ' + n + ').'
         : 'Undo the topmost enacted reform (Reform ' + n + ').';
-      document.getElementById('shCost').textContent = '⚡' + cost;
+      document.getElementById('shCost').textContent = '1 AP';
     }
-    document.getElementById('shHave').textContent = '⚡' + (Number(ST.party.influence) || 0);
+    document.getElementById('shHave').textContent = (Number(ST.party.action_points) || 0) + ' AP';
     document.getElementById('shNote').textContent = '';
     overlay.classList.add('show');
   }

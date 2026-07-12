@@ -31,8 +31,3 @@ export function reformName(type, n) {
   const a = REFORM_NAMES[type];
   return (a && n >= 1 && n <= 15) ? a[n - 1] : null;
 }
-
-// Advance cost: base 3 Influence, +2 per step (3, 5, 7 … 31). Repeal: the advance cost of the
-// reform undone, minus 2 (floored at 1). ONE formula, mirrored by _reform_cost / _repeal_cost.
-export function reformCost(n) { return 3 + 2 * (n - 1); }
-export function repealCost(n) { return Math.max(1, reformCost(n) - 2); }

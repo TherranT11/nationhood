@@ -184,7 +184,7 @@
           <span><span class="k">Founded</span><b id="mastFounded">—</b></span>
         </div>
       </div>
-      <button class="mast__edit" id="editBtn" type="button" hidden>Edit Party · 5 Influence</button>
+      <button class="mast__edit" id="editBtn" type="button" hidden>Edit Party · 1 AP</button>
     </div>
 
     <!-- Standing — vital signs, filled by renderStanding(). Approval + Seats share one row;
@@ -250,9 +250,9 @@
       <div class="elogoprev" id="eLogoPrev"></div>
       <input type="file" id="eLogo" accept="image/png,image/jpeg,image/webp,image/gif">
     </div>
-    <div class="ecost">Costs <b>5 Influence</b></div>
+    <div class="ecost">Costs <b>1 AP</b></div>
     <div class="eerr" id="eErr"></div>
-    <button class="esave" id="eSave" type="button">Save · 5 Influence</button>
+    <button class="esave" id="eSave" type="button">Save · 1 AP</button>
   </div>
 </div>
 
@@ -637,7 +637,7 @@
       if (error) throw error;
       window.location.reload();   // refresh the masthead, sidenav brand and topbar Influence together
     } catch (e) {
-      BUSY = false; btn.disabled = false; btn.textContent = 'Save · 5 Influence';
+      BUSY = false; btn.disabled = false; btn.textContent = 'Save · 1 AP';
       errEl.textContent = (e && e.message) || 'Could not save your party.';
     }
   }
