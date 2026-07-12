@@ -73,6 +73,29 @@
   .rrole{margin-left:auto;font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
   .rrole.founder{color:var(--amber)}
 
+  /* laws of the assembly */
+  .branch{border:1px solid var(--line2);border-radius:12px;background:var(--field);margin-bottom:12px;overflow:hidden}
+  .brhead{display:flex;align-items:center;gap:9px;padding:11px 14px;border-bottom:1px solid var(--line)}
+  .brdot{width:9px;height:9px;border-radius:3px;flex:none}
+  .brnm{font-size:13px;font-weight:700}
+  .brtag{font-family:'Space Mono',monospace;font-size:7.5px;color:var(--soft);letter-spacing:.05em;text-transform:uppercase}
+  .brlock{margin-left:auto;font-family:'Space Mono',monospace;font-size:7.5px;color:var(--soft);letter-spacing:.05em}
+  .blaw{padding:11px 14px;border-top:1px solid var(--line)}
+  .blaw:first-of-type{border-top:none}
+  .blaw .bn{font-size:12.5px;font-weight:700}
+  .blaw .bd{font-family:'Space Mono',monospace;font-size:8px;color:var(--soft);line-height:1.5;margin-top:3px;letter-spacing:.02em}
+  .blaw .brow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .lbtn{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:7px;padding:6px 11px;cursor:pointer;border:1px solid var(--line2);background:var(--surface);color:var(--ink)}
+  .lbtn.aye{color:color-mix(in srgb,var(--green) 72%,var(--ink));border-color:color-mix(in srgb,var(--green) 40%,var(--line))}
+  .lbtn.nay{color:color-mix(in srgb,var(--red) 72%,var(--ink));border-color:color-mix(in srgb,var(--red) 36%,var(--line))}
+  .lbtn.aye.on{background:color-mix(in srgb,var(--green) 14%,transparent)}
+  .lbtn.nay.on{background:color-mix(in srgb,var(--red) 12%,transparent)}
+  .lbtn:hover:not(:disabled){filter:brightness(1.15)}
+  .lbtn:disabled{opacity:.45;cursor:not-allowed}
+  .enacted{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--green) 72%,var(--ink))}
+  .agtally{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--blue)}
+  .lnote{font-family:'Space Mono',monospace;font-size:8px;color:var(--soft);letter-spacing:.04em}
+
   /* assembly floor chat */
   .chat{background:var(--surface);border:1px solid var(--line);border-radius:16px;display:flex;flex-direction:column;height:600px;position:sticky;top:16px}
   .chead{padding:13px 17px;border-bottom:1px solid var(--line)}
@@ -141,9 +164,38 @@
   var ARTLABEL = {}; ARTICLES.forEach(function (a) { ARTLABEL[a.id] = {}; ARTLABEL[a.id]._ = a.label; a.opts.forEach(function (o) { ARTLABEL[a.id][o.id] = o.label; }); });
   var MIN_ACCEPT = 2;
 
+  // The six law sectors and their Level I laws — labels only; the ids mirror schema/190's catalog (the
+  // server validates every proposal). Levels II–V are age-gated (deferred), so only Level I is proposable.
+  var LAWS_CAT = [
+    { id:'gov', nm:'Governance', col:'#b07cf0', tag:'the constitutional sector', laws:[
+      { id:'secretariat', nm:'The Standing Secretariat', d:'Permanent staff and budget · the Assembly acts between sessions' },
+      { id:'sessions',    nm:'Standing Sessions',        d:'The Assembly convenes every month · agenda capacity +1' },
+      { id:'chapters',    nm:'Regional Chapters',        d:'Charter regional sub-assemblies — siblings, continent by continent' } ] },
+    { id:'eco', nm:'Economic', col:'#4caf6d', tag:'trade among members', laws:[
+      { id:'tariff', nm:'Tariff Courtesy', d:'Members cut tariffs 10% for each other' },
+      { id:'fair',   nm:'The Trade Fair',  d:'Annual exposition, rotating host · Prosperity +1 each year' },
+      { id:'ports',  nm:'Open Ports',      d:'No member may embargo another · disputes go to the floor' } ] },
+    { id:'dip', nm:'Diplomatic', col:'#57a5e0', tag:'the members abroad', laws:[
+      { id:'recognition', nm:'Mutual Recognition', d:'All members recognize all members' },
+      { id:'legations',   nm:'Shared Legations',   d:'Joint embassies in third countries · a Budget saving each' },
+      { id:'bloc',        nm:'Bloc Voting',        d:'Members coordinate external votes · influence, pooled' } ] },
+    { id:'mil', nm:'Military', col:'#e04444', tag:'arms among members', laws:[
+      { id:'nonaggression', nm:'Non-Aggression Compact', d:'Members renounce force among themselves' },
+      { id:'officer',       nm:'Officer Exchange',       d:'Academies swap cadets · Military Research + over time' },
+      { id:'exercises',     nm:'Joint Exercises',        d:'Annual maneuvers · Armed Forces efficiency +' } ] },
+    { id:'fin', nm:'Financial', col:'#e8c84a', tag:'money among members', laws:[
+      { id:'settlement', nm:'The Settlement Bank', d:'Trade clears in members’ own currencies' },
+      { id:'devpool',    nm:'Development Pool',    d:'Small joint fund · the poorest member draws grants' },
+      { id:'debt',       nm:'Debt Courtesy',       d:'No member sanctions another’s default' } ] },
+    { id:'res', nm:'Resource', col:'#e0920e', tag:'the ground beneath members', laws:[
+      { id:'survey',    nm:'Survey Sharing',     d:'Geological data pooled · Innovation + for resource states' },
+      { id:'reserves',  nm:'Emergency Reserves', d:'Members cover each other’s Energy shortfalls at cost' },
+      { id:'pricenote', nm:'Price Notification', d:'Advance notice before quota or price moves' } ] }
+  ];
+
   var ORG_ID = new URLSearchParams(location.search).get('id');
   var ME = null, CUR_TICK = 1, AM_FA = false, NATIONS = {}, BUSY = false;
-  var O = null, MEMBERS = [], INVITES = [], VOTES = [], MSGS = [];
+  var O = null, MEMBERS = [], INVITES = [], VOTES = [], MSGS = [], LAWS = [], LAWVOTES = [];
 
   function natName(id) { return NATIONS[id] || id; }
   function amMember() { return MEMBERS.some(function (m) { return m.nation_id === ME; }); }
@@ -171,6 +223,14 @@
   function castVote(article, opt) { run(function () { return supabase.rpc('cast_charter_ballot', { p_org: ORG_ID, p_votes: (function () { var o = {}; o[article] = opt; return o; })() }); }); }
   function ratify() { run(function () { return supabase.rpc('ratify_organization', { p_org: ORG_ID }); }); }
   function respond(accept) { run(function () { return supabase.rpc('respond_invitation', { p_org: ORG_ID, p_accept: accept }); }); }
+  function proposeLaw(sector, law) { run(function () { return supabase.rpc('propose_org_law', { p_org: ORG_ID, p_sector: sector, p_law: law }); }); }
+  function voteLaw(sector, law, aye) { run(function () { return supabase.rpc('vote_org_law', { p_org: ORG_ID, p_sector: sector, p_law: law, p_aye: aye }); }); }
+  function lawRow(sector, law) { return LAWS.find(function (l) { return l.sector === sector && l.law_id === law; }); }
+  function lawTally(sector, law) {
+    var a = 0, n = 0, mine = null;
+    LAWVOTES.forEach(function (v) { if (v.sector === sector && v.law_id === law) { if (v.vote === 'aye') a++; else n++; if (v.nation_id === ME) mine = v.vote; } });
+    return { aye: a, nay: n, mine: mine };
+  }
 
   function ageText() {
     if (!O || O.founded_tick == null) return '';
@@ -276,6 +336,40 @@
     input.disabled = false; btn.disabled = false;
   }
 
+  // Laws of the Assembly (active orgs): six sectors of Level I laws — propose, vote Aye/Nay, a majority
+  // enacts. Levels II–V are age-gated (deferred) and shown locked.
+  function renderLaws() {
+    var canAct = amMember() && AM_FA;
+    var enacted = LAWS.filter(function (l) { return l.status === 'enacted'; }).length;
+    var agenda = LAWS.filter(function (l) { return l.status === 'proposed'; }).length;
+    var branches = LAWS_CAT.map(function (br) {
+      var laws = br.laws.map(function (l) {
+        var row = lawRow(br.id, l.id), st = row && row.status, action;
+        if (st === 'enacted') {
+          action = '<span class="enacted">✓ Enacted</span>';
+        } else if (st === 'proposed') {
+          var t = lawTally(br.id, l.id);
+          // Non-members can't read the vote rows (RLS), so don't show them a misleading 0/0 tally.
+          var tally = '<span class="agtally">On the agenda' + (amMember() ? ' · ' + t.aye + ' aye · ' + t.nay + ' nay' : '') + '</span>';
+          action = canAct
+            ? tally + '<button class="lbtn aye' + (t.mine === 'aye' ? ' on' : '') + '" data-vote="aye" data-s="' + br.id + '" data-l="' + l.id + '">Aye</button>' +
+                      '<button class="lbtn nay' + (t.mine === 'nay' ? ' on' : '') + '" data-vote="nay" data-s="' + br.id + '" data-l="' + l.id + '">Nay</button>'
+            : tally;
+        } else {
+          action = canAct
+            ? '<button class="lbtn" data-prop="1" data-s="' + br.id + '" data-l="' + l.id + '">Propose</button>' + (st === 'rejected' ? '<span class="lnote">last vote failed</span>' : '')
+            : '<span class="lnote">' + (st === 'rejected' ? 'not adopted' : 'not yet moved') + '</span>';
+        }
+        return '<div class="blaw"><div class="bn">' + esc(l.nm) + '</div><div class="bd">' + esc(l.d) + '</div><div class="brow">' + action + '</div></div>';
+      }).join('');
+      return '<div class="branch"><div class="brhead"><span class="brdot" style="background:' + br.col + '"></span>' +
+        '<span class="brnm">' + esc(br.nm) + ' · Level I</span><span class="brtag">' + esc(br.tag) + '</span>' +
+        '<span class="brlock">🔒 II–V · with age</span></div>' + laws + '</div>';
+    }).join('');
+    return '<div class="card"><div class="sect">Laws of the Assembly <span class="note">Level I · propose a law, members vote, a majority enacts it' +
+      (enacted ? ' · ' + enacted + ' enacted' : '') + (agenda ? ' · ' + agenda + ' on the agenda' : '') + '</span></div>' + branches + '</div>';
+  }
+
   function wire() {
     document.querySelectorAll('.opt[data-art]').forEach(function (b) {
       b.onclick = function () { if (!b.disabled) castVote(b.dataset.art, b.dataset.opt); };
@@ -283,6 +377,8 @@
     var r = document.getElementById('ratifyBtn'); if (r) r.onclick = function () { if (!r.disabled) ratify(); };
     var a = document.getElementById('accBtn'); if (a) a.onclick = function () { respond(true); };
     var d = document.getElementById('decBtn'); if (d) d.onclick = function () { if (confirm('Decline this invitation?')) respond(false); };
+    document.querySelectorAll('[data-prop]').forEach(function (b) { b.onclick = function () { if (!b.disabled) proposeLaw(b.dataset.s, b.dataset.l); }; });
+    document.querySelectorAll('[data-vote]').forEach(function (b) { b.onclick = function () { if (!b.disabled) voteLaw(b.dataset.s, b.dataset.l, b.dataset.vote === 'aye'); }; });
   }
 
   async function load() {
@@ -293,11 +389,13 @@
     INVITES = (await supabase.from('organization_invitations').select('nation_id, status').eq('org_id', ORG_ID)).data || [];
     VOTES = (await supabase.from('organization_charter_votes').select('nation_id, article, option').eq('org_id', ORG_ID)).data || [];   // RLS: members only
     MSGS = (await supabase.from('organization_messages').select('nation_id, body, created_at').eq('org_id', ORG_ID).order('created_at', { ascending: true }).limit(200)).data || [];
+    LAWS = (await supabase.from('organization_laws').select('sector, law_id, status, proposed_by').eq('org_id', ORG_ID)).data || [];   // public register
+    LAWVOTES = (await supabase.from('organization_law_votes').select('sector, law_id, nation_id, vote').eq('org_id', ORG_ID)).data || [];   // RLS: members only
 
     document.title = (O.name || 'Organization') + ' · Nationhood';
     renderStatus();
     document.getElementById('leftcol').innerHTML =
-      (O.status === 'founding' ? renderConvention() : '') + renderRoster();
+      (O.status === 'founding' ? renderConvention() : renderLaws()) + renderRoster();
     document.getElementById('layout').style.display = '';
     wire();
     renderChat();
