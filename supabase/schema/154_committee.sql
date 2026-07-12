@@ -50,7 +50,7 @@ create policy "committee_messages_select_all" on public.committee_messages for s
 -- Point. A single endorsement clears the proposer's push penalty (committee_push).
 create or replace function public.committee_endorse(p_proposal uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_party public.parties%rowtype; v_prop public.proposals%rowtype; v_cost int := 5;
+declare v_party public.parties%rowtype; v_prop public.proposals%rowtype;
 begin
   v_party := public._lock_party();      -- lock the caller's party (stamps activity)
   select * into v_prop from public.proposals where id = p_proposal for update;
@@ -80,7 +80,7 @@ create or replace function public.committee_push(p_proposal uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_party public.parties%rowtype; v_prop public.proposals%rowtype; v_tick int;
-  v_endorsed boolean; v_total int; v_has_majority boolean; v_free boolean; v_cost int := 0; v_res text;
+  v_endorsed boolean; v_total int; v_has_majority boolean; v_free boolean; v_res text;
 begin
   v_party := public._lock_party();      -- lock the caller's party (an endorsed / majority push is free)
   select * into v_prop from public.proposals where id = p_proposal for update;
