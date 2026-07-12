@@ -233,6 +233,7 @@ var mapArea = document.getElementById('mapArea'), hoverChip = document.getElemen
 var overlayEl = document.getElementById('labels');
 var natPanel = document.getElementById('natPanel');
 var pointerMoved = false;   // set while dragging/pinching so a pan doesn't register as a nation click
+var handleMapTap = null;    // set once the world loads: opens/closes the nation panel for a tapped element
 var ZOOM_CITY = 1.6;   // at/above this zoom, nation names fade out and city names + dots fade in
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
@@ -489,13 +490,14 @@ function applyTransform() {
     }).join('');
   }
 
-  // Click a nation hex → open its snapshot; click empty land/sea → close. A pan (pointerMoved) is ignored.
-  worldG.addEventListener('click', function (e) {
-    if (pointerMoved) return;
-    if (e.target.tagName !== 'polygon') return;
-    var nid = e.target.getAttribute('data-nid');
+  // Open the snapshot for a tapped/clicked map element: a nation hex opens, empty land/sea closes,
+  // anything else (city dot, label) is left alone. Shared by mouse click and the touch tap handler.
+  handleMapTap = function (target) {
+    if (!target || target.tagName !== 'polygon') return;
+    var nid = target.getAttribute('data-nid');
     if (nid) openNation(nid); else closeNation();
-  });
+  };
+  worldG.addEventListener('click', function (e) { if (!pointerMoved) handleMapTap(e.target); });
 })();
 
 /* ---------------- PAN / ZOOM ---------------- */
@@ -528,12 +530,14 @@ mapArea.addEventListener('touchstart', function (e) {
 mapArea.addEventListener('touchmove', function (e) {
   if (!touch) return;
   e.preventDefault();
-  pointerMoved = true;
   var rect = mapArea.getBoundingClientRect();
   if (touch.mode === 'pan' && e.touches.length === 1) {
-    pan = { x: touch.px + (e.touches[0].clientX - touch.sx), y: touch.py + (e.touches[0].clientY - touch.sy) };
+    var dx = e.touches[0].clientX - touch.sx, dy = e.touches[0].clientY - touch.sy;
+    if (Math.abs(dx) + Math.abs(dy) > 8) pointerMoved = true;   // only a real drag counts — a tap must still register
+    pan = { x: touch.px + dx, y: touch.py + dy };
     applyTransform();
   } else if (touch.mode === 'pinch' && e.touches.length >= 2) {
+    pointerMoved = true;
     var m = touchMid(e.touches, rect), d = touchDist(e.touches);
     // Follow the fingers (pan by the midpoint's drift) and zoom by the spread ratio around that midpoint.
     pan.x += m.x - touch.mx; pan.y += m.y - touch.my;
@@ -541,13 +545,22 @@ mapArea.addEventListener('touchmove', function (e) {
     touch.dist = d; touch.mx = m.x; touch.my = m.y;
   }
 }, { passive: false });
-function endTouch(e) {
+function resetTouch(e) {
   // If one finger of a pinch lifts, hand the remaining finger a fresh pan anchor (no jump).
   if (touch && e.touches.length === 1) { touch = { mode: 'pan', sx: e.touches[0].clientX, sy: e.touches[0].clientY, px: pan.x, py: pan.y }; }
   else if (!e.touches.length) { touch = null; }
 }
-mapArea.addEventListener('touchend', endTouch);
-mapArea.addEventListener('touchcancel', endTouch);
+mapArea.addEventListener('touchend', function (e) {
+  // A clean single-finger tap (no drag) → open/close the nation under the finger. Touch doesn't reliably
+  // synthesize a click on the SVG hex, so hit-test the lift point directly.
+  if (touch && !pointerMoved && !e.touches.length && handleMapTap && e.changedTouches.length) {
+    var t = e.changedTouches[0];
+    handleMapTap(document.elementFromPoint(t.clientX, t.clientY));
+    e.preventDefault();   // suppress the compat click so we don't double-fire
+  }
+  resetTouch(e);
+});
+mapArea.addEventListener('touchcancel', resetTouch);
 </script>
 </body>
 </html>
