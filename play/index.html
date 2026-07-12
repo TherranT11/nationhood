@@ -282,6 +282,19 @@
   .roribbon b{font-weight:800}
   .terr{margin-top:16px;display:grid;grid-template-columns:repeat(2,1fr);gap:14px;align-items:start}
   @media(max-width:760px){.terr{grid-template-columns:1fr}}
+  /* Domestic Economy panel (restored) — GDP/Population + per-resource production & on-hand stockpiles */
+  .dom{margin-top:16px}
+  .dom h2{font-size:15px;font-weight:800;letter-spacing:-.01em;margin:0 0 12px}
+  .dom .facts{display:flex;flex-direction:column}
+  .dom .frow{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .dom .frow:last-child{border-bottom:none}
+  .dom .fk{color:var(--muted);font-size:12.5px;font-family:'Space Mono',monospace;letter-spacing:.03em}
+  .dom .fv{font-weight:700;font-size:14.5px;text-align:right}
+  .dom .econ{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+  .dom .ecell{flex:1;min-width:118px;border:1px solid var(--line);border-radius:11px;padding:11px 14px;background:var(--field)}
+  .dom .ecell .k{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .dom .ecell .v{font-weight:800;font-size:19px;letter-spacing:-.01em;margin-top:3px}
+  .dom .ecell .oh{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
   .terr__card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
   .terr__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:12px}
   .map__ph{position:relative;aspect-ratio:4/3;background:var(--chip);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
@@ -354,6 +367,7 @@
 
     <!-- Tutorial-style Nation overview begins here (operational bars stay above). -->
     <div class="stats" id="statCards"></div>
+    <div id="domEcon"></div>
     <div class="terr" id="terrRow"></div>
 
     <!-- Cities roster (moved from the Government page). Filled by loadCities; hidden if none. -->
@@ -1530,7 +1544,30 @@
     } catch (e) { if (none) { none.style.display = ''; none.textContent = 'Map unavailable'; } cv.style.display = 'none'; }
   }
 
+  // Domestic Economy panel (restored above Territory) — the nation's GDP + Population, then a strip of
+  // per-resource Production (each with its on-hand stockpile). Produced + banked through the produce
+  // tick (schema/113), Diplomacy included. Needs nation.production / nation.on_hand in the fetch.
+  var ECON = ['energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy'];
+  function renderDomesticEconomy(nation) {
+    var box = document.getElementById('domEcon'); if (!box) return;
+    var eco = nation.economy || {}, prod = nation.production || {}, onhand = nation.on_hand || {};
+    function frow(k, v) { return '<div class="frow"><span class="fk">' + k + '</span><span class="fv">' + v + '</span></div>'; }
+    box.innerHTML =
+      '<section class="panel dom"><h2>Domestic Economy</h2>' +
+        '<div class="facts">' +
+          frow('GDP', nation.gdp != null ? ((eco.currency || '$') + fmtGdp(nation.gdp)) : '—') +
+          frow('Population', nation.population != null ? fmtPop(nation.population) : '—') +
+        '</div>' +
+        '<div class="econ">' +
+          ECON.map(function (k) { var v = prod[k], oh = onhand[k];
+            return '<div class="ecell"><div class="k">' + capFirst(k) + ' Production</div><div class="v">' + (v != null ? v : '—') + '</div>' +
+              '<div class="oh">On hand · ' + (oh != null ? oh : '—') + '</div></div>'; }).join('') +
+        '</div>' +
+      '</section>';
+  }
+
   function renderSnapshotAndMap(nation, parties, govt, decl, nationId, hogName) {
+    renderDomesticEconomy(nation);
     var box = document.getElementById('terrRow'); if (!box) return;
     var byId = {}; parties.forEach(function (p) { byId[p.id] = p; });
     var formateur = govt ? byId[govt.formateur_party_id] : null;
@@ -1694,7 +1731,7 @@
     setTopbarActions(myParty && myParty.influence != null ? myParty.influence : 0);   // topbar Influence stays yours
 
     // The viewed nation (world-readable). Fall back to core columns if an optional one has drifted.
-    var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, population, gdp, declarations, legislature_seats').eq('id', nationId).single();
+    var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, population, gdp, production, on_hand, declarations, legislature_seats').eq('id', nationId).single();
     var nation = nsel.data;
     if (nsel.error) nation = (await supabase.from('nations').select('name, flag, stats, economy').eq('id', nationId).single()).data;
     if (!nation) {
@@ -1784,7 +1821,7 @@
       // former_ruling_party feed the one-party-restored banner. If the full select
       // errors (e.g. an older DB missing those two columns), fall back to the core
       // columns so a drifted optional column can't blank the whole nation snapshot.
-      var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, former_ruling_party, no_confidence_until_tick, produce_until_tick, call_election_until_tick, population, gdp, declarations, legislature_seats, next_election_tick, election_frequency_months').eq('id', party.nation_id).single();
+      var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, former_ruling_party, no_confidence_until_tick, produce_until_tick, call_election_until_tick, population, gdp, production, on_hand, declarations, legislature_seats, next_election_tick, election_frequency_months').eq('id', party.nation_id).single();
       var nation = nsel.data;
       if (nsel.error) nation = (await supabase.from('nations').select('name, flag, stats, economy, policies').eq('id', party.nation_id).single()).data;
       const nationName = (nation && nation.name) || party.nation_id;
