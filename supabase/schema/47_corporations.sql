@@ -52,22 +52,18 @@ create policy "corp_delete_admin" on public.corporations for delete using (publi
 -- The climate depends on the DERIVED tax burden, so that ports too.
 -- ---------------------------------------------------------------------------
 
--- Nation Tax Burden % — the SUM of every in-force policy's 'taxBurden' contribution, clamped 0..100.
--- This is purely law-driven: no authored economy.tax base is added, so the figure equals exactly the
--- laws listed on the Tax Burden page (nationStatContributions in policies.js — the display mirror).
--- The legacy economy.tax seed is retired from the formula (schema/10 always intended it to drive to 0
--- as policies filled the figure in).
+-- Nation Tax Burden % — the SUM of every in-force policy's 'Tax Burden' EFFECT, clamped 0..100. This
+-- delegates to _nation_policy_stat (schema/152), the exact SQL mirror of nationStatContributions
+-- (policies.js) — so the figure equals precisely the laws listed on the Tax Burden page (e.g. Wage Tax
+-- +9). The old path read a legacy scalar option.taxBurden key that modern effect-based laws never set,
+-- and it added the economy.tax seed on top; both are retired (schema/10 always intended the seed to
+-- fall to 0 as policies filled the figure in). plpgsql so the schema/152 call resolves at runtime (152
+-- is applied after this file).
 create or replace function public._nation_tax_burden(p_nation text)
-returns numeric language sql stable security definer set search_path = public as $$
-  select greatest(0, least(100,
-      coalesce((
-        select sum(coalesce((public._policy_options(pol.definition)
-              -> public._nation_policy_option(p_nation, pol.id) ->> 'taxBurden')::numeric, 0))
-        from public.policies pol
-      ), 0)
-  ))
-  from public.nations n where n.id = p_nation;
-$$;
+returns numeric language plpgsql stable security definer set search_path = public as $$
+begin
+  return greatest(0, least(100, coalesce(public._nation_policy_stat(p_nation, 'Tax Burden'), 0)));
+end $$;
 
 -- ONE source for a nation's LIVE stat value: the authored base (ministry_stats, schema/150, with the
 -- legacy stats.* mirror as the fallback for the consolidated Prosperity / Growth / Rule of Law) PLUS
