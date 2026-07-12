@@ -6,9 +6,9 @@
 --
 -- The world price of a resource = its base price × a scarcity multiplier, clamped
 -- to [$1, $25]. The tier is DERIVED from world production ÷ world demand for that
--- resource, so it self-updates as the world changes — but only Food, Goods and
--- Services have a unit demand, so only those three move; Energy, Minerals and
--- Military have no consumption sink and read as Normal until one is added. Trade
+-- resource, so it self-updates as the world changes. Food/Goods/Services have a per-nation unit demand;
+-- Energy and Minerals draw on the world's downstream output (the forge recipes — see _world_demand);
+-- only Military has no consumption sink and reads as Normal until one is added. Trade
 -- moves ON-HAND, never production or demand, so a player's imports can't budge a
 -- tier — only big events (which change production) can. ONE source here; util.js
 -- mirrors the price math to render the page.
@@ -26,20 +26,8 @@ returns numeric language sql immutable as $$
     when 'goods' then 5 when 'services' then 5 when 'military' then 15 else 0 end;
 $$;
 
--- World unit demand for a resource = Σ non-dormant nations' demand-need. Only the
--- three unit-consumed resources have one; the rest return 0 (→ Normal tier).
-create or replace function public._world_demand(p_resource text)
-returns numeric language sql stable security definer set search_path = public as $$
-  select case when p_resource in ('food', 'goods', 'services')
-    then (select coalesce(sum(public._economy_need(n.id, p_resource)), 0)
-            from public.nations n where not coalesce(n.dormant, false))
-    else 0 end;
-$$;
-revoke all on function public._world_demand(text) from public, anon, authenticated;
-grant execute on function public._world_demand(text) to authenticated;
-
 -- World production for a resource = Σ non-dormant nations' production (NOT on-hand,
--- so trade never shifts it).
+-- so trade never shifts it). Defined first so _world_demand can read it below.
 create or replace function public._world_production(p_resource text)
 returns numeric language sql stable security definer set search_path = public as $$
   select coalesce(sum(coalesce((production->>p_resource)::numeric, 0)), 0)
@@ -47,6 +35,26 @@ returns numeric language sql stable security definer set search_path = public as
 $$;
 revoke all on function public._world_production(text) from public, anon, authenticated;
 grant execute on function public._world_production(text) to authenticated;
+
+-- World unit demand for a resource — the consumption sink the tier divides into.
+--   • Food / Goods / Services: Σ each nation's _economy_need (a per-nation unit demand).
+--   • Energy / Minerals: the world's DOWNSTREAM output, mirroring the forge recipes (every Good takes
+--     1 Energy + 1 Mineral; every Service takes 1 Energy + 1 Food). So Energy demand = world Goods +
+--     Services production, Minerals demand = world Goods production. Self-balancing — no per-nation need,
+--     and the more the world produces, the tighter its inputs.
+--   • Military (and anything else): no sink → 0 → Normal.
+create or replace function public._world_demand(p_resource text)
+returns numeric language sql stable security definer set search_path = public as $$
+  select case
+    when p_resource in ('food', 'goods', 'services')
+      then (select coalesce(sum(public._economy_need(n.id, p_resource)), 0)
+              from public.nations n where not coalesce(n.dormant, false))
+    when p_resource = 'energy'   then public._world_production('goods') + public._world_production('services')
+    when p_resource = 'minerals' then public._world_production('goods')
+    else 0 end;
+$$;
+revoke all on function public._world_demand(text) from public, anon, authenticated;
+grant execute on function public._world_demand(text) to authenticated;
 
 -- Scarcity tier from production ÷ demand. Undemanded resources (demand 0) sit at Normal.
 create or replace function public._world_tier(p_resource text)

@@ -122,19 +122,23 @@ export function economyNeed(resource, nation) {
 }
 
 // WORLD MARKETS — MIRRORS supabase/schema/114. A resource's world price = its base
-// price × a scarcity multiplier, clamped to [$1, $25]. The tier is production ÷ demand
-// for that resource; only Food/Goods/Services have a unit demand, so the rest read
-// Normal. Server is authority (the import RPC recomputes); these render the page.
+// price × a scarcity multiplier, clamped to [$1, $25]. The tier is production ÷ demand.
+// Food/Goods/Services demand is each nation's unit need; Energy/Minerals demand is the
+// world's downstream output (Energy = Goods + Services production, Minerals = Goods
+// production — the forge recipes); Military has no sink and reads Normal. Server is
+// authority (the import RPC recomputes); these render the page.
 export const RESOURCE_BASE = { energy: 5, food: 3, minerals: 3, goods: 5, services: 5, military: 15 };
 export const TIER_MULT  = { glut: 0.7, normal: 1.0, tight: 1.3, scarce: 1.6, crisis: 2.0 };
 export const TIER_LABEL = { glut: 'Glut', normal: 'Normal', tight: 'Tight', scarce: 'Scarce', crisis: 'Crisis' };
 export function worldTier(resource, nations) {
-  if (resource !== 'food' && resource !== 'goods' && resource !== 'services') return 'normal';
-  var prod = 0, dem = 0;
-  (nations || []).forEach(function (n) {
-    prod += Number((n.production || {})[resource]) || 0;
-    dem  += economyNeed(resource, n);
-  });
+  var ns = nations || [];
+  function prodSum(r) { var s = 0; ns.forEach(function (n) { s += Number((n.production || {})[r]) || 0; }); return s; }
+  var prod = prodSum(resource), dem;
+  if (resource === 'food' || resource === 'goods' || resource === 'services') {
+    dem = 0; ns.forEach(function (n) { dem += economyNeed(resource, n); });
+  } else if (resource === 'energy')   { dem = prodSum('goods') + prodSum('services'); }
+  else if (resource === 'minerals')   { dem = prodSum('goods'); }
+  else return 'normal';   // Military (etc.) — no consumption sink
   if (dem <= 0) return 'normal';
   var r = prod / dem;
   return r < 0.5 ? 'crisis' : r < 0.8 ? 'scarce' : r < 1.1 ? 'tight' : r < 1.6 ? 'normal' : 'glut';
