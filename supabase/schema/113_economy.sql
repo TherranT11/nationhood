@@ -81,7 +81,7 @@ begin
   if p_resource = 'military' then
     v_have := coalesce((v_n.economy->>'budget')::numeric, 0);
     if v_have < v_need then
-      raise exception 'Treasury too low to maintain the military (need %, have %).', v_need, v_have; end if;
+      raise exception 'Not enough funds to maintain the military (need %, have %).', v_need, v_have; end if;
     perform public._nation_stat_add(v_p.nation_id, 'economy', 'budget', -v_need, 0, null);
   else
     v_have := coalesce((v_n.on_hand->>p_resource)::numeric, 0);

@@ -283,6 +283,6 @@ export function tradeEffectText(o) {
   var mult = Number(o.importMult); if (!(mult > 0)) mult = 1;
   var tariff = Math.max(0, Number(o.tariff) || 0);
   var parts = [mult === 1 ? 'Imports at the world rate' : 'Imports ×' + mult + ' the world rate'];
-  if (tariff > 0) parts.push(tariff + '% tariff to the treasury');
+  if (tariff > 0) parts.push(tariff + '% tariff to the state');
   return parts.join(' · ') + '.';
 }

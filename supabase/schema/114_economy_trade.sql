@@ -126,7 +126,7 @@ declare v_net numeric := p_total - coalesce(p_duty, 0);
 begin
   perform public._nation_stat_add(p_seller, 'on_hand', p_resource, -p_qty, 0, null);
   perform public._nation_stat_add(p_buyer,  'on_hand', p_resource,  p_qty, 0, null);
-  perform public._nation_budget_add(p_buyer, coalesce(p_duty, 0) - p_total);   -- buyer pays net, debt-financed
+  perform public._nation_stat_add(p_buyer, 'economy', 'debt', v_net, 0, null);       -- buyer's net cost is added to Public Debt (no treasury draw)
   perform public._nation_stat_add(p_seller, 'economy', 'budget', v_net, 0, null);   -- seller receives net of duty
   perform public._record_trade_flow(p_seller, p_buyer, p_resource, v_net);          -- World Trade ledger (schema/116)
 end $$;
