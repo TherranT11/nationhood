@@ -8,19 +8,12 @@
 -- (any nation can read it) with a chat and an [Endorse] button for the other parties in its nation,
 -- and a [Push to the Floor] button for the proposer. It sits for 6 ticks; if it isn't pushed it
 -- expires (_expire_committee, called from _advance_tick, schema/60). Pushing with at least one
--- endorsement is free; pushing UNENDORSED costs 5 Influence AND −2 Party Popularity.
+-- endorsement (or a floor majority) is free; pushing UNENDORSED costs an Action Point AND −2 Party
+-- Popularity.
 
--- Admin-set base Influence cost of proposing a bill (scaled by the rungs it moves, below).
--- The Influence a bill costs to propose: the policy's own authored base (definition.influence, set in
--- the policy builder) scaled by how many rungs the change moves — N × (base + N − 1), the same
--- escalation the policy ladder uses (N=1 → base). ONE source (mirrors proposalInfluenceCost in
--- policies.js); read by propose_law + the propose page's cost preview.
-create or replace function public._proposal_cost(p_base int, p_levels int)
-returns int language sql immutable as $$
-  select (greatest(1, coalesce(p_levels, 1))
-          * (greatest(0, coalesce(p_base, 0)) + greatest(1, coalesce(p_levels, 1)) - 1))::int;
-$$;
--- The game-wide base cost was replaced by each policy's own influence — drop it (idempotent).
+-- Proposing a bill no longer costs Influence — it costs Action Points (1 per rung moved; propose_law,
+-- schema/92). The old Influence-scaling cost helper + the game-wide base column are retired here.
+drop function if exists public._proposal_cost(int, int);        -- retired: cost is Action Points now
 drop function if exists public.set_proposal_cost_base(int);
 alter table public.game_state drop column if exists proposal_cost_base;
 
@@ -53,8 +46,8 @@ create policy "committee_messages_select_all" on public.committee_messages for s
 
 -- ── Actions ─────────────────────────────────────────────────────────────────────
 
--- Endorse a committee bill. Any party in the bill's nation EXCEPT the proposer, once, for 5
--- Influence. A single endorsement clears the proposer's push penalty (committee_push).
+-- Endorse a committee bill. Any party in the bill's nation EXCEPT the proposer, once, for 1 Action
+-- Point. A single endorsement clears the proposer's push penalty (committee_push).
 create or replace function public.committee_endorse(p_proposal uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_party public.parties%rowtype; v_prop public.proposals%rowtype; v_cost int := 5;
@@ -81,7 +74,7 @@ grant execute on function public.committee_endorse(uuid) to authenticated;
 -- Push a committee bill to the floor. Proposer only. The push is FREE (no cost, no popularity hit)
 -- when the bill has ≥1 endorsement OR the proposing party already commands a majority of the
 -- chamber — a majority can carry the bill alone, so it needs no cross-party endorsement. Otherwise
--- pushing unendorsed costs 5 Influence AND −2 Party Popularity. Opens the floor vote (window resets),
+-- pushing unendorsed costs an Action Point AND −2 Party Popularity. Opens the floor vote (window resets),
 -- the proposer auto-votes Aye, and the standard tally runs (_resolve_proposal, schema/81).
 create or replace function public.committee_push(p_proposal uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
