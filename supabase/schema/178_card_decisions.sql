@@ -32,6 +32,9 @@ create table if not exists public.card_decisions (
   created_at         timestamptz not null default now()
 );
 create index if not exists card_decisions_open_idx on public.card_decisions (nation_id, status);
+-- Snapshot of the card's flavour text, so the World Timeline line at resolve time (card_decide) can read
+-- "on the matter of {title}, {description} …" without depending on the played card still existing.
+alter table public.card_decisions add column if not exists card_desc text;
 
 -- Public read (a pending government decision is public, like proposals/events); writes only through
 -- the security-definer RPCs below.
@@ -72,8 +75,8 @@ begin
   v_handler  := coalesce(p_def->>'handler', 'player');
   v_resolver := public._card_decision_resolver(p_nation, v_handler, p_played_by);
   v_name     := coalesce(p_def->>'name', 'a card');
-  insert into public.card_decisions (nation_id, deck_card_id, card_name, options, handler, resolver_party_id, played_by_party_id, created_tick)
-    values (p_nation, p_deck_card, v_name, v_opts, v_handler, v_resolver, p_played_by, p_tick);
+  insert into public.card_decisions (nation_id, deck_card_id, card_name, card_desc, options, handler, resolver_party_id, played_by_party_id, created_tick)
+    values (p_nation, p_deck_card, v_name, coalesce(p_def->>'desc', ''), v_opts, v_handler, v_resolver, p_played_by, p_tick);
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (p_nation, p_played_by, 'party',
             v_name || ' forces a decision — awaiting ' ||
@@ -89,6 +92,7 @@ revoke all on function public._create_card_decision(text, uuid, uuid, jsonb, int
 create or replace function public.card_decide(p_decision uuid, p_option int)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_uid uuid; v_pid uuid; v_pname text; v_d record; v_opt jsonb; v_tick int; v_resolver uuid; e jsonb;
+  v_body text; v_decider text; v_choice text; v_desc text;
 begin
   v_uid := auth.uid();
   if v_uid is null then raise exception 'Not signed in.'; end if;
@@ -132,11 +136,28 @@ begin
   end if;
 
   update public.card_decisions set status = 'resolved', chosen_idx = p_option where id = p_decision;
+
+  -- Announce the resolved decision to the World Timeline (kind 'card'): the matter, its description, and
+  -- the choice the decider made — "In {nation}, on the matter of {title}, {desc} {decider} has chosen to
+  -- {choice}." The title is wrapped in ** so the feed renders it bold. The decider reads from the handler
+  -- (a ministry → "The X Minister"; the Head of Government; else the resolving party).
+  v_decider := case
+                 when v_d.handler is null or v_d.handler = 'player' then coalesce(v_pname, 'The government')
+                 when v_d.handler = 'hog' then 'The Head of Government'
+                 else 'The ' || v_d.handler || ' Minister' end;
+  v_choice := coalesce(nullif(v_opt->>'txt', ''), 'act');
+  v_desc   := coalesce(v_d.card_desc, '');
+  v_body   := 'In ' || coalesce((select name from public.nations where id = v_d.nation_id), v_d.nation_id)
+              || ', on the matter of **' || v_d.card_name || '**';
+  if v_desc <> '' then
+    v_body := v_body || ', ' || v_desc;
+    if v_body !~ '[.!?]$' then v_body := v_body || '.'; end if;
+  else
+    v_body := v_body || '.';
+  end if;
+  v_body := v_body || ' ' || v_decider || ' has chosen to ' || v_choice || '.';
   insert into public.events (nation_id, party_id, kind, body, game_date)
-    values (v_d.nation_id, v_pid, 'party',
-            coalesce(v_pname, 'A party') || ' resolved "' || v_d.card_name || '"' ||
-              case when coalesce(v_opt->>'txt', '') <> '' then ' — ' || (v_opt->>'txt') else '' end || '.',
-            public.current_game_date());
+    values (v_d.nation_id, v_pid, 'card', v_body, public.current_game_date());
 end $$;
 grant execute on function public.card_decide(uuid, int) to authenticated;
 

@@ -123,7 +123,7 @@ drop function if exists public.card_play(uuid, uuid);
 create or replace function public.card_play(p_deck_card uuid, p_target uuid default null, p_hex_q int default null, p_hex_r int default null,
   p_corp uuid default null, p_corp2 uuid default null)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_uid uuid; v_dc record; v_party record; v_def jsonb; v_name text; v_tick int; v_acts int; v_tgt_nat text;
+declare v_uid uuid; v_dc record; v_party record; v_def jsonb; v_name text; v_tick int; v_acts int; v_tgt_nat text; v_body text;
 begin
   v_uid := auth.uid();
   if v_uid is null then raise exception 'Not signed in.'; end if;
@@ -177,15 +177,18 @@ begin
     update public.deck_cards set status = 'played' where id = p_deck_card;
   end if;
 
-  -- The generic "X played <card>" event — skipped when a hex_pop effect will fire, since it narrates
-  -- itself with the territory, the raise and the new standing (schema/176). Persistent cards keep it.
+  -- Announce a one-off play to the World Timeline as "In {nation}, {description}." — kind 'card', so it
+  -- surfaces in every OTHER nation's world feed (the acting nation sees it in its own home feed). Two
+  -- kinds of play announce elsewhere and are excluded here: a CHOICE card announces at DECIDE time (its
+  -- two-part line, schema/178), and a hex_pop card keeps its own thematic campaign event (schema/176).
   v_name := coalesce(v_def->>'name', 'a card');
-  if coalesce(v_def->>'persistV', 'no') = 'yes' or not public._def_fires_kind(v_def, array['hex_pop']) then
+  if coalesce(v_def->>'mech', '') <> 'choice'
+     and (coalesce(v_def->>'persistV', 'no') = 'yes' or not public._def_fires_kind(v_def, array['hex_pop'])) then
+    v_body := 'In ' || coalesce((select name from public.nations where id = v_dc.nation_id), v_dc.nation_id)
+              || ', ' || coalesce(nullif(v_def->>'desc', ''), v_name);
+    if v_body !~ '[.!?]$' then v_body := v_body || '.'; end if;
     insert into public.events (nation_id, party_id, kind, body, game_date)
-    values (v_dc.nation_id, v_party.id, 'party',
-            v_party.name || ' played ' || v_name ||
-              case when coalesce(v_def->>'desc', '') <> '' then ' — ' || (v_def->>'desc') else '' end,
-            public.current_game_date());
+      values (v_dc.nation_id, v_party.id, 'card', v_body, public.current_game_date());
   end if;
 
   -- Effects (atomic with the play).
