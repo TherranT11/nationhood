@@ -51,8 +51,8 @@
   .cm .actopt:disabled{opacity:.45;cursor:not-allowed}
   .cm .actopt .an{font-size:14px;font-weight:800;color:var(--ink);margin-bottom:5px}
   .cm .actopt .ad{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);letter-spacing:.03em;line-height:1.6}
-  .cm .actopt.info{cursor:default}
-  .cm .actopt.info:hover{border-color:var(--line)}
+  .cm .actopt.on{border-color:color-mix(in srgb,var(--inf) 55%,var(--line));background:color-mix(in srgb,var(--inf) 8%,var(--field))}
+  .cm .actopt.on:hover:not(:disabled){border-color:var(--inf)}
 
   /* government decisions (played Choice cards awaiting a resolver) */
   .cm .deccard{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:15px 17px;margin-bottom:11px}
@@ -609,29 +609,44 @@
     };
   }
 
+  // Jump to a section (the market to bid, the hand to play/discard).
+  function goTo(id) { var e = document.getElementById(id); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+
+  // The month's choice: ALWAYS the same three buttons — Bid / Play / Discard — one per tick. Each routes
+  // to where you carry it out (the Market for bids, your Hand for play/discard) and reflects what's still
+  // open: Bid is highlighted while you're bidding; Play/Discard lock while you hold bids (cancel them to
+  // free the choice); all three lock once you've played or discarded this month.
   function renderActions() {
     var el = document.getElementById('actions'), note = document.getElementById('actNote');
     var ap = apLeft();
-    if (hasActed()) {   // played or discarded this month
-      note.innerHTML = '<span class="inf">action taken</span>';
-      el.innerHTML = '<div class="actbox"><div class="actbar"><span class="apbadge">▶ ' + ap + ' AP</span>' +
-        '<span class="actstat">You’ve taken this month’s action. Spend Action Points on moves across the game — each costs <b>1 AP</b>.</span></div></div>';
-      return;
+    var acted = hasActed();        // played or discarded this month — the choice is spent
+    var bidding = bidCount() > 0;  // committed to bidding this month
+    var canCard = !acted && !bidding;
+
+    note.innerHTML = acted ? '<span class="inf">action taken</span>'
+      : bidding ? '<span class="inf">bidding · ' + bidCount() + ' live</span>'
+      : 'choose one';
+    var status = acted
+      ? 'You’ve taken this month’s action. Spend Action Points on moves anytime — each costs <b>1 AP</b>.'
+      : bidding
+      ? 'You’re bidding this month (<b>' + bidCount() + '</b> live) — top bids win at next month’s auction. Cancel every bid to play or discard instead.'
+      : 'Each month you take <b>one</b> action — bid, play, or discard.';
+    var cardTitle = acted ? 'You’ve taken this month’s action' : (bidding ? 'Cancel your bids first' : '');
+
+    function opt(id, name, desc, dis, on, title) {
+      return '<button class="actopt' + (on ? ' on' : '') + '" id="' + id + '"' + (dis ? ' disabled' : '') +
+        (title ? ' title="' + title + '"' : '') + '><div class="an">' + name + '</div><div class="ad">' + desc + '</div></button>';
     }
-    if (bidCount() > 0) {   // committed to bidding this month
-      note.innerHTML = '<span class="inf">bidding</span>';
-      el.innerHTML = '<div class="actbox"><div class="actbar"><span class="apbadge">▶ ' + ap + ' AP</span>' +
-        '<span class="actstat">You’re bidding this month (<b>' + bidCount() + '</b> live). Top bids win at next month’s auction — or cancel every bid to play or discard instead.</span></div></div>';
-      return;
-    }
-    note.textContent = 'choose one';
     el.innerHTML = '<div class="actbox"><div class="actbar"><span class="apbadge">▶ ' + ap + ' AP</span>' +
-      '<span class="actstat">Each month, <b>choose one</b> — bid, play, or discard.</span></div>' +
+      '<span class="actstat">' + status + '</span></div>' +
       '<div class="actrow">' +
-        '<div class="actopt info"><div class="an">Bid on Cards</div><div class="ad">Sealed bids in The Market below · win at next month’s auction</div></div>' +
-        '<div class="actopt info"><div class="an">Play a Card</div><div class="ad">Use ▸ Play on a hand card below · banks that card’s AP</div></div>' +
-        '<div class="actopt info"><div class="an">Discard a Card</div><div class="ad">Use ▸ Discard on a hand card below · +3 Influence, back to the deck</div></div>' +
+        opt('optBid', 'Bid on a Card', 'Sealed bids in The Market · win at next month’s auction', acted, bidding, acted ? cardTitle : '') +
+        opt('optPlay', 'Play a Card', 'Play a hand card · banks its Action Points', !canCard, false, cardTitle) +
+        opt('optDisc', 'Discard a Card', '+3 Influence · back to the nation’s deck', !canCard, false, cardTitle) +
       '</div></div>';
+    var b = document.getElementById('optBid'); if (b) b.onclick = function () { goTo('market'); };
+    var p = document.getElementById('optPlay'); if (p) p.onclick = function () { goTo('hand'); };
+    var d = document.getElementById('optDisc'); if (d) d.onclick = function () { goTo('hand'); };
   }
 
   // Pending Government Choice decisions for the nation. The resolver gets clickable options; everyone
