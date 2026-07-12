@@ -68,10 +68,15 @@
     text-transform: uppercase;
     min-height: 220px;
   }
-  .img-ph.hero-img {
+  /* Hero screenshot — the real image that replaces the striped placeholder. */
+  .hero-shot {
+    display: block;
     margin: 48px auto 0;
     max-width: 920px;
-    min-height: 360px;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--line);
+    border-radius: 16px;
   }
 
   /* ---------- Segments ---------- */
@@ -222,7 +227,7 @@
           <a class="btn btn-solid" href="/signup/">Sign Up</a>
           <a class="btn btn-discord" href="https://discord.gg/HBvWxJUm8" target="_blank" rel="noopener">Join the Discord</a>
         </div>
-        <div class="img-ph hero-img">[ Image Here ]</div>
+        <img class="hero-shot" src="/assets/FrontImage1.png" alt="A look inside Nationhood" onerror="this.remove()">
       </div>
     </section>
 

@@ -34,6 +34,18 @@
   .panel{border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:22px}
   .panel h2{font-size:15px;font-weight:800;letter-spacing:-.01em;margin:0 0 14px}
 
+  /* Stat Connectors */
+  .scrow{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-end}
+  .scfield{flex:1 1 150px;min-width:120px}
+  .scfield.scnum{flex:0 0 110px;min-width:90px}
+  .scfield label{display:block;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft,#8d8d95);margin:0 0 4px}
+  .scpreview{margin:16px 0 4px;font-size:14px;font-weight:600;color:var(--ink);background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:12px 14px}
+  .scpreview b{color:var(--indigo)}
+  .sc-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:11px;margin-bottom:8px}
+  .sc-item .sc-txt{font-size:13.5px}
+  .sc-item .sc-txt b{color:var(--indigo)}
+  .sc-item .sc-del{flex:none;background:var(--surface);color:var(--red);border:1px solid var(--red);border-radius:9px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer}
+
   /* existing nations */
   .ncard{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
   .ncard__top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
@@ -553,6 +565,7 @@
         <button class="vtab" data-tab="modifiers" type="button">Modifiers</button>
         <button class="vtab" data-tab="declarations" type="button">Declarations</button>
         <button class="vtab" data-tab="policies" type="button">Policies</button>
+        <button class="vtab" data-tab="connections" type="button">Connections</button>
         <button class="vtab" data-tab="trade-policy" type="button">Trade Policy</button>
         <button class="vtab" data-tab="inactivity" type="button">Inactivity</button>
         <button class="vtab" data-tab="crises" type="button">Crises</button>
@@ -718,6 +731,31 @@
               <aside><div class="rail"><div class="rh">Preview · how it reads</div><div class="rb" id="polPrev"></div></div></aside>
             </div>
             <div class="note" id="polNote" role="status" aria-live="polite" style="margin-top:14px"></div>
+          </div>
+        </div>
+      </div>
+      <div class="tabpane" data-tab="connections" hidden>
+        <div class="poltab">
+          <div class="panel">
+            <h2 style="margin:0">Stat Connectors</h2>
+            <p class="sub" style="margin:8px 0 16px">Couple any ministry stat to any other, for <b>every nation</b>. A connector reads: <b>Every time <span style="color:var(--indigo)">Source</span> increases by <span style="color:var(--indigo)">Y</span>, <span style="color:var(--indigo)">Target</span> rises / falls by <span style="color:var(--indigo)">A</span></b> — measured from a reference value. The target simply gains a live term <code>A × ⌊(source − reference) ÷ Y⌋</code>, recomputed wherever the stat shows, so it reverses when the source falls and never loops (a rule reads its source’s value <i>before</i> any connector applies). Growth, Prosperity and Rule of Law move on the <b>shown</b> figure only for now.</p>
+            <div class="scform">
+              <div class="scrow">
+                <div class="scfield"><label>When this stat</label><select id="scSource"></select></div>
+                <div class="scfield scnum"><label>increases by</label><input id="scPer" type="number" step="any" value="3"></div>
+                <div class="scfield"><label>this stat</label><select id="scTarget"></select></div>
+                <div class="scfield"><label>&nbsp;</label><select id="scDir"><option value="1">rises by</option><option value="-1">falls by</option></select></div>
+                <div class="scfield scnum"><label>amount</label><input id="scAmount" type="number" step="any" value="1" min="0"></div>
+                <div class="scfield scnum"><label>measured from</label><input id="scRef" type="number" step="any" value="0"></div>
+              </div>
+              <div class="scpreview" id="scPreview"></div>
+              <button class="btn btn-solid" id="scAdd" type="button">+ Add connector</button>
+              <div class="note" id="scNote" role="status" aria-live="polite" style="margin-top:10px"></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h2 style="margin:0 0 12px">Active connectors</h2>
+            <div id="scList"><p class="empty">Loading…</p></div>
           </div>
         </div>
       </div>
@@ -1940,6 +1978,84 @@
       else document.getElementById('ctList').innerHTML = '<p class="empty">Add a nation first (Nations tab).</p>';
     }
 
+    // ---- Stat Connectors (global coupling rules; stat_connectors table, is_admin RLS) ----
+    // A rule reads "Every time Source rises by Y, Target rises/falls by A (from a reference)"; the
+    // server folds it into nation_stat_values as a derived term (schema/194). Amount is stored SIGNED
+    // (− = falls); the direction dropdown just picks the sign so the number field stays positive.
+    (function () {
+      var src = document.getElementById('scSource'), tgt = document.getElementById('scTarget');
+      if (src && tgt && !src.options.length) {
+        var opts = POLICY_STATS.map(function (s) { return '<option value="' + esc(s) + '">' + esc(s) + '</option>'; }).join('');
+        src.innerHTML = opts; tgt.innerHTML = opts;
+        if (tgt.options.length > 1) tgt.selectedIndex = 1;   // default a different target than source
+      }
+    })();
+    function scText(source, target, per, amount, reference) {
+      var rises = Number(amount) >= 0, a = Math.abs(Number(amount) || 0), y = Number(per) || 0, ref = Number(reference) || 0;
+      return 'Every time <b>' + esc(source) + '</b> increases by <b>' + y + '</b>, <b>' + esc(target) + '</b> ' +
+        (rises ? 'rises' : 'falls') + ' by <b>' + a + '</b>' + (ref ? ' <span class="sub">(measured from ' + ref + ')</span>' : '');
+    }
+    function scForm() {
+      return {
+        source: document.getElementById('scSource').value,
+        target: document.getElementById('scTarget').value,
+        per: Number(document.getElementById('scPer').value),
+        amount: Math.abs(Number(document.getElementById('scAmount').value) || 0) * Number(document.getElementById('scDir').value),
+        reference: Number(document.getElementById('scRef').value) || 0
+      };
+    }
+    function scUpdatePreview() {
+      var f = scForm(), el = document.getElementById('scPreview');
+      if (!f.per) { el.innerHTML = 'Set a non-zero “increases by” distance.'; return; }
+      el.innerHTML = scText(f.source, f.target, f.per, f.amount, f.reference);
+    }
+    ['scSource', 'scTarget', 'scPer', 'scDir', 'scAmount', 'scRef'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('input', function () { scUpdatePreview(); document.getElementById('scNote').textContent = ''; });
+    });
+    async function loadConnectors() {
+      scUpdatePreview();
+      var box = document.getElementById('scList');
+      try {
+        var res = await supabase.from('stat_connectors').select('*').order('created_at', { ascending: true });
+        if (res.error) throw res.error;
+        var data = res.data || [];
+        if (!data.length) { box.innerHTML = '<p class="empty">No connectors yet.</p>'; return; }
+        box.innerHTML = data.map(function (c) {
+          return '<div class="sc-item"><div class="sc-txt">' + scText(c.source, c.target, c.per, c.amount, c.reference) + '</div>' +
+            '<button class="sc-del" data-id="' + esc(c.id) + '" type="button">Remove</button></div>';
+        }).join('');
+        box.querySelectorAll('.sc-del').forEach(function (b) {
+          b.addEventListener('click', async function () {
+            b.disabled = true;
+            try {
+              var d = await supabase.from('stat_connectors').delete().eq('id', b.dataset.id);
+              if (d.error) throw d.error;
+              loadConnectors();
+            } catch (e) { b.disabled = false; alert((e && e.message) || 'Couldn’t remove that connector.'); }
+          });
+        });
+      } catch (e) {
+        box.innerHTML = '<p class="empty">Couldn’t load connectors (' + esc((e && e.message) || 'unknown error') + ').</p>';
+      }
+    }
+    document.getElementById('scAdd').addEventListener('click', async function () {
+      var btn = this, note = document.getElementById('scNote'), f = scForm();
+      if (!(f.per > 0)) { note.textContent = 'The “increases by” distance must be greater than zero.'; return; }
+      if (!f.amount) { note.textContent = 'The change amount must be non-zero.'; return; }
+      btn.disabled = true; note.textContent = 'Saving…';
+      try {
+        var ins = await supabase.from('stat_connectors').insert(f);
+        if (ins.error) throw ins.error;
+        note.textContent = 'Added.';
+        loadConnectors();
+      } catch (e) {
+        note.textContent = 'Failed: ' + ((e && e.message) || 'couldn’t save that connector.');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
     // ---- Left-hand tab switching ----
     document.querySelectorAll('.vtab').forEach(function (t) {
       t.addEventListener('click', function () {
@@ -1951,6 +2067,7 @@
         if (tab === 'cities') loadCities();
         if (tab === 'declarations') loadDeclarations();
         if (tab === 'policies') loadPolicies();
+        if (tab === 'connections') loadConnectors();
         if (tab === 'cards') mountCardCreator(document.getElementById('ccMount'));   // builds once, keeps state
         if (tab === 'trade-policy') loadTradePolicy();
         if (tab === 'inactivity') loadInactivity();
