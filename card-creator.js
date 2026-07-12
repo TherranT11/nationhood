@@ -56,6 +56,7 @@ const KINDS = {
   appoint:    { label: 'HoG must appoint you [Ministry], or…', nested: true },
   hex_el:     { label: 'Carry out an election in a chosen hex' },
   nat_el:     { label: 'Carry out national election' },
+  hog_change: { label: 'Change the Head of Government (new leader takes office)' },
   no_conf:    { label: 'Put forth motion of no confidence' },
   mob_add:    { label: 'Add Armed Mob to Hex X' },
   mob_rem:    { label: 'Remove Armed Mob from Hex X' },
@@ -523,6 +524,7 @@ export async function mountCardCreator(mount) {
       '<select data-i="' + i + '" data-f="sector">' + CATEGORIES.map(function (s) { return '<option' + (s === f.p.sector ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') + '</select>' +
       '<span class="lbl">named</span><input type="text" value="' + esc(f.p.name || '') + '" data-i="' + i + '" data-f="name" placeholder="Firm name…" style="flex:1;min-width:130px">';
     if (f.kind === 'shuffle') h = '<span class="lbl">↻ this card returns to the deck to be won again</span>';
+    if (f.kind === 'hog_change') h = '<span class="lbl">the sitting Head of Government is replaced by a new leader</span>';
     if (f.kind === 'hex_el') h = '<span class="lbl">hex chosen on play · 12-tick cooldown</span>';
     if (f.kind === 'mob_add' || f.kind === 'mob_rem' || f.kind === 'mil_add' || f.kind === 'mil_rem')
       h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px"><span class="lbl">' + ((f.kind === 'mob_add' || f.kind === 'mob_rem') ? '⚠ armed mob — nobody’s soldiers' : '⚑ militia — belongs to a party') + '</span>';
@@ -595,7 +597,7 @@ export async function mountCardCreator(mount) {
       : v === 'deck_add' ? { card: '', nation: '', ticks: 0 }
       : v === 'sanction' ? { nation: '', ticks: 36 }
       : (v === 'corp_grow' || v === 'corp_shrink') ? { x: 2 }
-      : (v === 'corp_acquire' || v === 'shuffle') ? {}
+      : (v === 'corp_acquire' || v === 'shuffle' || v === 'hog_change') ? {}
       : v === 'corp_create' ? { sector: CATEGORIES[0], name: '' }
       : v === 'bill' ? { name: '', pass: [{ kind: 'stat_up', p: { stat: 'Growth', x: 5 } }], fail: [{ kind: 'stat_down', p: { stat: 'Growth', x: 3 } }] }
       : (v === 'decider_gain' || v === 'decider_lose' || v === 'coal_pop_up' || v === 'coal_pop_down') ? { x: 2 }

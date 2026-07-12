@@ -1,5 +1,5 @@
 -- 148 · Campaign Trail (Phase F-B). Four campaign actions a party may take in the six months
--- before a general election, each paid in Influence (schema/20) and resolved server-side so the
+-- before a general election, each costing 1 Action Point and resolved server-side so the
 -- window, cost, RNG, and popularity bounds can't be forged from the client. Gains cap at the
 -- effective ceiling and losses stop at the floor via the shared helpers (schema/20, 70), so
 -- campaigning obeys exactly the same bounds as every other popularity move. Each action writes a
@@ -94,10 +94,10 @@ returns void language sql security definer set search_path = public as $$
 $$;
 revoke all on function public._campaign_event(text, uuid, text, numeric) from public, anon, authenticated;
 
--- Door Knocking — 4 Influence, +1D4 Party Popularity (capped at the effective ceiling).
+-- Door Knocking — 1 Action Point, +1D4 Party Popularity (capped at the effective ceiling).
 create or replace function public.campaign_door_knock()
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_p public.parties%rowtype; v_cost int := 4; v_roll int; v_new numeric; v_delta numeric; v_body text;
+declare v_p public.parties%rowtype; v_roll int; v_new numeric; v_delta numeric; v_body text;
 begin
   v_p := public._lock_party();
   perform public._require_campaign(v_p.nation_id);
@@ -114,10 +114,10 @@ begin
 end $$;
 grant execute on function public.campaign_door_knock() to authenticated;
 
--- Public Appearance — 3 Influence, +1 Party Popularity (capped at the effective ceiling).
+-- Public Appearance — 1 Action Point, +1 Party Popularity (capped at the effective ceiling).
 create or replace function public.campaign_public_appearance()
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_p public.parties%rowtype; v_cost int := 3; v_new numeric; v_delta numeric; v_body text;
+declare v_p public.parties%rowtype; v_new numeric; v_delta numeric; v_body text;
 begin
   v_p := public._lock_party();
   perform public._require_campaign(v_p.nation_id);
@@ -133,11 +133,11 @@ begin
 end $$;
 grant execute on function public.campaign_public_appearance() to authenticated;
 
--- TV Debate — 5 Influence. 50/50: you gain +6% and they lose 6%, or the reverse. Targets another
+-- TV Debate — 1 Action Point. 50/50: you gain +6% and they lose 6%, or the reverse. Targets another
 -- party in the same nation (a coalition partner is allowed), locked FOR UPDATE to settle atomically.
 create or replace function public.campaign_tv_debate(p_target uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_p public.parties%rowtype; v_t public.parties%rowtype; v_cost int := 5; v_won boolean;
+declare v_p public.parties%rowtype; v_t public.parties%rowtype; v_won boolean;
   v_self_new numeric; v_targ_new numeric; v_self_delta numeric; v_targ_delta numeric; v_body text;
 begin
   v_p := public._lock_party();
@@ -180,10 +180,10 @@ begin
 end $$;
 grant execute on function public.campaign_tv_debate(uuid) to authenticated;
 
--- Attack Campaign — 2 Influence. 50/50: it lands (they lose 3%) or it backfires (you lose 5%).
+-- Attack Campaign — 1 Action Point. 50/50: it lands (they lose 3%) or it backfires (you lose 5%).
 create or replace function public.campaign_attack(p_target uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_p public.parties%rowtype; v_t public.parties%rowtype; v_cost int := 2; v_landed boolean; v_cut numeric;
+declare v_p public.parties%rowtype; v_t public.parties%rowtype; v_landed boolean; v_cut numeric;
   v_self_new numeric; v_targ_new numeric; v_self_delta numeric; v_targ_delta numeric; v_body text;
 begin
   v_p := public._lock_party();
@@ -222,11 +222,11 @@ begin
 end $$;
 grant execute on function public.campaign_attack(uuid) to authenticated;
 
--- Town Hall — 8 Influence, +2 Party Popularity, AND the next attack that lands on you this campaign
+-- Town Hall — 1 Action Point, +2 Party Popularity, AND the next attack that lands on you this campaign
 -- lands at half force (the shield, spent by _campaign_shield_cut when an attack connects).
 create or replace function public.campaign_town_hall()
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_p public.parties%rowtype; v_cost int := 8; v_new numeric; v_delta numeric; v_next int; v_body text;
+declare v_p public.parties%rowtype; v_new numeric; v_delta numeric; v_next int; v_body text;
 begin
   v_p := public._lock_party();
   perform public._require_campaign(v_p.nation_id);
@@ -244,12 +244,12 @@ begin
 end $$;
 grant execute on function public.campaign_town_hall() to authenticated;
 
--- Election Surprise — 5 Influence, targets another party. 50/50: it lands (they lose 4%) or it
+-- Election Surprise — 1 Action Point, targets another party. 50/50: it lands (they lose 4%) or it
 -- backfires (you lose 3% and they gain 2% on the sympathy). A bigger-stakes Attack Campaign; a landed
 -- hit is halved by the target's Town Hall shield, same as Attack Campaign.
 create or replace function public.campaign_election_surprise(p_target uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_p public.parties%rowtype; v_t public.parties%rowtype; v_cost int := 5; v_landed boolean; v_cut numeric;
+declare v_p public.parties%rowtype; v_t public.parties%rowtype; v_landed boolean; v_cut numeric;
   v_self_new numeric; v_targ_new numeric; v_self_delta numeric; v_targ_delta numeric; v_body text;
 begin
   v_p := public._lock_party();

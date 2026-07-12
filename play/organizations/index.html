@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Intl. Organizations · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
+<style>
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased}
+
+  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
+
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
+  .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
+  .eye b{color:var(--soft);font-weight:700}
+
+  /* Stat strip — the nation's standing in international bodies, as one rounded band of tiles.
+     Empty everywhere for now: no organizations exist until the diplomacy layer lands. */
+  .strip{display:flex;flex-wrap:wrap;align-items:stretch;gap:0;border:1px solid var(--line);
+    border-radius:16px;background:var(--surface);margin-top:14px;padding:6px 6px;overflow:hidden}
+  .stat{flex:1 1 130px;min-width:130px;padding:14px 18px;display:flex;flex-direction:column;gap:4px}
+  .stat .v{font-family:'Space Mono',monospace;font-weight:700;font-size:22px;line-height:1;letter-spacing:-.01em}
+  .stat .l{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
+  .stat.c-mem  .v{color:var(--blue)}
+  .stat.c-found .v{color:var(--amber)}
+  .stat.c-prog .v{color:var(--amber)}
+  .stat.c-dues .v{color:var(--amber)}
+  .stat.c-inv  .v{color:#b45cd6}
+
+  .intro{font-size:13.5px;color:var(--muted);margin:22px 0 0;max-width:70ch}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
+
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <div class="eye" id="eye">Diplomacy · International Organizations</div>
+
+    <div class="strip" id="strip">
+      <div class="stat c-mem"><span class="v" id="sMem">0</span><span class="l">Memberships</span></div>
+      <div class="stat c-found"><span class="v" id="sFound">0</span><span class="l">Founder Seat</span></div>
+      <div class="stat c-prog"><span class="v" id="sProg">0</span><span class="l">Under Programme</span></div>
+      <div class="stat c-dues"><span class="v" id="sDues">$0.00bn/yr</span><span class="l">Total Dues</span></div>
+      <div class="stat c-inv"><span class="v" id="sInv">0</span><span class="l">Open Invitation</span></div>
+    </div>
+
+    <p class="intro">No international organizations have formed yet — every nation starts unaffiliated. Memberships, founder seats and dues will fill in once the diplomacy layer lands.</p>
+  </main>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { esc } from '/util.js';
+  import { mountTopbar } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+
+  mountTopbar();
+  mountSidenav();  // left rail (desktop) / bottom bar (mobile); active item from the URL
+
+  // Read-only standing strip. Every figure is 0 across all nations today — no organizations,
+  // programmes, or invitations exist yet — so the page shows the shape without any data source
+  // to wire up. The header just names the viewer's nation; the tiles stay zero.
+  (async () => {
+    if (!isConfigured) return;
+    const user = await requireUser();
+    if (!user) return;   // redirected to login
+    try {
+      const { data: party } = await supabase.from('parties').select('nation_id').eq('user_id', user.id).single();
+      if (!party) { window.location.replace('/nation-select/'); return; }
+      const { data: home } = await supabase.from('nations').select('name, economy').eq('id', party.nation_id).single();
+      const nationName = (home && home.name) || party.nation_id;
+      const currency = (home && home.economy && home.economy.currency) || '$';
+      document.getElementById('eye').innerHTML = 'Diplomacy · International Organizations — <b>' + esc(nationName) + '</b>';
+      document.getElementById('sDues').textContent = currency + '0.00bn/yr';
+    } catch (e) { /* leave the zeroed strip as-is */ }
+  })();
+</script>
+</body>
+</html>

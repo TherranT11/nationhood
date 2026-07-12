@@ -513,7 +513,7 @@
         mod.hidden = false;
         // Each action is server-side ONE use per campaign (schema/148, keyed by party + election tick),
         // so `key` maps the card to that server action name and `used` mirrors what's already spent.
-        var CAMP = { door: { rpc: 'campaign_door_knock', cost: 4, target: false, key: 'door_knock' }, public: { rpc: 'campaign_public_appearance', cost: 3, target: false, key: 'public_appearance' }, debate: { rpc: 'campaign_tv_debate', cost: 5, target: true, key: 'tv_debate' }, attack: { rpc: 'campaign_attack', cost: 2, target: true, key: 'attack' }, townhall: { rpc: 'campaign_town_hall', cost: 8, target: false, key: 'town_hall' }, surprise: { rpc: 'campaign_election_surprise', cost: 5, target: true, key: 'election_surprise' } };
+        var CAMP = { door: { rpc: 'campaign_door_knock', target: false, key: 'door_knock' }, public: { rpc: 'campaign_public_appearance', target: false, key: 'public_appearance' }, debate: { rpc: 'campaign_tv_debate', target: true, key: 'tv_debate' }, attack: { rpc: 'campaign_attack', target: true, key: 'attack' }, townhall: { rpc: 'campaign_town_hall', target: false, key: 'town_hall' }, surprise: { rpc: 'campaign_election_surprise', target: true, key: 'election_surprise' } };   // every move costs 1 AP
         var used = {};   // server action key → true once spent this campaign
         var rivals = projection.filter(function (p) { return !p.mine; });
         var optHtml = rivals.length ? rivals.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>'; }).join('') : '<option value="">No rival parties</option>';

@@ -64,6 +64,33 @@ begin
 end $$;
 revoke all on function public._mint_timed_resource_modifier(text, text, numeric, int, int) from public, anon, authenticated;
 
+-- Replace the nation's Head of Government: rename the sitting HoG (the active government's formateur
+-- party's Party Leader, schema/30) IN PLACE to a fresh name drawn from the nation's name pool
+-- (_random_name, schema/50) — a resignation / death handover, keeping the party and its leader's stats,
+-- just a new person in the chair. No-op with no sitting government, no seeded leader, or no name pool
+-- (never blanks the incumbent). Announces the succession.
+create or replace function public._card_change_hog(p_nation text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_form uuid; v_leader uuid; v_first text; v_last text; v_old text; v_new text;
+begin
+  select formateur_party_id into v_form from public.governments where nation_id = p_nation and status = 'active';
+  if v_form is null then return; end if;                        -- no sitting government → nobody to replace
+  v_leader := (public._party_leader(v_form)).id;                -- the sitting HoG (shared source, schema/30)
+  if v_leader is null then return; end if;                      -- the HoG's party has no seeded leader → no-op
+  v_old := public._party_leader_name(v_form);                   -- their name, for the succession line
+  select first_name, last_name into v_first, v_last from public._random_name(p_nation);   -- successor from the name pool
+  -- Need BOTH a given name and a surname: politicians.first_name/last_name are NOT NULL, so a partial
+  -- pool (e.g. surnames but no given names) must leave the incumbent rather than blank a component.
+  if coalesce(btrim(v_first), '') = '' or coalesce(btrim(v_last), '') = '' then return; end if;
+  v_new := v_first || ' ' || v_last;
+  update public.politicians set first_name = v_first, last_name = v_last where id = v_leader;
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (p_nation, v_form, 'party',
+            coalesce(nullif(v_old, ''), 'The Head of Government') || ' steps down; ' || v_new ||
+              ' takes office as Head of Government.', public.current_game_date());
+end $$;
+revoke all on function public._card_change_hog(text) from public, anon, authenticated;
+
 -- Apply ONE authored effect. p_target is the party a party-scoped effect hits (null → skip, no target
 -- chosen). Unresolvable kinds are silent no-ops (see header). Recurses for 'cond'.
 drop function if exists public._apply_card_effect(text, uuid, uuid, text, jsonb, int);   -- retired 6-arg form (dead p_party removed)
@@ -93,6 +120,8 @@ begin
       end if;
     when 'nat_el' then
       update public.nations set next_election_tick = p_tick where id = p_nation and coalesce(next_election_tick, p_tick + 1) > p_tick;
+    -- Swap the sitting Head of Government for a freshly-named successor (resignation / death handover).
+    when 'hog_change' then perform public._card_change_hog(p_nation);
     -- Diplomacy: nudge the 1–10 standing between the playing nation and a nation chosen in the card
     -- (p->>'nation'). rel_down is rel_up with the sign flipped. Clamp + guards live in _relation_adjust.
     when 'rel_up' then   perform public._relation_adjust(p_nation, p_p->>'nation',  v_x::int);

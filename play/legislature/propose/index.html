@@ -338,13 +338,17 @@
       // One live bill per policy: if this policy already has one in committee/on the floor, the
       // chamber won't take another until it resolves (the server enforces this too).
       var blocked = !!pendingPolicies[curPolicy().id];
-      var ok = !noSeats && !blocked && sel.proposed != null && sel.proposed !== inForceIdx() && !lawBusy;
-      // Proposing a law costs 1 Action Point (flat) — the old rung-scaled Influence cost is retired.
-      document.getElementById('l-cost').textContent = ok ? '1 AP' : '—';
+      // Proposing costs 1 Action Point, +1 per rung beyond the first (server: propose_law, schema/92).
+      var rungs = sel.proposed == null ? 0 : Math.abs(sel.proposed - inForceIdx());
+      var ap = Math.max(0, Number(party.action_points) || 0);
+      var canAfford = rungs > 0 && ap >= rungs;
+      var ok = !noSeats && !blocked && sel.proposed != null && sel.proposed !== inForceIdx() && canAfford && !lawBusy;
+      document.getElementById('l-cost').textContent = rungs > 0 ? (rungs + ' AP') : '—';
       sendBtn.disabled = !ok;
       if (!lawBusy) note.textContent = noSeats ? 'Your party holds no legislature seats — win seats at an election before you can propose a bill.'
         : blocked ? 'A bill to change this policy is already before the chamber — it must resolve first.'
-        : ok ? 'Sends the bill to committee, where parties debate and endorse before it reaches the floor.' : 'Pick a rung to propose it.';
+        : (rungs > 0 && !canAfford) ? ('Not enough Action Points — a ' + rungs + '-rung move costs ' + rungs + ' AP, you have ' + ap + '.')
+        : ok ? 'Sends the bill to committee' + (rungs > 1 ? ' — a ' + rungs + '-rung leap costs ' + rungs + ' AP' : '') + ', where parties debate and endorse before it reaches the floor.' : 'Pick a rung to propose it.';
     }
 
     polSel.onchange = function () { sel.proposed = null; touched = { title: false, intro: false }; titleInp.value = ''; introInp.value = ''; paint(); };
@@ -568,7 +572,7 @@
     if (!user) return; // redirected to login
     var party = null, nation = null;
     try {
-      ({ data: party } = await supabase.from('parties').select('name, archetype, nation_id, influence, seats').eq('user_id', user.id).single());
+      ({ data: party } = await supabase.from('parties').select('name, archetype, nation_id, influence, action_points, seats').eq('user_id', user.id).single());
       if (!party) { window.location.replace('/nation-select/'); return; }
       ({ data: nation } = await supabase.from('nations').select('name, flag, economy, declarations, policies, population, stats, gdp, electoral_threshold').eq('id', party.nation_id).single());
       const nationName = (nation && nation.name) || party.nation_id;

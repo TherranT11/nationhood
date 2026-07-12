@@ -190,7 +190,7 @@ create or replace function public.propose_law(p_policy uuid, p_option int,
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_party public.parties%rowtype; v_name text; v_opt text; v_def jsonb;
-  v_tick int; v_curopt int; v_levels int; v_cost int; v_pid uuid;
+  v_tick int; v_curopt int; v_levels int; v_cost int; v_pid uuid; v_i int;
   v_title text; v_intro text;
 begin
   select policy_name, option_name into v_name, v_opt from public._check_law(p_policy, p_option);
@@ -201,19 +201,21 @@ begin
   v_title := left(coalesce(nullif(btrim(p_title), ''), v_name || ' → ' || v_opt), 120);
   v_intro := left(nullif(btrim(p_intro), ''), 400);
 
-  v_party := public._begin_action(0);   -- lock the party, require >= 1 Influence
+  v_party := public._begin_action(0);   -- lock the party + spend the base Action Point
 
   -- A party with no legislature seats has no standing to author a bill (client greys it out too).
   if v_party.seats < 1 then raise exception 'A party with no legislature seats cannot propose a bill.'; end if;
 
-  -- No-op guard: don't let a party spend Influence to propose the option already in force.
+  -- No-op guard: don't let a party spend an action to propose the option already in force.
   v_curopt := public._nation_policy_option(v_party.nation_id, p_policy);
   if v_curopt = p_option then raise exception 'That policy is already set to that option.'; end if;
 
-  -- Cost = the policy's own authored Influence (definition.influence) scaled by the number of rungs
-  -- the change moves (_proposal_cost). Each policy sets its own base — there's no game-wide setting.
+  -- Cost is Action Points, not Influence: 1 for the move, +1 per rung BEYOND the first (base spent by
+  -- _begin_action above). A multi-rung leap costs more of your turn. If the party can't afford the extra,
+  -- _spend_action_point raises and the whole proposal rolls back.
   v_levels := abs(p_option - v_curopt);
-  v_cost := public._proposal_cost(coalesce((v_def->>'influence')::int, 0), v_levels);
+  for v_i in 2 .. v_levels loop perform public._spend_action_point(v_party.id); end loop;
+  v_cost := v_levels;   -- the Action-Point cost (1 per rung moved), echoed to the client
 
   -- One live bill per policy. Lock the nation row (the no-confidence idiom) so two parties can't both
   -- slip a competing bill in, then refuse if one is already in committee, on the agenda, or on the floor.

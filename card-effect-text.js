@@ -44,6 +44,7 @@ export function cardEffectText(kind, p, nationName, cardName) {
     case 'shuffle': return 'This card <b>shuffles back into the deck</b> to be won again';
     case 'no_conf': return 'Put forth a <b>motion of no confidence</b>';
     case 'nat_el': return 'Carry out a <b>national election</b>';
+    case 'hog_change': return 'The <b>Head of Government</b> is replaced by a new leader';
     case 'hex_el': return 'Carry out an <b>election in a chosen hex</b> (reapportions its seats)';
     case 'mob_add': return 'An <b>Armed Mob</b> rises in <b>hex ' + esc(p.hex || '?') + '</b>';
     case 'mob_rem': return 'The <b>Armed Mob</b> in <b>hex ' + esc(p.hex || '?') + '</b> disperses';
