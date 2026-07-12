@@ -99,7 +99,7 @@ function isActive(path, href) {
 
 // Per-item attention dots, revealed after mount by their update fns:
 //   • Legislature (red)         — a floor measure this party hasn't voted on (updateLegDot).
-//   • Intl. Organizations (amber) — a founding org this nation is invited to / in (updateOrgDot).
+//   • Intl. Organizations (amber) — a founding org this nation hosts or is invited to (updateOrgDot).
 function itemDot(it, cls) {
   if (it.href === '/play/legislature/')   return '<span class="' + cls + '" data-legdot hidden></span>';
   if (it.href === '/play/organizations/') return '<span class="' + cls + ' amber" data-orgdot hidden></span>';
@@ -184,8 +184,9 @@ async function updateLegDot() {
   } catch (e) { /* leave the dot hidden */ }
 }
 
-// Amber Intl. Organizations dot: this nation holds an unsettled invitation (pending or accepted) to an
-// organization still in its charter convention — shown until the nation leaves or the org is founded.
+// Amber Intl. Organizations dot: this nation has a founding org needing attention — either it HOSTS one
+// still assembling, or it holds an unsettled invitation (pending or accepted) to one. Shown until the
+// org is founded (or, for an invitee, until it leaves). Both light the same dot.
 async function updateOrgDot() {
   if (!isConfigured) return;
   try {
@@ -193,11 +194,17 @@ async function updateOrgDot() {
     if (!user) return;
     const { data: party } = await supabase.from('parties').select('nation_id').eq('user_id', user.id).maybeSingle();
     if (!party) return;
-    const { data: invs } = await supabase.from('organization_invitations').select('org_id').eq('nation_id', party.nation_id).in('status', ['pending', 'accepted']);
-    if (!invs || !invs.length) return;
-    const { data: orgs } = await supabase.from('organizations').select('id, status').in('id', invs.map(function (i) { return i.org_id; }));
-    if (orgs && orgs.some(function (o) { return o.status === 'founding'; })) {
-      document.querySelectorAll('[data-orgdot]').forEach(function (el) { el.hidden = false; });
+    // Host side: this nation is assembling an org of its own.
+    const { data: hosted } = await supabase.from('organizations').select('id').eq('host_nation', party.nation_id).eq('status', 'founding').limit(1);
+    let show = !!(hosted && hosted.length);
+    // Invitee side: an unsettled invitation to an org still in its charter convention.
+    if (!show) {
+      const { data: invs } = await supabase.from('organization_invitations').select('org_id').eq('nation_id', party.nation_id).in('status', ['pending', 'accepted']);
+      if (invs && invs.length) {
+        const { data: orgs } = await supabase.from('organizations').select('id, status').in('id', invs.map(function (i) { return i.org_id; }));
+        show = !!(orgs && orgs.some(function (o) { return o.status === 'founding'; }));
+      }
     }
+    if (show) document.querySelectorAll('[data-orgdot]').forEach(function (el) { el.hidden = false; });
   } catch (e) { /* leave the dot hidden */ }
 }
