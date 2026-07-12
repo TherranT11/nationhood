@@ -149,7 +149,7 @@ function corners(cx, cy) {
   return out.join(' ');
 }
 
-var pan = { x: 0, y: 0 }, zoom = 1.1, drag = null;
+var pan = { x: 0, y: 0 }, zoom = 1.1, minZoom = 0.35, drag = null;
 var svgEl = document.getElementById('worldSvg'), worldG = null;
 var mapArea = document.getElementById('mapArea'), hoverChip = document.getElementById('hoverChip');
 
@@ -204,9 +204,11 @@ function applyTransform() { if (worldG) worldG.setAttribute('transform', 'transl
   // Sea hexes are drawn only where a 'sea' row exists; everywhere else the page background is the sea,
   // so a big sparse world stays light. Draw land + any authored sea rows.
   var body = '';
+  var bMinX = Infinity, bMaxX = -Infinity, bMinY = Infinity, bMaxY = -Infinity;   // land bounds → fit zoom
   hexes.forEach(function (h) {
     var p = axialToPix(h.q, h.r, S, 0, 0);
     var isLand = h.terrain === 'land';
+    if (isLand) { if (p.x < bMinX) bMinX = p.x; if (p.x > bMaxX) bMaxX = p.x; if (p.y < bMinY) bMinY = p.y; if (p.y > bMaxY) bMaxY = p.y; }
     var fill = isLand ? (h.nation_id ? (colorOf[h.nation_id] || '#9a8f7d') : LAND_NEUTRAL) : waterTone(h.q, h.r);
     var nm = h.nation_id && natById[h.nation_id] ? natById[h.nation_id].name : (isLand ? 'Unclaimed' : '');
     body += '<polygon points="' + corners(p.x, p.y) + '" fill="' + fill + '" stroke="#fff" stroke-opacity="' + (isLand ? 0.35 : 0.22) + '" stroke-width="1" data-nation="' + esc(nm) + '"/>';
@@ -229,6 +231,15 @@ function applyTransform() { if (worldG) worldG.setAttribute('transform', 'transl
   svgEl.innerHTML = '<g id="world">' + body + '</g>';
   worldG = document.getElementById('world');
   document.getElementById('loading').style.display = 'none';
+
+  // Floor the zoom-out at "the whole world roughly fills the viewport" (with a little sea margin), so
+  // the map can never shrink to a distant speck. Falls back to the default floor if bounds are empty.
+  if (isFinite(bMinX)) {
+    var worldW = (bMaxX - bMinX) + S * 4, worldH = (bMaxY - bMinY) + S * 4;
+    var fitZoom = Math.min(mapArea.clientWidth / worldW, mapArea.clientHeight / worldH);
+    minZoom = Math.max(0.3, fitZoom * 0.9);
+    if (zoom < minZoom) zoom = minZoom;
+  }
 
   // Centre the view on the player's nation (else the whole world's centroid).
   var focus = (myNation ? land.filter(function (h) { return h.nation_id === myNation; }) : []);
@@ -254,7 +265,7 @@ window.addEventListener('mouseup', function () { drag = null; mapArea.classList.
 mapArea.addEventListener('mouseleave', function () { hoverChip.style.display = 'none'; });
 
 function zoomAt(factor, cxp, cyp) {
-  var nz = Math.max(0.35, Math.min(3, Math.round(zoom * factor * 100) / 100));
+  var nz = Math.max(minZoom, Math.min(3, Math.round(zoom * factor * 100) / 100));
   // keep the point under the cursor fixed
   pan.x = cxp - (cxp - pan.x) * (nz / zoom);
   pan.y = cyp - (cyp - pan.y) * (nz / zoom);
