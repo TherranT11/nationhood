@@ -33,7 +33,12 @@
   .cm .tle .tdot{position:absolute;left:-5px;top:4px;width:9px;height:9px;border-radius:50%;background:var(--soft);border:2px solid var(--surface)}
   .cm .tle.world .tdot{background:var(--blue)}
   .cm .tle .when{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;color:var(--soft);letter-spacing:.08em;text-transform:uppercase}
-  .cm .tle .ntag{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.06em;color:var(--blue);margin-left:6px}
+  .cm .tle .ntag{display:inline-flex;align-items:center;gap:4px;font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.06em;color:var(--blue);margin-left:6px;vertical-align:middle}
+  .cm .tle .ntag .nflag{width:12px;height:8px}
+  /* Inline nation mentions in the body: coloured name with a tiny flag, no layout shift. */
+  .cm .tle .nmention{font-weight:700}
+  .cm .tle .nmention .nflag{width:13px;height:9px;margin-right:3px;vertical-align:-1px}
+  .cm .nflag{object-fit:cover;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
   .cm .tle .tt{font-size:12.5px;color:var(--ink);margin:2px 0 1px;line-height:1.35}
   .cm .tlempty{color:var(--soft);font-size:12.5px;padding:6px 0}
   .cm .err{color:var(--red);font-size:12.5px;padding:8px 0}
@@ -209,6 +214,8 @@
   var CUR_TICK = 1;               // current month, for the eyebrow + the one-action-per-tick gate
   var BIDS = {};                  // my live bids this tick: deck_card_id → amount (the "bidding this month" marker)
   var NATIONS = {};               // nation id → name, for the world timeline tags
+  var NATION_FLAGS = {};          // nation id → flag URL, for the world timeline tags + inline mentions
+  var PARTY_NATION = {};          // party id → nation id, to attribute broadcast events to their AUTHOR nation
   var NATION_FLAG = '';           // this nation's flag URL, stamped on its nation-specific cards
   // Party micro-actions stay off the World Timeline — it's for nation-scale news.
   var LOCAL_KINDS = { rally:1, fundraise:1, attack:1, adblitz:1, recruit:1, party:1 };
@@ -674,14 +681,47 @@
     wrap.querySelectorAll('[data-dec]').forEach(function (b) { b.onclick = function () { decideCard(b.dataset.dec, +b.dataset.opt); }; });
   }
 
+  // A stable, readable colour per nation, hashed from its id (same id → same hue every render).
+  function nationColor(id) {
+    var h = 0; String(id || '').split('').forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; });
+    return 'hsl(' + (h % 360) + ' 68% 62%)';
+  }
+  function escapeRegex(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  // Small inline flag chip for a nation id (empty string if the nation has no flag).
+  function flagChip(id) {
+    var f = NATION_FLAGS[id];
+    return f ? '<img class="nflag" src="' + esc(f) + '" alt="">' : '';
+  }
+  // The world-timeline tag: the AUTHOR nation, flag + name, in the nation's colour.
+  function nationTag(id) {
+    if (!id) return '';
+    return '<span class="ntag" style="color:' + nationColor(id) + '">' + flagChip(id) +
+      esc(NATIONS[id] || id) + '</span>';
+  }
+  // Colour-code + flag every known nation named in the body. One pass over the escaped text (longest
+  // names first, word-bounded) so inserted markup is never re-scanned; possessives ("Calcordia's") keep
+  // the trailing text outside the coloured span.
+  function decorateBody(body) {
+    var safe = esc(body || '');
+    var names = Object.keys(NATIONS).map(function (id) { return { id: id, name: NATIONS[id] }; })
+      .filter(function (x) { return x.name; }).sort(function (a, b) { return b.name.length - a.name.length; });
+    if (!names.length) return safe;
+    var byName = {}; names.forEach(function (x) { byName[x.name] = x.id; });
+    var re = new RegExp('\\b(' + names.map(function (x) { return escapeRegex(esc(x.name)); }).join('|') + ')\\b', 'g');
+    return safe.replace(re, function (m) {
+      var id = byName[m]; if (!id) return m;
+      return '<span class="nmention" style="color:' + nationColor(id) + '">' + flagChip(id) + m + '</span>';
+    });
+  }
+
   function renderTimeline(elId, events, world) {
     var el = document.getElementById(elId);
     if (!events.length) { el.innerHTML = '<div class="tlempty">No events yet.</div>'; return; }
     el.innerHTML = events.map(function (e) {
-      var tag = world && e.nation_id ? '<span class="ntag">' + esc(NATIONS[e.nation_id] || e.nation_id) + '</span>' : '';
+      var tag = world ? nationTag(e.author_nation || e.nation_id) : '';
       return '<div class="tle' + (world ? ' world' : '') + '"><span class="tdot"></span>' +
         '<div class="when">' + esc((e.game_date || '').replace(',', '')) + tag + '</div>' +
-        '<div class="tt">' + esc(e.body || '') + '</div></div>';
+        '<div class="tt">' + decorateBody(e.body || '') + '</div></div>';
     }).join('');
   }
 
@@ -740,11 +780,16 @@
     } catch (e) {}
     try {
       // World Timeline: nation-scale news from OTHER nations, party micro-actions filtered out,
-      // deduped by body (a global event lands one row per nation).
-      const { data } = await supabase.from('events').select('kind, body, game_date, created_at, nation_id').neq('nation_id', NATION_ID).order('created_at', { ascending: false }).limit(60);
+      // deduped by body (a global/broadcast event lands one row per nation). Each row is re-tagged with
+      // its AUTHOR nation (via party_id) so a broadcast reads as the nation that made it, not whichever
+      // recipient copy the de-dup kept; the player's OWN broadcasts drop out (they're in the home feed).
+      const { data } = await supabase.from('events').select('kind, body, game_date, created_at, nation_id, party_id').neq('nation_id', NATION_ID).order('created_at', { ascending: false }).limit(60);
       var seen = {};
-      world = (data || []).filter(function (e) {
+      world = (data || []).map(function (e) {
+        return Object.assign({}, e, { author_nation: (e.party_id && PARTY_NATION[e.party_id]) || e.nation_id });
+      }).filter(function (e) {
         if (LOCAL_KINDS[e.kind]) return false;
+        if (e.author_nation === NATION_ID) return false;   // my own broadcast — already in the home feed
         if (seen[e.body]) return false;
         seen[e.body] = 1; return true;
       }).slice(0, 15);
@@ -779,8 +824,14 @@
         CUR_TICK = (gs && gs.current_tick) || 1;
       } catch (e) {}
       try {
-        const { data: nats } = await supabase.from('nations').select('id, name');
-        (nats || []).forEach(function (n) { NATIONS[n.id] = n.name; });
+        const { data: nats } = await supabase.from('nations').select('id, name, flag');
+        (nats || []).forEach(function (n) { NATIONS[n.id] = n.name; if (n.flag) NATION_FLAGS[n.id] = n.flag; });
+      } catch (e) {}
+      try {
+        // party → nation, so a broadcast event (one row per nation, schema/119) is tagged with the
+        // nation that AUTHORED it rather than whichever recipient copy survived the de-dup.
+        const { data: pn } = await supabase.from('parties').select('id, nation_id');
+        (pn || []).forEach(function (p) { PARTY_NATION[p.id] = p.nation_id; });
       } catch (e) {}
       const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', NATION_ID).single();
       NATION_NAME = (nation && nation.name) || NATIONS[NATION_ID] || NATION_ID;
