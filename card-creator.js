@@ -45,6 +45,7 @@ const KINDS = {
   res_remove: { label: 'Remove X [resource] from on-hand' },
   rel_up:     { label: 'Relations with a nation increase by X' },
   rel_down:   { label: 'Relations with a nation decrease by X' },
+  rel_pick:   { label: 'Relations with a nation of the decider’s choice increase by X (decision cards)' },
   prod_up:    { label: 'Increase production of [resource] by X for N ticks' },
   prod_down:  { label: 'Decrease production of [resource] by X for N ticks' },
   deck_add:   { label: 'Activate a dormant card into a nation’s deck (now or in N ticks)' },
@@ -505,6 +506,7 @@ export async function mountCardCreator(mount) {
       '<select data-i="' + i + '" data-f="nation"><option value=""' + (f.p.nation ? '' : ' selected') + '>— select nation —</option>' +
       NATIONS.map(function (n) { return '<option value="' + esc(n.id) + '"' + (n.id === f.p.nation ? ' selected' : '') + '>' + esc(n.name) + '</option>'; }).join('') + '</select>' +
       '<span class="lbl">by</span>' + num(f.p.x, 'x');
+    if (f.kind === 'rel_pick') h = '<span class="lbl">with a nation of the decider’s choice · by</span>' + num(f.p.x, 'x');
     if (f.kind === 'coal_pop_up' || f.kind === 'coal_pop_down') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">to every party in government</span>';
     if (f.kind === 'sanction') h = '<span class="lbl">sanction</span>' +
       '<select data-i="' + i + '" data-f="nation"><option value=""' + (f.p.nation ? '' : ' selected') + '>— target nation —</option>' +
@@ -594,6 +596,7 @@ export async function mountCardCreator(mount) {
       : (v === 'res_add' || v === 'res_remove') ? { res: 'food', x: 2 }
       : (v === 'prod_up' || v === 'prod_down') ? { res: 'energy', x: 2, ticks: 12 }
       : (v === 'rel_up' || v === 'rel_down') ? { nation: '', x: 2 }
+      : v === 'rel_pick' ? { x: 1 }
       : v === 'deck_add' ? { card: '', nation: '', ticks: 0 }
       : v === 'sanction' ? { nation: '', ticks: 36 }
       : (v === 'corp_grow' || v === 'corp_shrink') ? { x: 2 }

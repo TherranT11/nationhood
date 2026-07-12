@@ -31,6 +31,7 @@ const NAV = [
   { href: '/play/conflict/',    label: 'Conflict',     svg: '<path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/>' },
   { href: '/play/forum/',      label: 'Forum',        svg: '<path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/>' },
   { href: '/play/wiki/',        label: 'Wiki',         svg: '<path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/>' },
+  { href: '/play/home2/',       label: 'Home2',        svg: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>' },
 ];
 // Destinations pinned to the mobile bottom bar; everything else falls into the More sheet.
 // Home leads (the login landing); Elections lives in the More sheet, being a periodic stop.

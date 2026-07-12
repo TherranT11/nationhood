@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home2 · Nationhood</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#101018; --side:#14141c; --panel:#1a1a26; --line:#26263a;
+    --text:#e8ebf2; --muted:#8a93a8; --dim:#5c657b;
+    --accent:#8f8ff5; --orange:#f0a03c; --green:#3ecf8e; --red:#e5604c;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  .hp-root{font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--text);background:var(--bg);
+    height:100vh;display:flex;overflow:hidden}
+  .mono{font-family:'JetBrains Mono',monospace}
+
+  /* sidebar */
+  .side{width:216px;min-width:216px;background:var(--side);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;padding:14px 10px}
+  .brand{display:flex;gap:10px;align-items:flex-start;padding:2px 6px 14px;border-bottom:1px solid var(--line);margin-bottom:10px}
+  .brand__crest{width:36px;height:36px;border-radius:6px;background:#123524;border:1px solid #2c5c40;
+    display:flex;align-items:center;justify-content:center;font-size:16px;flex:none;overflow:hidden}
+  .brand__crest img{width:100%;height:100%;object-fit:cover}
+  .brand__name{font-weight:700;font-size:13px;line-height:1.25}
+  .brand__sub{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--dim);margin-top:3px;text-transform:uppercase}
+  .nav{overflow-y:auto;flex:1}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;color:var(--muted);
+    font-family:'JetBrains Mono',monospace;font-size:12.5px;cursor:pointer;position:relative;text-decoration:none}
+  .nav-item:hover{color:var(--text);background:#1c1c2a}
+  .nav-item.on{background:#232336;color:var(--accent)}
+  .nav-item svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .nav-item .dot{width:6px;height:6px;border-radius:3px;background:var(--orange);position:absolute;right:10px}
+  .side__foot{border-top:1px solid var(--line);padding-top:10px;display:flex;gap:10px;align-items:center}
+  .side__avatar{width:34px;height:34px;border-radius:17px;background:#2a2a3e;display:flex;align-items:center;
+    justify-content:center;font-weight:700;font-size:12px;color:var(--accent)}
+
+  /* map area */
+  .map-area{flex:1;position:relative;overflow:hidden;background:#a9cfdd;cursor:grab;user-select:none}
+  .map-area.grabbing{cursor:grabbing}
+  .map-area svg.world{display:block;width:100%;height:100%}
+
+  .chip{font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 8px;border-radius:5px;
+    border:1px solid var(--line);background:var(--panel);color:var(--muted)}
+  .zoombtn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:var(--panel);
+    border:1px solid var(--line);color:var(--muted);cursor:pointer;border-radius:8px;font-size:18px;line-height:1}
+  .zoombtn:hover{color:var(--text)}
+
+  /* topbar */
+  .topbar{position:absolute;top:0;left:0;right:0;height:46px;z-index:10;background:rgba(14,14,22,.88);
+    backdrop-filter:blur(6px);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 14px;gap:14px}
+  .tb-stat .k{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--dim)}
+  .tb-stat .v{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700}
+
+  .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim);background:#a9cfdd;z-index:5}
+</style>
+</head>
+<body>
+<div class="hp-root">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="side">
+    <div class="brand">
+      <div class="brand__crest" id="brandCrest">🦅</div>
+      <div>
+        <div class="brand__name" id="brandName">Loading…</div>
+        <div class="brand__sub" id="brandSub"></div>
+      </div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side__foot">
+      <div class="side__avatar">◆</div>
+      <div>
+        <div style="font-size:12px;font-weight:600">World Map</div>
+        <div class="mono" style="font-size:9px;color:var(--dim)">REAL TERRITORY</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ MAP AREA ============ -->
+  <main class="map-area" id="mapArea">
+    <svg class="world" id="worldSvg"></svg>
+    <div class="loading" id="loading">Loading the world…</div>
+
+    <!-- topbar -->
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="brand__crest" style="width:20px;height:20px;border-radius:4px;font-size:11px" id="tbCrest">🦅</div>
+        <span style="font-weight:700;font-size:13px" id="tbName">Nationhood</span>
+      </div>
+      <div style="width:1px;height:22px;background:var(--line)"></div>
+      <div style="display:flex;gap:16px;align-items:center;flex:1">
+        <div class="tb-stat"><span class="k">NATIONS </span><span class="v" id="tbNations">—</span></div>
+        <div class="tb-stat"><span class="k">TERRITORY </span><span class="v" id="tbHexes">—</span></div>
+        <div class="tb-stat"><span class="k">CITIES </span><span class="v" id="tbCities">—</span></div>
+      </div>
+    </div>
+
+    <!-- zoom controls -->
+    <div style="position:absolute;right:14px;top:58px;display:flex;flex-direction:column;gap:6px;z-index:10">
+      <div class="zoombtn" id="zoomIn">+</div>
+      <div class="zoombtn" id="zoomOut">−</div>
+    </div>
+
+    <!-- hover chip + hint -->
+    <div class="chip" id="hoverChip" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:10;color:var(--text);font-size:11px;display:none"></div>
+    <div class="mono" style="position:absolute;bottom:14px;right:14px;z-index:10;font-size:9px;letter-spacing:.12em;color:rgba(20,20,30,.55)">DRAG TO PAN · SCROLL / ± TO ZOOM</div>
+  </main>
+</div>
+
+<script type="module">
+import { supabase, isConfigured, requireUser } from '/supabase.js';
+import { esc, declaredValue } from '/util.js';
+import { axialToPix, nationColors } from '/hexmap.js';
+
+/* ---------------- NAV ---------------- */
+const NAV = [
+  ['Home','/play/news/','<path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/>'],
+  ['Party','/play/party/','<path d="M4 21V4"/><path d="M4 4c3-2 6 2 9 0s6-2 9 0v9c-3 2-6-2-9 0s-6 2-9 0"/>'],
+  ['Nation','/play/','<path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/>'],
+  ['Government','/play/government/','<path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/>'],
+  ['Coalition','/play/coalition/','<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2 20a6 6 0 0 1 10-4M22 20a6 6 0 0 0-10-4"/>'],
+  ['Legislature','/play/legislature/','<path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/>'],
+  ['Policies','/play/policies/','<path d="M7 3h10a1 1 0 011 1v16l-3-2-3 2-3-2-3 2V4a1 1 0 011-1z"/><path d="M9 8h6M9 12h5"/>'],
+  ['Elections','/play/elections/','<path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/>'],
+  ['Economy','/play/economy/','<path d="M4 19h16"/><path d="M4 15l4-4 3 3 5-6"/><path d="M16 8h2v2"/>'],
+  ['Corporations','/play/corporations/','<path d="M3 21h18"/><path d="M6 21V5a1 1 0 011-1h6a1 1 0 011 1v16"/><path d="M14 21V10h4a1 1 0 011 1v10"/><path d="M9 8h2M9 12h2M9 16h2"/>'],
+  ['Intl. Organizations','/play/organizations/','<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.2"/><path d="M12 3v5.8M12 15.2V21M3 12h5.8M15.2 12H21"/>'],
+  ['World','/play/world/','<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>'],
+  ['Conflict','/play/conflict/','<path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/>'],
+  ['Forum','/play/forum/','<path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/>'],
+  ['Wiki','/play/wiki/','<path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/>'],
+  ['Home2','/play/home2/','<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>']
+];
+document.getElementById('nav').innerHTML = NAV.map(function (n) {
+  var on = n[1] === '/play/home2/';
+  return '<a class="nav-item' + (on ? ' on' : '') + '" href="' + n[1] + '">' +
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' + n[2] + '</svg>' + esc(n[0]) + '</a>';
+}).join('');
+
+/* ---------------- HEX GEOMETRY ---------------- */
+const S = 16;   // hex size (px, at zoom 1)
+// Pointy-top hexagon corners around a centre, matching axialToPix's pointy-top layout.
+function corners(cx, cy) {
+  var out = [];
+  for (var i = 0; i < 6; i++) { var a = Math.PI / 180 * (60 * i - 30); out.push((cx + S * Math.cos(a)).toFixed(1) + ',' + (cy + S * Math.sin(a)).toFixed(1)); }
+  return out.join(' ');
+}
+
+var pan = { x: 0, y: 0 }, zoom = 1.1, drag = null;
+var svgEl = document.getElementById('worldSvg'), worldG = null;
+var mapArea = document.getElementById('mapArea'), hoverChip = document.getElementById('hoverChip');
+
+function applyTransform() { if (worldG) worldG.setAttribute('transform', 'translate(' + pan.x + ',' + pan.y + ') scale(' + zoom + ')'); }
+
+/* ---------------- LOAD + RENDER ---------------- */
+(async function () {
+  if (!isConfigured) { document.getElementById('loading').textContent = 'Supabase isn’t configured.'; return; }
+  const user = await requireUser();
+  if (!user) return;   // redirected to login
+
+  var myNation = null, myPartyName = '';
+  try {
+    const { data: party } = await supabase.from('parties').select('name, nation_id').eq('user_id', user.id).maybeSingle();
+    if (party) { myNation = party.nation_id; myPartyName = party.name || ''; }
+  } catch (e) {}
+
+  var nations = [], hexes = [], cities = [], capSlot = null;
+  try { const { data } = await supabase.from('nations').select('id, name, color, flag, declarations'); nations = data || []; } catch (e) {}
+  try { const { data } = await supabase.from('world_hexes').select('q, r, terrain, nation_id, name, population'); hexes = data || []; } catch (e) {}
+  try { const { data } = await supabase.from('cities').select('nation_id, name, q, r'); cities = data || []; } catch (e) {}
+  try { const { data } = await supabase.from('declarations').select('slug, options, default_index, custom_allowed').eq('slug', 'capital_name').maybeSingle(); capSlot = data || null; } catch (e) {}
+
+  var natById = {}; nations.forEach(function (n) { natById[n.id] = n; });
+  var colorOf = nationColors(nations);   // { nationId: '#rrggbb' } — stored colour or stable palette
+  // Each nation's capital name (one source: the capital_name declaration), for the ★ marker.
+  var capitalByNation = {};
+  nations.forEach(function (n) { var c = capSlot ? declaredValue(capSlot, n.declarations || {}) : null; if (c && c !== '—') capitalByNation[n.id] = c; });
+
+  // Brand + topbar from real data.
+  var myNat = myNation ? natById[myNation] : null;
+  document.getElementById('brandName').textContent = myPartyName || (myNat ? myNat.name : 'Nationhood');
+  document.getElementById('brandSub').textContent = myNat ? myNat.name : 'The World';
+  document.getElementById('tbName').textContent = myNat ? myNat.name : 'The World';
+  if (myNat && myNat.flag) {
+    document.getElementById('brandCrest').innerHTML = '<img src="' + esc(myNat.flag) + '" alt="">';
+    document.getElementById('tbCrest').innerHTML = '<img src="' + esc(myNat.flag) + '" alt="">';
+  }
+  document.getElementById('tbNations').textContent = nations.length;
+  document.getElementById('tbHexes').textContent = hexes.filter(function (h) { return h.terrain === 'land'; }).length;
+  document.getElementById('tbCities').textContent = cities.filter(function (c) { return c.q != null && c.r != null; }).length;
+
+  var land = hexes.filter(function (h) { return h.terrain === 'land'; });
+  if (!land.length) { document.getElementById('loading').textContent = 'No world map has been drawn yet (adminsetup → World Map).'; return; }
+
+  // Water fill mirrors the shared renderer's tint (hexmap.js): a subtle 2-tone by (q+r) parity.
+  var waterTone = function (q, r) { return ((q + r) % 2 === 0) ? '#b9dae6' : '#a9cfdd'; };
+  var LAND_NEUTRAL = '#e9e3d4';   // unclaimed land
+
+  // Sea hexes are drawn only where a 'sea' row exists; everywhere else the page background is the sea,
+  // so a big sparse world stays light. Draw land + any authored sea rows.
+  var body = '';
+  hexes.forEach(function (h) {
+    var p = axialToPix(h.q, h.r, S, 0, 0);
+    var isLand = h.terrain === 'land';
+    var fill = isLand ? (h.nation_id ? (colorOf[h.nation_id] || '#9a8f7d') : LAND_NEUTRAL) : waterTone(h.q, h.r);
+    var nm = h.nation_id && natById[h.nation_id] ? natById[h.nation_id].name : (isLand ? 'Unclaimed' : '');
+    body += '<polygon points="' + corners(p.x, p.y) + '" fill="' + fill + '" stroke="#fff" stroke-opacity="' + (isLand ? 0.35 : 0.22) + '" stroke-width="1" data-nation="' + esc(nm) + '"/>';
+  });
+  // Player-nation outline glow.
+  if (myNation) {
+    land.filter(function (h) { return h.nation_id === myNation; }).forEach(function (h) {
+      var p = axialToPix(h.q, h.r, S, 0, 0);
+      body += '<polygon points="' + corners(p.x, p.y) + '" fill="none" stroke="#f0a03c" stroke-opacity=".55" stroke-width="1.6"/>';
+    });
+  }
+  // Cities (real rows with coordinates). ★ marks the nation's declared capital.
+  cities.filter(function (c) { return c.q != null && c.r != null; }).forEach(function (c) {
+    var p = axialToPix(c.q, c.r, S, 0, 0);
+    var isCap = capitalByNation[c.nation_id] && capitalByNation[c.nation_id] === c.name;
+    body += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (isCap ? 3.4 : 2.4) + '" fill="#1a1a1a"/>' +
+      '<text x="' + (p.x + 6) + '" y="' + (p.y + 4) + '" font-size="' + (isCap ? 12 : 10.5) + '" font-weight="700" fill="#1a1a1a" stroke="#fff" stroke-width="3" paint-order="stroke" style="font-family:\'IBM Plex Sans\',sans-serif">' + (isCap ? '★ ' : '') + esc(c.name) + '</text>';
+  });
+
+  svgEl.innerHTML = '<g id="world">' + body + '</g>';
+  worldG = document.getElementById('world');
+  document.getElementById('loading').style.display = 'none';
+
+  // Centre the view on the player's nation (else the whole world's centroid).
+  var focus = (myNation ? land.filter(function (h) { return h.nation_id === myNation; }) : []);
+  if (!focus.length) focus = land;
+  var cx = 0, cy = 0;
+  focus.forEach(function (h) { var p = axialToPix(h.q, h.r, S, 0, 0); cx += p.x; cy += p.y; });
+  cx /= focus.length; cy /= focus.length;
+  pan = { x: mapArea.clientWidth / 2 - cx * zoom, y: mapArea.clientHeight / 2 - cy * zoom };
+  applyTransform();
+
+  // Hover-nation chip (delegated).
+  worldG.addEventListener('mouseover', function (e) {
+    if (e.target.tagName !== 'polygon') return;
+    var nm = e.target.getAttribute('data-nation');
+    if (nm) { hoverChip.textContent = nm; hoverChip.style.display = ''; } else { hoverChip.style.display = 'none'; }
+  });
+})();
+
+/* ---------------- PAN / ZOOM ---------------- */
+mapArea.addEventListener('mousedown', function (e) { drag = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y }; mapArea.classList.add('grabbing'); });
+window.addEventListener('mousemove', function (e) { if (!drag) return; pan = { x: drag.px + (e.clientX - drag.sx), y: drag.py + (e.clientY - drag.sy) }; applyTransform(); });
+window.addEventListener('mouseup', function () { drag = null; mapArea.classList.remove('grabbing'); });
+mapArea.addEventListener('mouseleave', function () { hoverChip.style.display = 'none'; });
+
+function zoomAt(factor, cxp, cyp) {
+  var nz = Math.max(0.35, Math.min(3, Math.round(zoom * factor * 100) / 100));
+  // keep the point under the cursor fixed
+  pan.x = cxp - (cxp - pan.x) * (nz / zoom);
+  pan.y = cyp - (cyp - pan.y) * (nz / zoom);
+  zoom = nz; applyTransform();
+}
+document.getElementById('zoomIn').onclick = function () { zoomAt(1.2, mapArea.clientWidth / 2, mapArea.clientHeight / 2); };
+document.getElementById('zoomOut').onclick = function () { zoomAt(1 / 1.2, mapArea.clientWidth / 2, mapArea.clientHeight / 2); };
+mapArea.addEventListener('wheel', function (e) { e.preventDefault(); var rect = mapArea.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - rect.left, e.clientY - rect.top); }, { passive: false });
+</script>
+</body>
+</html>

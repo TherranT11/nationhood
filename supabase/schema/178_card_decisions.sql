@@ -89,7 +89,8 @@ revoke all on function public._create_card_decision(text, uuid, uuid, jsonb, int
 
 -- The resolver picks an option; its effect fires (through the shared dispatcher) and the decision
 -- closes. Only the decision's resolver (or an admin) may call it.
-create or replace function public.card_decide(p_decision uuid, p_option int)
+drop function if exists public.card_decide(uuid, int);   -- was 2-arg; now takes the decider's chosen nation
+create or replace function public.card_decide(p_decision uuid, p_option int, p_nation text default null)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_uid uuid; v_pid uuid; v_pname text; v_d record; v_opt jsonb; v_tick int; v_resolver uuid; e jsonb;
   v_body text; v_decider text; v_choice text; v_desc text;
@@ -111,14 +112,29 @@ begin
 
   v_opt := v_d.options -> p_option;
   select current_tick into v_tick from public.game_state where id;
+
+  -- A rel_pick effect ("relations with a nation of the decider's choice") needs the nation named NOW.
+  -- Validate it once, up front, so no other effect on the option applies before we bail on a bad pick.
+  if exists (select 1 from jsonb_array_elements(
+               case when jsonb_typeof(v_opt->'fx') = 'array' then v_opt->'fx' else jsonb_build_array(v_opt) end) e2
+              where e2->>'kind' = 'rel_pick') then
+    if p_nation is null or not exists (select 1 from public.nations where id = p_nation) then
+      raise exception 'Choose a nation to improve relations with.'; end if;
+    if p_nation = v_d.nation_id then raise exception 'Pick a nation other than your own.'; end if;
+  end if;
+
   -- Apply every effect on the chosen option (an option carries up to 3). Nation/coalition effects land;
-  -- decider_gain/decider_lose target the resolving party (v_resolver); a play-time party-targeted effect
-  -- (party_gain/lose) is still left untargeted here — no target-picker on a decision. Supports the legacy
+  -- decider_gain/decider_lose target the resolving party (v_resolver); rel_pick improves relations with
+  -- the nation the decider just named (reusing the rel_up handler with the chosen nation injected); a
+  -- play-time party-targeted effect (party_gain/lose) is still left untargeted here. Supports the legacy
   -- single-effect shape ({kind,p}) too via coalesce.
   for e in select value from jsonb_array_elements(
              case when jsonb_typeof(v_opt->'fx') = 'array' then v_opt->'fx' else jsonb_build_array(v_opt) end) loop
     if e->>'kind' = 'bill' then
       perform public._create_card_bill(v_d.nation_id, v_resolver, e->'p', v_tick);   -- the deciding party introduces the bill (schema/183)
+    elsif e->>'kind' = 'rel_pick' then
+      perform public._apply_card_effect(v_d.nation_id, null, 'rel_up',
+        coalesce(e->'p', '{}'::jsonb) || jsonb_build_object('nation', p_nation), v_tick);
     else
       perform public._apply_card_effect(v_d.nation_id,
         case when e->>'kind' in ('decider_gain', 'decider_lose') then v_resolver else null end,
@@ -159,6 +175,6 @@ begin
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_d.nation_id, v_pid, 'card', v_body, public.current_game_date());
 end $$;
-grant execute on function public.card_decide(uuid, int) to authenticated;
+grant execute on function public.card_decide(uuid, int, text) to authenticated;
 
 notify pgrst, 'reload schema';

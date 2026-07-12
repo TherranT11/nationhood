@@ -33,6 +33,7 @@ export function cardEffectText(kind, p, nationName, cardName) {
     case 'res_remove': return 'Remove <b>' + (p.x || 0) + ' ' + esc(resLabel(p.res || 'food')) + '</b> from on-hand';
     case 'rel_up': return 'Relations with <b>' + esc(nn(p.nation) || 'a nation') + '</b> rise by <b>' + (p.x || 0) + '</b>';
     case 'rel_down': return 'Relations with <b>' + esc(nn(p.nation) || 'a nation') + '</b> fall by <b>' + (p.x || 0) + '</b>';
+    case 'rel_pick': return 'Relations with <b>a nation of the decider’s choice</b> rise by <b>' + (p.x || 0) + '</b>';
     case 'prod_up': return '<b>' + esc(resLabel(p.res || 'energy')) + '</b> production <b>+' + (p.x || 0) + '</b> for <b>' + (p.ticks || 12) + '</b> ticks';
     case 'prod_down': return '<b>' + esc(resLabel(p.res || 'energy')) + '</b> production <b>−' + (p.x || 0) + '</b> for <b>' + (p.ticks || 12) + '</b> ticks';
     case 'deck_add': return '<b>' + esc(cn(p.card) || 'A dormant card') + '</b> enters <b>' + esc(nn(p.nation) || 'a nation') + '</b>’s deck' + (Number(p.ticks) > 0 ? ' in <b>' + p.ticks + '</b> ticks' : '');
