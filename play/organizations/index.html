@@ -50,7 +50,7 @@
       <div class="stat c-inv"><span class="v" id="sInv">0</span><span class="l">Open Invitation</span></div>
     </div>
 
-    <p class="intro">No international organizations have formed yet — every nation starts unaffiliated. Memberships, founder seats and dues will fill in once the diplomacy layer lands.</p>
+    <p class="intro">Your standing in international bodies at a glance. Your Minister of Foreign Affairs can charter a new organization from the Nation page; invited nations answer on the world timeline.</p>
   </main>
 </div>
 
@@ -63,9 +63,12 @@
   mountTopbar();
   mountSidenav();  // left rail (desktop) / bottom bar (mobile); active item from the URL
 
-  // Read-only standing strip. Every figure is 0 across all nations today — no organizations,
-  // programmes, or invitations exist yet — so the page shows the shape without any data source
-  // to wire up. The header just names the viewer's nation; the tiles stay zero.
+  // Read-only standing strip, computed from the org tables (schema/186, world-readable):
+  //   Memberships     — orgs this nation belongs to
+  //   Founder Seats   — those it founded (role 'founder')
+  //   Under Programme — memberships still in 'founding' (not yet active)
+  //   Total Dues      — Σ dues of its memberships ($bn/yr; 0 until a dues mechanic lands)
+  //   Open Invitations— pending invitations addressed to this nation
   (async () => {
     if (!isConfigured) return;
     const user = await requireUser();
@@ -73,12 +76,30 @@
     try {
       const { data: party } = await supabase.from('parties').select('nation_id').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
-      const { data: home } = await supabase.from('nations').select('name, economy').eq('id', party.nation_id).single();
-      const nationName = (home && home.name) || party.nation_id;
+      const nid = party.nation_id;
+      const { data: home } = await supabase.from('nations').select('name, economy').eq('id', nid).single();
+      const nationName = (home && home.name) || nid;
       const currency = (home && home.economy && home.economy.currency) || '$';
       document.getElementById('eye').innerHTML = 'Diplomacy · International Organizations — <b>' + esc(nationName) + '</b>';
-      document.getElementById('sDues').textContent = currency + '0.00bn/yr';
-    } catch (e) { /* leave the zeroed strip as-is */ }
+
+      // My memberships + the orgs behind them (status + dues), and my pending invitations.
+      const mine = (await supabase.from('organization_members').select('org_id, role').eq('nation_id', nid)).data || [];
+      const orgIds = mine.map(function (m) { return m.org_id; });
+      const orgs = orgIds.length ? ((await supabase.from('organizations').select('id, status, dues').in('id', orgIds)).data || []) : [];
+      const byId = {}; orgs.forEach(function (o) { byId[o.id] = o; });
+      const invited = (await supabase.from('organization_invitations').select('org_id').eq('nation_id', nid).eq('status', 'pending')).data || [];
+
+      const memberships = mine.length;
+      const founder = mine.filter(function (m) { return m.role === 'founder'; }).length;
+      const programme = mine.filter(function (m) { var o = byId[m.org_id]; return o && o.status === 'founding'; }).length;
+      const dues = orgs.reduce(function (a, o) { return a + (Number(o.dues) || 0); }, 0);
+
+      document.getElementById('sMem').textContent = memberships;
+      document.getElementById('sFound').textContent = founder;
+      document.getElementById('sProg').textContent = programme;
+      document.getElementById('sDues').textContent = currency + dues.toFixed(2) + 'bn/yr';
+      document.getElementById('sInv').textContent = invited.length;
+    } catch (e) { /* leave the zeroed strip as-is on a read failure */ }
   })();
 </script>
 </body>

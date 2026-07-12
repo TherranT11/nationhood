@@ -111,6 +111,25 @@
   .amodal__x:hover{color:var(--ink)}
   .amodal__list{padding:13px 20px 18px;display:flex;flex-direction:column;gap:8px}
   .amodal__list .empty{color:var(--soft);font-style:italic;font-size:13.5px}
+  /* Found an International Organization modal */
+  .amodal__panel--wide{max-width:620px}
+  .fnd-lbl{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin:10px 0 5px}
+  .fnd-lbl:first-child{margin-top:2px}
+  .fnd-in{width:100%;background:var(--field);border:1px solid var(--line2);border-radius:9px;color:var(--ink);font-family:inherit;font-size:14px;padding:10px 12px;outline:none}
+  .fnd-in:focus{border-color:var(--indigo)}
+  textarea.fnd-in{min-height:88px;resize:vertical;font-size:13px;line-height:1.5}
+  .fnd-icons,.fnd-types{display:flex;gap:6px;flex-wrap:wrap}
+  .fnd-ic{width:36px;height:36px;border-radius:9px;background:var(--field);border:1px solid var(--line2);font-size:16px;cursor:pointer;display:grid;place-items:center}
+  .fnd-ic.on{border-color:var(--indigo);background:var(--indigo-soft)}
+  .fnd-ty{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--field);border:1px solid var(--line2);border-radius:7px;padding:7px 11px;cursor:pointer}
+  .fnd-ty.on{color:var(--indigo);border-color:var(--indigo);background:var(--indigo-soft)}
+  .fnd-nats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px;max-height:180px;overflow:auto;padding:2px}
+  .fnd-nat{display:flex;align-items:center;gap:8px;background:var(--field);border:1px solid var(--line2);border-radius:9px;padding:8px 10px;cursor:pointer;font-size:12.5px;font-weight:600;text-align:left;color:var(--ink)}
+  .fnd-nat.on{border-color:var(--indigo);background:var(--indigo-soft)}
+  .fnd-nat .tk{margin-left:auto;font-family:'Space Mono',monospace;font-size:9px;color:var(--indigo);visibility:hidden}
+  .fnd-nat.on .tk{visibility:visible}
+  .fnd-cost{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-top:12px}.fnd-cost b{color:var(--ink)}
+  .fnd-cc{font-family:'Space Mono',monospace;font-size:8.5px;color:var(--soft);text-align:right;margin-top:4px}
   /* No-confidence confirm modal */
   .noco__warn{color:var(--muted);font-size:14px;line-height:1.6;margin:2px 0 4px}
   .noco__warn b{color:var(--ink);font-weight:700}
@@ -362,6 +381,7 @@
     <div id="jointInbox"></div>
     <div id="pmbar"></div>
     <div id="econdevbar"></div>
+    <div id="foreignbar"></div>
     <div id="tradebar"></div>
     <div id="defencebar"></div>
 
@@ -446,6 +466,13 @@
   <div class="amodal__panel">
     <div class="amodal__hd"><b>Service Economy</b><button class="amodal__x" id="serviceClose" type="button" aria-label="Close">&times;</button></div>
     <div class="amodal__list" id="serviceBody"><p class="empty">Loading…</p></div>
+  </div>
+</div>
+
+<div class="amodal" id="foundModal" hidden>
+  <div class="amodal__panel amodal__panel--wide">
+    <div class="amodal__hd"><b>Found an International Organization</b><button class="amodal__x" id="foundClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list" id="foundBody"><p class="empty">Loading…</p></div>
   </div>
 </div>
 
@@ -1311,6 +1338,84 @@
     if (svc) { actionBtns.push(svc); svc.addEventListener('click', function () { if (!svc.disabled) openServiceEconomy(); }); }
   }
 
+  // The Minister of Foreign Affairs container — shown only to the party holding Foreign Affairs. Its
+  // Found Charter action opens the founding modal (charter a new international organization + invite).
+  function renderForeignBar(isForeignMin) {
+    var el = document.getElementById('foreignbar'); if (!el) return;
+    if (!isForeignMin) { el.innerHTML = ''; return; }
+    el.innerHTML = '<section class="panel leadbar">' +
+      '<div class="glance-hd"><span>Minister of Foreign Affairs &middot; This Week’s Action</span></div>' +
+      '<p class="leadbar__sub">Your party holds the Foreign Affairs portfolio. Charter an international organization and invite other nations to join it.</p>' +
+      '<div class="leadbar__grid">' +
+        '<button class="lead" type="button" id="foreign-charter" data-cost="2"><b>Found Charter</b><span class="lead__lane">Intl. Organizations</span><span class="lead__desc">Charter a new organization and invite nations — $0.2bn per invite (to debt) · 1 AP.</span></button>' +
+      '</div></section>';
+    el.querySelectorAll('.lead').forEach(stampCost);
+    var fb = document.getElementById('foreign-charter');
+    if (fb) { actionBtns.push(fb); fb.addEventListener('click', function () { if (!fb.disabled) openFoundCharter(); }); }
+  }
+
+  // FOUND CHARTER — the Minister of Foreign Affairs charters an international organization: pick a name,
+  // emblem and type, invite nations ($0.2bn each, added to national debt), and write a charter (40+
+  // chars). Fires found_organization (schema/186) through performAction.
+  var foundModal = document.getElementById('foundModal');
+  var closeFound = wireModalClose(foundModal, 'foundClose');
+  var FND_ICONS = ['🕊', '🛢', '⚓', '📦', '🛡', '💱', '🌐', '🌾', '🏛', '⚡', '🕌', '🏅'];
+  var FND_TYPES = ['General', 'Trade', 'Security', 'Resources', 'Monetary', 'Cultural', 'Faith'];
+  var FND = { icon: '🕊', type: 'General', name: '', charter: '', invited: {}, nations: [] };
+  function openFoundCharter() {
+    if (acting || !feedCtx) return;
+    FND = { icon: '🕊', type: 'General', name: '', charter: '', invited: {}, nations: [] };
+    document.getElementById('foundBody').innerHTML = '<p class="empty">Loading…</p>';
+    foundModal.hidden = false;
+    loadFoundCharter();
+  }
+  async function loadFoundCharter() {
+    try {
+      const { data } = await supabase.from('nations').select('id, name, flag').eq('dormant', false).order('name');
+      FND.nations = (data || []).filter(function (n) { return n.id !== feedCtx.nationId; });
+      renderFoundCharter();
+    } catch (e) { document.getElementById('foundBody').innerHTML = '<p class="empty">Couldn’t load nations. Try again.</p>'; }
+  }
+  function fndInvitedIds() { return Object.keys(FND.invited).filter(function (k) { return FND.invited[k]; }); }
+  function renderFoundCharter() {
+    var body = document.getElementById('foundBody');
+    var inv = fndInvitedIds(), cost = inv.length * 0.2;
+    var ok = FND.name.trim().length > 0 && inv.length > 0 && FND.charter.trim().length >= 40 && partyActions >= 1;
+    body.innerHTML =
+      '<div class="fnd-lbl">Name of the organization</div>' +
+      '<input type="text" class="fnd-in" id="fndName" maxlength="48" placeholder="e.g. The Qadira Pact" value="' + esc(FND.name) + '">' +
+      '<div class="fnd-lbl">Emblem</div><div class="fnd-icons" id="fndIcons">' +
+        FND_ICONS.map(function (i) { return '<button type="button" class="fnd-ic' + (FND.icon === i ? ' on' : '') + '" data-i="' + i + '">' + i + '</button>'; }).join('') + '</div>' +
+      '<div class="fnd-lbl">Type</div><div class="fnd-types" id="fndTypes">' +
+        FND_TYPES.map(function (t) { return '<button type="button" class="fnd-ty' + (FND.type === t ? ' on' : '') + '" data-t="' + t + '">' + t + '</button>'; }).join('') + '</div>' +
+      '<div class="fnd-lbl">Invite nations — $0.2bn each, added to national debt</div>' +
+      '<div class="fnd-nats" id="fndNats">' + (FND.nations.length ? FND.nations.map(function (n) {
+        return '<button type="button" class="fnd-nat' + (FND.invited[n.id] ? ' on' : '') + '" data-n="' + esc(n.id) + '">' +
+          '<span>' + esc(n.name || n.id) + '</span><span class="tk">✓</span></button>'; }).join('') : '<p class="empty">No other nations to invite.</p>') + '</div>' +
+      '<div class="fnd-lbl">The charter <span style="text-transform:none;letter-spacing:0">— sent with every invitation</span></div>' +
+      '<textarea class="fnd-in" id="fndCharter" maxlength="420" placeholder="State the organization’s purpose — what members give, and what members get.">' + esc(FND.charter) + '</textarea>' +
+      '<div class="fnd-cc"><span id="fndCount">' + FND.charter.length + '</span> / 420 · min 40</div>' +
+      '<div class="fnd-cost">Inviting <b>' + inv.length + '</b> nation' + (inv.length === 1 ? '' : 's') + ' · <b>$' + cost.toFixed(1) + 'bn</b> added to debt · you have <b>' + partyActions + ' AP</b></div>' +
+      '<div class="noco__btns"><button class="noco__btn noco__cancel" id="fndCancel" type="button">Cancel</button>' +
+        '<button class="noco__btn noco__confirm" id="fndGo" type="button"' + (ok ? '' : ' disabled') + ' style="background:var(--indigo);border-color:var(--indigo)">Found &amp; Invite</button></div>' +
+      (ok ? '' : '<p class="exp-warn" style="margin-top:2px">Needs a name, a charter of 40+ characters, at least 1 invite, and 1 AP.</p>');
+    document.getElementById('fndName').oninput = function () { FND.name = this.value; renderFoundCharter(); };
+    var ta = document.getElementById('fndCharter');
+    ta.oninput = function () { FND.charter = this.value; document.getElementById('fndCount').textContent = this.value.length; renderFoundCharter(); };
+    document.querySelectorAll('#fndIcons .fnd-ic').forEach(function (b) { b.onclick = function () { FND.icon = b.dataset.i; renderFoundCharter(); }; });
+    document.querySelectorAll('#fndTypes .fnd-ty').forEach(function (b) { b.onclick = function () { FND.type = b.dataset.t; renderFoundCharter(); }; });
+    document.querySelectorAll('#fndNats .fnd-nat').forEach(function (b) { b.onclick = function () { FND.invited[b.dataset.n] = !FND.invited[b.dataset.n]; renderFoundCharter(); }; });
+    document.getElementById('fndCancel').onclick = closeFound;
+    document.getElementById('fndGo').onclick = function () {
+      var invIds = fndInvitedIds();
+      if (!(FND.name.trim() && invIds.length && FND.charter.trim().length >= 40)) return;
+      closeFound();
+      performAction(function () {
+        return supabase.rpc('found_organization', { p_name: FND.name.trim(), p_emblem: FND.icon, p_type: FND.type, p_charter: FND.charter.trim(), p_invited: invIds });
+      }, function () { return 'Chartered ' + FND.name.trim() + ' — invitations dispatched.'; });
+    };
+  }
+
   // INDUSTRIALIZE — the Minister of Economic Development forges finished Goods from raw stock: each
   // Good burns 1 Energy + 1 Mineral (on_hand) and costs 1 AP. The quantity is capped by
   // whichever runs out first — Energy or Minerals. Fires economy_industrialize (schema/114,
@@ -1903,6 +2008,8 @@
         const { data: edmin } = await supabase.rpc('is_economic_development_minister'); // holds Economic Development → enacts initiatives
         isEconDevMin = edmin === true;
         renderEconDevBar(isEconDevMin);
+        const { data: famin } = await supabase.rpc('is_foreign_affairs_minister'); // holds Foreign Affairs → charters organizations
+        renderForeignBar(famin === true);
       } catch (e) { /* leave the PM bar hidden if the government can't be read */ }
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));
