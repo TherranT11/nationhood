@@ -227,6 +227,14 @@ begin
     end if;
   end if;
 
+  -- Coalition discipline (schema/196): once a governing party's policy closes on the floor, any
+  -- coalition partner that didn't vote Aye costs a heart of Coalition Health; a drained meter fragments
+  -- the coalition. Isolated so a discipline error can never roll back the vote result.
+  if p_final and v_p.kind = 'law' then
+    begin perform public._coalition_vote_discipline(v_p);
+    exception when others then raise warning 'coalition discipline failed (%): %', p_proposal, sqlerrm; end;
+  end if;
+
   if v_pass then
     update public.proposals set status = 'passed', resolved_tick = (select current_tick from public.game_state where id) where id = p_proposal;
     if v_p.kind = 'declaration' then

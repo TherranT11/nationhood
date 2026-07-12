@@ -98,6 +98,8 @@
   .vb:disabled{opacity:.55;cursor:not-allowed}
   .vb:not(:disabled):hover{border-color:var(--ink)}
   .youvote{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-left:2px}
+  .coalwarn{font-size:12px;line-height:1.5;color:var(--amber);background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 40%,transparent);border-radius:10px;padding:9px 12px;margin:10px 0 2px}
+  .coalwarn b{color:var(--ink)}
   .agwhen{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-top:9px}
   .agwhen b{color:var(--ink);font-weight:700}
   .sendfloor{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:9px 14px;border-radius:9px;border:1.5px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer}
@@ -181,7 +183,7 @@
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">' + msg + '</div></div>'; }
 
   var FLOOR_WINDOW = 6;  // ticks a measure stands on the floor before failing — mirrors advance_tick (schema/60)
-  var ST = { party:null, session:'', tick:0, total:0, maj:0, govBloc:0, seatsByParty:{}, partyName:{}, partyHandle:{}, colorByParty:{}, proposals:[], votes:[], policyDefs:{}, nationPolicies:{}, pop:0, pros:10, busy:false };
+  var ST = { party:null, session:'', tick:0, total:0, maj:0, govBloc:0, govParties:{}, amGov:false, seatsByParty:{}, partyName:{}, partyHandle:{}, colorByParty:{}, proposals:[], votes:[], policyDefs:{}, nationPolicies:{}, pop:0, pros:10, busy:false };
   // Owner OOC nickname after a party name — "Centrist Union (Theo)". One source for the suffix.
   function nickSuffix(pid){ var h = ST.partyHandle[pid]; return h ? ' <span class="pnick">(' + esc(h) + ')</span>' : ''; }
 
@@ -285,9 +287,16 @@
       // A vote is final: offer the buttons only until you've voted, then show the locked result.
       (t.myVote
         ? '<div class="mrow"><span class="youvote">You voted <b>' + t.myVote.toUpperCase() + '</b> · votes are final</span></div></div>'
-        : '<div class="mrow"><button class="vb aye" data-v="aye" type="button">Vote Aye</button>' +
+        : coalitionWarn(p) +
+          '<div class="mrow"><button class="vb aye" data-v="aye" type="button">Vote Aye</button>' +
           '<button class="vb nay" data-v="nay" type="button">Vote Nay</button>' +
           '<span class="youvote">Your vote is final once cast</span></div></div>');
+  }
+  // Coalition discipline (schema/196): when a COALITION PARTNER's policy is on the floor and you're
+  // also in the government, not voting Aye costs the coalition a heart of Coalition Health.
+  function coalitionWarn(p) {
+    if (p.kind !== 'law' || !ST.amGov || p.party_id === ST.party.id || !ST.govParties[p.party_id]) return '';
+    return '<div class="coalwarn">⚠️ A coalition partner’s policy. If you do not vote <b>Aye</b>, <b>Coalition Health</b> will drop by <b>1</b>. If Coalition Health reaches <b>0</b>, the coalition will <b>fragment</b>.</div>';
   }
   function agendaCard(p){
     var mine = p.party_id === ST.party.id;
@@ -395,7 +404,8 @@
       ST.party = party;
       ST.total = (nation && nation.legislature_seats) || 0;
       ST.maj = ST.total ? majority(ST.total) : 0;
-      (parties || []).forEach(function (p) { ST.seatsByParty[p.id] = p.seats || 0; ST.partyName[p.id] = p.name; ST.colorByParty[p.id] = partyColor(p); if (p.in_government) ST.govBloc += (p.seats || 0); });
+      (parties || []).forEach(function (p) { ST.seatsByParty[p.id] = p.seats || 0; ST.partyName[p.id] = p.name; ST.colorByParty[p.id] = partyColor(p); if (p.in_government) { ST.govBloc += (p.seats || 0); ST.govParties[p.id] = true; } });
+      ST.amGov = !!ST.govParties[ST.party.id];   // am I a governing (coalition) party?
       // Owner OOC nicknames, keyed by party (cosmetic — a failure must never block the chamber).
       try {
         const { data: hrows } = await supabase.rpc('nation_party_handles', { p_nation: party.nation_id });
