@@ -572,8 +572,8 @@
         var mine = ns.find(function(x){ return x.id === STATE.nation.id; });
         if (mine) STATE.nation = mine;
       }
-      var { data: p } = await supabase.from('parties').select('influence, action_points').eq('id', STATE.party.id).single();
-      if (p) { STATE.party.influence = p.influence; STATE.party.action_points = p.action_points; }
+      var { data: p } = await supabase.from('parties').select('action_points').eq('id', STATE.party.id).single();
+      if (p) STATE.party.action_points = p.action_points;
       var { data: fl } = await supabase.from('trade_flows').select('exporter_id, importer_id, resource, value');
       if (fl) STATE.flows = fl;
       var { data: sn } = await supabase.from('sanctions').select('by_nation, target_nation, active')
@@ -759,7 +759,7 @@
     const user = await requireUser();
     if (!user) return;
     try {
-      const { data: party } = await supabase.from('parties').select('id, name, archetype, nation_id, influence, action_points').eq('user_id', user.id).single();
+      const { data: party } = await supabase.from('parties').select('id, name, archetype, nation_id, action_points').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: nations } = await supabase.from('nations')
         .select('id, name, flag, population, gdp, stats, economy, on_hand, production, demands, advanced_year, produce_until_tick')
