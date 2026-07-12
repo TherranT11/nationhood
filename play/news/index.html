@@ -621,7 +621,7 @@
     var ap = apLeft();
     var acted = hasActed();        // played or discarded this month — the choice is spent
     var bidding = bidCount() > 0;  // committed to bidding this month
-    var canCard = !acted && !bidding;
+    var canCard = canCardAct();    // play/discard availability — the one predicate renderHand also reads
 
     note.innerHTML = acted ? '<span class="inf">action taken</span>'
       : bidding ? '<span class="inf">bidding · ' + bidCount() + ' live</span>'
