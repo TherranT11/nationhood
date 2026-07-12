@@ -85,7 +85,14 @@
   .np-flag{width:36px;height:24px;border-radius:3px;flex:none;object-fit:cover;box-shadow:0 0 0 1px rgba(255,255,255,.18)}
   .np-name{font-weight:700;font-size:15px;line-height:1.1}
   .np-sub{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--dim);margin-top:2px}
-  .np-x{margin-left:auto;cursor:pointer;color:var(--dim);font-size:14px}
+  .np-x{margin-left:auto;flex:none;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;
+    width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:8px;
+    border:1px solid var(--line);background:var(--panel);-webkit-tap-highlight-color:transparent}
+  .np-x:hover{color:var(--text)}
+  @media(max-width:640px){
+    .np-x{width:40px;height:40px;font-size:20px}
+    .natpanel{font-size:14px}
+  }
   .np-figs{display:flex;gap:8px;margin-top:10px}
   .np-fig{flex:1;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel)}
   .np-fig .k{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.1em;color:var(--dim)}
