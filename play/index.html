@@ -1347,7 +1347,7 @@
       '<div class="glance-hd"><span>Minister of Foreign Affairs &middot; This Week’s Action</span></div>' +
       '<p class="leadbar__sub">Your party holds the Foreign Affairs portfolio. Charter an international organization and invite other nations to join it.</p>' +
       '<div class="leadbar__grid">' +
-        '<button class="lead" type="button" id="foreign-charter" data-cost="2"><b>Found Charter</b><span class="lead__lane">Intl. Organizations</span><span class="lead__desc">Charter a new organization and invite nations — $0.2bn per invite (to debt) · 1 AP.</span></button>' +
+        '<button class="lead" type="button" id="foreign-charter" data-cost="2"><b>Found Intl. Org</b><span class="lead__lane">Intl. Organizations</span><span class="lead__desc">Charter a new organization and invite nations — $0.2bn per invite (to debt) · 1 AP.</span></button>' +
       '</div></section>';
     el.querySelectorAll('.lead').forEach(stampCost);
     var fb = document.getElementById('foreign-charter');
@@ -1377,10 +1377,18 @@
     } catch (e) { document.getElementById('foundBody').innerHTML = '<p class="empty">Couldn’t load nations. Try again.</p>'; }
   }
   function fndInvitedIds() { return Object.keys(FND.invited).filter(function (k) { return FND.invited[k]; }); }
+  // Ready to found? (a name, ≥1 invite, a 40+ char charter, and an Action Point.)
+  function foundOk() { return FND.name.trim().length > 0 && fndInvitedIds().length > 0 && FND.charter.trim().length >= 40 && partyActions >= 1; }
+  // Update only the derived controls (confirm button + warning) in place — called on every keystroke so
+  // typing in the name/charter fields does NOT rebuild the modal (which would drop focus mid-word).
+  function syncFoundDerived() {
+    var ok = foundOk();
+    var go = document.getElementById('fndGo'); if (go) go.disabled = !ok;
+    var w = document.getElementById('fndWarn'); if (w) w.style.display = ok ? 'none' : '';
+  }
   function renderFoundCharter() {
     var body = document.getElementById('foundBody');
     var inv = fndInvitedIds(), cost = inv.length * 0.2;
-    var ok = FND.name.trim().length > 0 && inv.length > 0 && FND.charter.trim().length >= 40 && partyActions >= 1;
     body.innerHTML =
       '<div class="fnd-lbl">Name of the organization</div>' +
       '<input type="text" class="fnd-in" id="fndName" maxlength="48" placeholder="e.g. The Qadira Pact" value="' + esc(FND.name) + '">' +
@@ -1397,14 +1405,17 @@
       '<div class="fnd-cc"><span id="fndCount">' + FND.charter.length + '</span> / 420 · min 40</div>' +
       '<div class="fnd-cost">Inviting <b>' + inv.length + '</b> nation' + (inv.length === 1 ? '' : 's') + ' · <b>$' + cost.toFixed(1) + 'bn</b> added to debt · you have <b>' + partyActions + ' AP</b></div>' +
       '<div class="noco__btns"><button class="noco__btn noco__cancel" id="fndCancel" type="button">Cancel</button>' +
-        '<button class="noco__btn noco__confirm" id="fndGo" type="button"' + (ok ? '' : ' disabled') + ' style="background:var(--indigo);border-color:var(--indigo)">Found &amp; Invite</button></div>' +
-      (ok ? '' : '<p class="exp-warn" style="margin-top:2px">Needs a name, a charter of 40+ characters, at least 1 invite, and 1 AP.</p>');
-    document.getElementById('fndName').oninput = function () { FND.name = this.value; renderFoundCharter(); };
+        '<button class="noco__btn noco__confirm" id="fndGo" type="button" style="background:var(--indigo);border-color:var(--indigo)">Found &amp; Invite</button></div>' +
+      '<p class="exp-warn" id="fndWarn" style="margin-top:2px">Needs a name, a charter of 40+ characters, at least 1 invite, and 1 AP.</p>';
+    // Text fields update the derived controls only (no re-render → focus survives typing). Toggles
+    // (emblem/type/invite) do a full re-render — fine, focus isn't in a text field then.
+    document.getElementById('fndName').oninput = function () { FND.name = this.value; syncFoundDerived(); };
     var ta = document.getElementById('fndCharter');
-    ta.oninput = function () { FND.charter = this.value; document.getElementById('fndCount').textContent = this.value.length; renderFoundCharter(); };
+    ta.oninput = function () { FND.charter = this.value; document.getElementById('fndCount').textContent = this.value.length; syncFoundDerived(); };
     document.querySelectorAll('#fndIcons .fnd-ic').forEach(function (b) { b.onclick = function () { FND.icon = b.dataset.i; renderFoundCharter(); }; });
     document.querySelectorAll('#fndTypes .fnd-ty').forEach(function (b) { b.onclick = function () { FND.type = b.dataset.t; renderFoundCharter(); }; });
     document.querySelectorAll('#fndNats .fnd-nat').forEach(function (b) { b.onclick = function () { FND.invited[b.dataset.n] = !FND.invited[b.dataset.n]; renderFoundCharter(); }; });
+    syncFoundDerived();
     document.getElementById('fndCancel').onclick = closeFound;
     document.getElementById('fndGo').onclick = function () {
       var invIds = fndInvitedIds();
