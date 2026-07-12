@@ -239,6 +239,18 @@
   function castVote(article, opt) { run(function () { return supabase.rpc('cast_charter_ballot', { p_org: ORG_ID, p_votes: (function () { var o = {}; o[article] = opt; return o; })() }); }); }
   function ratify() { run(function () { return supabase.rpc('ratify_organization', { p_org: ORG_ID }); }); }
   function respond(accept) { run(function () { return supabase.rpc('respond_invitation', { p_org: ORG_ID, p_accept: accept }); }); }
+  // Cancel a founding charter (host only): deletes the org + its invitations/votes/messages, then leaves
+  // for the register — the detail page has nothing left to show.
+  async function cancelCharter() {
+    if (BUSY) return;
+    if (!confirm('Cancel this charter? The organization, its invitations and any votes are deleted. This cannot be undone.')) return;
+    BUSY = true;
+    try {
+      const { error } = await supabase.rpc('cancel_organization', { p_org: ORG_ID });
+      if (error) throw error;
+      window.location.href = '/play/organizations/';
+    } catch (e) { alert((e && e.message) || 'Could not cancel the charter.'); BUSY = false; }
+  }
   function proposeLaw(sector, law) { run(function () { return supabase.rpc('propose_org_law', { p_org: ORG_ID, p_sector: sector, p_law: law }); }); }
   function voteLaw(sector, law, aye) { run(function () { return supabase.rpc('vote_org_law', { p_org: ORG_ID, p_sector: sector, p_law: law, p_aye: aye }); }); }
   function lawRow(sector, law) { return LAWS.find(function (l) { return l.sector === sector && l.law_id === law; }); }
@@ -315,7 +327,8 @@
     var myInv = INVITES.find(function (i) { return i.nation_id === ME; });
     var action = '';
     if (isHost() && AM_FA) {
-      action = '<div class="frow"><button class="btn ratify" id="ratifyBtn"' + (canRatify ? '' : ' disabled') + '>Ratify — Found the Organization →</button><span class="fnote">' + actionNote + '</span></div>';
+      action = '<div class="frow"><button class="btn ratify" id="ratifyBtn"' + (canRatify ? '' : ' disabled') + '>Ratify — Found the Organization →</button>' +
+        '<button class="btn no" id="cancelBtn">Cancel Charter</button><span class="fnote">' + actionNote + '</span></div>';
     } else if (myInv && myInv.status === 'pending' && AM_FA) {
       action = '<div class="frow"><button class="btn go" id="accBtn">Accept — Join</button><button class="btn no" id="decBtn">Decline</button><span class="fnote">answering costs 1 AP</span></div>';
     } else if (!AM_FA && (amMember() || (myInv && myInv.status === 'pending'))) {
@@ -416,6 +429,7 @@
       b.onclick = function () { if (!b.disabled) castVote(b.dataset.art, b.dataset.opt); };
     });
     var r = document.getElementById('ratifyBtn'); if (r) r.onclick = function () { if (!r.disabled) ratify(); };
+    var cx = document.getElementById('cancelBtn'); if (cx) cx.onclick = cancelCharter;
     var a = document.getElementById('accBtn'); if (a) a.onclick = function () { respond(true); };
     var d = document.getElementById('decBtn'); if (d) d.onclick = function () { if (confirm('Decline this invitation?')) respond(false); };
     document.querySelectorAll('[data-prop]').forEach(function (b) { b.onclick = function () { if (!b.disabled) proposeLaw(b.dataset.s, b.dataset.l); }; });
