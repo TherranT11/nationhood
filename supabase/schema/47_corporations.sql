@@ -52,13 +52,15 @@ create policy "corp_delete_admin" on public.corporations for delete using (publi
 -- The climate depends on the DERIVED tax burden, so that ports too.
 -- ---------------------------------------------------------------------------
 
--- Nation Tax Burden % — base economy.tax + each policy's in-force option 'taxBurden'
--- contribution, clamped 0..100. Mirrors nationTaxBurden (policies.js), now the one source.
+-- Nation Tax Burden % — the SUM of every in-force policy's 'taxBurden' contribution, clamped 0..100.
+-- This is purely law-driven: no authored economy.tax base is added, so the figure equals exactly the
+-- laws listed on the Tax Burden page (nationStatContributions in policies.js — the display mirror).
+-- The legacy economy.tax seed is retired from the formula (schema/10 always intended it to drive to 0
+-- as policies filled the figure in).
 create or replace function public._nation_tax_burden(p_nation text)
 returns numeric language sql stable security definer set search_path = public as $$
   select greatest(0, least(100,
-      coalesce((n.economy->>'tax')::numeric, 0)
-    + coalesce((
+      coalesce((
         select sum(coalesce((public._policy_options(pol.definition)
               -> public._nation_policy_option(p_nation, pol.id) ->> 'taxBurden')::numeric, 0))
         from public.policies pol
