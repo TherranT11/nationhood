@@ -112,7 +112,7 @@ returns jsonb language sql stable security definer set search_path = public as $
       'contrib', round((public._nation_live_stat(p_nation, 'Growth') - 50) * 0.2, 1)),
     jsonb_build_object('label','Prosperity',   'unit','/100', 'value', public._nation_live_stat(p_nation, 'Prosperity'),
       'contrib', round((public._nation_live_stat(p_nation, 'Prosperity') - 60) * 0.06, 1)),
-    jsonb_build_object('label','Tax Rate',     'unit','%',   'value', public._nation_tax_burden(p_nation),
+    jsonb_build_object('label','Tax Burden',   'unit','%',   'value', public._nation_tax_burden(p_nation),
       'contrib', round(-(public._nation_tax_burden(p_nation) - 25) * 0.04, 1)),
     jsonb_build_object('label','Inflation',    'unit','%',   'value', coalesce((n.economy->>'inflation')::numeric, 0),
       'contrib', round(-(coalesce((n.economy->>'inflation')::numeric, 0) - 10) * 0.3, 1)),
