@@ -338,17 +338,20 @@
       // One live bill per policy: if this policy already has one in committee/on the floor, the
       // chamber won't take another until it resolves (the server enforces this too).
       var blocked = !!pendingPolicies[curPolicy().id];
-      // Proposing costs 1 Action Point, +1 per rung beyond the first (server: propose_law, schema/92).
-      var rungs = sel.proposed == null ? 0 : Math.abs(sel.proposed - inForceIdx());
+      // Proposing costs 1 Action Point + 1 per 5 points of party-popularity swing the vote carries
+      // (server: propose_law, schema/92 — one source: policyVotePopularity).
+      var moved = sel.proposed != null && sel.proposed !== inForceIdx();
+      var swing = moved ? Math.abs(policyVotePopularity(curDef(), inForceIdx(), sel.proposed).forVote) : 0;
+      var cost = moved ? (1 + Math.floor(swing / 5)) : 0;
       var ap = Math.max(0, Number(partyAP) || 0);
-      var canAfford = rungs > 0 && ap >= rungs;
-      var ok = !noSeats && !blocked && sel.proposed != null && sel.proposed !== inForceIdx() && canAfford && !lawBusy;
-      document.getElementById('l-cost').textContent = rungs > 0 ? (rungs + ' AP') : '—';
+      var canAfford = cost > 0 && ap >= cost;
+      var ok = !noSeats && !blocked && moved && canAfford && !lawBusy;
+      document.getElementById('l-cost').textContent = cost > 0 ? (cost + ' AP') : '—';
       sendBtn.disabled = !ok;
       if (!lawBusy) note.textContent = noSeats ? 'Your party holds no legislature seats — win seats at an election before you can propose a bill.'
         : blocked ? 'A bill to change this policy is already before the chamber — it must resolve first.'
-        : (rungs > 0 && !canAfford) ? ('Not enough Action Points — a ' + rungs + '-rung move costs ' + rungs + ' AP, you have ' + ap + '.')
-        : ok ? 'Sends the bill to committee' + (rungs > 1 ? ' — a ' + rungs + '-rung leap costs ' + rungs + ' AP' : '') + ', where parties debate and endorse before it reaches the floor.' : 'Pick a rung to propose it.';
+        : (cost > 0 && !canAfford) ? ('Not enough Action Points — this bill costs ' + cost + ' AP, you have ' + ap + '.')
+        : ok ? 'Sends the bill to committee — costs ' + cost + ' AP (1 base + 1 per 5 points of popularity it swings), where parties debate and endorse before it reaches the floor.' : 'Pick a rung to propose it.';
     }
 
     polSel.onchange = function () { sel.proposed = null; touched = { title: false, intro: false }; titleInp.value = ''; introInp.value = ''; paint(); };
