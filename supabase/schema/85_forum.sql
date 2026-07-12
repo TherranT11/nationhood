@@ -147,8 +147,7 @@ begin
   if p_ic then
     select * into v_party from public.parties where user_id = v_user;
     if not found then raise exception 'You need a party to post in character.'; end if;
-    select btrim(coalesce(l.first_name,'') || ' ' || coalesce(l.last_name,'')) into v_leader
-      from public._party_leader(v_party.id) l;   -- the party leader's name (shared source, schema/30)
+    v_leader := public._party_leader_name(v_party.id);   -- the party leader's name (shared source, schema/30)
     author       := coalesce(nullif(v_leader, ''), v_party.name);
     author_party := v_party.name;
     author_color := v_party.color;

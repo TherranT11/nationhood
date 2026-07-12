@@ -45,6 +45,15 @@ returns public.politicians language sql stable security definer set search_path 
 $$;
 revoke all on function public._party_leader(uuid) from public, anon, authenticated;
 
+-- The ONE source for a party leader's display name ("First Last"), built on _party_leader. Returns '' when
+-- the party has no leader, so callers `nullif(..., '')` to fall back. Read by the HoG label + announcement
+-- (60), the in-character forum byline (85), and the Change-HoG effect (176).
+create or replace function public._party_leader_name(p_party uuid)
+returns text language sql stable security definer set search_path = public as $$
+  select btrim(coalesce(l.first_name, '') || ' ' || coalesce(l.last_name, '')) from public._party_leader(p_party) l;
+$$;
+revoke all on function public._party_leader_name(uuid) from public, anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Recruitment-drive staging: the two candidates a party is currently choosing
 -- between (RECRUIT action). One row per party, overwritten each drive. Written

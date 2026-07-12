@@ -75,9 +75,9 @@ declare v_form uuid; v_leader uuid; v_first text; v_last text; v_old text; v_new
 begin
   select formateur_party_id into v_form from public.governments where nation_id = p_nation and status = 'active';
   if v_form is null then return; end if;                        -- no sitting government → nobody to replace
-  select l.id, btrim(coalesce(l.first_name, '') || ' ' || coalesce(l.last_name, '')) into v_leader, v_old
-    from public._party_leader(v_form) l;                        -- the sitting HoG (shared source, schema/30)
+  v_leader := (public._party_leader(v_form)).id;                -- the sitting HoG (shared source, schema/30)
   if v_leader is null then return; end if;                      -- the HoG's party has no seeded leader → no-op
+  v_old := public._party_leader_name(v_form);                   -- their name, for the succession line
   select first_name, last_name into v_first, v_last from public._random_name(p_nation);   -- successor from the name pool
   -- Need BOTH a given name and a surname: politicians.first_name/last_name are NOT NULL, so a partial
   -- pool (e.g. surnames but no given names) must leave the incumbent rather than blank a component.
