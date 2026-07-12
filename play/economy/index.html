@@ -210,7 +210,7 @@
     <div class="topbar" id="topbar"></div>
     <span class="eye">Economy · National Accounts & Markets</span>
     <h1>Economy</h1>
-    <p class="treasury">Treasury <b id="treasury">—</b> · Each year the nation owes four demands, settled before <b>June</b>. Spend resources to settle them, <b>Produce</b> to refill stocks, and <b>import</b> to cover a shortfall.</p>
+    <p class="treasury">Each year the nation owes four demands, settled before <b>June</b>. Spend resources to settle them, <b>Produce</b> to refill stocks, and <b>import</b> to cover a shortfall.</p>
     <div id="content"><div class="empty">Loading the national accounts…</div></div>
   </main>
 </div>
@@ -324,7 +324,7 @@
     var have = d.type === 'money' ? num((n.economy || {}).budget) : num((n.on_hand || {})[d.k]);
     var met = have >= need;
     var haveTxt = d.type === 'money'
-      ? '<span class="need">need ' + cur + fmt(need) + 'B</span><br><span class="got' + (met ? '' : ' short') + '">treasury ' + cur + fmt(have) + 'B</span>'
+      ? '<span class="need">need ' + cur + fmt(need) + 'B</span><br><span class="got' + (met ? '' : ' short') + '">have ' + cur + fmt(have) + 'B</span>'
       : '<span class="need">need ' + fmt(need) + '</span><br><span class="got' + (met ? '' : ' short') + '">have ' + fmt(have) + '</span>';
     var act;
     if (!STATE.isHog) {
@@ -337,7 +337,7 @@
         : '<button class="spendbtn" data-settle="' + d.k + '">Spend ' + fmt(need) + ' ' + esc(d.label) + '</button>';
     } else {
       act = d.type === 'money'
-        ? '<span class="lowprompt">Treasury too low<br>to maintain.</span>'
+        ? '<span class="lowprompt">Not enough<br>to settle it.</span>'
         : '<span class="lowprompt">Short — Produce or<br>import to cover it.</span>';
     }
     return '<div class="dem">' +
@@ -584,7 +584,6 @@
         .eq('buyer_nation', STATE.nation.id).eq('status', 'active');
       if (ag) STATE.agreements = ag;
       var ec = STATE.nation.economy || {};
-      document.getElementById('treasury').textContent = ec.budget != null ? (STATE.currency + ec.budget + 'B') : '—';
     } catch (e) { /* a refresh failure leaves the action's result applied server-side; just re-render */ }
     setTopbarActions();   // an economy action (produce / sanction / …) spends an Action Point — refresh the top chip
     render();
@@ -618,7 +617,7 @@
     var withStock = RESLIST.filter(function(r){ return sellerStock(r.k) > 0; });
     T.res = (withStock[0] || RESLIST[3]).k; T.qty = 1;
     document.getElementById('tmTitle').textContent = T.seller.name;
-    document.getElementById('tmSub').textContent = 'World rate × your trade policy — from Budget, any deficit to debt';
+    document.getElementById('tmSub').textContent = 'World rate × your trade policy — the cost is added to national debt';
     document.getElementById('overlay').classList.add('show');
     renderChips(); renderDeal();
   }
@@ -637,7 +636,7 @@
     var total = Math.round(world * mult * T.qty * 10) / 10;   // sticker the buyer pays
     var duty = Math.round(total * (tariffPct / 100) * 10) / 10;
     var net = Math.round((total - duty) * 10) / 10;            // net cost after banking the duty
-    var budget = num((STATE.nation.economy || {}).budget), cur = STATE.currency;
+    var cur = STATE.currency;
     document.getElementById('qV').textContent = T.qty;
     document.getElementById('qAvail').textContent = T.seller.name + ' has ' + fmt(mx) + ' ' + T.res;
     document.getElementById('qPlus').disabled = T.qty >= mx; document.getElementById('qMinus').disabled = T.qty <= 1;
@@ -648,13 +647,12 @@
       '<div class="drow"><span>Sticker</span><span class="dv">' + cur + total.toFixed(1) + 'B</span></div>' +
       (duty > 0 ? '<div class="drow"><span>Tariff −' + tariffPct + '% (banked)</span><span class="dv">+' + cur + duty.toFixed(1) + 'B</span></div>' : '') +
       '<div class="drow total"><span>You pay (net)</span><span class="dv">' + cur + net.toFixed(1) + 'B</span></div>' +
-      '<div class="relnote">Treasury ' + cur + fmt(budget) + 'B · spends 1 AP on confirm.' +
-        (duty > 0 ? ' The ' + tariffPct + '% tariff is withheld from the seller and kept as customs revenue.' : '') +
-        (net > budget ? ' Treasury can’t cover it — ' + cur + (Math.round((net - budget) * 10) / 10).toFixed(1) + 'B is added to national debt.' : '') + '</div>';
+      '<div class="relnote">Spends 1 AP on confirm — the ' + cur + net.toFixed(1) + 'B cost is added to national debt.' +
+        (duty > 0 ? ' The ' + tariffPct + '% tariff is withheld from the seller and kept as customs revenue.' : '') + '</div>';
     var lowAp = num(STATE.party.action_points) < 1;
     var btn = document.getElementById('confirmBtn');
     btn.disabled = mx < 1 || lowAp;
-    btn.textContent = mx < 1 ? 'They have none' : (lowAp ? 'Need 1 AP' : 'Buy ' + T.qty + ' ' + T.res + ' for ' + cur + net.toFixed(1) + 'B · 1 AP' + (net > budget ? ' (to debt)' : ''));
+    btn.textContent = mx < 1 ? 'They have none' : (lowAp ? 'Need 1 AP' : 'Buy ' + T.qty + ' ' + T.res + ' for ' + cur + net.toFixed(1) + 'B · 1 AP');
   }
   async function confirmImport(){
     var btn = document.getElementById('confirmBtn'); btn.disabled = true;
@@ -727,7 +725,7 @@
   function closeDraw(){ document.getElementById('drawOverlay').classList.remove('show'); }
   function renderDrawDeal(){
     var mx = drawMax(); if (D.qty > mx) D.qty = Math.max(1, mx);
-    var total = Math.round(D.a.unit_price * D.qty * 10) / 10, budget = num((STATE.nation.economy || {}).budget), cur = STATE.currency;
+    var total = Math.round(D.a.unit_price * D.qty * 10) / 10, cur = STATE.currency;
     document.getElementById('dV').textContent = D.qty;
     document.getElementById('dAvail').textContent = mx + ' available to draw';
     document.getElementById('dPlus').disabled = D.qty >= mx; document.getElementById('dMinus').disabled = D.qty <= 1;
@@ -735,7 +733,7 @@
       '<div class="drow"><span>You draw</span><span class="dv">' + D.qty + ' ' + D.a.resource + '</span></div>' +
       '<div class="drow"><span>Locked price</span><span class="dv">' + cur + num(D.a.unit_price).toFixed(2) + 'B / unit</span></div>' +
       '<div class="drow total"><span>You pay</span><span class="dv">' + cur + total.toFixed(1) + 'B</span></div>' +
-      '<div class="relnote">Treasury ' + cur + fmt(budget) + 'B · spends 1 AP on confirm.' + (total > budget ? ' The shortfall is added to national debt.' : '') + '</div>';
+      '<div class="relnote">Spends 1 AP on confirm — the ' + cur + total.toFixed(1) + 'B cost is added to national debt.</div>';
     var lowAp = num(STATE.party.action_points) < 1, btn = document.getElementById('drawConfirm');
     btn.disabled = mx < 1 || lowAp;
     btn.textContent = mx < 1 ? 'Nothing to draw' : (lowAp ? 'Need 1 AP' : 'Draw ' + D.qty + ' ' + D.a.resource + ' · 1 AP');
@@ -783,7 +781,6 @@
       if (nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
       var cur = (nation.economy || {}).currency || '$';
-      document.getElementById('treasury').textContent = (nation.economy && nation.economy.budget != null) ? (cur + nation.economy.budget + 'B') : '—';
 
       STATE = {
         nation: nation, party: party, nations: nations || [nation],

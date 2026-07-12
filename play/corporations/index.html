@@ -18,9 +18,6 @@
   .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
   .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
   .topline{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap}
-  .cash{text-align:right;font-family:'Space Mono',monospace}
-  .cash .k{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
-  .cash .v{font-weight:800;font-size:22px;color:var(--ink)}
   .intro{font-size:13.5px;color:var(--muted);margin:8px 0 22px;max-width:70ch}
   .empty{text-align:center;padding:40px 20px;color:var(--soft)}
 
@@ -96,7 +93,6 @@
     <div class="phead">
       <div class="topline">
         <div><span class="eye">Economy</span><h1>Corporations</h1></div>
-        <div class="cash"><div class="k">National Treasury</div><div class="v" id="treasury">—</div></div>
       </div>
     </div>
 
@@ -208,7 +204,6 @@
 
       var eco = (home && home.economy) || {};
       var currency = eco.currency || '$';
-      document.getElementById('treasury').textContent = eco.budget != null ? (currency + eco.budget + 'B') : '—';
 
       var reg = { climate: 0, taxBurden: 0, firms: [] };
       try { var rr = await supabase.rpc('corp_register', { p_nation: party.nation_id }); if (!rr.error && rr.data) reg = rr.data; } catch (e) {}

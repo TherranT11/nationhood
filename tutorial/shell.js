@@ -454,7 +454,7 @@ const GUIDE_STEPS = [
   { page: '/tutorial/legislature/', target: '#voteYes', ey: 'Your Call', title: 'Cast Your Vote',
     body: 'There’s no clean answer here. Vote Yes to hold the coalition together — and take the hit with the public. Watch the tally move.', requires: 'vote', pulse: true },
   { page: '/tutorial/legislature/', target: '.gd-floor .tally', ey: 'Carried', title: 'It Passes',
-    body: '137 to 103 — the bill clears the floor. The pension is abolished: the treasury saves ₣23.1bn and bureaucracy falls, but poverty climbs and the public is furious. You kept UC — at a price.' },
+    body: '137 to 103 — the bill clears the floor. The pension is abolished: the state saves ₣23.1bn and bureaucracy falls, but poverty climbs and the public is furious. You kept UC — at a price.' },
   { page: '/tutorial/legislature/', target: '.gd-committee', ey: 'Up Next', title: 'In Committee',
     body: 'Les Verts want to abolish the alcohol tax — popular, but it blows a ₣2.2bn hole in revenue. Bills like this need your endorsement to reach the floor. A decision for another day.' },
   { page: '/tutorial/legislature/', target: '.nav__i[href="/tutorial/inbox/"], .botnav__i[href="/tutorial/inbox/"]',

@@ -2602,7 +2602,7 @@
       function rung(name,desc,mult,tariff,blocked){ return { name:name, desc:desc, importMult:mult, tariff:tariff, blocked:blocked, effects:[] }; }
       return { name:'Trade Policy', desc:'How open the nation is to foreign trade.', type:'spectrum', special:'trade', defaultIdx:2, spectrum:[
         rung('Autarky','Closed borders — the nation imports nothing and must produce all it needs.',1,0,true),
-        rung('Protectionism','A tariff wall — imports are dear but fund the treasury.',1.25,20,false),
+        rung('Protectionism','A tariff wall — imports are dear but fund the state.',1.25,20,false),
         rung('Managed Trade','The balanced status quo — imports at the world rate, no tariff.',1,0,false),
         rung('Open Markets','Low barriers — cheaper imports, a modest tariff.',0.9,10,false),
         rung('Free Trade','Open borders — the cheapest imports and no tariff.',0.8,0,false)

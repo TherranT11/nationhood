@@ -126,8 +126,8 @@ declare v_net numeric := p_total - coalesce(p_duty, 0);
 begin
   perform public._nation_stat_add(p_seller, 'on_hand', p_resource, -p_qty, 0, null);
   perform public._nation_stat_add(p_buyer,  'on_hand', p_resource,  p_qty, 0, null);
-  perform public._nation_budget_add(p_buyer, coalesce(p_duty, 0) - p_total);   -- buyer pays net, debt-financed
-  perform public._nation_stat_add(p_seller, 'economy', 'budget', v_net, 0, null);   -- seller receives net of duty
+  perform public._nation_stat_add(p_buyer,  'economy', 'debt', v_net, 0, null);    -- buyer's net cost is added to Public Debt (no treasury)
+  perform public._nation_stat_add(p_seller, 'economy', 'debt', -v_net, 0, null);   -- seller's net proceeds pay DOWN its debt (floored at 0)
   perform public._record_trade_flow(p_seller, p_buyer, p_resource, v_net);          -- World Trade ledger (schema/116)
 end $$;
 revoke all on function public._settle_import(text, text, text, int, numeric, numeric) from public, anon, authenticated;
@@ -207,39 +207,66 @@ grant execute on function public.economy_import(text, text, int) to authenticate
 -- must cover the inputs and the party must hold the Influence; the stock swaps in place (energy
 -- and minerals down, goods up) with no money changing hands. The economy page previews on-hand;
 -- the counts are re-read here so a stale client can't over-mint.
+-- Forge finished units from raw stock: lock the nation, verify it holds p_qty of EACH input, then burn
+-- them and add p_qty of the output (all on_hand). ONE source for the Minister of Economic Development's
+-- production actions below (Industrialize, Service Economy) — a short input raises so the atomic action
+-- rolls back. The nation stays locked through the caller's follow-up event write (same transaction).
+create or replace function public._forge_from_stock(p_nation text, p_qty int, p_inputs text[], p_output text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_in text; v_have numeric;
+begin
+  perform 1 from public.nations where id = p_nation for update;   -- serialise concurrent runs
+  foreach v_in in array p_inputs loop
+    select coalesce((on_hand->>v_in)::numeric, 0) into v_have from public.nations where id = p_nation;
+    if v_have < p_qty then raise exception 'Not enough % (need %, have %).', initcap(v_in), p_qty, v_have; end if;
+  end loop;
+  foreach v_in in array p_inputs loop
+    perform public._nation_stat_add(p_nation, 'on_hand', v_in, -p_qty, 0, null);
+  end loop;
+  perform public._nation_stat_add(p_nation, 'on_hand', p_output, p_qty, 0, null);
+end $$;
+revoke all on function public._forge_from_stock(text, int, text[], text) from public, anon, authenticated;
+
+-- INDUSTRIALIZE — the Minister of Economic Development forges Goods from raw stock: 1 Energy + 1 Mineral
+-- per Good (via _forge_from_stock), the run costs 1 Action Point.
 create or replace function public.economy_industrialize(p_goods int)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare
-  v_p public.parties%rowtype; v_nation text; v_cost int; v_name text;
-  v_energy numeric; v_minerals numeric;
+declare v_p public.parties%rowtype; v_nation text; v_name text;
 begin
   if coalesce(p_goods, 0) < 1 then raise exception 'Choose how many Goods to create.'; end if;
-  v_cost := 2 * p_goods;
-
   v_p := public._begin_action(0);   -- lock caller's party + spend 1 Action Point
   v_nation := v_p.nation_id;
   if not public._party_holds_ministry(v_p.id, 'Economic Development') then
     raise exception 'Only the Minister of Economic Development can industrialize.'; end if;
-
-  -- Lock the nation row so two concurrent runs can't both pass the stock check and overdraw it.
-  select name, coalesce((on_hand->>'energy')::numeric, 0), coalesce((on_hand->>'minerals')::numeric, 0)
-    into v_name, v_energy, v_minerals
-    from public.nations where id = v_nation for update;
-  if v_energy < p_goods then raise exception 'Not enough Energy (need %, have %).', p_goods, v_energy; end if;
-  if v_minerals < p_goods then raise exception 'Not enough Minerals (need %, have %).', p_goods, v_minerals; end if;
-
-  perform public._nation_stat_add(v_nation, 'on_hand', 'energy',   -p_goods, 0, null);
-  perform public._nation_stat_add(v_nation, 'on_hand', 'minerals', -p_goods, 0, null);
-  perform public._nation_stat_add(v_nation, 'on_hand', 'goods',     p_goods, 0, null);
-
+  perform public._forge_from_stock(v_nation, p_goods, array['energy', 'minerals'], 'goods');
+  select name into v_name from public.nations where id = v_nation;
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_nation, v_p.id, 'economy',
       'Nation of ' || v_name || ' has continued to industrialize, creating ' || p_goods || ' goods.',
       public.current_game_date());
-
-  return jsonb_build_object('goods', p_goods, 'cost', v_cost, 'actions', v_p.influence);
+  return jsonb_build_object('goods', p_goods, 'actions', v_p.influence);
 end $$;
 grant execute on function public.economy_industrialize(int) to authenticated;
+
+-- SERVICE ECONOMY — Industrialize one tier up the value chain: 1 Energy + 1 Food per Service.
+create or replace function public.economy_service_economy(p_services int)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_p public.parties%rowtype; v_nation text; v_name text;
+begin
+  if coalesce(p_services, 0) < 1 then raise exception 'Choose how many Services to create.'; end if;
+  v_p := public._begin_action(0);   -- lock caller's party + spend 1 Action Point
+  v_nation := v_p.nation_id;
+  if not public._party_holds_ministry(v_p.id, 'Economic Development') then
+    raise exception 'Only the Minister of Economic Development can grow the service economy.'; end if;
+  perform public._forge_from_stock(v_nation, p_services, array['energy', 'food'], 'services');
+  select name into v_name from public.nations where id = v_nation;
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_nation, v_p.id, 'economy',
+      'Nation of ' || v_name || ' has grown its service economy, creating ' || p_services || ' services.',
+      public.current_game_date());
+  return jsonb_build_object('services', p_services, 'actions', v_p.influence);
+end $$;
+grant execute on function public.economy_service_economy(int) to authenticated;
 
 -- Advance Society: invest in living standards for +1 Prosperity. Costs (Prosperity ÷ 5 + 5)
 -- Goods from on-hand — the richer you are, the dearer it gets — and may be done once per
