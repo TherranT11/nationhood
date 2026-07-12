@@ -70,6 +70,12 @@
   .cm button.decopt:hover:not(:disabled){border-color:var(--indigo)}
   .cm button.decopt:disabled{opacity:.55;cursor:not-allowed}
   .cm .decopt.wait{color:var(--muted)}
+  .cm .reltag{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--indigo)}
+  .cm .relpickrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+  .cm .relpickrow .rplab{font-size:12px;color:var(--muted)}
+  .cm .relpickrow select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--ink);font:inherit;font-size:12.5px}
+  .cm .relpickrow .relgo{padding:8px 13px;border-radius:8px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+  .cm .relpickrow .relcancel{padding:8px 13px;border-radius:8px;border:1px solid var(--line);background:var(--field);color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
 
   /* market + hand grids */
   .cm .market{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px}
@@ -673,12 +679,39 @@
         '<div class="decwho' + (mine ? ' mine' : '') + '">' + who + '</div>' +
         '<div class="decopts">' + opts.map(function (o, i) {
           var label = esc((o && o.txt) || ('Option ' + (i + 1)));
+          var needN = optNeedsNation(o) ? ' <span class="reltag">· pick a nation</span>' : '';
           return mine
-            ? '<button class="decopt" data-dec="' + d.id + '" data-opt="' + i + '">' + label + '</button>'
+            ? '<button class="decopt" data-dec="' + d.id + '" data-opt="' + i + '"' + (optNeedsNation(o) ? ' data-relpick="1"' : '') + '>' + label + needN + '</button>'
             : '<span class="decopt wait">' + label + '</span>';
         }).join('') + '</div></div>';
     }).join('');
-    wrap.querySelectorAll('[data-dec]').forEach(function (b) { b.onclick = function () { decideCard(b.dataset.dec, +b.dataset.opt); }; });
+    wrap.querySelectorAll('[data-dec]').forEach(function (b) {
+      b.onclick = function () {
+        if (b.dataset.relpick) { openNationPick(b.dataset.dec, +b.dataset.opt, b); return; }
+        decideCard(b.dataset.dec, +b.dataset.opt);
+      };
+    });
+  }
+  // An option that carries a rel_pick effect ("relations with a nation of the decider's choice")
+  // must name the nation before it resolves. Tolerates the legacy single-effect ({kind,p}) shape.
+  function optNeedsNation(o) {
+    var fx = (o && Array.isArray(o.fx)) ? o.fx : (o && o.kind ? [o] : []);
+    return fx.some(function (e) { return e && e.kind === 'rel_pick'; });
+  }
+  // Inline nation picker for a rel_pick decision: choose any OTHER nation, then resolve with it.
+  function openNationPick(id, opt, btn) {
+    var card = btn.closest('.deccard'); if (!card || card.querySelector('.relpickrow')) return;
+    var others = Object.keys(NATIONS).filter(function (nid) { return nid !== NATION_ID; })
+      .sort(function (a, b) { return (NATIONS[a] || '').localeCompare(NATIONS[b] || ''); });
+    if (!others.length) { alert('No other nation to improve relations with.'); return; }
+    card.querySelectorAll('.decopt').forEach(function (x) { x.disabled = true; });
+    var row = document.createElement('div'); row.className = 'relpickrow';
+    row.innerHTML = '<label class="rplab">Improve relations with</label>' +
+      '<select class="relselect">' + others.map(function (nid) { return '<option value="' + esc(nid) + '">' + esc(NATIONS[nid]) + '</option>'; }).join('') + '</select>' +
+      '<button class="relgo" type="button">Confirm</button><button class="relcancel" type="button">Cancel</button>';
+    card.appendChild(row);
+    row.querySelector('.relcancel').onclick = function () { row.remove(); card.querySelectorAll('.decopt').forEach(function (x) { x.disabled = false; }); };
+    row.querySelector('.relgo').onclick = function () { var nid = row.querySelector('.relselect').value; if (nid) decideCard(id, opt, nid); };
   }
 
   // A stable, readable colour per nation, hashed from its id (same id → same hue every render).
@@ -732,7 +765,7 @@
   async function cancelBid(id) { await run(function () { return supabase.rpc('card_bid_cancel', { p_deck_card: id }); }); }
   async function playCard(id, target, q, r, corp, corp2) { await run(function () { return supabase.rpc('card_play', { p_deck_card: id, p_target: target || null, p_hex_q: (q == null ? null : q), p_hex_r: (r == null ? null : r), p_corp: corp || null, p_corp2: corp2 || null }); }); }
   async function discardCard(id) { if (!confirm('Return this card to the deck for +3 Influence? It leaves your hand.')) return; await run(function () { return supabase.rpc('card_discard', { p_deck_card: id }); }); }
-  async function decideCard(id, opt) { await run(function () { return supabase.rpc('card_decide', { p_decision: id, p_option: opt }); }); }
+  async function decideCard(id, opt, nation) { await run(function () { return supabase.rpc('card_decide', { p_decision: id, p_option: opt, p_nation: nation || null }); }); }
   async function run(fn) {
     if (BUSY) return; BUSY = true; setDisabled(true);
     try {
