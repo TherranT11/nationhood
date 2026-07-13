@@ -392,7 +392,7 @@ drop function if exists public._confidence_collapse(text);
 -- the manual admin button calls advance_tick() — the gated wrapper below. Every
 -- per-nation / per-item step runs in its own sub-block: a single failure is logged
 -- (raise warning) and skipped, so one bad nation can never freeze the world clock.
--- Bumps the clock, refreshes every party's action budget to 12, applies monthly
+-- Bumps the clock, banks +3 Influence per party and floors Action Points at 2, applies monthly
 -- policy economics + January income,
 -- reconciles one-party regimes, resolves due elections, lifts expired modifiers, and
 -- promotes/tallies floor measures.
@@ -410,10 +410,15 @@ begin
   -- nation — the one holding the most legislature seats (ties share the bonus). Replaces the old
   -- reset-to-12 Action-Point budget, so unspent Influence now carries forward. Touches every row
   -- (still satisfies the require-a-WHERE-clause guard via id is not null).
+  -- Action Points: a fixed baseline of 2 every tick. At or below 2 it tops the party up to 2 (the pure
+  -- baseline doesn't stack with itself — sitting on 2 unspent stays 2). Above 2 — i.e. AP banked from
+  -- played event cards — the baseline lands ON TOP (7 → 9). So a card player always gains 2 a tick; a
+  -- non-player is refilled to 2.
   update public.parties p set influence = least(100, influence + 3 + (
            case when p.seats > 0 and p.seats = (
              select max(p2.seats) from public.parties p2 where p2.nation_id = p.nation_id
-           ) then 1 else 0 end))
+           ) then 1 else 0 end)),
+         action_points = case when coalesce(p.action_points, 0) <= 2 then 2 else p.action_points + 2 end
    where p.id is not null;
   -- Debt→inflation backlog: snapshot each nation's debt BEFORE this tick's economics, so the
   -- close-out step (end of tick) can measure how much debt was ADDED across the whole tick.
