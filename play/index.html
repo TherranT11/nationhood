@@ -925,9 +925,20 @@
     if (k === 'fleet') return '<svg viewBox="0 0 24 18"><polygon points="3,9 21,9 18,15 6,15" fill="#fff"/><rect x="9" y="4" width="6" height="4" fill="#fff"/></svg>';
     return '<svg viewBox="0 0 24 18"><rect x="4" y="8" width="16" height="6" rx="1.6" fill="#fff"/><rect x="7" y="4" width="9" height="4" rx="1.2" fill="#fff"/><line x1="15" y1="6" x2="22" y2="6" stroke="#fff" stroke-width="1.8"/></svg>';
   }
+  // ── EXPAND MILITARY (Stage 1, schema/199) — raise ONE NAMED land unit at a base: pick the base, name
+  // it ("1st Infantry Division"), choose Infantry (1 Military) or Armor (1 Military + 1 Energy + 1
+  // Mineral). Capacity is nation-wide: bases × 5. build_unit is authoritative.
+  var LAND_UNITS = {
+    infantry: { name: 'Infantry', str: 3, color: '#C42B2B', desc: 'Ground infantry — takes and holds territory.' },
+    armor:    { name: 'Armor',    str: 5, color: '#8a5a2c', desc: 'Heavy armor — infantry converted with industry.' }
+  };
+  function landIcon(k) {
+    if (k === 'armor') return '<svg viewBox="0 0 24 18"><ellipse cx="12" cy="9" rx="8" ry="5" fill="none" stroke="#fff" stroke-width="1.8"/></svg>';
+    return '<svg viewBox="0 0 24 18"><line x1="4" y1="3" x2="20" y2="15" stroke="#fff" stroke-width="1.8"/><line x1="4" y1="15" x2="20" y2="3" stroke="#fff" stroke-width="1.8"/></svg>';
+  }
   var expandModal = document.getElementById('expandModal');
   var closeExpand = wireModalClose(expandModal, 'expandClose');
-  var EXP = { bases: [], names: {}, mil: 0, pending: {}, type: 'army', sel: 0, qty: 1 };
+  var EXP = { bases: [], names: {}, mil: 0, energy: 0, minerals: 0, units: 0, cap: 0, sel: 0, type: 'infantry', name: '' };
   function openExpand() {
     if (acting || !feedCtx) return;
     document.getElementById('expandBody').innerHTML = '<p class="empty">Loading…</p>';
@@ -938,57 +949,57 @@
     try {
       var nid = feedCtx.nationId;
       var res = await Promise.all([
-        supabase.from('military_bases').select('id, host_nation_id, armies, fleets, air_wings').eq('nation_id', nid).order('created_at'),
+        supabase.from('military_bases').select('id, host_nation_id').eq('nation_id', nid).order('created_at'),
         supabase.from('nations').select('id, name, on_hand'),
-        supabase.from('military_builds').select('base_id, qty').eq('nation_id', nid)
+        supabase.from('military_units').select('id').eq('nation_id', nid)
       ]);
       EXP.bases = res[0].data || [];
       EXP.names = {}; var mine = null;
       (res[1].data || []).forEach(function (n) { EXP.names[n.id] = n.name; if (n.id === nid) mine = n; });
-      EXP.mil = Number(((mine || {}).on_hand || {}).military) || 0;
-      EXP.pending = {}; (res[2].data || []).forEach(function (b) { EXP.pending[b.base_id] = (EXP.pending[b.base_id] || 0) + (Number(b.qty) || 0); });
-      EXP.sel = 0; EXP.type = 'army'; EXP.qty = 1;
+      var oh = (mine || {}).on_hand || {};
+      EXP.mil = Number(oh.military) || 0; EXP.energy = Number(oh.energy) || 0; EXP.minerals = Number(oh.minerals) || 0;
+      EXP.units = (res[2].data || []).length; EXP.cap = EXP.bases.length * 5;
+      EXP.sel = 0; EXP.type = 'infantry'; EXP.name = '';
       renderExpand();
     } catch (e) { document.getElementById('expandBody').innerHTML = '<p class="empty">Couldn’t load. Try again.</p>'; }
   }
-  function expBase() { return EXP.bases[EXP.sel]; }
-  function expCapLeft() { var b = expBase(); return b ? Math.max(0, 5 - (baseUnitTotal(b) + (EXP.pending[b.id] || 0))) : 0; }
-  function expMax() { return Math.max(0, Math.min(expCapLeft(), Math.floor(EXP.mil / UNIT_SPEC[EXP.type].cost))); }
+  function expAfford(type) { return EXP.mil >= 1 && !(type === 'armor' && (EXP.energy < 1 || EXP.minerals < 1)); }
+  function expCanBuild() { return EXP.bases.length > 0 && EXP.units < EXP.cap && expAfford(EXP.type) && EXP.name.trim().length > 0; }
+  // Update the Build button (disabled + label) on name keystrokes without a full re-render (keeps focus).
+  function syncExpGo() { var go = document.getElementById('expGo'); if (!go) return;
+    go.disabled = !expCanBuild(); go.textContent = 'Raise ' + (EXP.name.trim() || LAND_UNITS[EXP.type].name); }
   function renderExpand() {
     var body = document.getElementById('expandBody');
     if (!EXP.bases.length) { body.innerHTML = '<p class="empty">You have no bases yet — build one first.</p>'; return; }
-    var b = expBase(), spec = UNIT_SPEC[EXP.type], max = expMax();
-    EXP.qty = Math.max(max > 0 ? 1 : 0, Math.min(EXP.qty, max));
-    var host = EXP.names[b.host_nation_id] || b.host_nation_id, committed = baseUnitTotal(b) + (EXP.pending[b.id] || 0);
+    var full = EXP.units >= EXP.cap, spec = LAND_UNITS[EXP.type];
     var baseOpts = EXP.bases.map(function (x, i) { return '<option value="' + i + '"' + (i === EXP.sel ? ' selected' : '') + '>Base ' + (i + 1) + ' · ' + esc(EXP.names[x.host_nation_id] || x.host_nation_id) + '</option>'; }).join('');
-    var cards = UNIT_ORDER.map(function (k) { var u = UNIT_SPEC[k];
-      return '<div class="ucard' + (EXP.type === k ? ' on' : '') + '" data-u="' + k + '"><div class="uchip" style="background:' + u.color + '">' + unitIcon(k) + '</div>' +
-        '<div class="uname">' + u.name + '</div><div class="ucost">' + u.cost + ' Mil · ' + u.ticks + 't</div><div class="ubeats">beats ' + u.beats + '</div></div>'; }).join('');
-    var costMil = spec.cost * EXP.qty;
-    var costLine = max < 1
-      ? '<p class="exp-warn">' + (expCapLeft() < 1 ? 'This base is full (5 units).' : 'Not enough Military — a ' + spec.name + ' costs ' + spec.cost + '.') + '</p>'
-      : '<div class="exp-cost">Cost: <b>' + costMil + ' Military</b> · leaves ' + (EXP.mil - costMil) + ' in reserve · ready in ' + spec.ticks + ' tick' + (spec.ticks === 1 ? '' : 's') + '</div>';
+    var cards = ['infantry', 'armor'].map(function (k) { var u = LAND_UNITS[k];
+      return '<div class="ucard' + (EXP.type === k ? ' on' : '') + '" data-u="' + k + '"><div class="uchip" style="background:' + u.color + '">' + landIcon(k) + '</div>' +
+        '<div class="uname">' + u.name + '</div><div class="ucost">' + (k === 'armor' ? '1 Mil · +1⚡ +1⛏' : '1 Mil') + '</div><div class="ubeats">STR ' + u.str + '</div></div>'; }).join('');
+    var costLine = full
+      ? '<p class="exp-warn">Your forces are at capacity (' + EXP.cap + ' units for ' + EXP.bases.length + ' base' + (EXP.bases.length === 1 ? '' : 's') + ').</p>'
+      : !expAfford(EXP.type)
+        ? '<p class="exp-warn">' + (EXP.type === 'armor' ? 'Armor needs 1 Military + 1 Energy + 1 Mineral.' : 'Not enough Military — needs 1.') + '</p>'
+        : '<div class="exp-cost">Cost: <b>' + (EXP.type === 'armor' ? '1 Military + 1 Energy + 1 Mineral' : '1 Military') + '</b> · ready in 1 tick</div>';
     body.innerHTML =
       '<label class="exp-lab">Base</label><select id="expBase" class="exp-sel">' + baseOpts + '</select>' +
-      '<div class="u-status">You have <span class="mil">' + EXP.mil + ' Military</span> · ' + esc(host) + ' holds <b>' + committed + ' / 5</b> units</div>' +
-      '<div class="u-capbar"><i class="fill" style="width:' + (committed / 5 * 100) + '%"></i><i class="add" style="width:' + (Math.min(max > 0 ? EXP.qty : 0, expCapLeft()) / 5 * 100) + '%"></i></div>' +
+      '<label class="exp-lab">Name the unit</label>' +
+      '<input id="expName" class="exp-sel" type="text" maxlength="48" placeholder="e.g. 1st Infantry Division" value="' + esc(EXP.name) + '">' +
+      '<div class="u-status">You have <span class="mil">' + EXP.mil + ' Military</span> · <b>' + EXP.units + ' / ' + EXP.cap + '</b> units</div>' +
       '<label class="exp-lab">Choose a unit</label><div class="units">' + cards + '</div><div class="udesc">' + spec.desc + '</div>' +
-      '<label class="exp-lab">How many to build</label>' +
-      '<div class="exp-step"><button type="button" id="expMinus"' + (EXP.qty <= 1 ? ' disabled' : '') + '>−</button><span id="expQty">' + EXP.qty + '</span>' +
-        '<button type="button" id="expPlus"' + (EXP.qty >= max ? ' disabled' : '') + '>+</button><span class="exp-max">max ' + max + '</span></div>' +
       costLine +
       '<div class="noco__btns"><button class="noco__btn noco__cancel" id="expCancel" type="button">Cancel</button>' +
-        '<button class="noco__btn noco__confirm" id="expGo" type="button"' + (max > 0 ? '' : ' disabled') + '>Build ' + EXP.qty + ' ' + uplur(EXP.type, EXP.qty) + '</button></div>';
-    document.getElementById('expBase').onchange = function () { EXP.sel = +this.value; if (EXP.qty > expMax()) EXP.qty = Math.max(1, expMax()); renderExpand(); };
-    document.querySelectorAll('#expandBody [data-u]').forEach(function (c) { c.onclick = function () { EXP.type = c.dataset.u; if (EXP.qty > expMax()) EXP.qty = Math.max(1, expMax()); renderExpand(); }; });
-    document.getElementById('expMinus').onclick = function () { if (EXP.qty > 1) { EXP.qty--; renderExpand(); } };
-    document.getElementById('expPlus').onclick = function () { if (EXP.qty < expMax()) { EXP.qty++; renderExpand(); } };
+        '<button class="noco__btn noco__confirm" id="expGo" type="button"' + (expCanBuild() ? '' : ' disabled') + '>Raise ' + esc(EXP.name.trim() || spec.name) + '</button></div>';
+    document.getElementById('expBase').onchange = function () { EXP.sel = +this.value; };
+    document.getElementById('expName').oninput = function () { EXP.name = this.value; syncExpGo(); };
+    document.querySelectorAll('#expandBody [data-u]').forEach(function (c) { c.onclick = function () { EXP.type = c.dataset.u; renderExpand(); }; });
     document.getElementById('expCancel').onclick = closeExpand;
     document.getElementById('expGo').onclick = function () {
-      var base = expBase(); if (!base || expMax() < 1) return;
-      var type = EXP.type, qty = EXP.qty; closeExpand();
-      performAction(function () { return supabase.rpc('expand_military', { p_base_id: base.id, p_unit_type: type, p_qty: qty }); },
-        function (d) { var t = d.ticks || UNIT_SPEC[type].ticks, n = d.ordered || qty; return n + ' ' + uplur(type, n) + ' ordered — ready in ' + t + ' tick' + (t === 1 ? '' : 's') + '.'; });
+      if (!expCanBuild()) return;
+      var base = EXP.bases[EXP.sel], type = EXP.type, name = EXP.name.trim();
+      closeExpand();
+      performAction(function () { return supabase.rpc('build_unit', { p_base_id: base.id, p_name: name, p_type: type }); },
+        function (d) { return 'Raised ' + (d.name || name) + ' — ready in 1 tick.'; });
     };
   }
 

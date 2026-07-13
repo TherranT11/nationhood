@@ -73,7 +73,10 @@ begin
   if not exists (select 1 from public.military_bases where id = p_base_id and nation_id = v_nation) then
     raise exception 'That base is not one of yours.'; end if;
 
-  -- Capacity: bases × 5 across the whole nation (built or building).
+  -- Capacity: bases × 5 across the whole nation (built or building). KNOWN TRANSITIONAL GAP: this counts
+  -- only the new named units, not the legacy armies/fleets/air_wings still stationed under the old model —
+  -- so during the Stage-1/Stage-2 overlap a nation can briefly exceed the intended cap. Reconciled when
+  -- Stage 2 retires the count columns (there'll be one unit model, one count).
   select count(*) into v_bases from public.military_bases where nation_id = v_nation;
   select count(*) into v_units from public.military_units where nation_id = v_nation;
   if v_units >= v_bases * 5 then
