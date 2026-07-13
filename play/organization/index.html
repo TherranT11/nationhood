@@ -105,6 +105,19 @@
   .lnote{font-family:'Space Mono',monospace;font-size:8px;color:var(--soft);letter-spacing:.04em}
   .govnote{font-size:11px;color:var(--muted);line-height:1.55;padding:11px 14px;border-top:1px solid var(--line);background:color-mix(in srgb,var(--indigo) 5%,transparent)}
   .govnote b{color:color-mix(in srgb,var(--indigo) 55%,var(--ink))}
+  /* "Laws of the Assembly" — enlarged ~30% and greyed out / non-interactive until the feature opens. */
+  .laws-soon{opacity:.5;pointer-events:none;user-select:none}
+  .laws-soon .sect{font-size:13px}
+  .laws-soon .brnm{font-size:17px}
+  .laws-soon .brtag,.laws-soon .brlock{font-size:10px}
+  .laws-soon .brdot{width:12px;height:12px}
+  .laws-soon .brhead{padding:14px 18px;gap:12px}
+  .laws-soon .blaw{padding:14px 18px}
+  .laws-soon .blaw .bn{font-size:16px}
+  .laws-soon .blaw .bd{font-size:10.5px}
+  .laws-soon .lbtn,.laws-soon .enacted,.laws-soon .agtally{font-size:11px;padding:8px 14px}
+  .laws-soon .lnote{font-size:10.5px}
+  .laws-soon .govnote{font-size:14px;padding:14px 18px}
 
   /* upcoming agenda (read-only summary of the open law votes) */
   .dk{display:flex;align-items:flex-start;gap:11px;padding:10px 0;border-top:1px solid var(--line)}
@@ -425,7 +438,7 @@
         '<div class="brlaws">' + laws + '</div>' +
         (br.note ? '<div class="govnote">' + br.note + '</div>' : '') + '</div>';
     }).join('');
-    return '<div class="card"><div class="sect">Laws of the Assembly <span class="note">Level I · propose a law, members vote, a majority enacts it' +
+    return '<div class="card laws-soon"><div class="sect">Laws of the Assembly <span class="note">Level I · propose a law, members vote, a majority enacts it' +
       (enacted ? ' · ' + enacted + ' enacted' : '') + (agenda ? ' · ' + agenda + ' on the agenda' : '') + '</span></div>' + branches + '</div>';
   }
 
