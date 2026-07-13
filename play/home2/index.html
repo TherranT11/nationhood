@@ -304,13 +304,19 @@ function cityGlyph(isCap, x, y) {
       '<polygon class="citydot" points="' + starPoints(x, y - 0.5, 6, 2.6) + '" ' +
       'fill="#f0a03c" stroke="#7a4a12" stroke-width="0.6" stroke-linejoin="round"/>';
   }
-  // house: cream body + dark pitched roof, white halo underneath
-  var body = '<rect x="' + (x - 2.6) + '" y="' + (y - 0.6) + '" width="5.2" height="4.2" ' +
-    'fill="#e7ddc6" stroke="#3a352c" stroke-width="0.8"/>';
-  var roof = '<polygon points="' + (x - 3.4) + ',' + (y - 0.6) + ' ' + x + ',' + (y - 4.4) + ' ' + (x + 3.4) + ',' + (y - 0.6) +
-    '" fill="#9c5f42" stroke="#3a352c" stroke-width="0.8" stroke-linejoin="round"/>';
-  return '<g class="citydot"><rect x="' + (x - 4) + '" y="' + (y - 5) + '" width="8" height="9.4" rx="1.5" ' +
-    'fill="#fff" opacity="0.55"/>' + roof + body + '</g>';
+  // medieval hamlet: a little cluster of two steep-gabled timber cottages — a taller one behind and
+  // a shorter one in front (with a door). White halo underneath so it reads over any nation colour.
+  var halo = '<rect x="' + (x - 5.4) + '" y="' + (y - 5.6) + '" width="10.8" height="10.4" rx="1.8" fill="#fff" opacity="0.5"/>';
+  // back-left cottage (taller, narrow)
+  var h1roof = '<polygon points="' + (x - 5) + ',' + (y - 1) + ' ' + (x - 2.5) + ',' + (y - 5.2) + ' ' + (x) + ',' + (y - 1) +
+    '" fill="#7a4a2c" stroke="#4a3a2c" stroke-width="0.7" stroke-linejoin="round"/>';
+  var h1body = '<rect x="' + (x - 4.4) + '" y="' + (y - 1) + '" width="3.8" height="4.6" fill="#e7ddc6" stroke="#4a3a2c" stroke-width="0.7"/>';
+  // front-right cottage (shorter, wider) + door
+  var h2roof = '<polygon points="' + (x - 0.4) + ',' + (y + 0.4) + ' ' + (x + 2.2) + ',' + (y - 2.8) + ' ' + (x + 4.8) + ',' + (y + 0.4) +
+    '" fill="#8f5a34" stroke="#4a3a2c" stroke-width="0.7" stroke-linejoin="round"/>';
+  var h2body = '<rect x="' + (x + 0.2) + '" y="' + (y + 0.4) + '" width="4" height="3.4" fill="#efe7d4" stroke="#4a3a2c" stroke-width="0.7"/>';
+  var door = '<rect x="' + (x + 1.6) + '" y="' + (y + 1.7) + '" width="1.3" height="2.1" fill="#5c4326"/>';
+  return '<g class="citydot">' + halo + h1roof + h1body + h2roof + h2body + door + '</g>';
 }
 function closeEventPop() { if (evPop) { evPop.classList.remove('show'); evPop.innerHTML = ''; } }
 // Reviewed-event memory is per in-game month: {date, ids}. A new month resets it (fresh events to review).
