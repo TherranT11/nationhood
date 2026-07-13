@@ -286,6 +286,32 @@ var handleMapTap = null;    // set once the world loads: opens/closes the nation
 var evPopReposition = null; // set while the event popup is open: keeps it anchored to its marker on pan/zoom
 var ZOOM_CITY = 1.6;   // at/above this zoom, nation names fade out and city names + dots fade in
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+// Map glyphs for a settlement, sized in world units (they ride with the SVG + fade in when zoomed, via
+// the .citydot class). A capital gets a gold star; a plain city gets a small pitched-roof house. Both
+// carry a white halo (double stroke) so they stay legible over any nation colour.
+function starPoints(cx, cy, outer, inner) {
+  var pts = [];
+  for (var i = 0; i < 10; i++) {
+    var a = Math.PI / 5 * i - Math.PI / 2, rad = (i % 2) ? inner : outer;
+    pts.push((cx + rad * Math.cos(a)).toFixed(1) + ',' + (cy + rad * Math.sin(a)).toFixed(1));
+  }
+  return pts.join(' ');
+}
+function cityGlyph(isCap, x, y) {
+  if (isCap) {
+    return '<polygon class="citydot" points="' + starPoints(x, y - 0.5, 6, 2.6) + '" ' +
+      'fill="#f0a03c" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/>' +
+      '<polygon class="citydot" points="' + starPoints(x, y - 0.5, 6, 2.6) + '" ' +
+      'fill="#f0a03c" stroke="#7a4a12" stroke-width="0.6" stroke-linejoin="round"/>';
+  }
+  // house: cream body + dark pitched roof, white halo underneath
+  var body = '<rect x="' + (x - 2.6) + '" y="' + (y - 0.6) + '" width="5.2" height="4.2" ' +
+    'fill="#e7ddc6" stroke="#3a352c" stroke-width="0.8"/>';
+  var roof = '<polygon points="' + (x - 3.4) + ',' + (y - 0.6) + ' ' + x + ',' + (y - 4.4) + ' ' + (x + 3.4) + ',' + (y - 0.6) +
+    '" fill="#9c5f42" stroke="#3a352c" stroke-width="0.8" stroke-linejoin="round"/>';
+  return '<g class="citydot"><rect x="' + (x - 4) + '" y="' + (y - 5) + '" width="8" height="9.4" rx="1.5" ' +
+    'fill="#fff" opacity="0.55"/>' + roof + body + '</g>';
+}
 function closeEventPop() { if (evPop) { evPop.classList.remove('show'); evPop.innerHTML = ''; } }
 // Reviewed-event memory is per in-game month: {date, ids}. A new month resets it (fresh events to review).
 function loadReviewed(date) {
@@ -438,8 +464,8 @@ function applyTransform() {
   cities.filter(function (c) { return c.q != null && c.r != null; }).forEach(function (c) {
     var p = axialToPix(c.q, c.r, S, 0, 0);
     var isCap = capitalByNation[c.nation_id] && capitalByNation[c.nation_id] === c.name;
-    body += '<circle class="citydot" cx="' + p.x + '" cy="' + p.y + '" r="' + (isCap ? 3.4 : 2.4) + '" fill="#1a1a1a"/>';
-    cityLabels.push({ x: p.x + 6, y: p.y, text: (isCap ? '★ ' : '') + c.name, cap: isCap });
+    body += cityGlyph(isCap, p.x, p.y);   // ★ capital / 🏠 city icon (rides with the SVG, fades in when zoomed)
+    cityLabels.push({ x: p.x + 7, y: p.y, text: c.name, cap: isCap });
   });
 
   // A dashed frame around the inhabited world so the map's edge is legible. non-scaling-stroke keeps it a
