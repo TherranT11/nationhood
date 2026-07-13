@@ -61,7 +61,9 @@
 
   /* government decisions (played Choice cards awaiting a resolver) */
   .cm .deccard{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:15px 17px;margin-bottom:11px}
+  .cm .deccard.mine{border-color:var(--inf);box-shadow:0 0 0 1px var(--inf) inset}   /* your call — stand out */
   .cm .dechd{font-size:14px;font-weight:800;color:var(--ink);margin-bottom:3px}
+  .cm .decdesc{font-size:12.5px;color:var(--muted);line-height:1.5;margin-bottom:11px}
   .cm .decwho{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-bottom:11px}
   .cm .decwho.mine{color:var(--inf)}
   .cm .decopts{display:flex;gap:9px;flex-wrap:wrap}
@@ -172,6 +174,11 @@
     </div>
 
     <div class="cm">
+      <!-- Government decisions (from played Choice cards) — surfaced at the very top so a pending
+           decision is the first thing the resolver sees. Hidden (display:none) when nothing is pending. -->
+      <div class="sect" id="decSect" style="display:none">Government Decisions <span class="note">a played card demands a choice</span></div>
+      <div id="decisions"></div>
+
       <!-- twin timelines -->
       <div class="toprow">
         <div class="tlcard">
@@ -187,10 +194,6 @@
       <!-- action container -->
       <div class="sect gap">This Month <span class="note" id="actNote"></span></div>
       <div id="actions"></div>
-
-      <!-- government decisions (from played Choice cards) -->
-      <div class="sect gap" id="decSect" style="display:none">Government Decisions <span class="note">a played card demands a choice</span></div>
-      <div id="decisions"></div>
 
       <!-- market -->
       <div class="sect gap">The Market <span class="note" id="marketNote"></span></div>
@@ -675,7 +678,8 @@
       var hdlr = d.handler === 'hog' ? 'the Head of Government'
         : (d.handler && d.handler !== 'player') ? 'the ' + esc(d.handler) + ' minister' : null;
       var who = mine ? 'Your call' : ('Awaiting ' + (hdlr ? hdlr + ' (' + esc(partyLabel(d.resolver_party_id)) + ')' : esc(partyLabel(d.resolver_party_id))));
-      return '<div class="deccard"><div class="dechd">' + esc(d.card_name || 'A decision') + '</div>' +
+      return '<div class="deccard' + (mine ? ' mine' : '') + '"><div class="dechd">' + esc(d.card_name || 'A decision') + '</div>' +
+        (d.card_desc ? '<div class="decdesc">' + esc(d.card_desc) + '</div>' : '') +
         '<div class="decwho' + (mine ? ' mine' : '') + '">' + who + '</div>' +
         '<div class="decopts">' + opts.map(function (o, i) {
           var label = esc((o && o.txt) || ('Option ' + (i + 1)));
@@ -830,7 +834,7 @@
       }).slice(0, 15);
     } catch (e) {}
     try {
-      const { data } = await supabase.from('card_decisions').select('id, card_name, options, handler, resolver_party_id').eq('nation_id', NATION_ID).eq('status', 'pending').order('created_at', { ascending: true });
+      const { data } = await supabase.from('card_decisions').select('id, card_name, card_desc, options, handler, resolver_party_id').eq('nation_id', NATION_ID).eq('status', 'pending').order('created_at', { ascending: true });
       decisions = data || [];
     } catch (e) {}
 
