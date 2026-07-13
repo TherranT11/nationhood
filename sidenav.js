@@ -17,6 +17,7 @@ import { hasUnvotedFloorMeasure } from '/proposals.js';
 // Corporations) slot next to their siblings, and "Trade" is the Economy page.
 const NAV = [
   { href: '/play/news/',        label: 'Home',         svg: '<path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/>' },
+  { href: '/play/actions/',     label: 'Actions',      svg: '<path d="M13 2L4 14h6l-1 8 9-12h-6z"/>' },
   { href: '/play/party/',       label: 'Party',        svg: '<path d="M4 21V4"/><path d="M4 4c3-2 6 2 9 0s6-2 9 0v9c-3 2-6-2-9 0s-6 2-9 0"/>' },
   { href: '/play/',             label: 'Nation',       svg: '<path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/>' },
   { href: '/play/government/',  label: 'Government',   svg: '<path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/>' },

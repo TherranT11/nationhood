@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Actions · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
+<style>
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
+  .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
+  .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
+  .phead p{color:var(--muted);font-size:13px;margin-top:6px;max-width:78ch;line-height:1.55}
+  .empty{margin-top:22px;background:var(--surface);border:1px dashed var(--line2);border-radius:16px;
+    padding:48px 24px;text-align:center;color:var(--soft)}
+  .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:6px}
+  .empty span{font-size:12.5px}
+</style>
+</head>
+<body>
+
+  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
+
+  <main class="main">
+    <div class="phead">
+      <span class="eye">The Party</span>
+      <h1>Actions</h1>
+      <p>Everything your party can do this month, in one place.</p>
+    </div>
+    <div class="empty"><b>Nothing here yet.</b><span>This section is coming soon.</span></div>
+  </main>
+
+  <script type="module">
+    import { requireUser } from '/supabase.js';
+    import { mountSidenav } from '/sidenav.js';
+    mountSidenav();            // left rail / bottom bar into #sidenav; active item from the URL
+    requireUser();             // gate the page behind login, like every other play page
+  </script>
+</body>
+</html>
