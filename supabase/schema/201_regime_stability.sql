@@ -147,10 +147,13 @@ begin
   select * into n from public.nations where id = p_nation;
   if not found then return v_out; end if;
   foreach s in array coalesce(p_stats, array[]::text[]) loop
+    -- Terrorism is HIDDEN: it's computed server-side (_nation_terrorism) for the future attack mechanic,
+    -- but never surfaced through this public display RPC. Players see only the attacks it produces.
+    if s = 'Terrorism' then continue; end if;
     v_has := s in ('Budget Balance', 'Tax Burden', 'Bureaucracy', 'Armed Forces Funding', 'CO₂ Emissions',
                    'Global Warming', 'Energy Availability', 'Interest Rates', 'Military Research',
                    'Civil Liberties', 'Crime', 'Poverty', 'Demographic Pressure', 'Standard of Living',
-                   'Equity Between Generations', 'Control', 'Revolt Risk', 'Terrorism',
+                   'Equity Between Generations', 'Control', 'Revolt Risk',
                    'Cult of Personality', 'Inflation', 'Government Default')
           or (s = 'Public Debt' and public._to_num(n.economy->>'debt') is not null)
           or public._to_num(n.ministry_stats->>s) is not null
