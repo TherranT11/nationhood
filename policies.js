@@ -20,7 +20,9 @@ export const POLICY_STATS = [
   'Rule of Law', 'Standard of Living', 'Housing Affordability',
   'Pension Quality', 'Equity Between Generations', 'Demographic Pressure', 'Birth Rate',
   'Education', 'Health', 'Innovation', 'Environment', 'Infrastructure',
-  'National Pride', 'Corruption', 'Religious Influence', 'Civil Liberties', 'Minority Rights'
+  'National Pride', 'Corruption', 'Religious Influence', 'Civil Liberties', 'Minority Rights',
+  // Regime-stability layer (schema/201). Oppression is a hand-set core stat; the rest are derived.
+  'Oppression', 'Control', 'Revolt Risk', 'Terrorism', 'Cult of Personality', 'Inflation', 'Government Default'
 ];
 
 // The valid input range for a ministry stat, where one is defined — used to bound the admin
@@ -32,7 +34,8 @@ export const STAT_RANGES = {
   'Birth Rate': { min: -50, max: 50 },
   'Education': { min: 1, max: 100 },
   'Health': { min: 1, max: 100 },
-  'Innovation': { min: 1, max: 100 }
+  'Innovation': { min: 1, max: 100 },
+  'Oppression': { min: 0, max: 100 }
 };
 
 // The admin-typed ministry stats (the Edit Nation "Ministry Stats" grid). Derived from POLICY_STATS
@@ -45,7 +48,9 @@ export const STAT_RANGES = {
 var NON_MINISTRY_STATS = [
   'Budget Balance', 'Bureaucracy', 'Tax Burden', 'Military Research', 'Civil Liberties',
   'Armed Forces Funding', 'CO₂ Emissions', 'Global Warming', 'Energy Availability', 'Interest Rates',
-  'Crime', 'Poverty', 'Demographic Pressure', 'Standard of Living', 'Equity Between Generations'
+  'Crime', 'Poverty', 'Demographic Pressure', 'Standard of Living', 'Equity Between Generations',
+  // Regime-stability derived stats (schema/201). Oppression stays hand-set (a core input), so it is NOT here.
+  'Control', 'Revolt Risk', 'Terrorism', 'Cult of Personality', 'Inflation', 'Government Default'
 ];
 export const MINISTRY_STATS = POLICY_STATS.filter(function (s) { return NON_MINISTRY_STATS.indexOf(s) < 0; });
 
