@@ -105,13 +105,6 @@
   .np-srow .sv{font-weight:700;font-size:12.5px}
   .np-srow .sv small{font-family:'JetBrains Mono',monospace;color:var(--dim);margin-left:5px;font-size:10px}
   .np-srow .sv.good{color:var(--green)} .np-srow .sv.warn{color:var(--orange)} .np-srow .sv.bad{color:var(--red)}
-  .np-evhead{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--dim);margin:12px 0 4px}
-  .np-ev{display:flex;gap:7px;align-items:flex-start;padding:6px 0;border-top:1px solid #20202c}
-  .np-ev .bang{color:var(--red);font-weight:900;line-height:1.35}
-  .np-ev .etxt{flex:1;font-size:11.5px;color:var(--muted);line-height:1.4}
-  .np-ev .emeta{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none}
-  .np-ev .etag{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase;white-space:nowrap}
-  .np-ev .edate{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.02em;color:var(--muted);white-space:nowrap}
 
   /* Event markers: an orange pulsing "!" over a nation's capital when something is happening there
      this in-game month. Constant on-screen size (positioned by JS), clickable to open the nation. */
@@ -518,32 +511,10 @@ function applyTransform() {
         '</div>' +
         '<div class="np-who"><span class="ttl">' + esc(hogTitle) + '</span> — <b>' + esc(hog) + '</b>' + esc(hogTag) + '</div>' +
         '<div class="np-stats">' + statsHtml + '</div>' +
-        '<div class="np-evhead">ACTIVE EVENTS</div>' +
-        '<div id="npEvents"><div class="np-ev"><span class="etxt" style="color:var(--dim)">Loading…</span></div></div>' +
       '</div>';
     natPanel.classList.add('show');
     natPanel.scrollTop = 0;
     document.getElementById('npClose').onclick = closeNation;
-    loadEvents(nid);
-  }
-
-  // The events list — the nation's own recent world events (multiple populate), newest first.
-  async function loadEvents(nid) {
-    var box = document.getElementById('npEvents'); if (!box) return;
-    var rows = [];
-    try {
-      const { data } = await supabase.from('events').select('kind, body, game_date')
-        .eq('nation_id', nid).order('created_at', { ascending: false }).limit(6);
-      rows = data || [];
-    } catch (e) {}
-    if (document.getElementById('npEvents') !== box) return;   // panel changed while awaiting — drop stale fill
-    if (!rows.length) { box.innerHTML = '<div class="np-ev"><span class="etxt" style="color:var(--dim)">No recent events.</span></div>'; return; }
-    box.innerHTML = rows.map(function (e) {
-      var meta = (e.kind ? '<span class="etag">' + esc(e.kind) + '</span>' : '') +
-        (e.game_date ? '<span class="edate">' + esc(e.game_date) + '</span>' : '');
-      return '<div class="np-ev"><span class="bang">!</span><span class="etxt">' + esc(e.body) + '</span>' +
-        (meta ? '<span class="emeta">' + meta + '</span>' : '') + '</div>';
-    }).join('');
   }
 
   // Open the snapshot for a tapped/clicked map element: a nation hex opens, empty land/sea closes,
