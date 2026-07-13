@@ -85,7 +85,14 @@
   .np-flag{width:36px;height:24px;border-radius:3px;flex:none;object-fit:cover;box-shadow:0 0 0 1px rgba(255,255,255,.18)}
   .np-name{font-weight:700;font-size:15px;line-height:1.1}
   .np-sub{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--dim);margin-top:2px}
-  .np-x{margin-left:auto;cursor:pointer;color:var(--dim);font-size:14px}
+  .np-x{margin-left:auto;flex:none;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;
+    width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:8px;
+    border:1px solid var(--line);background:var(--panel);-webkit-tap-highlight-color:transparent}
+  .np-x:hover{color:var(--text)}
+  @media(max-width:640px){
+    .np-x{width:40px;height:40px;font-size:20px}
+    .natpanel{font-size:14px}
+  }
   .np-figs{display:flex;gap:8px;margin-top:10px}
   .np-fig{flex:1;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel)}
   .np-fig .k{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.1em;color:var(--dim)}
@@ -102,7 +109,9 @@
   .np-ev{display:flex;gap:7px;align-items:flex-start;padding:6px 0;border-top:1px solid #20202c}
   .np-ev .bang{color:var(--red);font-weight:900;line-height:1.35}
   .np-ev .etxt{flex:1;font-size:11.5px;color:var(--muted);line-height:1.4}
+  .np-ev .emeta{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none}
   .np-ev .etag{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase;white-space:nowrap}
+  .np-ev .edate{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.02em;color:var(--muted);white-space:nowrap}
 
   /* Event markers: an orange pulsing "!" over a nation's capital when something is happening there
      this in-game month. Constant on-screen size (positioned by JS), clickable to open the nation. */
@@ -513,8 +522,10 @@ function applyTransform() {
     if (document.getElementById('npEvents') !== box) return;   // panel changed while awaiting — drop stale fill
     if (!rows.length) { box.innerHTML = '<div class="np-ev"><span class="etxt" style="color:var(--dim)">No recent events.</span></div>'; return; }
     box.innerHTML = rows.map(function (e) {
+      var meta = (e.kind ? '<span class="etag">' + esc(e.kind) + '</span>' : '') +
+        (e.game_date ? '<span class="edate">' + esc(e.game_date) + '</span>' : '');
       return '<div class="np-ev"><span class="bang">!</span><span class="etxt">' + esc(e.body) + '</span>' +
-        (e.kind ? '<span class="etag">' + esc(e.kind) + '</span>' : '') + '</div>';
+        (meta ? '<span class="emeta">' + meta + '</span>' : '') + '</div>';
     }).join('');
   }
 
@@ -636,12 +647,17 @@ function resetTouch(e) {
   else if (!e.touches.length) { touch = null; }
 }
 mapArea.addEventListener('touchend', function (e) {
-  // A clean single-finger tap (no drag) → open/close the nation under the finger. Touch doesn't reliably
-  // synthesize a click on the SVG hex, so hit-test the lift point directly.
+  // A clean single-finger tap (no drag) on a map hex → open/close the nation under the finger. Touch
+  // doesn't reliably synthesize a click on the SVG hex, so hit-test the lift point directly. Only act
+  // when the tap actually lands on a hex — taps on the hamburger, zoom, markers, or the panel must keep
+  // their native click, so we must NOT preventDefault on those.
   if (touch && !pointerMoved && !e.touches.length && handleMapTap && e.changedTouches.length) {
     var t = e.changedTouches[0];
-    handleMapTap(document.elementFromPoint(t.clientX, t.clientY));
-    e.preventDefault();   // suppress the compat click so we don't double-fire
+    var el = document.elementFromPoint(t.clientX, t.clientY);
+    if (el && el.tagName === 'polygon') {
+      handleMapTap(el);
+      e.preventDefault();   // suppress the compat click so we don't double-fire — hexes only
+    }
   }
   resetTouch(e);
 });
