@@ -87,13 +87,48 @@ begin
 end $$;
 revoke all on function public._create_card_decision(text, uuid, uuid, jsonb, int) from public, anon, authenticated;
 
+-- One concise line describing an applied decision effect, e.g. '+2 Growth' or '−1 Party Popularity for
+-- GUC', for the resolution's World Timeline entry. This is the server-side "what it DID" phrasing —
+-- deliberately terser than the client's card-effect-text.js "what a card WILL do" preview (JS can't run
+-- in SQL), and it mirrors how organic events (rallies etc.) inline their outcome in the body. Returns
+-- null for effects with no meaningful line (shuffle/deck_add/unknown), which are simply omitted.
+create or replace function public._card_fx_phrase(p_kind text, p jsonb, p_abbrev text)
+returns text language plpgsql stable set search_path = public as $$
+declare v_x text := coalesce(p->>'x', '0'); v_for text := coalesce(' for ' || nullif(p_abbrev, ''), '');
+begin
+  case p_kind
+    when 'stat_up'       then return '+' || v_x || ' ' || coalesce(p->>'stat', '?');
+    when 'stat_down'     then return '−' || v_x || ' ' || coalesce(p->>'stat', '?');
+    when 'decider_gain'  then return '+' || v_x || ' Party Popularity' || v_for;
+    when 'decider_lose'  then return '−' || v_x || ' Party Popularity' || v_for;
+    when 'party_gain'    then return '+' || v_x || ' Party Popularity';
+    when 'party_lose'    then return '−' || v_x || ' Party Popularity';
+    when 'coal_up'       then return '+1 Coalition Health';
+    when 'coal_down'     then return '−1 Coalition Health';
+    when 'coal_pop_up'   then return '+' || v_x || ' Coalition Popularity';
+    when 'coal_pop_down' then return '−' || v_x || ' Coalition Popularity';
+    when 'rel_up', 'rel_pick' then return '+' || v_x || ' Relations with ' || coalesce((select name from public.nations where id = p->>'nation'), 'a nation');
+    when 'rel_down'      then return '−' || v_x || ' Relations with ' || coalesce((select name from public.nations where id = p->>'nation'), 'a nation');
+    when 'sanction'      then return 'Sanction ' || coalesce((select name from public.nations where id = p->>'nation'), 'a nation');
+    when 'res_add'       then return '+' || v_x || ' ' || initcap(coalesce(p->>'res', 'food'));
+    when 'res_remove'    then return '−' || v_x || ' ' || initcap(coalesce(p->>'res', 'food'));
+    when 'prod_up'       then return initcap(coalesce(p->>'res', 'energy')) || ' production +' || v_x;
+    when 'prod_down'     then return initcap(coalesce(p->>'res', 'energy')) || ' production −' || v_x;
+    when 'hex_pop'       then return '±' || v_x || ' approval at a chosen hex';
+    when 'change_hog'    then return 'Change the Head of Government';
+    when 'bill'          then return 'Introduce committee bill ' || coalesce(p->>'name', 'untitled');
+    else return null;   -- shuffle / deck_add / unknown → no line
+  end case;
+end $$;
+revoke all on function public._card_fx_phrase(text, jsonb, text) from public, anon, authenticated;
+
 -- The resolver picks an option; its effect fires (through the shared dispatcher) and the decision
 -- closes. Only the decision's resolver (or an admin) may call it.
 drop function if exists public.card_decide(uuid, int);   -- was 2-arg; now takes the decider's chosen nation
 create or replace function public.card_decide(p_decision uuid, p_option int, p_nation text default null)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_uid uuid; v_pid uuid; v_pname text; v_d record; v_opt jsonb; v_tick int; v_resolver uuid; e jsonb;
-  v_body text; v_decider text; v_choice text; v_desc text;
+  v_body text; v_decider text; v_choice text; v_desc text; v_abbrev text; v_fx text[] := '{}'; v_ph text;
 begin
   v_uid := auth.uid();
   if v_uid is null then raise exception 'Not signed in.'; end if;
@@ -107,6 +142,7 @@ begin
   v_resolver := coalesce(v_d.resolver_party_id, public._card_decision_resolver(v_d.nation_id, v_d.handler, v_d.played_by_party_id));
   if v_resolver is distinct from v_pid and not public.is_admin() then
     raise exception 'That decision is not yours to make.'; end if;
+  select abbreviation into v_abbrev from public.parties where id = v_resolver;   -- for '… for [ABBR]' effect lines
   if p_option is null or p_option < 0 or p_option >= jsonb_array_length(v_d.options) then
     raise exception 'Pick a valid option.'; end if;
 
@@ -130,6 +166,11 @@ begin
   -- single-effect shape ({kind,p}) too via coalesce.
   for e in select value from jsonb_array_elements(
              case when jsonb_typeof(v_opt->'fx') = 'array' then v_opt->'fx' else jsonb_build_array(v_opt) end) loop
+    -- Collect a human line for the resolution's timeline entry (rel_pick names the decider's chosen nation).
+    v_ph := public._card_fx_phrase(e->>'kind',
+              coalesce(e->'p', '{}'::jsonb) || (case when e->>'kind' = 'rel_pick' then jsonb_build_object('nation', p_nation) else '{}'::jsonb end),
+              v_abbrev);
+    if v_ph is not null then v_fx := array_append(v_fx, v_ph); end if;
     if e->>'kind' = 'bill' then
       perform public._create_card_bill(v_d.nation_id, v_resolver, e->'p', v_tick);   -- the deciding party introduces the bill (schema/183)
     elsif e->>'kind' = 'rel_pick' then
@@ -172,6 +213,10 @@ begin
     v_body := v_body || '.';
   end if;
   v_body := v_body || ' ' || v_decider || ' has chosen to ' || v_choice || '.';
+  -- List the effects that fired, one per line (the timeline renders newlines as bullets).
+  if array_length(v_fx, 1) > 0 then
+    v_body := v_body || E'\n' || (select string_agg('• ' || ph, E'\n') from unnest(v_fx) ph);
+  end if;
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_d.nation_id, v_pid, 'card', v_body, public.current_game_date());
 end $$;

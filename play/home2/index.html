@@ -120,6 +120,29 @@
   @keyframes evpulse{0%{transform:scale(1);opacity:.7}70%{transform:scale(2.2);opacity:0}100%{transform:scale(2.2);opacity:0}}
   @media(prefers-reduced-motion:reduce){.evmarker .ring{animation:none;opacity:0}}
 
+  /* Event review popup (click a ! marker): list this month's events, open one, exit to mark it reviewed. */
+  .evpop{position:absolute;z-index:16;width:272px;max-width:calc(100% - 16px);background:#181820;border:1px solid var(--line);
+    border-radius:10px;box-shadow:0 12px 34px rgba(0,0,0,.5);overflow:hidden;display:none}
+  .evpop.show{display:block}
+  .ep-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}
+  .ep-title{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;color:var(--orange);display:flex;align-items:center;gap:6px}
+  .ep-back{cursor:pointer;color:var(--muted);font-size:15px;line-height:1}
+  .ep-x{cursor:pointer;color:var(--dim);font-size:13px;flex:none}
+  .ep-list{padding:5px 6px 7px}
+  .ep-row{display:flex;align-items:center;gap:8px;padding:8px;border-radius:7px;cursor:pointer}
+  .ep-row:hover{background:#20202e}
+  .ep-bang{color:var(--red);font-weight:900;flex:none;align-self:flex-start;line-height:1.3}
+  .ep-rtxt{flex:1;font-size:12.5px;font-weight:600;color:var(--text);line-height:1.3;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .ep-tag{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);
+    border:1px solid var(--line);border-radius:5px;padding:2px 6px;white-space:nowrap;flex:none}
+  .ep-chev{color:var(--dim);flex:none}
+  .ep-detail{padding:12px 14px}
+  .ep-drow{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .ep-dtag{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);
+    border:1px solid var(--line);border-radius:5px;padding:2px 6px}
+  .ep-dbody{font-size:12.5px;color:var(--muted);line-height:1.5}
+
   .chip{font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 8px;border-radius:5px;
     border:1px solid var(--line);background:var(--panel);color:var(--muted)}
   .zoombtn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:var(--panel);
@@ -193,6 +216,9 @@
     <!-- nation snapshot panel (click a nation) -->
     <div class="natpanel" id="natPanel"></div>
 
+    <!-- event review popup (click a ! marker) -->
+    <div class="evpop" id="evPop"></div>
+
     <!-- hover chip + hint -->
     <div class="chip" id="hoverChip" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:10;color:var(--text);font-size:11px;display:none"></div>
     <div class="mono" style="position:absolute;bottom:14px;right:14px;z-index:10;font-size:9px;letter-spacing:.12em;color:rgba(20,20,30,.55)">DRAG TO PAN · SCROLL / ± TO ZOOM</div>
@@ -254,10 +280,19 @@ var mapArea = document.getElementById('mapArea'), hoverChip = document.getElemen
 var overlayEl = document.getElementById('labels');
 var markerEl = document.getElementById('markers');
 var natPanel = document.getElementById('natPanel');
+var evPop = document.getElementById('evPop');
 var pointerMoved = false;   // set while dragging/pinching so a pan doesn't register as a nation click
 var handleMapTap = null;    // set once the world loads: opens/closes the nation panel for a tapped element
+var evPopReposition = null; // set while the event popup is open: keeps it anchored to its marker on pan/zoom
 var ZOOM_CITY = 1.6;   // at/above this zoom, nation names fade out and city names + dots fade in
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+function closeEventPop() { if (evPop) { evPop.classList.remove('show'); evPop.innerHTML = ''; } }
+// Reviewed-event memory is per in-game month: {date, ids}. A new month resets it (fresh events to review).
+function loadReviewed(date) {
+  try { var s = JSON.parse(localStorage.getItem('home2_reviewed') || '{}'); if (s && s.date === date && Array.isArray(s.ids)) return new Set(s.ids.map(String)); } catch (e) {}
+  return new Set();
+}
+function saveReviewed(date, set) { try { localStorage.setItem('home2_reviewed', JSON.stringify({ date: date, ids: Array.from(set) })); } catch (e) {} }
 
 // Position every overlay label from its stored world coords (data-x/data-y) → screen space, so the
 // text stays a constant on-screen size while the SVG map scales underneath it.
@@ -293,6 +328,7 @@ function applyTransform() {
   if (worldG) worldG.setAttribute('transform', 'translate(' + pan.x + ',' + pan.y + ') scale(' + zoom + ')');
   positionLabels();
   positionMarkers();
+  if (evPop && evPop.classList.contains('show') && evPopReposition) evPopReposition();
   updateLod();
 }
 
@@ -465,6 +501,7 @@ function applyTransform() {
 
   function openNation(nid) {
     var n = natById[nid]; if (!n) return;
+    closeEventPop();
     var eco = n.economy || {}, currency = eco.currency || '$';
     var g = govByNation[nid];
     var regimeTxt = regimeText(nationRegime(eco));
@@ -521,6 +558,7 @@ function applyTransform() {
   // anything else (city dot, label) is left alone. Shared by mouse click and the touch tap handler.
   handleMapTap = function (target) {
     if (!target || target.tagName !== 'polygon') return;
+    closeEventPop();
     var nid = target.getAttribute('data-nid');
     if (nid) openNation(nid); else closeNation();
   };
@@ -541,7 +579,7 @@ function applyTransform() {
     // "Now" = the current in-game month (already fetched as curTick; tickToDate mirrors the server).
     var curDate = (curTick != null) ? tickToDate(curTick) : null;
     if (curDate) {
-      const { data: evs } = await supabase.from('events').select('nation_id, party_id, kind, body').eq('game_date', curDate);
+      const { data: evs } = await supabase.from('events').select('id, nation_id, party_id, kind, body').eq('game_date', curDate);
       var curEvents = evs || [];
       // Author nation for each event's party (statements are broadcast under the author's party_id).
       var partyNation = {}, pids = curEvents.map(function (e) { return e.party_id; }).filter(Boolean);
@@ -549,9 +587,10 @@ function applyTransform() {
         const { data: ps } = await supabase.from('parties').select('id, nation_id').in('id', pids);
         (ps || []).forEach(function (p) { partyNation[p.id] = p.nation_id; });
       }
-      // Tally per nation: a domestic event counts for its own nation; a statement counts for its author
-      // AND any nation it names. Broadcast statement copies (same author + body) are counted once.
-      var liveByNation = {}, seenDecl = {};
+      // Group this month's events per nation (its domestic events; a statement counts for its author AND
+      // any nation it names). Broadcast statement copies (same author + body) collapse to one. Keep the
+      // event objects so the review popup can list and open them.
+      var eventsByNation = {}, seenDecl = {};
       curEvents.forEach(function (e) {
         var targets = {};
         if (e.kind === 'declaration') {
@@ -563,21 +602,79 @@ function applyTransform() {
         } else if (e.nation_id) {
           targets[e.nation_id] = 1;
         }
-        Object.keys(targets).forEach(function (nid) { liveByNation[nid] = (liveByNation[nid] || 0) + 1; });
+        Object.keys(targets).forEach(function (nid) { (eventsByNation[nid] = eventsByNation[nid] || []).push({ id: e.id, kind: e.kind, body: e.body }); });
       });
 
-      var mk = '';
-      Object.keys(liveByNation).forEach(function (nid) {
-        var pos = capPos[nid]; if (!pos) return;
-        var cnt = liveByNation[nid];
-        mk += '<div class="evmarker" data-x="' + pos.x + '" data-y="' + pos.y + '" data-nid="' + esc(nid) + '" title="' + esc(natById[nid] ? natById[nid].name : nid) + '">' +
-          '<span class="ring"></span><span class="dot">!</span>' + (cnt > 1 ? '<span class="cnt">' + cnt + '</span>' : '') + '</div>';
-      });
-      markerEl.innerHTML = mk;
-      Array.prototype.forEach.call(markerEl.querySelectorAll('.evmarker'), function (el) {
-        el.addEventListener('click', function (ev) { ev.stopPropagation(); openNation(el.getAttribute('data-nid')); });
-      });
-      positionMarkers();
+      var reviewed = loadReviewed(curDate);
+      function unreviewedFor(nid) { return (eventsByNation[nid] || []).filter(function (e) { return !reviewed.has(String(e.id)); }); }
+
+      // Anchor the popup near the clicked marker's on-screen position, clamped inside the map. Re-run on
+      // pan/zoom (via applyTransform) so it follows the marker while open.
+      var anchor = null;
+      function placePop() {
+        if (!anchor || !evPop.classList.contains('show')) return;
+        var sx = anchor.x * zoom + pan.x, sy = anchor.y * zoom + pan.y;
+        var pw = evPop.offsetWidth, ph = evPop.offsetHeight, w = mapArea.clientWidth, h = mapArea.clientHeight;
+        var left = Math.max(8, Math.min(sx - pw / 2, w - pw - 8));
+        var top = sy - ph - 22; if (top < 52) top = Math.min(sy + 26, h - ph - 8);
+        evPop.style.left = left + 'px'; evPop.style.top = Math.max(52, top) + 'px';
+      }
+      evPopReposition = placePop;
+
+      function openEventPop(nid) {
+        if (!unreviewedFor(nid).length) { closeEventPop(); return; }
+        closeNation();
+        var pos = capPos[nid]; anchor = pos ? { x: pos.x, y: pos.y } : null;
+        evPop.classList.add('show');
+        renderEventList(nid);
+      }
+      function renderEventList(nid) {
+        var u = unreviewedFor(nid);
+        if (!u.length) { closeEventPop(); return; }
+        var nm = natById[nid] ? natById[nid].name : nid;
+        evPop.innerHTML =
+          '<div class="ep-head"><span class="ep-title">★ ' + esc(nm.toUpperCase()) + ' · ' + u.length + ' EVENT' + (u.length > 1 ? 'S' : '') + '</span><span class="ep-x" id="epX">✕</span></div>' +
+          '<div class="ep-list">' + u.map(function (e) {
+            return '<div class="ep-row" data-id="' + esc(String(e.id)) + '"><span class="ep-bang">!</span><span class="ep-rtxt">' + esc(e.body) + '</span>' +
+              (e.kind ? '<span class="ep-tag">' + esc(e.kind) + '</span>' : '') + '<span class="ep-chev">›</span></div>';
+          }).join('') + '</div>';
+        document.getElementById('epX').onclick = closeEventPop;
+        Array.prototype.forEach.call(evPop.querySelectorAll('.ep-row'), function (row) {
+          row.onclick = function () { openEventDetail(nid, row.getAttribute('data-id')); };
+        });
+        placePop();
+      }
+      function openEventDetail(nid, id) {
+        var e = (eventsByNation[nid] || []).find(function (x) { return String(x.id) === String(id); });
+        if (!e) return;
+        var nm = natById[nid] ? natById[nid].name : nid;
+        evPop.innerHTML =
+          '<div class="ep-head"><span class="ep-title"><span class="ep-back" id="epBack">‹</span> ★ ' + esc(nm.toUpperCase()) + '</span><span class="ep-x" id="epX">✕</span></div>' +
+          '<div class="ep-detail"><div class="ep-drow"><span class="ep-bang">!</span>' + (e.kind ? '<span class="ep-dtag">' + esc(e.kind) + '</span>' : '') + '</div>' +
+            '<div class="ep-dbody">' + esc(e.body) + '</div></div>';
+        // Exiting the detail marks the event reviewed — it drops off the list; when the list empties the
+        // marker disappears. Back → return to the (shorter) list; ✕ → close the popup entirely.
+        document.getElementById('epBack').onclick = function () { reviewEvent(nid, id); renderEventList(nid); };
+        document.getElementById('epX').onclick = function () { reviewEvent(nid, id); closeEventPop(); };
+        placePop();
+      }
+      function reviewEvent(nid, id) { reviewed.add(String(id)); saveReviewed(curDate, reviewed); renderMarkers(); }
+
+      function renderMarkers() {
+        var mk = '';
+        Object.keys(eventsByNation).forEach(function (nid) {
+          var pos = capPos[nid]; if (!pos) return;
+          var u = unreviewedFor(nid); if (!u.length) return;
+          mk += '<div class="evmarker" data-x="' + pos.x + '" data-y="' + pos.y + '" data-nid="' + esc(nid) + '" title="' + esc(natById[nid] ? natById[nid].name : nid) + '">' +
+            '<span class="ring"></span><span class="dot">!</span>' + (u.length > 1 ? '<span class="cnt">' + u.length + '</span>' : '') + '</div>';
+        });
+        markerEl.innerHTML = mk;
+        Array.prototype.forEach.call(markerEl.querySelectorAll('.evmarker'), function (el) {
+          el.addEventListener('click', function (ev) { ev.stopPropagation(); openEventPop(el.getAttribute('data-nid')); });
+        });
+        positionMarkers();
+      }
+      renderMarkers();
     }
   } catch (e) {}
 })();
