@@ -834,8 +834,13 @@
       }).slice(0, 15);
     } catch (e) {}
     try {
-      const { data } = await supabase.from('card_decisions').select('id, card_name, card_desc, options, handler, resolver_party_id').eq('nation_id', NATION_ID).eq('status', 'pending').order('created_at', { ascending: true });
-      decisions = data || [];
+      // Resilient to schema drift: card_desc may not be deployed yet on every DB. Supabase returns a
+      // column error in the response (it does NOT throw), so check it and retry without card_desc rather
+      // than let a missing optional column silently hide the whole decisions section.
+      var decSel = 'id, card_name, card_desc, options, handler, resolver_party_id';
+      var q = await supabase.from('card_decisions').select(decSel).eq('nation_id', NATION_ID).eq('status', 'pending').order('created_at', { ascending: true });
+      if (q.error) q = await supabase.from('card_decisions').select('id, card_name, options, handler, resolver_party_id').eq('nation_id', NATION_ID).eq('status', 'pending').order('created_at', { ascending: true });
+      decisions = q.data || [];
     } catch (e) {}
 
     BIDS = bids;   // live bids drive the "bidding this month" gate (renderActions/renderHand/renderMarket)
