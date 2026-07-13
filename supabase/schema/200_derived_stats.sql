@@ -151,4 +151,16 @@ from (values
 ) as v(source, target, per, amount, reference)
 where not exists (select 1 from public.stat_connectors sc where sc.source = v.source and sc.target = v.target);
 
+-- One-time cleanup: a stat is DERIVED now, so any old hand-typed value still sitting in ministry_stats
+-- would leak in as a base term (the policy/connector-derived ones route through _nation_live_stat, which
+-- reads that base). Strip the derived keys so their value is purely computed. Idempotent — removing an
+-- absent key is a no-op — so this is safe on every re-run and for nations that never had the value.
+update public.nations set ministry_stats = ministry_stats
+    - 'Tax Burden' - 'Bureaucracy' - 'Military Research' - 'Civil Liberties'
+    - 'Armed Forces Funding' - 'CO₂ Emissions' - 'Global Warming' - 'Energy Availability' - 'Interest Rates'
+    - 'Crime' - 'Poverty' - 'Demographic Pressure' - 'Standard of Living' - 'Equity Between Generations'
+  where ministry_stats ?| array['Tax Burden','Bureaucracy','Military Research','Civil Liberties',
+    'Armed Forces Funding','CO₂ Emissions','Global Warming','Energy Availability','Interest Rates',
+    'Crime','Poverty','Demographic Pressure','Standard of Living','Equity Between Generations'];
+
 notify pgrst, 'reload schema';
