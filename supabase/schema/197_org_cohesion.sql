@@ -35,8 +35,8 @@ returns boolean language sql stable security definer set search_path = public as
   select exists (
     select 1
       from public.organizations o
-      join public.organization_members mb on mb.org_id = o.id and mb.nation_id = p_buyer
-      join public.organization_members ms on ms.org_id = o.id and ms.nation_id = p_seller
+      join public.organization_members mb on mb.org_id = o.id and mb.nation_id = p_buyer  and coalesce(mb.role, 'member') <> 'observer'
+      join public.organization_members ms on ms.org_id = o.id and ms.nation_id = p_seller and coalesce(ms.role, 'member') <> 'observer'
       join public.organization_laws   l  on l.org_id  = o.id and l.sector = 'res' and l.law_id = 'reserves' and l.status = 'enacted'
      where o.status = 'active' and o.resource = p_resource);
 $$;
@@ -49,7 +49,7 @@ create or replace function public._org_joint_price(p_seller text, p_resource tex
 returns numeric language sql stable security definer set search_path = public as $$
   select max((l.param->>'price')::numeric)
     from public.organizations o
-    join public.organization_members ms on ms.org_id = o.id and ms.nation_id = p_seller
+    join public.organization_members ms on ms.org_id = o.id and ms.nation_id = p_seller and coalesce(ms.role, 'member') <> 'observer'
     join public.organization_laws   l  on l.org_id  = o.id and l.sector = 'res' and l.law_id = 'pricing' and l.status = 'enacted'
    where o.status = 'active' and o.resource = p_resource
      and (l.param->>'price') is not null;
@@ -62,7 +62,7 @@ create or replace function public._org_production_bonus(p_nation text, p_resourc
 returns numeric language sql stable security definer set search_path = public as $$
   select count(*)::numeric
     from public.organizations o
-    join public.organization_members m on m.org_id = o.id and m.nation_id = p_nation
+    join public.organization_members m on m.org_id = o.id and m.nation_id = p_nation and coalesce(m.role, 'member') <> 'observer'
     join public.organization_laws   l  on l.org_id = o.id and l.sector = 'res' and l.law_id = 'survey' and l.status = 'enacted'
    where o.status = 'active' and o.resource = p_resource;
 $$;
