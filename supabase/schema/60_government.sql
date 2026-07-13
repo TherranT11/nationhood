@@ -530,6 +530,9 @@ begin
   -- Military builds (schema/129): every tick, matured Expand orders deliver typed units to bases.
   begin perform public._resolve_military_builds(v_tick);
   exception when others then raise warning 'tick %: military builds failed — %', v_tick, sqlerrm; end;
+  -- International organizations (schema/197): every active org accrues +0.5 Cohesion this tick (cap 100).
+  begin perform public._org_cohesion_tick();
+  exception when others then raise warning 'tick %: org cohesion accrual failed — %', v_tick, sqlerrm; end;
   -- Regime is the sole switch between one-party and multiparty. This tick's economics
   -- may have eroded a nation's regime to 1–4 or lifted it back to 5+, so reconcile every
   -- nation's ruling_party with its regime (schema/98) BEFORE elections read it — a nation

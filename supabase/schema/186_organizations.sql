@@ -25,6 +25,11 @@ create table if not exists public.organizations (
   created_at   timestamptz not null default now()
 );
 create index if not exists organizations_host_idx on public.organizations (host_nation);
+-- Cohesion (schema/197): the org's shared political capital. Starts 20, +0.5/tick, laws spend it, a
+-- departing member costs 5. resource: the single commodity a Resource org governs (energy/food/…), set at
+-- founding — Joint Pricing / Survey Sharing / Emergency Reserves all act on it. null for non-Resource orgs.
+alter table public.organizations add column if not exists cohesion numeric not null default 20;
+alter table public.organizations add column if not exists resource text;
 
 -- Who belongs to an org. The host joins as 'founder' the moment it's chartered; others become 'member'
 -- when their invitation is accepted (later step).
@@ -68,18 +73,23 @@ $$;
 grant execute on function public.is_foreign_affairs_minister() to authenticated;
 
 -- found_organization: the Minister of Foreign Affairs charters a new organization and invites nations.
--- Costs 1 Action Point + 5 Diplomacy (on-hand). The host becomes
--- the founding member; every invited nation gets a pending invitation. Returns the new org id.
-create or replace function public.found_organization(p_name text, p_emblem text, p_type text, p_charter text, p_invited text[])
+-- Costs 1 Action Point + 5 Diplomacy (on-hand). The host becomes the founding member; every invited
+-- nation gets a pending invitation. p_resource names the single commodity a Resource org governs (its
+-- laws act on it) — kept only when it's a real tradeable resource, else null. Returns the new org id.
+drop function if exists public.found_organization(text, text, text, text, text[]);   -- superseded: adds p_resource
+create or replace function public.found_organization(p_name text, p_emblem text, p_type text, p_charter text, p_invited text[], p_resource text default null)
 returns uuid language plpgsql security definer set search_path = public as $$
 declare
   v_p public.parties%rowtype; v_nation text; v_tick int; v_org uuid; v_name text; v_charter text;
-  v_inv text[]; v_n text; v_cnt int;
+  v_inv text[]; v_n text; v_cnt int; v_res text;
 begin
   v_name := btrim(coalesce(p_name, ''));
   v_charter := btrim(coalesce(p_charter, ''));
   if v_name = '' then raise exception 'Name the organization.'; end if;
   if length(v_charter) < 40 then raise exception 'Write a charter of at least 40 characters.'; end if;
+  -- Keep the designated resource only if it's a real tradeable commodity; anything else → null.
+  v_res := lower(btrim(coalesce(p_resource, '')));
+  if v_res not in ('energy', 'food', 'minerals', 'goods', 'services') then v_res := null; end if;
 
   v_p := public._begin_action(0);   -- lock caller's party + spend 1 Action Point
   v_nation := v_p.nation_id;
@@ -99,11 +109,11 @@ begin
     raise exception 'Founding an organization costs 5 Diplomacy — your nation doesn''t have enough.';
   end if;
 
-  insert into public.organizations (host_nation, name, emblem, org_type, charter, status, founded_tick)
+  insert into public.organizations (host_nation, name, emblem, org_type, charter, status, founded_tick, resource)
     values (v_nation, left(v_name, 48),
             coalesce(nullif(btrim(p_emblem), ''), '🕊'),
             coalesce(nullif(btrim(p_type), ''), 'General'),
-            left(v_charter, 420), 'founding', v_tick)
+            left(v_charter, 420), 'founding', v_tick, v_res)
     returning id into v_org;
   insert into public.organization_members (org_id, nation_id, role, joined_tick)
     values (v_org, v_nation, 'founder', v_tick);
@@ -121,6 +131,6 @@ begin
       public.current_game_date());
   return v_org;
 end $$;
-grant execute on function public.found_organization(text, text, text, text, text[]) to authenticated;
+grant execute on function public.found_organization(text, text, text, text, text[], text) to authenticated;
 
 notify pgrst, 'reload schema';

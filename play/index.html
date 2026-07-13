@@ -1361,10 +1361,11 @@
   var closeFound = wireModalClose(foundModal, 'foundClose');
   var FND_ICONS = ['🕊', '🛢', '⚓', '📦', '🛡', '💱', '🌐', '🌾', '🏛', '⚡', '🕌', '🏅'];
   var FND_TYPES = ['General', 'Trade', 'Security', 'Resources', 'Monetary', 'Cultural', 'Faith'];
-  var FND = { icon: '🕊', type: 'General', name: '', charter: '', invited: {}, nations: [] };
+  var FND_RESOURCES = ['energy', 'food', 'minerals', 'goods', 'services'];   // a Resources org governs one (schema/186)
+  var FND = { icon: '🕊', type: 'General', resource: 'energy', name: '', charter: '', invited: {}, nations: [] };
   function openFoundCharter() {
     if (acting || !feedCtx) return;
-    FND = { icon: '🕊', type: 'General', name: '', charter: '', invited: {}, nations: [] };
+    FND = { icon: '🕊', type: 'General', resource: 'energy', name: '', charter: '', invited: {}, nations: [] };
     document.getElementById('foundBody').innerHTML = '<p class="empty">Loading…</p>';
     foundModal.hidden = false;
     loadFoundCharter();
@@ -1396,6 +1397,12 @@
         FND_ICONS.map(function (i) { return '<button type="button" class="fnd-ic' + (FND.icon === i ? ' on' : '') + '" data-i="' + i + '">' + i + '</button>'; }).join('') + '</div>' +
       '<div class="fnd-lbl">Type</div><div class="fnd-types" id="fndTypes">' +
         FND_TYPES.map(function (t) { return '<button type="button" class="fnd-ty' + (FND.type === t ? ' on' : '') + '" data-t="' + t + '">' + t + '</button>'; }).join('') + '</div>' +
+      // A Resources organization governs ONE commodity — its laws (Joint Pricing, Survey Sharing,
+      // Emergency Reserves) all act on it. Pinned at founding (schema/186).
+      (FND.type === 'Resources'
+        ? '<div class="fnd-lbl">Resource governed</div><div class="fnd-types" id="fndRes">' +
+            FND_RESOURCES.map(function (r) { return '<button type="button" class="fnd-ty' + (FND.resource === r ? ' on' : '') + '" data-r="' + r + '">' + r.charAt(0).toUpperCase() + r.slice(1) + '</button>'; }).join('') + '</div>'
+        : '') +
       '<div class="fnd-lbl">Invite nations</div>' +
       '<div class="fnd-nats" id="fndNats">' + (FND.nations.length ? FND.nations.map(function (n) {
         return '<button type="button" class="fnd-nat' + (FND.invited[n.id] ? ' on' : '') + '" data-n="' + esc(n.id) + '">' +
@@ -1414,6 +1421,7 @@
     ta.oninput = function () { FND.charter = this.value; document.getElementById('fndCount').textContent = this.value.length; syncFoundDerived(); };
     document.querySelectorAll('#fndIcons .fnd-ic').forEach(function (b) { b.onclick = function () { FND.icon = b.dataset.i; renderFoundCharter(); }; });
     document.querySelectorAll('#fndTypes .fnd-ty').forEach(function (b) { b.onclick = function () { FND.type = b.dataset.t; renderFoundCharter(); }; });
+    document.querySelectorAll('#fndRes .fnd-ty').forEach(function (b) { b.onclick = function () { FND.resource = b.dataset.r; renderFoundCharter(); }; });
     document.querySelectorAll('#fndNats .fnd-nat').forEach(function (b) { b.onclick = function () { FND.invited[b.dataset.n] = !FND.invited[b.dataset.n]; renderFoundCharter(); }; });
     syncFoundDerived();
     document.getElementById('fndCancel').onclick = closeFound;
@@ -1422,7 +1430,7 @@
       if (!(FND.name.trim() && invIds.length && FND.charter.trim().length >= 40)) return;
       closeFound();
       performAction(function () {
-        return supabase.rpc('found_organization', { p_name: FND.name.trim(), p_emblem: FND.icon, p_type: FND.type, p_charter: FND.charter.trim(), p_invited: invIds });
+        return supabase.rpc('found_organization', { p_name: FND.name.trim(), p_emblem: FND.icon, p_type: FND.type, p_charter: FND.charter.trim(), p_invited: invIds, p_resource: FND.type === 'Resources' ? FND.resource : null });
       }, function () { return 'Chartered ' + FND.name.trim() + ' — invitations dispatched.'; });
     };
   }
