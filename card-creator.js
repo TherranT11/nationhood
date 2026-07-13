@@ -528,8 +528,18 @@ export async function mountCardCreator(mount) {
     if (f.kind === 'shuffle') h = '<span class="lbl">↻ this card returns to the deck to be won again</span>';
     if (f.kind === 'hog_change') h = '<span class="lbl">the sitting Head of Government is replaced by a new leader</span>';
     if (f.kind === 'hex_el') h = '<span class="lbl">hex chosen on play · 12-tick cooldown</span>';
-    if (f.kind === 'mob_add' || f.kind === 'mob_rem' || f.kind === 'mil_add' || f.kind === 'mil_rem')
-      h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px"><span class="lbl">' + ((f.kind === 'mob_add' || f.kind === 'mob_rem') ? '⚠ armed mob — nobody’s soldiers' : '⚑ militia — belongs to a party') + '</span>';
+    if (f.kind === 'mob_add' || f.kind === 'mob_rem' || f.kind === 'mil_add' || f.kind === 'mil_rem') {
+      var isMob = (f.kind === 'mob_add' || f.kind === 'mob_rem');
+      var side = f.p.side || 'own';
+      var ownLbl = isMob ? 'Nobody’s soldiers' : 'Belongs to a party';
+      var enemyLbl = isMob ? 'Enemy armed mob' : 'Enemy militia';
+      h = '<span class="lbl">hex</span><input type="text" value="' + esc(f.p.hex || '16,-5') + '" data-i="' + i + '" data-f="hex" style="max-width:90px">' +
+        '<span class="lbl">' + (isMob ? '⚠' : '⚑') + '</span>' +
+        '<select data-i="' + i + '" data-f="side">' +
+          '<option value="own"' + (side === 'enemy' ? '' : ' selected') + '>' + ownLbl + '</option>' +
+          '<option value="enemy"' + (side === 'enemy' ? ' selected' : '') + '>' + enemyLbl + '</option>' +
+        '</select>';
+    }
     if (f.kind === 'cond') h = '<span class="lbl">if</span>' + statSel(f.p.stat, 'stat') +
       '<select data-i="' + i + '" data-f="dir"><option' + (f.p.dir === 'above' ? ' selected' : '') + '>above</option><option' + (f.p.dir === 'below' ? ' selected' : '') + '>below</option></select>' + num(f.p.x, 'x');
     if (f.kind === 'appoint') h = '<span class="lbl">ministry</span><select data-i="' + i + '" data-f="min">' + MINISTRIES.map(function (m) { return '<option' + (m === f.p.min ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select>';
@@ -604,6 +614,7 @@ export async function mountCardCreator(mount) {
       : v === 'corp_create' ? { sector: CATEGORIES[0], name: '' }
       : v === 'bill' ? { name: '', pass: [{ kind: 'stat_up', p: { stat: 'Growth', x: 5 } }], fail: [{ kind: 'stat_down', p: { stat: 'Growth', x: 3 } }] }
       : (v === 'decider_gain' || v === 'decider_lose' || v === 'coal_pop_up' || v === 'coal_pop_down') ? { x: 2 }
+      : (v === 'mob_add' || v === 'mob_rem' || v === 'mil_add' || v === 'mil_rem') ? { hex: '16,-5', side: 'own' }
       : { stat: STATS[1], x: 3 };
   }
   // Apply one field change to an effect object; returns true when the row needs a re-render (renderFx).
