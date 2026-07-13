@@ -170,7 +170,7 @@
     <div class="phead">
       <span class="eye" id="eye">The Party</span>
       <h1>Home</h1>
-      <p>Your nation and the world at a glance — the card market and the cards in your hand. Each month you take one action: bid on cards, play a card, or discard a card.</p>
+      <p>Your nation and the world at a glance — the card market and the cards in your hand. Each month you may play or discard one card, and bid on cards freely.</p>
     </div>
 
     <div class="cm">
@@ -229,13 +229,15 @@
   // Party micro-actions stay off the World Timeline — it's for nation-scale news.
   var LOCAL_KINDS = { rally:1, fundraise:1, attack:1, adblitz:1, recruit:1, party:1 };
 
-  // Every party acts every month, taking ONE of three mutually-exclusive actions (schema/187):
-  //   • bid on cards   — repeatable this month; live bids ARE the "chose to bid" marker
-  //   • play a card    — banks the card's Action Points; stamps turn_acted_tick
-  //   • discard a card — +3 Influence, back to the deck; stamps turn_acted_tick
+  // Every party acts every month (schema/187). Two INDEPENDENT actions per month:
+  //   • ONE terminal card choice — play a card (banks its Action Points) OR discard a card (+3 Influence,
+  //     back to the deck). Play and discard are mutually exclusive with each other; both stamp
+  //     turn_acted_tick, so whichever you pick first bars the other for the month.
+  //   • bid on cards — DECOUPLED: always available (repeatable, up to the hand cap), whether or not you
+  //     also played/discarded this month.
   function hasActed() { return PARTY && Number(PARTY.turn_acted_tick) === Number(CUR_TICK); }   // played/discarded this month
   function bidCount() { return Object.keys(BIDS).length; }                                       // live bids this month
-  function canCardAct() { return !hasActed() && bidCount() === 0; }   // play/discard barred once you've acted or bid
+  function canCardAct() { return !hasActed(); }   // play/discard barred only once you've played/discarded this month
   function apLeft() { return (PARTY && Number(PARTY.action_points)) || 0; }
 
   // Card kind → label + colour class, from the stored definition (one source: the Card Creator's fields).
@@ -270,11 +272,9 @@
     // A bid reserves a hand slot (server: schema/180). Held cards + cards you're already bidding on
     // fill toward the cap of 4; at the cap you can't bid on a NEW card until you play or discard one.
     var reserved = (window.__hand || []).length + Object.keys(myBids).length;
-    var full = reserved >= 4;
-    var locked = hasActed();   // played/discarded this month → bidding is closed
+    var full = reserved >= 4;   // bidding is decoupled — always available regardless of play/discard (schema/187)
     document.getElementById('marketNote').innerHTML = 'sealed bids · you have <span class="inf">⚡' + (PARTY.influence || 0) + '</span> · ' +
-      (locked ? '<span class="inf">action taken</span> — no bidding this month'
-       : full ? '<span class="inf">hand full (4/4)</span> — play or discard to bid on a new card'
+      (full ? '<span class="inf">hand full (4/4)</span> — play or discard to bid on a new card'
        : 'highest bid wins at next month’s auction');
     if (!cards.length) { el.innerHTML = '<div class="empty"><b>The market is quiet.</b>No cards are up for auction here yet.</div>'; return; }
     el.innerHTML = cards.map(function (c) {
@@ -285,9 +285,8 @@
       if (draft[c.id] == null) draft[c.id] = Math.max(cost, mine);
       var v = draft[c.id];
       var noRoom = !mine && full;                  // a bid on a NEW card, but no free slot
-      var bidDis = locked || noRoom || v > afford;
-      var bidTitle = locked ? ' title="You’ve taken this month’s action — no bidding"'
-        : noRoom ? ' title="Hand full — play or discard a card first"'
+      var bidDis = noRoom || v > afford;
+      var bidTitle = noRoom ? ' title="Hand full — play or discard a card first"'
         : (v > afford ? ' title="Not enough Influence"' : '');
       return '<div class="cardc">' + cardHead(def) +
         '<div class="c-cost">Base ⚡<b>' + cost + '</b></div></div>' +
@@ -315,10 +314,9 @@
 
   function renderHand(cards) {
     var el = document.getElementById('hand');
-    var canAct = canCardAct();   // play/discard is this month's action — only before you've bid/played/discarded
+    var canAct = canCardAct();   // play/discard is this month's terminal choice — only before you've played/discarded
     document.getElementById('handNote').innerHTML = cards.length + '/4 held · ' +
-      (hasActed() ? 'action taken — you hold <span class="inf">' + apLeft() + ' AP</span>'
-       : bidCount() > 0 ? 'bidding this month — cancel your bids to play or discard instead'
+      (hasActed() ? 'card played/discarded this month — you hold <span class="inf">' + apLeft() + ' AP</span>'
        : '<span class="inf">your move</span> — play or discard a card');
     if (!cards.length) { el.innerHTML = '<div class="empty"><b>Your hand is empty.</b>Win cards at auction to hold them here.</div>'; return; }
     el.innerHTML = cards.map(function (c) {
@@ -639,15 +637,14 @@
     var bidding = bidCount() > 0;  // committed to bidding this month
     var canCard = canCardAct();    // play/discard availability — the one predicate renderHand also reads
 
-    note.innerHTML = acted ? '<span class="inf">action taken</span>'
-      : bidding ? '<span class="inf">bidding · ' + bidCount() + ' live</span>'
-      : 'choose one';
+    var bits = [];
+    if (acted) bits.push('card played/discarded');
+    if (bidding) bits.push(bidCount() + ' bid' + (bidCount() > 1 ? 's' : '') + ' live');
+    note.innerHTML = bits.length ? '<span class="inf">' + bits.join(' · ') + '</span>' : 'your move';
     var status = acted
-      ? 'You’ve taken this month’s action. Spend Action Points on moves anytime — each costs <b>1 AP</b>.'
-      : bidding
-      ? 'You’re bidding this month (<b>' + bidCount() + '</b> live) — top bids win at next month’s auction. Cancel every bid to play or discard instead.'
-      : 'Each month you take <b>one</b> action — bid, play, or discard.';
-    var cardTitle = acted ? 'You’ve taken this month’s action' : (bidding ? 'Cancel your bids first' : '');
+      ? 'You’ve played or discarded a card this month — you can still <b>bid</b>. Spend Action Points on moves anytime, each costs <b>1 AP</b>.'
+      : 'Each month you may <b>play or discard one card</b>, and <b>bid</b> on cards freely.';
+    var cardTitle = acted ? 'You’ve already played or discarded a card this month' : '';
 
     function opt(id, name, desc, dis, on, title) {
       return '<button class="actopt' + (on ? ' on' : '') + '" id="' + id + '"' + (dis ? ' disabled' : '') +
@@ -656,7 +653,7 @@
     el.innerHTML = '<div class="actbox"><div class="actbar"><span class="apbadge">▶ ' + ap + ' AP</span>' +
       '<span class="actstat">' + status + '</span></div>' +
       '<div class="actrow">' +
-        opt('optBid', 'Bid on a Card', 'Sealed bids in The Market · win at next month’s auction', acted, bidding, acted ? cardTitle : '') +
+        opt('optBid', 'Bid on a Card', 'Sealed bids in The Market · win at next month’s auction', false, bidding, '') +
         opt('optPlay', 'Play a Card', 'Play a hand card · banks its Action Points', !canCard, false, cardTitle) +
         opt('optDisc', 'Discard a Card', '+3 Influence · back to the nation’s deck', !canCard, false, cardTitle) +
       '</div></div>';

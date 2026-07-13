@@ -47,10 +47,12 @@ export function cardEffectText(kind, p, nationName, cardName) {
     case 'nat_el': return 'Carry out a <b>national election</b>';
     case 'hog_change': return 'The <b>Head of Government</b> is replaced by a new leader';
     case 'hex_el': return 'Carry out an <b>election in a chosen hex</b> (reapportions its seats)';
-    case 'mob_add': return 'An <b>Armed Mob</b> rises in <b>hex ' + esc(p.hex || '?') + '</b>';
-    case 'mob_rem': return 'The <b>Armed Mob</b> in <b>hex ' + esc(p.hex || '?') + '</b> disperses';
-    case 'mil_add': return 'Deploy a <b>Militia</b> to <b>hex ' + esc(p.hex || '?') + '</b>';
-    case 'mil_rem': return 'The <b>Militia</b> in <b>hex ' + esc(p.hex || '?') + '</b> stands down';
+    case 'mob_add': return (p.side === 'enemy' ? 'An <b>Enemy Armed Mob</b>' : 'An <b>Armed Mob</b>') + ' rises in <b>hex ' + esc(p.hex || '?') + '</b>';
+    case 'mob_rem': return 'The <b>' + (p.side === 'enemy' ? 'Enemy Armed Mob' : 'Armed Mob') + '</b> in <b>hex ' + esc(p.hex || '?') + '</b> disperses';
+    case 'mil_add': return p.side === 'enemy'
+      ? 'An <b>Enemy Militia</b> seizes <b>hex ' + esc(p.hex || '?') + '</b>'
+      : 'Deploy a <b>Militia</b> to <b>hex ' + esc(p.hex || '?') + '</b>';
+    case 'mil_rem': return 'The <b>' + (p.side === 'enemy' ? 'Enemy Militia' : 'Militia') + '</b> in <b>hex ' + esc(p.hex || '?') + '</b> stands down';
     case 'appoint': return 'Head of Government must <b>appoint you to ' + esc(p.min || '?') + '</b>, or: ' + t(p.nk || 'party_lose', p.np || {});
     case 'cond': return 'IF <b>' + esc(p.stat || '?') + '</b> is ' + (p.dir || 'above') + ' <b>' + (p.x || 0) + '</b>, then: ' + t(p.nk || 'party_lose', p.np || {});
     case 'event': return '<b>Decision:</b> “' + esc(p.txt || '…') + '” → ' + t(p.nk || 'party_lose', p.np || {});
