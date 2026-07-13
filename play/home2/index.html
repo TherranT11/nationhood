@@ -647,12 +647,17 @@ function resetTouch(e) {
   else if (!e.touches.length) { touch = null; }
 }
 mapArea.addEventListener('touchend', function (e) {
-  // A clean single-finger tap (no drag) → open/close the nation under the finger. Touch doesn't reliably
-  // synthesize a click on the SVG hex, so hit-test the lift point directly.
+  // A clean single-finger tap (no drag) on a map hex → open/close the nation under the finger. Touch
+  // doesn't reliably synthesize a click on the SVG hex, so hit-test the lift point directly. Only act
+  // when the tap actually lands on a hex — taps on the hamburger, zoom, markers, or the panel must keep
+  // their native click, so we must NOT preventDefault on those.
   if (touch && !pointerMoved && !e.touches.length && handleMapTap && e.changedTouches.length) {
     var t = e.changedTouches[0];
-    handleMapTap(document.elementFromPoint(t.clientX, t.clientY));
-    e.preventDefault();   // suppress the compat click so we don't double-fire
+    var el = document.elementFromPoint(t.clientX, t.clientY);
+    if (el && el.tagName === 'polygon') {
+      handleMapTap(el);
+      e.preventDefault();   // suppress the compat click so we don't double-fire — hexes only
+    }
   }
   resetTouch(e);
 });
