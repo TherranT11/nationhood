@@ -516,7 +516,8 @@
       document.getElementById('leftcol').innerHTML = renderConvention() + renderRoster();
     } else {
       layout.classList.add('solo'); chatBox.classList.add('top'); document.getElementById('topSlot').appendChild(chatBox);
-      document.getElementById('leftcol').innerHTML = renderLaws() + renderAgenda();
+      // Chat (full-width, above) → Upcoming Agenda → the Laws ladder.
+      document.getElementById('leftcol').innerHTML = renderAgenda() + renderLaws();
     }
     layout.style.display = '';
     wire();

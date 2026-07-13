@@ -83,25 +83,31 @@ create policy "org_law_votes_select_member" on public.organization_law_votes for
 -- called by propose (after the mover's auto-Aye) and by every vote.
 create or replace function public._org_resolve_law(p_org uuid, p_sector text, p_law text)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_members int; v_need int; v_aye int; v_nay int; v_tick int; v_enact boolean;
+declare v_members int; v_need int; v_aye int; v_nay int; v_tick int; v_enact boolean; v_cost numeric; v_coh numeric;
 begin
-  select count(*) into v_members from public.organization_members where org_id = p_org;
-  v_need := (v_members / 2) + 1;   -- strict majority of current members
+  -- Voting members only — observers (role 'observer') hold no vote and don't count toward the majority.
+  select count(*) into v_members from public.organization_members where org_id = p_org and coalesce(role, 'member') <> 'observer';
+  v_need := (v_members / 2) + 1;   -- strict majority of current voting members
   select count(*) filter (where vote = 'aye'), count(*) filter (where vote = 'nay')
     into v_aye, v_nay from public.organization_law_votes where org_id = p_org and sector = p_sector and law_id = p_law;
   if v_aye >= v_need or v_nay >= v_need then
     select current_tick into v_tick from public.game_state where id;
     v_enact := v_aye >= v_need;
+    -- Affordability is settled HERE (not only at propose): the pool must still cover the cost when the
+    -- motion carries. Two laws proposed while both looked affordable can't both drain a pool that only
+    -- covers one — whichever carries first spends, and a now-underfunded motion is rejected as carried-but-
+    -- unaffordable. Lock the org row so concurrent enactments serialise on the pool.
+    v_cost := public._org_law_cost(p_sector, p_law);
+    if v_enact then
+      select cohesion into v_coh from public.organizations where id = p_org for update;
+      if coalesce(v_coh, 0) < v_cost then v_enact := false; end if;
+    end if;
     update public.organization_laws
        set status = case when v_enact then 'enacted' else 'rejected' end, resolved_tick = v_tick
      where org_id = p_org and sector = p_sector and law_id = p_law;
     delete from public.organization_law_votes where org_id = p_org and sector = p_sector and law_id = p_law;
-    -- Enacting spends the law's Cohesion from the org pool (floored at 0). The propose-time gate already
-    -- required the pool to cover it; a member leaving mid-vote (−5) is the only way it can fall short.
     if v_enact then
-      update public.organizations
-         set cohesion = greatest(0, cohesion - public._org_law_cost(p_sector, p_law))
-       where id = p_org;
+      update public.organizations set cohesion = cohesion - v_cost where id = p_org;
     end if;
   end if;
 end $$;
