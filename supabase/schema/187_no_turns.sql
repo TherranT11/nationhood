@@ -55,11 +55,10 @@ begin
 end $$;
 revoke all on function public._spend_action_point(uuid) from public, anon, authenticated;
 
--- ── BID ON CARDS — supersedes schema/180. Same min-bid, escrow-the-net, and 4-slot hand reservation;
--- the per-turn 3-bid cap is dropped (the hand reservation already caps outstanding bids at 4). Bidding is
--- DECOUPLED from the play/discard choice (schema/187 revision): you may bid every tick regardless of
--- whether you've also played or discarded a card — bidding never stamps turn_acted_tick, so it stays
--- repeatable (bounded only by free hand slots). ──
+-- ── BID ON CARDS — supersedes schema/180. Same min-bid and escrow-the-net. Bidding is DECOUPLED from the
+-- play/discard choice: you may bid every tick regardless of whether you've also played or discarded a card
+-- (it never stamps turn_acted_tick). The cap is a flat 3 OUTSTANDING BIDS — independent of the cards you
+-- already hold — so you can chase up to three market cards at once and still play one from hand. ──
 create or replace function public.card_bid(p_deck_card uuid, p_amount int)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_uid uuid; v_pid uuid; v_pnation text; v_inf int; v_dc record; v_base int; v_old int; v_net int;
@@ -91,11 +90,10 @@ begin
   -- New bid or a raise? A raise on this card consumes no new hand slot.
   select amount into v_old from public.card_bids where deck_card_id = p_deck_card and party_id = v_pid;
 
-  -- Reservation gate: held cards + bids on OTHER cards must leave a slot for this one (< 4).
-  v_reserved := public._hand_count(v_pid)
-              + (select count(*) from public.card_bids where party_id = v_pid and deck_card_id <> p_deck_card);
-  if v_reserved >= 4 then
-    raise exception 'You can hold at most 4 cards — play or discard one to bid on another.';
+  -- Bid cap: at most 3 outstanding bids at once (a raise on THIS card doesn't count — it's excluded).
+  v_reserved := (select count(*) from public.card_bids where party_id = v_pid and deck_card_id <> p_deck_card);
+  if v_old is null and v_reserved >= 3 then
+    raise exception 'You can bid on at most 3 cards at once — cancel a bid to bid on another.';
   end if;
 
   -- Escrow the net move (refund the old bid, charge the new).

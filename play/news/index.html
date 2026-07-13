@@ -269,12 +269,12 @@
 
   function renderMarket(cards, myBids) {
     var el = document.getElementById('market');
-    // A bid reserves a hand slot (server: schema/180). Held cards + cards you're already bidding on
-    // fill toward the cap of 4; at the cap you can't bid on a NEW card until you play or discard one.
-    var reserved = (window.__hand || []).length + Object.keys(myBids).length;
-    var full = reserved >= 4;   // bidding is decoupled — always available regardless of play/discard (schema/187)
+    // Flat 3-bid cap (server: schema/187), independent of the cards you already hold: you can chase up to
+    // three market cards at once. At three you can't bid on a NEW card until you cancel one (raising a bid
+    // you already hold is always allowed).
+    var full = Object.keys(myBids).length >= 3;
     document.getElementById('marketNote').innerHTML = 'sealed bids · you have <span class="inf">⚡' + (PARTY.influence || 0) + '</span> · ' +
-      (full ? '<span class="inf">hand full (4/4)</span> — play or discard to bid on a new card'
+      (full ? '<span class="inf">3 bids max</span> — cancel a bid to bid on another'
        : 'highest bid wins at next month’s auction');
     if (!cards.length) { el.innerHTML = '<div class="empty"><b>The market is quiet.</b>No cards are up for auction here yet.</div>'; return; }
     el.innerHTML = cards.map(function (c) {
@@ -284,15 +284,15 @@
       var afford = (PARTY.influence || 0) + mine;  // raising refunds the old bid first, so it's spendable
       if (draft[c.id] == null) draft[c.id] = Math.max(cost, mine);
       var v = draft[c.id];
-      var noRoom = !mine && full;                  // a bid on a NEW card, but no free slot
+      var noRoom = !mine && full;                  // a bid on a NEW card, but already at 3 bids
       var bidDis = noRoom || v > afford;
-      var bidTitle = noRoom ? ' title="Hand full — play or discard a card first"'
+      var bidTitle = noRoom ? ' title="3 bids max — cancel a bid to bid on another"'
         : (v > afford ? ' title="Not enough Influence"' : '');
       return '<div class="cardc">' + cardHead(def) +
         '<div class="c-cost">Base ⚡<b>' + cost + '</b></div></div>' +
         '<div class="c-bid">' +
           '<div class="bidtop">' +
-            '<span class="mybid">' + (mine ? 'Your bid <b>⚡' + mine + '</b>' : (noRoom ? 'Hand full' : 'No bid')) + '</span>' +
+            '<span class="mybid">' + (mine ? 'Your bid <b>⚡' + mine + '</b>' : (noRoom ? '3 bids max' : 'No bid')) + '</span>' +
             (mine ? '<button class="act cancel" data-cancel="' + c.id + '">Cancel</button>' : '') +
           '</div>' +
           '<div class="bidctrl">' +
