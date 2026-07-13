@@ -109,7 +109,9 @@
   .np-ev{display:flex;gap:7px;align-items:flex-start;padding:6px 0;border-top:1px solid #20202c}
   .np-ev .bang{color:var(--red);font-weight:900;line-height:1.35}
   .np-ev .etxt{flex:1;font-size:11.5px;color:var(--muted);line-height:1.4}
+  .np-ev .emeta{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none}
   .np-ev .etag{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase;white-space:nowrap}
+  .np-ev .edate{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.02em;color:var(--muted);white-space:nowrap}
 
   /* Event markers: an orange pulsing "!" over a nation's capital when something is happening there
      this in-game month. Constant on-screen size (positioned by JS), clickable to open the nation. */
@@ -520,8 +522,10 @@ function applyTransform() {
     if (document.getElementById('npEvents') !== box) return;   // panel changed while awaiting — drop stale fill
     if (!rows.length) { box.innerHTML = '<div class="np-ev"><span class="etxt" style="color:var(--dim)">No recent events.</span></div>'; return; }
     box.innerHTML = rows.map(function (e) {
+      var meta = (e.kind ? '<span class="etag">' + esc(e.kind) + '</span>' : '') +
+        (e.game_date ? '<span class="edate">' + esc(e.game_date) + '</span>' : '');
       return '<div class="np-ev"><span class="bang">!</span><span class="etxt">' + esc(e.body) + '</span>' +
-        (e.kind ? '<span class="etag">' + esc(e.kind) + '</span>' : '') + '</div>';
+        (meta ? '<span class="emeta">' + meta + '</span>' : '') + '</div>';
     }).join('');
   }
 
