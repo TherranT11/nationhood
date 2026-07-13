@@ -26,6 +26,10 @@
 -- guard). Both default 0 — a fresh party has taken no turn and holds no AP.
 alter table public.parties add column if not exists action_points   int not null default 0;
 alter table public.parties add column if not exists turn_acted_tick int not null default 0;
+-- The portion of action_points that was BANKED by playing cards (as opposed to the fixed 2-AP baseline
+-- every party gets each tick). Bumped alongside action_points on a card play (schema/187); the tick
+-- (schema/60) reads it to refresh only the baseline — banked AP carries, the baseline doesn't stack.
+alter table public.parties add column if not exists card_ap int not null default 0;
 
 -- The gate every (formerly-)influence-costed operation calls (Phase B). Spends one Action Point: the
 -- party need only hold at least one AP — AP is spendable any time until it expires at the party's next
