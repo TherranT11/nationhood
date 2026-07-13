@@ -91,6 +91,21 @@ export function tickToDate(tick) {
   return months[(n - 1) % 12] + ', ' + (1980 + Math.floor((n - 1) / 12));
 }
 
+// ms from `now` (a Date) to the next tick boundary — the next TICK_PERIOD_MS mark past UTC midnight.
+// The server advances the clock via pg_cron at 00/06/12/18 UTC (schema/60); this is the one source for
+// the "Next Tick" countdown, shared by the topbar and the Home2 map.
+export function msUntilNextTick(now) {
+  var dayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  var since = now.getTime() - dayStart;                              // ms since UTC midnight
+  var nextBoundary = (Math.floor(since / TICK_PERIOD_MS) + 1) * TICK_PERIOD_MS;
+  return dayStart + nextBoundary - now.getTime();
+}
+// A ms duration as H:MM:SS (clamped at zero) — the countdown display.
+export function fmtCountdown(ms) {
+  var s = Math.max(0, Math.floor(ms / 1000)), two = function (n) { return String(n).padStart(2, '0'); };
+  return Math.floor(s / 3600) + ':' + two(Math.floor((s % 3600) / 60)) + ':' + two(s % 60);
+}
+
 // A nation's CURRENT value for a declaration slot — the one source for "what is it
 // now", shared by the Nation page and the declaration propose preview. The nation's
 // own choice wins; otherwise a pick-list slot shows its ★ default, while a free-text

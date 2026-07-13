@@ -211,7 +211,7 @@
 
 <script type="module">
 import { supabase, isConfigured, requireUser, selectAll } from '/supabase.js';
-import { esc, declaredValue, fmtGdp, fmtPop, loadHogTitleSlot, tickToDate, TICK_PERIOD_MS } from '/util.js';
+import { esc, declaredValue, fmtGdp, fmtPop, loadHogTitleSlot, tickToDate, msUntilNextTick, fmtCountdown } from '/util.js';
 import { axialToPix, nationColors } from '/hexmap.js';
 import { regimeText, nationRegime, statName, statLabel, statBand, crimeLabel, crimeBand, crimeValue } from '/ladders.js';
 
@@ -315,8 +315,8 @@ function applyTransform() {
     if (party) { myNation = party.nation_id; myPartyName = party.name || ''; myAP = party.action_points; myInf = party.influence; }
   } catch (e) {}
 
-  // The shared game clock — advanced only by the admin's "Advance Tick" (there is no cron/trigger),
-  // so this is the current month until an admin advances it. One source: tickToDate mirrors the server.
+  // The shared game clock — advanced by pg_cron every 6h (00/06/12/18 UTC, schema/60) and by the admin's
+  // "Advance Tick". One source: tickToDate mirrors public.current_game_date().
   var curTick = null;
   try { const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle(); if (gs) curTick = gs.current_tick; } catch (e) {}
 
@@ -680,18 +680,8 @@ mapArea.addEventListener('touchcancel', resetTouch);
 
 /* ---------------- NEXT-TICK COUNTDOWN ---------------- */
 // The server advances the clock via pg_cron at 00/06/12/18 UTC (schema/60). The next tick is simply the
-// next TICK_PERIOD_MS boundary — pure wall-clock, no round-trip. TICK_PERIOD_MS (util.js) is the one
-// source and must match the cron cadence. Mirrors topbar.js's mountNextTick.
-function msUntilNextTick(now) {
-  var dayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  var since = now.getTime() - dayStart;
-  var nextBoundary = (Math.floor(since / TICK_PERIOD_MS) + 1) * TICK_PERIOD_MS;
-  return dayStart + nextBoundary - now.getTime();
-}
-function fmtCountdown(ms) {
-  var s = Math.max(0, Math.floor(ms / 1000)), two = function (n) { return String(n).padStart(2, '0'); };
-  return Math.floor(s / 3600) + ':' + two(Math.floor((s % 3600) / 60)) + ':' + two(s % 60);
-}
+// next TICK_PERIOD_MS boundary — pure wall-clock, no round-trip. msUntilNextTick + fmtCountdown are the
+// shared helpers in util.js (one source, same as the topbar).
 async function refreshGameDate() {
   try {
     const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle();

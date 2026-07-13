@@ -8,7 +8,7 @@ import { liveGameDate, mountGameDate } from '/gamedate.js';
 import { nationBudgetBalance } from '/policies.js';
 import { fetchBudgetInitiatives } from '/initiatives.js';
 import { mountCoalitionBanner } from '/coalition-banner.js';
-import { TICK_PERIOD_MS } from '/util.js';
+import { msUntilNextTick, fmtCountdown } from '/util.js';
 
 const CSS = `
 /* Compact chip row, matching the tutorial's .nhbar: Influence (star) · Budget ·
@@ -138,17 +138,7 @@ export async function refreshTopbarDate(){
 // so a backgrounded tab self-heals. TICK_PERIOD_MS (util.js) is the one source — must match the cron.
 let nextTickTimer = null;
 
-function msUntilNextTick(now){
-  const dayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const since = now.getTime() - dayStart;                              // ms since UTC midnight
-  const nextBoundary = (Math.floor(since / TICK_PERIOD_MS) + 1) * TICK_PERIOD_MS;
-  return dayStart + nextBoundary - now.getTime();                      // ms to the next 00/06/12/18 UTC
-}
-function fmtCountdown(ms){
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const two = function (n) { return String(n).padStart(2, '0'); };
-  return Math.floor(s / 3600) + ':' + two(Math.floor((s % 3600) / 60)) + ':' + two(s % 60);
-}
+// msUntilNextTick + fmtCountdown live in util.js (one source, shared with the Home2 map).
 function mountNextTick(el){   // internal: only mountTopbar uses it
   if (!el) return;
   if (nextTickTimer) { clearInterval(nextTickTimer); nextTickTimer = null; }   // never stack intervals
