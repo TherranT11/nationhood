@@ -356,7 +356,7 @@ function mountTutorialTopbar() {
   bar.className = 'nhbar';
   bar.innerHTML =
     '<span class="nhbar__chip nhbar__inf" title="Influence">' +
-      '<svg class="nhbar__star" viewBox="0 0 24 24"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>' + tutInfluence() + '</span>' +
+      '<span class="nhbar__bolt" aria-hidden="true">⚡</span>' + tutInfluence() + '</span>' +
     '<span class="nhbar__chip nhbar__bal ' + balCls + '" title="Budget balance (per year)">' + balTxt + '</span>' +
     '<span class="nhbar__chip nhbar__date">' + dateTxt + '</span>' +
     '<button class="nhbar__week" type="button" disabled>Next Week</button>' +
@@ -391,7 +391,7 @@ function ensureTopbarStyles2() {
     '.nhbar{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:20px}' +
     '.nhbar__chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-family:"Space Mono",monospace;font-size:12.5px;font-weight:700}' +
     '.nhbar__inf{color:var(--ink)}' +
-    '.nhbar__star{width:16px;height:16px;fill:var(--amber)}' +
+    '.nhbar__bolt{font-size:14px;line-height:1}' +
     '.nhbar__bal--neg{color:var(--red)}' +
     '.nhbar__bal--pos{color:var(--green)}' +
     '.nhbar__date{color:var(--muted)}' +
