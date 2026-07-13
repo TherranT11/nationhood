@@ -136,8 +136,10 @@
   /* topbar */
   .topbar{position:absolute;top:0;left:0;right:0;height:46px;z-index:10;background:rgba(14,14,22,.88);
     backdrop-filter:blur(6px);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 14px;gap:14px}
+  .tb-stat{display:flex;align-items:center;gap:4px;white-space:nowrap}
   .tb-stat .k{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--dim)}
   .tb-stat .v{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700}
+  .tbic{width:12px;height:12px;flex:none;fill:var(--orange)}
 
   .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim);background:#a9cfdd;z-index:5}
@@ -181,10 +183,10 @@
         <span style="font-weight:700;font-size:13px" id="tbName">Nationhood</span>
       </div>
       <div style="width:1px;height:22px;background:var(--line)"></div>
-      <div style="display:flex;gap:16px;align-items:center;flex:1">
-        <div class="tb-stat"><span class="k">NATIONS </span><span class="v" id="tbNations">—</span></div>
-        <div class="tb-stat"><span class="k">TERRITORY </span><span class="v" id="tbHexes">—</span></div>
-        <div class="tb-stat"><span class="k">CITIES </span><span class="v" id="tbCities">—</span></div>
+      <div style="display:flex;gap:14px;align-items:center;flex:1;min-width:0;overflow:hidden">
+        <div class="tb-stat" title="Action Points — actions you can take this turn"><span class="k">AP</span><span class="v" id="tbAP">—</span></div>
+        <div class="tb-stat" title="Influence — banked to bid on cards"><svg class="tbic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg><span class="v" id="tbInf">—</span></div>
+        <div class="tb-stat" title="Current in-game month (advances when the tick advances)"><svg class="tbic" style="fill:none;stroke:var(--muted);stroke-width:1.9" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg><span class="v" id="tbDate">—</span></div>
       </div>
     </div>
 
@@ -306,11 +308,16 @@ function applyTransform() {
   const user = await requireUser();
   if (!user) return;   // redirected to login
 
-  var myNation = null, myPartyName = '';
+  var myNation = null, myPartyName = '', myAP = null, myInf = null;
   try {
-    const { data: party } = await supabase.from('parties').select('name, nation_id').eq('user_id', user.id).maybeSingle();
-    if (party) { myNation = party.nation_id; myPartyName = party.name || ''; }
+    const { data: party } = await supabase.from('parties').select('name, nation_id, action_points, influence').eq('user_id', user.id).maybeSingle();
+    if (party) { myNation = party.nation_id; myPartyName = party.name || ''; myAP = party.action_points; myInf = party.influence; }
   } catch (e) {}
+
+  // The shared game clock — advanced only by the admin's "Advance Tick" (there is no cron/trigger),
+  // so this is the current month until an admin advances it. One source: tickToDate mirrors the server.
+  var curTick = null;
+  try { const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle(); if (gs) curTick = gs.current_tick; } catch (e) {}
 
   var nations = [], hexes = [], cities = [], capSlot = null;
   try { const { data } = await supabase.from('nations').select('id, name, color, flag, declarations, population, gdp, economy, stats'); nations = data || []; } catch (e) {}
@@ -361,9 +368,9 @@ function applyTransform() {
     document.getElementById('brandCrest').innerHTML = '<img src="' + esc(myNat.flag) + '" alt="">';
     document.getElementById('tbCrest').innerHTML = '<img src="' + esc(myNat.flag) + '" alt="">';
   }
-  document.getElementById('tbNations').textContent = nations.length;
-  document.getElementById('tbHexes').textContent = hexes.filter(function (h) { return h.terrain === 'land'; }).length;
-  document.getElementById('tbCities').textContent = cities.filter(function (c) { return c.q != null && c.r != null; }).length;
+  document.getElementById('tbAP').textContent = (myAP != null ? myAP : '—');
+  document.getElementById('tbInf').textContent = (myInf != null ? myInf : '—');
+  document.getElementById('tbDate').textContent = (curTick != null ? tickToDate(curTick) : '—');
 
   var land = hexes.filter(function (h) { return h.terrain === 'land'; });
   if (!land.length) { document.getElementById('loading').textContent = 'No world map has been drawn yet (adminsetup → World Map).'; return; }
@@ -404,6 +411,15 @@ function applyTransform() {
     body += '<circle class="citydot" cx="' + p.x + '" cy="' + p.y + '" r="' + (isCap ? 3.4 : 2.4) + '" fill="#1a1a1a"/>';
     cityLabels.push({ x: p.x + 6, y: p.y, text: (isCap ? '★ ' : '') + c.name, cap: isCap });
   });
+
+  // A dashed frame around the inhabited world so the map's edge is legible. non-scaling-stroke keeps it a
+  // crisp constant-width line at every zoom; drawn last so it reads above the hex fills.
+  if (isFinite(bMinX)) {
+    var mpad = S * 2.2;
+    body += '<rect x="' + (bMinX - mpad).toFixed(1) + '" y="' + (bMinY - mpad).toFixed(1) +
+      '" width="' + ((bMaxX - bMinX) + mpad * 2).toFixed(1) + '" height="' + ((bMaxY - bMinY) + mpad * 2).toFixed(1) +
+      '" rx="' + S + '" fill="none" stroke="#2f3e48" stroke-opacity="0.55" stroke-width="2" stroke-dasharray="7 6" vector-effect="non-scaling-stroke" pointer-events="none"/>';
+  }
 
   svgEl.innerHTML = '<g id="world">' + body + '</g>';
   worldG = document.getElementById('world');
@@ -550,10 +566,8 @@ function applyTransform() {
   Object.keys(natSum).forEach(function (nid) { if (!capPos[nid]) { var s = natSum[nid]; if (s.n) capPos[nid] = { x: s.x / s.n, y: s.y / s.n }; } });
 
   try {
-    // "Now" = the current in-game month (one source: tickToDate mirrors public.current_game_date()).
-    var curDate = null;
-    const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle();
-    if (gs && gs.current_tick != null) curDate = tickToDate(gs.current_tick);
+    // "Now" = the current in-game month (already fetched as curTick; tickToDate mirrors the server).
+    var curDate = (curTick != null) ? tickToDate(curTick) : null;
     if (curDate) {
       const { data: evs } = await supabase.from('events').select('nation_id, party_id, kind, body').eq('game_date', curDate);
       var curEvents = evs || [];
