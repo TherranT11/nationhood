@@ -130,7 +130,8 @@ begin
   foreach v_res in array array['energy', 'food', 'minerals', 'goods', 'services', 'military', 'diplomacy'] loop
     v_amt := coalesce((v_n.on_hand->>v_res)::numeric, 0)
            + greatest(0, round(coalesce((v_prod->>v_res)::numeric, 0) * public._mod_rate_multiplier(v_n.id, v_res))
-                         + public._mod_resource_add(v_n.id, v_res));
+                         + public._mod_resource_add(v_n.id, v_res)
+                         + public._org_production_bonus(v_n.id, v_res));   -- Survey Sharing org law (schema/197)
     v_add := jsonb_set(v_add, array[v_res], to_jsonb(v_amt));
   end loop;
   update public.nations set on_hand = coalesce(on_hand, '{}'::jsonb) || v_add, produce_until_tick = v_tick + 12 where id = v_p.nation_id;

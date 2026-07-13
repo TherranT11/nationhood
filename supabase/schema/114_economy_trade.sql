@@ -150,7 +150,7 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_p public.parties%rowtype; v_buyer text; v_tp jsonb;
   v_world numeric; v_mult numeric; v_tariff numeric; v_total numeric; v_duty numeric; v_net numeric;
-  v_have numeric; v_sname text; v_cur text; v_debt numeric;
+  v_have numeric; v_sname text; v_cur text; v_debt numeric; v_jp numeric;
 begin
   if p_resource not in ('energy', 'food', 'minerals', 'goods', 'services', 'military') then
     raise exception 'Unknown resource.'; end if;
@@ -187,6 +187,15 @@ begin
   v_world  := public._world_price(p_resource);
   v_mult   := coalesce((v_tp->>'importMult')::numeric, 1);
   v_tariff := greatest(0, least(100, coalesce((v_tp->>'tariff')::numeric, 0))) / 100.0;
+  -- International-organization pricing (schema/197) overrides the world rate for the org's resource. A
+  -- FELLOW member gets Emergency Reserves — at cost: base price, no scarcity markup, no tariff. Otherwise
+  -- Joint Pricing (if the seller's org has it enacted) is the price outsiders pay. Reserves beats Pricing.
+  if public._org_reserves_between(v_buyer, p_seller, p_resource) then
+    v_world := public._resource_base_price(p_resource); v_mult := 1; v_tariff := 0;
+  else
+    v_jp := public._org_joint_price(p_seller, p_resource);
+    if v_jp is not null then v_world := v_jp; end if;
+  end if;
   v_total  := round(v_world * v_mult * p_qty, 1);   -- sticker the buyer pays at the border
   v_duty   := round(v_total * v_tariff, 1);         -- customs revenue withheld from the seller
   v_net    := v_total - v_duty;                      -- net cost to the buyer
