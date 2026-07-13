@@ -167,8 +167,9 @@ begin
   end if;
 
   -- Deferred (purchase-by-stance): once parties can hold a stance, gate the playable side on reqD/reqR here.
-  -- Bank the card's AP: ADD to the persistent balance (AP now carries across ticks).
-  update public.parties   set action_points = action_points + v_acts, turn_acted_tick = v_tick
+  -- Bank the card's AP: ADD to the persistent balance (AP now carries across ticks). card_ap tracks the
+  -- banked portion so the per-tick baseline refresh (schema/60) doesn't wash it away.
+  update public.parties   set action_points = action_points + v_acts, card_ap = card_ap + v_acts, turn_acted_tick = v_tick
    where id = v_party.id;
   -- Lifecycle: shuffle back to the deck (author toggle or a firing 'shuffle' effect) else discard 'played'.
   if coalesce(v_def->>'afterPlay', 'discard') = 'shuffle' or public._def_fires_shuffle(v_def) then
