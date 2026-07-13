@@ -536,6 +536,10 @@ begin
   -- Membership applications (schema/198): a pending application older than 6 ticks auto-fails (expires).
   begin perform public._org_expire_applications();
   exception when others then raise warning 'tick %: org application expiry failed — %', v_tick, sqlerrm; end;
+  -- Cult of Personality (schema/201): autocracies accrue propaganda spending (if Press Freedom is low)
+  -- and the stock decays 0.2 this tick.
+  begin perform public._nation_cult_tick();
+  exception when others then raise warning 'tick %: cult-of-personality tick failed — %', v_tick, sqlerrm; end;
   -- Regime is the sole switch between one-party and multiparty. This tick's economics
   -- may have eroded a nation's regime to 1–4 or lifted it back to 5+, so reconcile every
   -- nation's ruling_party with its regime (schema/98) BEFORE elections read it — a nation

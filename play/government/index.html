@@ -183,7 +183,9 @@
   // placed in a group here, so any stat an admin can author (or a policy can target) actually surfaces.
   var STAT_GROUPS = [
     { name: 'Head of Government', stats: ['Budget Balance', 'Growth', 'Bureaucracy'] },
-    { name: 'Finance', stats: ['Tax Burden', 'Public Debt', 'Interest Rates'] },
+    { name: 'Finance', stats: ['Tax Burden', 'Public Debt', 'Interest Rates', 'Inflation', 'Government Default'] },
+    // Regime-stability layer (schema/201). Terrorism is intentionally absent — it's a hidden stat.
+    { name: 'Regime Stability', stats: ['Oppression', 'Control', 'Revolt Risk', 'Cult of Personality'] },
     { name: 'Interior', stats: ['Crime', 'Immigration', 'Extremism', 'Corruption', 'Religious Influence', 'Birth Rate', 'Demographic Pressure'] },
     { name: 'Economy', stats: ['Unemployment', 'Poverty', 'Wages', 'Innovation', 'Infrastructure'] },
     { name: 'Labor, Health and Social Affairs', stats: ['Prosperity', 'Press Freedom', 'Social Integration', 'Health', 'Education', 'Pension Quality'] },

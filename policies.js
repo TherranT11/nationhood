@@ -20,7 +20,9 @@ export const POLICY_STATS = [
   'Rule of Law', 'Standard of Living', 'Housing Affordability',
   'Pension Quality', 'Equity Between Generations', 'Demographic Pressure', 'Birth Rate',
   'Education', 'Health', 'Innovation', 'Environment', 'Infrastructure',
-  'National Pride', 'Corruption', 'Religious Influence', 'Civil Liberties', 'Minority Rights'
+  'National Pride', 'Corruption', 'Religious Influence', 'Civil Liberties', 'Minority Rights',
+  // Regime-stability layer (schema/201). Oppression is a hand-set core stat; the rest are derived.
+  'Oppression', 'Control', 'Revolt Risk', 'Terrorism', 'Cult of Personality', 'Inflation', 'Government Default'
 ];
 
 // The valid input range for a ministry stat, where one is defined — used to bound the admin
@@ -32,14 +34,24 @@ export const STAT_RANGES = {
   'Birth Rate': { min: -50, max: 50 },
   'Education': { min: 1, max: 100 },
   'Health': { min: 1, max: 100 },
-  'Innovation': { min: 1, max: 100 }
+  'Innovation': { min: 1, max: 100 },
+  'Oppression': { min: 0, max: 100 }
 };
 
 // The admin-typed ministry stats (the Edit Nation "Ministry Stats" grid). Derived from POLICY_STATS
-// — one source — minus stats that are NOT typed in that grid: Budget Balance & Bureaucracy are
-// COMPUTED from policy effects. (The regime is set on its own controls, not the ministry grid, and
-// is no longer in POLICY_STATS at all.)
-var NON_MINISTRY_STATS = ['Budget Balance', 'Bureaucracy'];
+// — one source — minus every DERIVED stat, which is COMPUTED (not hand-typed): from policy effects
+// (Budget Balance, Bureaucracy, Tax Burden, Military Research, Civil Liberties), from a formula
+// (Armed Forces Funding, CO₂ Emissions, Global Warming, Energy Availability, Interest Rates —
+// schema/200), or from other stats via admin-authored connectors (Crime, Poverty, Demographic
+// Pressure, Standard of Living, Equity Between Generations). The real-backed mirrors Growth /
+// Prosperity / Rule of Law keep their own controls and are intentionally NOT removed here.
+var NON_MINISTRY_STATS = [
+  'Budget Balance', 'Bureaucracy', 'Tax Burden', 'Military Research', 'Civil Liberties',
+  'Armed Forces Funding', 'CO₂ Emissions', 'Global Warming', 'Energy Availability', 'Interest Rates',
+  'Crime', 'Poverty', 'Demographic Pressure', 'Standard of Living', 'Equity Between Generations',
+  // Regime-stability derived stats (schema/201). Oppression stays hand-set (a core input), so it is NOT here.
+  'Control', 'Revolt Risk', 'Terrorism', 'Cult of Personality', 'Inflation', 'Government Default'
+];
 export const MINISTRY_STATS = POLICY_STATS.filter(function (s) { return NON_MINISTRY_STATS.indexOf(s) < 0; });
 
 // A policy's vote-popularity reaction: how a party's popularity moves for how it votes on a
