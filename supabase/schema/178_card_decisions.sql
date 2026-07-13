@@ -77,13 +77,9 @@ begin
   v_name     := coalesce(p_def->>'name', 'a card');
   insert into public.card_decisions (nation_id, deck_card_id, card_name, card_desc, options, handler, resolver_party_id, played_by_party_id, created_tick)
     values (p_nation, p_deck_card, v_name, coalesce(p_def->>'desc', ''), v_opts, v_handler, v_resolver, p_played_by, p_tick);
-  insert into public.events (nation_id, party_id, kind, body, game_date)
-    values (p_nation, p_played_by, 'party',
-            v_name || ' forces a decision — awaiting ' ||
-              case when v_handler = 'player' then 'the party that played it'
-                   when v_handler = 'hog'    then 'the Head of Government'
-                   else 'the ' || v_handler || ' minister' end || '.',
-            public.current_game_date());
+  -- No timeline notice here: the card's play already announced "In {nation}, {description}." (schema/187),
+  -- and the pending decision surfaces in Government Decisions. The government's pick fires its OWN separate
+  -- event when card_decide runs.
 end $$;
 revoke all on function public._create_card_decision(text, uuid, uuid, jsonb, int) from public, anon, authenticated;
 
@@ -128,7 +124,7 @@ drop function if exists public.card_decide(uuid, int);   -- was 2-arg; now takes
 create or replace function public.card_decide(p_decision uuid, p_option int, p_nation text default null)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_uid uuid; v_pid uuid; v_pname text; v_d record; v_opt jsonb; v_tick int; v_resolver uuid; e jsonb;
-  v_body text; v_decider text; v_choice text; v_desc text; v_abbrev text; v_fx text[] := '{}'; v_ph text;
+  v_body text; v_decider text; v_choice text; v_abbrev text; v_fx text[] := '{}'; v_ph text;
 begin
   v_uid := auth.uid();
   if v_uid is null then raise exception 'Not signed in.'; end if;
@@ -194,25 +190,17 @@ begin
 
   update public.card_decisions set status = 'resolved', chosen_idx = p_option where id = p_decision;
 
-  -- Announce the resolved decision to the World Timeline (kind 'card'): the matter, its description, and
-  -- the choice the decider made — "In {nation}, on the matter of {title}, {desc} {decider} has chosen to
-  -- {choice}." The title is wrapped in ** so the feed renders it bold. The decider reads from the handler
-  -- (a ministry → "The X Minister"; the Head of Government; else the resolving party).
+  -- Announce the resolved decision to the World Timeline (kind 'card') as its OWN separate event — the
+  -- card's play already told the story ("In {nation}, {description}." schema/187), so this second event is
+  -- just the government's pick: "In {nation}, {decider} has chosen to {choice}." The decider reads from the
+  -- handler (a ministry → "The X Minister"; the Head of Government; else the resolving party).
   v_decider := case
                  when v_d.handler is null or v_d.handler = 'player' then coalesce(v_pname, 'The government')
                  when v_d.handler = 'hog' then 'The Head of Government'
                  else 'The ' || v_d.handler || ' Minister' end;
   v_choice := coalesce(nullif(v_opt->>'txt', ''), 'act');
-  v_desc   := coalesce(v_d.card_desc, '');
   v_body   := 'In ' || coalesce((select name from public.nations where id = v_d.nation_id), v_d.nation_id)
-              || ', on the matter of **' || v_d.card_name || '**';
-  if v_desc <> '' then
-    v_body := v_body || ', ' || v_desc;
-    if v_body !~ '[.!?]$' then v_body := v_body || '.'; end if;
-  else
-    v_body := v_body || '.';
-  end if;
-  v_body := v_body || ' ' || v_decider || ' has chosen to ' || v_choice || '.';
+              || ', ' || v_decider || ' has chosen to ' || v_choice || '.';
   -- List the effects that fired, one per line (the timeline renders newlines as bullets).
   if array_length(v_fx, 1) > 0 then
     v_body := v_body || E'\n' || (select string_agg('• ' || ph, E'\n') from unnest(v_fx) ph);
