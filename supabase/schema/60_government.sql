@@ -410,14 +410,15 @@ begin
   -- nation — the one holding the most legislature seats (ties share the bonus). Replaces the old
   -- reset-to-12 Action-Point budget, so unspent Influence now carries forward. Touches every row
   -- (still satisfies the require-a-WHERE-clause guard via id is not null).
-  -- Action Points: a fixed baseline of 2 every tick — a FLOOR, not an increment. greatest(ap, 2) tops a
-  -- party back up to 2 if it spent down, but never adds when it's already at/above 2, so unspent baseline
-  -- doesn't stack and any AP banked from played event cards is preserved on top.
+  -- Action Points: a fixed baseline of 2 every tick. At or below 2 it tops the party up to 2 (the pure
+  -- baseline doesn't stack with itself — sitting on 2 unspent stays 2). Above 2 — i.e. AP banked from
+  -- played event cards — the baseline lands ON TOP (7 → 9). So a card player always gains 2 a tick; a
+  -- non-player is refilled to 2.
   update public.parties p set influence = least(100, influence + 3 + (
            case when p.seats > 0 and p.seats = (
              select max(p2.seats) from public.parties p2 where p2.nation_id = p.nation_id
            ) then 1 else 0 end)),
-         action_points = greatest(coalesce(p.action_points, 0), 2)
+         action_points = case when coalesce(p.action_points, 0) <= 2 then 2 else p.action_points + 2 end
    where p.id is not null;
   -- Debt→inflation backlog: snapshot each nation's debt BEFORE this tick's economics, so the
   -- close-out step (end of tick) can measure how much debt was ADDED across the whole tick.
