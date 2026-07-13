@@ -533,6 +533,9 @@ begin
   -- International organizations (schema/197): every active org accrues +0.5 Cohesion this tick (cap 100).
   begin perform public._org_cohesion_tick();
   exception when others then raise warning 'tick %: org cohesion accrual failed — %', v_tick, sqlerrm; end;
+  -- Membership applications (schema/198): a pending application older than 6 ticks auto-fails (expires).
+  begin perform public._org_expire_applications();
+  exception when others then raise warning 'tick %: org application expiry failed — %', v_tick, sqlerrm; end;
   -- Regime is the sole switch between one-party and multiparty. This tick's economics
   -- may have eroded a nation's regime to 1–4 or lifted it back to 5+, so reconcile every
   -- nation's ruling_party with its regime (schema/98) BEFORE elections read it — a nation

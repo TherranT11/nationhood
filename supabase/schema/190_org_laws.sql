@@ -132,8 +132,8 @@ begin
   select status, cohesion into v_status, v_cohesion from public.organizations where id = p_org;
   if not found then raise exception 'No such organization.'; end if;
   if v_status <> 'active' then raise exception 'Only a founded organization legislates.'; end if;
-  if not exists (select 1 from public.organization_members where org_id = p_org and nation_id = v_nation) then
-    raise exception 'Only a member may move a law.'; end if;
+  if not exists (select 1 from public.organization_members where org_id = p_org and nation_id = v_nation and coalesce(role, 'member') <> 'observer') then
+    raise exception 'Only a voting member may move a law.'; end if;
 
   v_cat := public._org_law_catalog();
   if not (v_cat ? p_sector) or not (v_cat->p_sector @> to_jsonb(p_law)) then
@@ -188,8 +188,8 @@ begin
   if v_pid is null then raise exception 'You have no party.'; end if;
   if not public._party_holds_ministry(v_pid, 'Foreign Affairs') then
     raise exception 'Only the Minister of Foreign Affairs casts your nation''s vote.'; end if;
-  if not exists (select 1 from public.organization_members where org_id = p_org and nation_id = v_nation) then
-    raise exception 'Only a member may vote.'; end if;
+  if not exists (select 1 from public.organization_members where org_id = p_org and nation_id = v_nation and coalesce(role, 'member') <> 'observer') then
+    raise exception 'Only a voting member may vote.'; end if;
 
   -- Lock the law row: serialises concurrent votes on the SAME law, so each vote's tally (in
   -- _org_resolve_law) sees every earlier committed vote — otherwise two simultaneous Ayes could each

@@ -112,6 +112,11 @@
   .lcost{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.04em;color:var(--amber);margin-left:8px;padding:2px 6px;border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);border-radius:4px;vertical-align:middle}
   .lprice{width:56px;background:var(--field);border:1px solid var(--line);border-radius:6px;color:var(--ink);font-size:12px;padding:5px 6px;margin-right:6px}
   .orgacts{padding:12px 0 2px;border-top:1px solid var(--line);margin-top:12px}
+  /* Membership Applications */
+  .approw{padding:12px 16px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between}
+  .approw:first-of-type{border-top:none}
+  .approw .appn{font-size:13px;color:var(--ink);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .appbtns{display:flex;gap:6px;flex-wrap:wrap}
 
   /* upcoming agenda (read-only summary of the open law votes) */
   .dk{display:flex;align-items:flex-start;gap:11px;padding:10px 0;border-top:1px solid var(--line)}
@@ -226,15 +231,25 @@
 
   var ORG_ID = new URLSearchParams(location.search).get('id');
   var ME = null, CUR_TICK = 1, AM_FA = false, NATIONS = {}, FLAGS = {}, BUSY = false;
-  var O = null, MEMBERS = [], INVITES = [], VOTES = [], MSGS = [], LAWS = [], LAWVOTES = [];
+  var O = null, MEMBERS = [], INVITES = [], VOTES = [], MSGS = [], LAWS = [], LAWVOTES = [], APPS = [], APPVOTES = [];
 
   function natName(id) { return NATIONS[id] || id; }
   function flagOf(id) {
     var f = FLAGS[id];
     return f ? '<img class="rflag" src="' + esc(f) + '" alt="">' : '<span class="rflag rflag--none"></span>';
   }
-  function amMember() { return MEMBERS.some(function (m) { return m.nation_id === ME; }); }
+  function myMembership() { return MEMBERS.find(function (m) { return m.nation_id === ME; }); }
+  function amMember() { return !!myMembership(); }                                              // member OR observer (in the roster)
+  function amObserver() { var m = myMembership(); return !!m && m.role === 'observer'; }
+  function amVotingMember() { var m = myMembership(); return !!m && m.role !== 'observer'; }    // full member — has a vote
   function isHost() { return O && O.host_nation === ME; }
+  function myApp() { return APPS.find(function (a) { return a.nation_id === ME; }); }
+  function pendingApps() { return APPS.filter(function (a) { return a.status === 'pending'; }); }
+  function appTally(applicant) {
+    var t = { member: 0, observer: 0, reject: 0, mine: null };
+    APPVOTES.forEach(function (v) { if (v.applicant_nation === applicant) { t[v.choice] = (t[v.choice] || 0) + 1; if (v.voter_nation === ME) t.mine = v.choice; } });
+    return t;
+  }
 
   // Strict-plurality winner of an article among current votes, or null (no votes / tie) — mirrors the server.
   function winnerOf(article) {
@@ -274,6 +289,8 @@
   function proposeLaw(sector, law, param) { run(function () { return supabase.rpc('propose_org_law', { p_org: ORG_ID, p_sector: sector, p_law: law, p_param: param || {} }); }); }
   function voteLaw(sector, law, aye) { run(function () { return supabase.rpc('vote_org_law', { p_org: ORG_ID, p_sector: sector, p_law: law, p_aye: aye }); }); }
   function leaveOrg() { if (confirm('Withdraw your nation from this organization? It costs the organization 5 Cohesion.')) run(function () { return supabase.rpc('leave_organization', { p_org: ORG_ID }); }); }
+  function applyMembership() { run(function () { return supabase.rpc('apply_for_membership', { p_org: ORG_ID }); }); }
+  function voteApp(applicant, choice) { run(function () { return supabase.rpc('vote_application', { p_org: ORG_ID, p_applicant: applicant, p_choice: choice }); }); }
   function lawRow(sector, law) { return LAWS.find(function (l) { return l.sector === sector && l.law_id === law; }); }
   function lawTally(sector, law) {
     var a = 0, n = 0, mine = null;
@@ -288,10 +305,13 @@
   }
   function myStatus() {
     if (isHost()) return 'Founder';
+    if (amObserver()) return 'Observer';
     if (amMember()) return 'Member';
+    var app = myApp();
+    if (app && app.status === 'pending') return 'Applicant';
     var inv = INVITES.find(function (i) { return i.nation_id === ME; });
     if (inv) return inv.status === 'pending' ? 'Invited' : (inv.status === 'accepted' ? 'Accepted' : 'Declined');
-    return 'Observer';
+    return 'Non-member';
   }
 
   function renderStatus() {
@@ -305,7 +325,7 @@
     // deferred subsystems — honest current values: no applications yet, no S-G elected). A founding org
     // shows its convention stage instead.
     var stats = '<div class="hstat"><div class="v">' + MEMBERS.length + '</div><div class="k">Members</div></div>';
-    if (!founding) stats += '<div class="hstat"><div class="v">0</div><div class="k">Applications</div></div>';
+    if (!founding) stats += '<div class="hstat"><div class="v">' + pendingApps().length + '</div><div class="k">Applications</div></div>';
     stats += '<div class="hstat"><div class="v" style="color:var(--amber)">' + esc(myStatus()) + '</div><div class="k">Your Status</div></div>';
     if (!founding) stats += '<div class="hstat"><div class="v" style="color:var(--soft)">Vacant</div><div class="k">Secretary-General</div></div>';
     if (founding) {
@@ -406,7 +426,7 @@
   // Laws of the Assembly (active orgs): six sectors of Level I laws — propose, vote Aye/Nay, a majority
   // enacts. Levels II–V are age-gated (deferred) and shown locked.
   function renderLaws() {
-    var canAct = amMember() && AM_FA;
+    var canAct = amVotingMember() && AM_FA;   // observers hold no vote — they can't propose or vote on laws
     var coh = Number(O && O.cohesion) || 0;
     var enacted = LAWS.filter(function (l) { return l.status === 'enacted'; }).length;
     var agenda = LAWS.filter(function (l) { return l.status === 'proposed'; }).length;
@@ -454,6 +474,46 @@
       (enacted ? ' · ' + enacted + ' enacted' : '') + (agenda ? ' · ' + agenda + ' on the agenda' : '') + '</span>' + cohNote + '</div>' + branches + '</div>';
   }
 
+  // Membership Applications (active orgs): a non-member's FA minister applies to an OPEN org; the current
+  // voting members decide each application by a three-way vote — Member / Observer / Reject — and it
+  // auto-fails after 6 ticks (schema/198). Observers can't vote and get no economic law benefits.
+  function renderApplications() {
+    if (!O || O.status !== 'active') return '';
+    var open = (O.charter_articles || {}).accession === 'open';
+    var canReview = amVotingMember() && AM_FA;
+    var apps = pendingApps(), mine = myApp(), rows = '';
+
+    if (!amMember()) {
+      if (mine && mine.status === 'pending') {
+        var lm = Math.max(0, 6 - (CUR_TICK - mine.created_tick));
+        rows += '<div class="approw"><div class="appn">Your application is before the Assembly · <span class="lnote">' + lm + ' tick' + (lm === 1 ? '' : 's') + ' left</span></div></div>';
+      } else if (open && AM_FA) {
+        rows += '<div class="approw"><button class="lbtn" id="applyBtn">Apply for Membership</button>' + (mine ? '<span class="lnote">last application ' + esc(mine.status) + '</span>' : '') + '</div>';
+      } else if (open) {
+        rows += '<div class="approw lnote">Only your Foreign Affairs minister may apply.</div>';
+      } else {
+        rows += '<div class="approw lnote">Closed organization — membership is by invitation only.</div>';
+      }
+    }
+    if (apps.length) {
+      rows += apps.map(function (a) {
+        var left = Math.max(0, 6 - (CUR_TICK - a.created_tick)), t = appTally(a.nation_id);
+        var tally = amMember() ? ' · <span class="agtally">' + t.member + ' member · ' + t.observer + ' observer · ' + t.reject + ' reject</span>' : '';
+        var ctrls = canReview
+          ? '<div class="appbtns">' +
+              '<button class="lbtn aye' + (t.mine === 'member' ? ' on' : '') + '" data-app="' + esc(a.nation_id) + '" data-c="member">Approve as Member</button>' +
+              '<button class="lbtn' + (t.mine === 'observer' ? ' on' : '') + '" data-app="' + esc(a.nation_id) + '" data-c="observer">Approve as Observer</button>' +
+              '<button class="lbtn nay' + (t.mine === 'reject' ? ' on' : '') + '" data-app="' + esc(a.nation_id) + '" data-c="reject">Reject</button></div>'
+          : '';
+        return '<div class="approw"><div class="appn">' + flagOf(a.nation_id) + ' <b>' + esc(natName(a.nation_id)) + '</b> — applying · <span class="lnote">' + left + ' tick' + (left === 1 ? '' : 's') + ' left</span>' + tally + '</div>' + ctrls + '</div>';
+      }).join('');
+    } else if (amMember()) {
+      rows += '<div class="dkempty">No applications before the Assembly.</div>';
+    }
+    if (!rows) return '';
+    return '<div class="card"><div class="sect">Membership Applications <span class="note">' + (open ? 'open accession · a member vote decides · 6 ticks or it lapses' : 'closed · invitation only') + '</span></div>' + rows + '</div>';
+  }
+
   // Upcoming Agenda — a READ-ONLY summary of the laws currently on the floor (the Aye/Nay voting itself
   // stays inline on each law above: one source). No fabricated tick items; the org's business is its votes.
   function renderAgenda() {
@@ -492,6 +552,8 @@
     }; });
     document.querySelectorAll('[data-vote]').forEach(function (b) { b.onclick = function () { if (!b.disabled) voteLaw(b.dataset.s, b.dataset.l, b.dataset.vote === 'aye'); }; });
     var lo = document.getElementById('leaveOrgBtn'); if (lo) lo.onclick = leaveOrg;
+    var ap = document.getElementById('applyBtn'); if (ap) ap.onclick = applyMembership;
+    document.querySelectorAll('[data-app]').forEach(function (b) { b.onclick = function () { if (!b.disabled) voteApp(b.dataset.app, b.dataset.c); }; });
   }
 
   async function load() {
@@ -504,6 +566,8 @@
     MSGS = (await supabase.from('organization_messages').select('nation_id, body, created_at').eq('org_id', ORG_ID).order('created_at', { ascending: true }).limit(200)).data || [];
     LAWS = (await supabase.from('organization_laws').select('sector, law_id, status, param').eq('org_id', ORG_ID)).data || [];   // public register
     LAWVOTES = (await supabase.from('organization_law_votes').select('sector, law_id, nation_id, vote').eq('org_id', ORG_ID)).data || [];   // RLS: members only
+    APPS = (await supabase.from('organization_applications').select('nation_id, status, created_tick').eq('org_id', ORG_ID)).data || [];   // public register
+    APPVOTES = (await supabase.from('organization_application_votes').select('applicant_nation, voter_nation, choice').eq('org_id', ORG_ID)).data || [];   // RLS: members only
 
     document.title = (O.name || 'Organization') + ' · Nationhood';
     renderStatus();
@@ -516,8 +580,8 @@
       document.getElementById('leftcol').innerHTML = renderConvention() + renderRoster();
     } else {
       layout.classList.add('solo'); chatBox.classList.add('top'); document.getElementById('topSlot').appendChild(chatBox);
-      // Chat (full-width, above) → Upcoming Agenda → the Laws ladder.
-      document.getElementById('leftcol').innerHTML = renderAgenda() + renderLaws();
+      // Chat (full-width, above) → Membership Applications → Upcoming Agenda → the Laws ladder.
+      document.getElementById('leftcol').innerHTML = renderApplications() + renderAgenda() + renderLaws();
     }
     layout.style.display = '';
     wire();
