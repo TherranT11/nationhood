@@ -73,6 +73,20 @@
      intercept a click meant for the nation hex beneath them (even while invisible at opacity 0). */
   svg.world .citydot{opacity:0;pointer-events:none;transition:opacity .28s ease}
   svg.world.zoomed .citydot{opacity:1}
+  /* Political / Military map filter (top-left). Political = the base map; Military overlays unit counters. */
+  .mapmode{position:absolute;left:14px;top:58px;z-index:10;display:flex;background:rgba(255,255,255,.92);
+    border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+  .mm-btn{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+    padding:6px 12px;border:none;background:transparent;color:var(--muted);cursor:pointer}
+  .mm-btn.on{background:#4a5cd0;color:#fff}
+  /* Unit counters ride with the SVG; their names live in the constant-size overlay. Both show only in
+     Military mode (a class on .map-area), so Political stays a clean territorial map. */
+  svg.world .unitctr{opacity:0;pointer-events:none;transition:opacity .2s ease}
+  .map-area.milmode svg.world .unitctr{opacity:1}
+  .unitlabel{position:absolute;left:0;top:0;white-space:nowrap;font-family:'IBM Plex Sans',sans-serif;
+    font-weight:700;font-size:10.5px;color:#15151b;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff;
+    opacity:0;transition:opacity .2s ease;will-change:transform;pointer-events:none}
+  .map-area.milmode .unitlabel{opacity:1}
 
   /* Nation snapshot panel (click a nation) — real data, styled to Home2's dark theme. */
   .natpanel{position:absolute;top:58px;right:14px;width:290px;max-width:calc(100% - 28px);z-index:15;
@@ -213,6 +227,12 @@
       <div class="zoombtn" id="zoomOut">−</div>
     </div>
 
+    <!-- Political / Military map filter -->
+    <div class="mapmode" id="mapMode">
+      <button class="mm-btn on" data-mode="pol" type="button">Political</button>
+      <button class="mm-btn" data-mode="mil" type="button">Military</button>
+    </div>
+
     <!-- nation snapshot panel (click a nation) -->
     <div class="natpanel" id="natPanel"></div>
 
@@ -318,6 +338,25 @@ function cityGlyph(isCap, x, y) {
   var door = '<rect x="' + (x + 1.6) + '" y="' + (y + 1.7) + '" width="1.3" height="2.1" fill="#5c4326"/>';
   return '<g class="citydot">' + halo + h1roof + h1body + h2roof + h2body + door + '</g>';
 }
+// A NATO-style unit counter (schema/199), sized in world units so it rides with the map. Fill = allegiance
+// (green for your units, red for foreign), symbol = type (Infantry crossed lines / Armor oval), corner
+// badge = strength. Shown only in Military map mode (.unitctr, via CSS).
+function unitCounter(u, x, y, mine) {
+  var w = 16, h = 11;
+  var fill = mine ? '#1d5a34' : '#8f2320', stroke = mine ? '#c2ead1' : '#ffb4ac';
+  var g = '<rect x="' + (x - w / 2) + '" y="' + (y - h / 2) + '" width="' + w + '" height="' + h + '" rx="2" fill="' + fill + '" stroke="' + stroke + '" stroke-width="1"/>';
+  if (u.unit_type === 'armor') {
+    g += '<ellipse cx="' + x + '" cy="' + y + '" rx="' + (w * 0.28) + '" ry="' + (h * 0.26) + '" fill="none" stroke="' + stroke + '" stroke-width="1.1"/>';
+  } else {
+    g += '<line x1="' + (x - w / 2 + 2.6) + '" y1="' + (y - h / 2 + 2) + '" x2="' + (x + w / 2 - 2.6) + '" y2="' + (y + h / 2 - 2) + '" stroke="' + stroke + '" stroke-width="1.1"/>' +
+         '<line x1="' + (x - w / 2 + 2.6) + '" y1="' + (y + h / 2 - 2) + '" x2="' + (x + w / 2 - 2.6) + '" y2="' + (y - h / 2 + 2) + '" stroke="' + stroke + '" stroke-width="1.1"/>';
+  }
+  var bx = x + w / 2, by = y - h / 2;   // strength badge, top-right corner
+  g += '<circle cx="' + bx + '" cy="' + by + '" r="3.6" fill="' + (mine ? '#0f3a20' : '#5c120f') + '" stroke="' + stroke + '" stroke-width="0.8"/>' +
+    '<text x="' + bx + '" y="' + (by + 1.9) + '" text-anchor="middle" font-size="5" font-weight="800" fill="' + stroke +
+    '" style="font-family:\'Space Mono\',monospace">' + (u.strength || '') + '</text>';
+  return '<g class="unitctr">' + g + '</g>';
+}
 function closeEventPop() { if (evPop) { evPop.classList.remove('show'); evPop.innerHTML = ''; } }
 // Reviewed-event memory is per in-game month: {date, ids}. A new month resets it (fresh events to review).
 function loadReviewed(date) {
@@ -387,6 +426,9 @@ function applyTransform() {
   // a plain .select() would silently drop hexes past 1000 and render them as open sea.
   try { const { data } = await selectAll('world_hexes', 'q, r, terrain, nation_id, name, population'); hexes = data || []; } catch (e) {}
   try { const { data } = await selectAll('cities', 'nation_id, name, q, r'); cities = data || []; } catch (e) {}
+  // Military units (schema/199) — public-readable; drawn as counters in Military map mode.
+  var units = [];
+  try { const { data } = await selectAll('military_units', 'nation_id, name, unit_type, strength, q, r'); units = data || []; } catch (e) {}
   try { const { data } = await supabase.from('declarations').select('slug, options, default_index, custom_allowed').eq('slug', 'capital_name').maybeSingle(); capSlot = data || null; } catch (e) {}
 
   var natById = {}; nations.forEach(function (n) { natById[n.id] = n; });
@@ -474,6 +516,20 @@ function applyTransform() {
     cityLabels.push({ x: p.x + 7, y: p.y, text: c.name, cap: isCap });
   });
 
+  // Military units — NATO counters at each unit's hex (Military map mode only). Units sharing a hex stack
+  // diagonally so they stay distinguishable. Names go in the constant-size overlay next to the counter.
+  var unitLabels = [], uByHex = {};
+  units.filter(function (u) { return u.q != null && u.r != null; }).forEach(function (u) {
+    var k = u.q + ',' + u.r; (uByHex[k] = uByHex[k] || []).push(u);
+  });
+  Object.keys(uByHex).forEach(function (k) {
+    uByHex[k].forEach(function (u, i) {
+      var p = axialToPix(u.q, u.r, S, 0, 0), cx = p.x + i * 4, cy = p.y - i * 4;   // diagonal stack
+      body += unitCounter(u, cx, cy, u.nation_id === myNation);
+      unitLabels.push({ x: cx + 11, y: cy, text: u.name });
+    });
+  });
+
   // A dashed frame around the inhabited world so the map's edge is legible. non-scaling-stroke keeps it a
   // crisp constant-width line at every zoom; drawn last so it reads above the hex fills.
   if (isFinite(bMinX)) {
@@ -496,7 +552,8 @@ function applyTransform() {
   });
   overlayEl.innerHTML =
     natLabels.map(function (l) { return '<div class="natlabel" data-x="' + l.x + '" data-y="' + l.y + '">' + esc(l.text) + '</div>'; }).join('') +
-    cityLabels.map(function (l) { return '<div class="citylabel' + (l.cap ? ' cap' : '') + '" data-x="' + l.x + '" data-y="' + l.y + '">' + esc(l.text) + '</div>'; }).join('');
+    cityLabels.map(function (l) { return '<div class="citylabel' + (l.cap ? ' cap' : '') + '" data-x="' + l.x + '" data-y="' + l.y + '">' + esc(l.text) + '</div>'; }).join('') +
+    unitLabels.map(function (l) { return '<div class="unitlabel" data-x="' + l.x + '" data-y="' + l.y + '">' + esc(l.text) + '</div>'; }).join('');
 
   // Floor the zoom-out at "the whole world roughly fills the viewport" (with a little sea margin), so
   // the map can never shrink to a distant speck. Falls back to the default floor if bounds are empty.
@@ -726,6 +783,13 @@ function zoomAt(factor, cxp, cyp) {
 }
 document.getElementById('zoomIn').onclick = function () { zoomAt(1.2, mapArea.clientWidth / 2, mapArea.clientHeight / 2); };
 document.getElementById('zoomOut').onclick = function () { zoomAt(1 / 1.2, mapArea.clientWidth / 2, mapArea.clientHeight / 2); };
+// Political / Military map filter: toggle the .milmode class (CSS shows the unit counters + names).
+document.querySelectorAll('#mapMode .mm-btn').forEach(function (b) {
+  b.onclick = function () {
+    document.querySelectorAll('#mapMode .mm-btn').forEach(function (x) { x.classList.toggle('on', x === b); });
+    mapArea.classList.toggle('milmode', b.dataset.mode === 'mil');
+  };
+});
 mapArea.addEventListener('wheel', function (e) { e.preventDefault(); var rect = mapArea.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - rect.left, e.clientY - rect.top); }, { passive: false });
 
 /* ---------------- TOUCH: one finger pans, two fingers pinch-zoom ---------------- */
