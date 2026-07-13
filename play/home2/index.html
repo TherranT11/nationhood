@@ -299,10 +299,10 @@ function starPoints(cx, cy, outer, inner) {
 }
 function cityGlyph(isCap, x, y) {
   if (isCap) {
-    return '<polygon class="citydot" points="' + starPoints(x, y - 0.5, 6, 2.6) + '" ' +
-      'fill="#f0a03c" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/>' +
-      '<polygon class="citydot" points="' + starPoints(x, y - 0.5, 6, 2.6) + '" ' +
-      'fill="#f0a03c" stroke="#7a4a12" stroke-width="0.6" stroke-linejoin="round"/>';
+    // Gold star: a white halo stroke underneath, a thin dark edge on top (same points, drawn twice).
+    var pts = starPoints(x, y - 0.5, 6, 2.6);
+    return '<polygon class="citydot" points="' + pts + '" fill="#f0a03c" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/>' +
+      '<polygon class="citydot" points="' + pts + '" fill="#f0a03c" stroke="#7a4a12" stroke-width="0.6" stroke-linejoin="round"/>';
   }
   // medieval hamlet: a little cluster of two steep-gabled timber cottages — a taller one behind and
   // a shorter one in front (with a door). White halo underneath so it reads over any nation colour.
