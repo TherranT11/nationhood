@@ -514,34 +514,37 @@
         // Each action is server-side ONE use per campaign (schema/148, keyed by party + election tick),
         // so `key` maps the card to that server action name and `used` mirrors what's already spent.
         var CAMP = { door: { rpc: 'campaign_door_knock', target: false, key: 'door_knock' }, public: { rpc: 'campaign_public_appearance', target: false, key: 'public_appearance' }, debate: { rpc: 'campaign_tv_debate', target: true, key: 'tv_debate' }, attack: { rpc: 'campaign_attack', target: true, key: 'attack' }, townhall: { rpc: 'campaign_town_hall', target: false, key: 'town_hall' }, surprise: { rpc: 'campaign_election_surprise', target: true, key: 'election_surprise' } };   // every move costs 1 AP
-        var used = {};   // server action key → true once spent this campaign
+        // ONE campaign action per election, TOTAL (schema/148): the first move spent locks the whole
+        // trail — you can't use another, or re-target. campaignSpent tracks that; usedKey names which one.
+        var campaignSpent = false, usedKey = null;
         var rivals = projection.filter(function (p) { return !p.mine; });
         var optHtml = rivals.length ? rivals.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>'; }).join('') : '<option value="">No rival parties</option>';
         mod.querySelectorAll('.camp__target').forEach(function (sel) { sel.innerHTML = optHtml; });
         var result = document.getElementById('campResult'), busy = false;
         function affordability() {
           mod.querySelectorAll('.camp-act').forEach(function (el) {
-            var cfg = CAMP[el.dataset.act], btn = el.querySelector('.camp__use'), spent = !!used[cfg.key];
-            el.classList.toggle('camp-act--used', spent);
-            btn.disabled = spent || busy || campInfluence < 1 || (cfg.target && !rivals.length);   // every campaign move costs 1 AP
-            btn.textContent = spent ? 'Used this campaign' : 'Use';
+            var cfg = CAMP[el.dataset.act], btn = el.querySelector('.camp__use');
+            el.classList.toggle('camp-act--used', campaignSpent);
+            btn.disabled = campaignSpent || busy || campInfluence < 1 || (cfg.target && !rivals.length);   // every campaign move costs 1 AP
+            // The action actually run reads "Used this campaign"; the rest just lock (the allowance is spent).
+            btn.textContent = campaignSpent ? (cfg.key === usedKey ? 'Used this campaign' : 'Campaign spent') : 'Use';
           });
         }
-        // Grey out actions this party has already run this campaign (one use each per election).
+        // Lock the whole trail if this party has already run ANY action this campaign (one total per election).
         supabase.from('campaign_actions_used').select('action').eq('party_id', party.id).eq('election_tick', nextTick)
-          .then(function (r) { (r.data || []).forEach(function (row) { used[row.action] = true; }); affordability(); });
+          .then(function (r) { var rows = r.data || []; if (rows.length) { campaignSpent = true; usedKey = rows[0].action; } affordability(); });
         mod.querySelectorAll('.camp-act').forEach(function (el) {
           var cfg = CAMP[el.dataset.act], sel = el.querySelector('.camp__target');
           el.querySelector('.camp-act__cost').textContent = '1 AP';   // every campaign move costs 1 Action Point
           el.querySelector('.camp__use').onclick = function () {
-            if (busy || used[cfg.key]) return;
+            if (busy || campaignSpent) return;
             var args = {};
             if (cfg.target) { if (!sel || !sel.value) { result.textContent = 'Pick a party to target first.'; return; } args = { p_target: sel.value }; }
             busy = true; affordability();
             supabase.rpc(cfg.rpc, args).then(function (r) {
               if (r.error) throw r.error;
               var d = r.data || {};
-              used[cfg.key] = true;   // spent — one use per campaign
+              campaignSpent = true; usedKey = cfg.key;   // spent — one campaign action total, trail now locked
               campInfluence = Math.max(0, campInfluence - 1); setTopbarActions(campInfluence);   // each campaign move spends 1 AP
               result.textContent = d.body || 'Done.';
               return loadProjection();   // repaint wallet + projection with the new popularity
