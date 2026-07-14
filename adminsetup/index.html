@@ -73,6 +73,23 @@
   .vtab:hover{background:var(--chip,#F4F3EF);color:var(--ink)}
   .vtab.active{background:var(--indigo-soft,#ECE9FD);color:var(--indigo,#5546E8)}
   .tabwrap{flex:1;min-width:0}
+  /* National Policies tab — nested policy → nation → option accordion. Uses shared theme vars. */
+  .np-wrap{display:flex;flex-direction:column;gap:8px;max-width:720px}
+  .np-policy{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}
+  .np-phd{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;background:none;border:none;padding:14px 16px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;color:var(--ink);text-align:left}
+  .np-phd:hover{background:var(--chip,#F4F3EF)}
+  .np-chev{transition:transform .18s;color:var(--soft);font-size:16px}
+  .np-open>.np-phd .np-chev,.np-nopen>.np-nhd .np-chev{transform:rotate(90deg)}
+  .np-nations{border-top:1px solid var(--line);padding:6px}
+  .np-nhd{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;background:none;border:none;padding:9px 12px;cursor:pointer;font-family:inherit;font-size:13.5px;color:var(--muted);text-align:left;border-radius:8px}
+  .np-nhd:hover{background:var(--chip,#F4F3EF)}
+  .np-nhd b{color:var(--ink);font-weight:700}
+  .np-cur{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:11px;color:var(--indigo)}
+  .np-opts{display:flex;flex-wrap:wrap;gap:6px;padding:2px 12px 12px}
+  .np-opt{border:1px solid var(--line);border-radius:8px;background:var(--field,var(--surface));padding:7px 12px;cursor:pointer;font-family:inherit;font-size:13px;color:var(--ink)}
+  .np-opt:hover{border-color:var(--indigo)}
+  .np-opt:disabled{opacity:.5;cursor:progress}
+  .np-opt.on{background:var(--indigo,#5546E8);color:#fff;border-color:var(--indigo,#5546E8)}
   /* Sub-tabs inside the News pane (Outlets / Headline Rules). */
   .newsub{display:flex;gap:7px;margin-bottom:14px}
   .newsub-b{padding:8px 15px;border:1px solid var(--line);background:var(--surface);font-family:inherit;font-size:13px;font-weight:700;color:var(--muted);border-radius:9px;cursor:pointer}
@@ -565,6 +582,7 @@
         <button class="vtab" data-tab="modifiers" type="button">Modifiers</button>
         <button class="vtab" data-tab="declarations" type="button">Declarations</button>
         <button class="vtab" data-tab="policies" type="button">Policies</button>
+        <button class="vtab" data-tab="natpolicies" type="button">National Policies</button>
         <button class="vtab" data-tab="connections" type="button">Connections</button>
         <button class="vtab" data-tab="voters" type="button">Voters</button>
         <button class="vtab" data-tab="trade-policy" type="button">Trade Policy</button>
@@ -735,6 +753,16 @@
           </div>
         </div>
       </div>
+      <div class="tabpane" data-tab="natpolicies" hidden>
+        <div class="poltab">
+          <div class="panel">
+            <h2 style="margin:0">National Policies</h2>
+            <p class="sub" style="margin:8px 0 16px">Set each nation's in-force option for a policy directly. Click a policy to expand its nations, click a nation to pick its option, then confirm. This overrides that nation's rung immediately — every derived stat recomputes from it. (One-time transition effects only fire through the in-game legislative process.)</p>
+            <div id="npBox"><p class="sub">Loading…</p></div>
+          </div>
+        </div>
+      </div>
+
       <div class="tabpane" data-tab="connections" hidden>
         <div class="poltab">
           <div class="panel">
@@ -1165,7 +1193,7 @@
     import { regimeLabel, nationRegime, statName } from '/ladders.js';
     import { SIZES, CATEGORIES, CATEGORY_BONUS, corpMoney } from '/corporations.js';
     import { ARCHETYPES } from '/archetypes.js';
-    import { policyOptions, policyDefaultIdx, isMoneyTarget, POLICY_STATS, MINISTRY_STATS, STAT_RANGES, fmtInitiativeCost } from '/policies.js';
+    import { policyOptions, policyDefaultIdx, policyOptionIdx, isMoneyTarget, POLICY_STATS, MINISTRY_STATS, STAT_RANGES, fmtInitiativeCost } from '/policies.js';
     import { MINISTRIES } from '/ministries.js';
 
     // ONE image-upload path: push a file to a Supabase storage bucket (optionally under a folder)
@@ -1987,6 +2015,91 @@
       else document.getElementById('ctList').innerHTML = '<p class="empty">Add a nation first (Nations tab).</p>';
     }
 
+    // ---- National Policies (admin: set each nation's in-force option per policy; nations.policies, is_admin RLS) ----
+    // A policy → nation → option accordion. Reads the in-force option via policyOptionIdx (the ONE source,
+    // mirroring _nation_policy_option, schema/92) and writes the chosen index straight into nations.policies —
+    // a direct admin override, like editing a stat on the Nations tab. No legislative machinery / one-time
+    // effects; standing + derived effects recompute from the new option automatically. Nations + options are
+    // built lazily on expand, so a big roster doesn't render everything up front.
+    var NP_POLS = [], NP_NATIONS = [];
+    function npNation(nid) { return NP_NATIONS.filter(function (x) { return x.id === nid; })[0]; }
+    function npDef(pid) { var p = NP_POLS.filter(function (x) { return x.id === pid; })[0]; return (p && p.definition) || {}; }
+    function npOptName(def, i) { var o = policyOptions(def)[i]; return (o && o.name) || ('Option ' + i); }
+    async function loadNatPolicies() {
+      var box = document.getElementById('npBox');
+      if (!box) return;
+      box.innerHTML = '<p class="sub">Loading…</p>';
+      try {
+        var res = await Promise.all([
+          supabase.from('policies').select('id, definition').order('created_at', { ascending: true }),
+          supabase.from('nations').select('id, name, policies').order('name', { ascending: true })
+        ]);
+        if (res[0].error) throw res[0].error;
+        if (res[1].error) throw res[1].error;
+        // Trade Policy has its own tab (its rungs carry import/tariff modifiers) — exclude it here.
+        NP_POLS = (res[0].data || []).filter(function (r) { return !(r.definition && r.definition.special === 'trade'); });
+        NP_NATIONS = res[1].data || [];
+        renderNatPolicies();
+      } catch (e) { box.innerHTML = '<p class="sub" style="color:var(--red)">Couldn’t load policies or nations. Refresh to try again.</p>'; }
+    }
+    function renderNatPolicies() {
+      var box = document.getElementById('npBox');
+      if (!NP_POLS.length) { box.innerHTML = '<p class="sub">No policies authored yet — add some on the Policies tab.</p>'; return; }
+      if (!NP_NATIONS.length) { box.innerHTML = '<p class="sub">No nations yet — create some on the Nations tab.</p>'; return; }
+      box.innerHTML = '<div class="np-wrap">' + NP_POLS.map(function (p) {
+        return '<div class="np-policy" data-pid="' + esc(p.id) + '">' +
+          '<button class="np-phd" type="button"><span>' + esc((p.definition && p.definition.name) || 'Untitled policy') + '</span><span class="np-chev">›</span></button>' +
+          '<div class="np-nations" hidden></div></div>';
+      }).join('') + '</div>';
+      box.querySelectorAll('.np-policy').forEach(function (pel) {
+        var pid = pel.dataset.pid, list = pel.querySelector('.np-nations');
+        pel.querySelector('.np-phd').onclick = function () {
+          var open = pel.classList.toggle('np-open'); list.hidden = !open;
+          if (open && !list.dataset.built) { buildNpNations(list, pid); list.dataset.built = '1'; }
+        };
+      });
+    }
+    function buildNpNations(list, pid) {
+      var def = npDef(pid);
+      list.innerHTML = NP_NATIONS.map(function (n) {
+        return '<div class="np-nation" data-nid="' + esc(n.id) + '">' +
+          '<button class="np-nhd" type="button"><b>' + esc(n.name || n.id) + '</b>' +
+            '<span class="np-cur"><span data-cur>' + esc(npOptName(def, policyOptionIdx(def, n.policies, pid))) + '</span><span class="np-chev">›</span></span></button>' +
+          '<div class="np-opts" hidden></div></div>';
+      }).join('');
+      list.querySelectorAll('.np-nation').forEach(function (nel) {
+        var nid = nel.dataset.nid, opts = nel.querySelector('.np-opts');
+        nel.querySelector('.np-nhd').onclick = function () {
+          var open = nel.classList.toggle('np-nopen'); opts.hidden = !open;
+          if (open && !opts.dataset.built) { buildNpOpts(opts, pid, nid); opts.dataset.built = '1'; }
+        };
+      });
+    }
+    function buildNpOpts(opts, pid, nid) {
+      var def = npDef(pid), list = policyOptions(def), n = npNation(nid);
+      var cur = policyOptionIdx(def, n.policies, pid);
+      opts.innerHTML = list.map(function (o, i) {
+        return '<button class="np-opt' + (i === cur ? ' on' : '') + '" type="button" data-i="' + i + '">' + esc(o.name || ('Option ' + i)) + '</button>';
+      }).join('');
+      opts.querySelectorAll('.np-opt').forEach(function (b) {
+        b.onclick = function () {
+          var i = +b.dataset.i, nn = npNation(nid);
+          if (i === policyOptionIdx(def, nn.policies, pid)) return;   // already in force
+          if (!confirm('Set ' + (nn.name || nid) + '’s “' + (def.name || 'policy') + '” to “' + (list[i].name || ('Option ' + i)) + '”?')) return;
+          var pols = Object.assign({}, nn.policies || {}); pols[pid] = i;
+          opts.querySelectorAll('.np-opt').forEach(function (x) { x.disabled = true; });
+          supabase.from('nations').update({ policies: pols }).eq('id', nid).then(function (r) {
+            opts.querySelectorAll('.np-opt').forEach(function (x) { x.disabled = false; });
+            if (r.error) { alert('Couldn’t save: ' + (r.error.message || 'unknown error')); return; }
+            nn.policies = pols;   // keep this session's cache in sync
+            opts.querySelectorAll('.np-opt').forEach(function (x, xi) { x.classList.toggle('on', xi === i); });
+            var nel = opts.closest('.np-nation'), curEl = nel && nel.querySelector('[data-cur]');
+            if (curEl) curEl.textContent = npOptName(def, i);
+          });
+        };
+      });
+    }
+
     // ---- Stat Connectors (global coupling rules; stat_connectors table, is_admin RLS) ----
     // A rule reads "Every time Source rises by Y, Target rises/falls by A (from a reference)"; the
     // server folds it into nation_stat_values as a derived term (schema/194). Amount is stored SIGNED
@@ -2076,6 +2189,7 @@
         if (tab === 'cities') loadCities();
         if (tab === 'declarations') loadDeclarations();
         if (tab === 'policies') loadPolicies();
+        if (tab === 'natpolicies') loadNatPolicies();
         if (tab === 'connections') loadConnectors();
         if (tab === 'cards') mountCardCreator(document.getElementById('ccMount'));   // builds once, keeps state
         if (tab === 'trade-policy') loadTradePolicy();

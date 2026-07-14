@@ -476,10 +476,10 @@
   </div>
 </div>
 
-<div class="amodal" id="deployModal" hidden>
+<div class="amodal" id="moveModal" hidden>
   <div class="amodal__panel">
-    <div class="amodal__hd"><b>Deploy the Military</b><button class="amodal__x" id="deployClose" type="button" aria-label="Close">&times;</button></div>
-    <div class="amodal__list" id="deployBody"><p class="empty">Loading…</p></div>
+    <div class="amodal__hd"><b>Move a Unit</b><button class="amodal__x" id="moveClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list" id="moveBody"><p class="empty">Loading…</p></div>
   </div>
 </div>
 
@@ -911,23 +911,6 @@
       function (d) { return 'A new military base has been commissioned' + (d && d.abroad ? ' abroad.' : '.'); });
   });
 
-  // EXPAND MILITARY — build typed units (Army / Fleet / Air Wing) at one of your bases (1 AP).
-  // Each unit is paid in Military (the on_hand pool): Army 1, Fleet 2, Air Wing 1, and takes its
-  // build time (1 / 3 / 2 ticks). A base holds at most 5 units (built + building). UNIT_SPEC
-  // mirrors schema/129; the server is authoritative.
-  var UNIT_ORDER = ['army', 'fleet', 'air_wing'];
-  var UNIT_SPEC = {
-    army:     { name: 'Army',     plural: 'Armies',    cost: 1, ticks: 1, beats: 'Air Wing', color: '#C42B2B', desc: 'Ground force — the only unit that takes and holds territory.' },
-    fleet:    { name: 'Fleet',    plural: 'Fleets',    cost: 2, ticks: 3, beats: 'Army',     color: '#2f6fb0', desc: 'Naval force — dominates coasts and sea lanes; cannot hold land.' },
-    air_wing: { name: 'Air Wing', plural: 'Air Wings', cost: 1, ticks: 2, beats: 'Fleet',    color: '#3f9fe0', desc: 'Air force — strikes anywhere and screens, but holds nothing.' }
-  };
-  function uplur(k, n) { return n === 1 ? UNIT_SPEC[k].name : UNIT_SPEC[k].plural; }
-  function baseUnitTotal(b) { return (Number(b.armies) || 0) + (Number(b.fleets) || 0) + (Number(b.air_wings) || 0); }   // one source for a base's unit count
-  function unitIcon(k) {
-    if (k === 'air_wing') return '<svg viewBox="0 0 24 18"><polygon points="12,1 4,16 12,12 20,16" fill="#fff"/></svg>';
-    if (k === 'fleet') return '<svg viewBox="0 0 24 18"><polygon points="3,9 21,9 18,15 6,15" fill="#fff"/><rect x="9" y="4" width="6" height="4" fill="#fff"/></svg>';
-    return '<svg viewBox="0 0 24 18"><rect x="4" y="8" width="16" height="6" rx="1.6" fill="#fff"/><rect x="7" y="4" width="9" height="4" rx="1.2" fill="#fff"/><line x1="15" y1="6" x2="22" y2="6" stroke="#fff" stroke-width="1.8"/></svg>';
-  }
   // ── EXPAND MILITARY (Stage 1, schema/199) — raise ONE NAMED land unit at a base: pick the base, name
   // it ("1st Infantry Division"), choose Infantry (1 Military) or Armor (1 Military + 1 Energy + 1
   // Mineral). Capacity is nation-wide: bases × 5. build_unit is authoritative.
@@ -1006,77 +989,81 @@
     };
   }
 
-  // DEPLOY MILITARY — move built units between two of your bases (1 AP, instant). Pick a source
-  // base, a unit type there, and a destination; the destination can't exceed 5 units. Fires
-  // deploy_military through performAction. Uses UNIT_ORDER / UNIT_SPEC / unitIcon from Expand.
-  var UNIT_COL = { army: 'armies', fleet: 'fleets', air_wing: 'air_wings' };
-  var deployModal = document.getElementById('deployModal');
-  var closeDeploy = wireModalClose(deployModal, 'deployClose');
-  var DEP = { bases: [], names: {}, pending: {}, from: 0, to: 1, type: 'army', qty: 1 };
-  function openDeploy() {
+  // MOVE A UNIT — Military Stage 2 (schema/204): the Minister of Defence walks a NAMED land unit one
+  // adjacent land hex per action (1 AP, instant). Infantry move 1 hex/tick, Armor 2; Armor burns Energy
+  // (1 per 5 armor moved, charged server-side). A hex held by a FOREIGN unit is blocked. The server is
+  // authoritative on every rule — the modal just surfaces which neighbours are reachable. Fires move_unit.
+  var moveModal = document.getElementById('moveModal');
+  var closeMove = wireModalClose(moveModal, 'moveClose');
+  var MOV = { units: [], landSet: null, foeSet: null, tick: 0, sel: null };
+  // Axial 6-neighbourhood — matches move_unit's adjacency check exactly.
+  function hexNeighbors(q, r) { return [[q, r - 1], [q, r + 1], [q - 1, r], [q + 1, r], [q + 1, r - 1], [q - 1, r + 1]]; }
+  function openMove() {
     if (acting || !feedCtx) return;
-    document.getElementById('deployBody').innerHTML = '<p class="empty">Loading…</p>';
-    deployModal.hidden = false;
-    loadDeploy();
+    document.getElementById('moveBody').innerHTML = '<p class="empty">Loading…</p>';
+    moveModal.hidden = false;
+    loadMove();
   }
-  async function loadDeploy() {
+  async function loadMove() {
     try {
       var nid = feedCtx.nationId;
       var res = await Promise.all([
-        supabase.from('military_bases').select('id, host_nation_id, armies, fleets, air_wings').eq('nation_id', nid).order('created_at'),
-        supabase.from('nations').select('id, name'),
-        supabase.from('military_builds').select('base_id, qty').eq('nation_id', nid)
+        supabase.from('military_units').select('id, name, unit_type, q, r, ready_tick, move_tick, moves_used').eq('nation_id', nid).order('name'),
+        supabase.from('military_units').select('q, r').neq('nation_id', nid),   // foreign-held hexes (blocked targets)
+        supabase.from('world_hexes').select('q, r').eq('terrain', 'land')        // valid destinations are land
       ]);
-      DEP.bases = res[0].data || [];
-      DEP.names = {}; (res[1].data || []).forEach(function (n) { DEP.names[n.id] = n.name; });
-      DEP.pending = {}; (res[2].data || []).forEach(function (b) { DEP.pending[b.base_id] = (DEP.pending[b.base_id] || 0) + (Number(b.qty) || 0); });
-      DEP.from = 0; DEP.to = DEP.bases.length > 1 ? 1 : 0; DEP.type = 'army'; DEP.qty = 1;
-      renderDeploy();
-    } catch (e) { document.getElementById('deployBody').innerHTML = '<p class="empty">Couldn’t load. Try again.</p>'; }
+      MOV.units = (res[0].data || []).filter(function (u) { return u.q != null && u.r != null; });
+      MOV.foeSet = new Set((res[1].data || []).map(function (u) { return u.q + ',' + u.r; }));
+      MOV.landSet = new Set((res[2].data || []).map(function (h) { return h.q + ',' + h.r; }));
+      try { MOV.tick = await currentTick(); } catch (e) { MOV.tick = 0; }
+      MOV.sel = MOV.units.length ? MOV.units[0].id : null;
+      renderMove();
+    } catch (e) { document.getElementById('moveBody').innerHTML = '<p class="empty">Couldn’t load your units. Try again.</p>'; }
   }
-  function depUnitsAt(b, k) { return Number(b[UNIT_COL[k]]) || 0; }
-  function depBaseCommitted(b) { return baseUnitTotal(b) + (DEP.pending[b.id] || 0); }
-  function depMax() {
-    var src = DEP.bases[DEP.from], dst = DEP.bases[DEP.to];
-    if (!src || !dst || DEP.from === DEP.to) return 0;
-    return Math.max(0, Math.min(depUnitsAt(src, DEP.type), 5 - depBaseCommitted(dst)));
+  function moUnit() { return MOV.units.find(function (u) { return u.id === MOV.sel; }); }
+  function moMovesLeft(u) {   // per-tick allowance minus what's been used this tick (mirrors schema/204)
+    var allow = u.unit_type === 'armor' ? 2 : 1;
+    var used = (u.move_tick === MOV.tick) ? (u.moves_used || 0) : 0;
+    return Math.max(0, allow - used);
   }
-  function renderDeploy() {
-    var body = document.getElementById('deployBody');
-    if (DEP.bases.length < 2) { body.innerHTML = '<p class="empty">You need at least two bases to deploy between them — build another base first.</p>'; return; }
-    if (DEP.to === DEP.from) DEP.to = (DEP.from + 1) % DEP.bases.length;
-    var src = DEP.bases[DEP.from], max = depMax();
-    DEP.qty = Math.max(max > 0 ? 1 : 0, Math.min(DEP.qty, max));
-    function baseOpts(selIdx) {
-      return DEP.bases.map(function (b, i) {
-        return '<option value="' + i + '"' + (i === selIdx ? ' selected' : '') + '>Base ' + (i + 1) + ' · ' + esc(DEP.names[b.host_nation_id] || b.host_nation_id) + ' · ' + baseUnitTotal(b) + '/5</option>';
+  function renderMove() {
+    var body = document.getElementById('moveBody');
+    if (!MOV.units.length) { body.innerHTML = '<p class="empty">You have no units on the map yet — raise one with Expand Military first.</p>'; return; }
+    var u = moUnit() || MOV.units[0]; MOV.sel = u.id;
+    var opts = MOV.units.map(function (x) {
+      var raising = x.ready_tick > MOV.tick;
+      return '<option value="' + x.id + '"' + (x.id === MOV.sel ? ' selected' : '') + '>' +
+        esc(x.name) + ' · ' + (x.unit_type === 'armor' ? 'Armor' : 'Infantry') + (raising ? ' (raising)' : '') + '</option>';
+    }).join('');
+    var ready = u.ready_tick <= MOV.tick, left = moMovesLeft(u), targets = '', note = '';
+    if (!ready) note = '<p class="exp-warn">This unit is still being raised — it can move next month.</p>';
+    else if (left < 1) note = '<p class="exp-warn">This unit has used all its movement this month.</p>';
+    else {
+      var cells = hexNeighbors(u.q, u.r).map(function (nb) {
+        var q = nb[0], r = nb[1], key = q + ',' + r, land = MOV.landSet.has(key), foe = MOV.foeSet.has(key), ok = land && !foe;
+        var why = !land ? 'Sea — blocked' : (foe ? 'Enemy — blocked' : 'Move here');
+        return '<div class="ucard" data-q="' + q + '" data-r="' + r + '" data-ok="' + (ok ? 1 : 0) + '"' +
+          (ok ? '' : ' style="opacity:.4;cursor:not-allowed"') + '>' +
+          '<div class="uname">(' + q + ', ' + r + ')</div><div class="ucost">' + why + '</div></div>';
       }).join('');
+      targets = '<label class="exp-lab">Move to an adjacent hex</label><div class="units">' + cells + '</div>';
     }
-    var cards = UNIT_ORDER.map(function (k) { var u = UNIT_SPEC[k];
-      return '<div class="ucard' + (DEP.type === k ? ' on' : '') + '" data-du="' + k + '"><div class="uchip" style="background:' + u.color + '">' + unitIcon(k) + '</div>' +
-        '<div class="uname">' + u.name + '</div><div class="ucost">' + depUnitsAt(src, k) + ' here</div></div>'; }).join('');
     body.innerHTML =
-      '<label class="exp-lab">From</label><select id="depFrom" class="exp-sel">' + baseOpts(DEP.from) + '</select>' +
-      '<label class="exp-lab">To</label><select id="depTo" class="exp-sel">' + baseOpts(DEP.to) + '</select>' +
-      '<label class="exp-lab">Unit</label><div class="units">' + cards + '</div>' +
-      '<label class="exp-lab">How many</label>' +
-      '<div class="exp-step"><button type="button" id="depMinus"' + (DEP.qty <= 1 ? ' disabled' : '') + '>−</button><span id="depQty">' + DEP.qty + '</span>' +
-        '<button type="button" id="depPlus"' + (DEP.qty >= max ? ' disabled' : '') + '>+</button><span class="exp-max">max ' + max + '</span></div>' +
-      (max < 1 ? '<p class="exp-warn">' + (depUnitsAt(src, DEP.type) < 1 ? 'No ' + UNIT_SPEC[DEP.type].plural + ' at the source base.' : 'The destination base is full.') + '</p>' : '') +
-      '<div class="noco__btns"><button class="noco__btn noco__cancel" id="depCancel" type="button">Cancel</button>' +
-        '<button class="noco__btn noco__confirm" id="depGo" type="button"' + (max > 0 ? '' : ' disabled') + '>Deploy ' + DEP.qty + ' ' + uplur(DEP.type, DEP.qty) + '</button></div>';
-    document.getElementById('depFrom').onchange = function () { DEP.from = +this.value; if (DEP.from === DEP.to) DEP.to = (DEP.from + 1) % DEP.bases.length; renderDeploy(); };
-    document.getElementById('depTo').onchange = function () { DEP.to = +this.value; if (DEP.to === DEP.from) DEP.from = (DEP.to + 1) % DEP.bases.length; renderDeploy(); };
-    document.querySelectorAll('#deployBody [data-du]').forEach(function (c) { c.onclick = function () { DEP.type = c.dataset.du; DEP.qty = 1; renderDeploy(); }; });
-    document.getElementById('depMinus').onclick = function () { if (DEP.qty > 1) { DEP.qty--; renderDeploy(); } };
-    document.getElementById('depPlus').onclick = function () { if (DEP.qty < depMax()) { DEP.qty++; renderDeploy(); } };
-    document.getElementById('depCancel').onclick = closeDeploy;
-    document.getElementById('depGo').onclick = function () {
-      var s = DEP.bases[DEP.from], d = DEP.bases[DEP.to]; if (!s || !d || DEP.from === DEP.to || depMax() < 1) return;
-      var type = DEP.type, qty = DEP.qty; closeDeploy();
-      performAction(function () { return supabase.rpc('deploy_military', { p_from: s.id, p_to: d.id, p_unit_type: type, p_qty: qty }); },
-        function (r) { var n = r.deployed || qty; return n + ' ' + uplur(type, n) + ' deployed.'; });
-    };
+      '<label class="exp-lab">Unit</label><select id="movSel" class="exp-sel">' + opts + '</select>' +
+      '<p style="font-size:12px;color:var(--soft);margin:6px 0 12px">At (' + u.q + ', ' + u.r + ') · ' + left + ' move' + (left === 1 ? '' : 's') +
+        ' left this month' + (u.unit_type === 'armor' ? ' · Armor burns 1 Energy per 5 moved' : '') + '</p>' +
+      targets + note +
+      '<div class="noco__btns"><button class="noco__btn noco__cancel" id="movCancel" type="button">Close</button></div>';
+    document.getElementById('movSel').onchange = function () { MOV.sel = this.value; renderMove(); };
+    document.getElementById('movCancel').onclick = closeMove;
+    body.querySelectorAll('[data-q]').forEach(function (c) {
+      c.onclick = function () {
+        if (c.dataset.ok !== '1') return;
+        var q = +c.dataset.q, r = +c.dataset.r, uid = MOV.sel; closeMove();
+        performAction(function () { return supabase.rpc('move_unit', { p_unit: uid, p_q: q, p_r: r }); },
+          function () { return 'Unit moved to (' + q + ', ' + r + ').'; });
+      };
+    });
   }
 
 
@@ -1585,7 +1572,7 @@
       '<div class="leadbar__grid">' +
         '<button class="lead" type="button" id="def-base" data-cost="2"><b>Build Military Base</b><span class="lead__lane">The Forces</span><span class="lead__desc">Commission a new base at home. ($15B)</span></button>' +
         '<button class="lead" type="button" id="def-expand" data-cost="1"><b>Expand Military</b><span class="lead__lane">The Forces</span><span class="lead__desc">Build units — armies, fleets, air wings.</span></button>' +
-        '<button class="lead" type="button" id="def-deploy" data-cost="1"><b>Deploy</b><span class="lead__lane">The Forces</span><span class="lead__desc">Move units between your bases.</span></button>' +
+        '<button class="lead" type="button" id="def-move" data-cost="1"><b>Move Unit</b><span class="lead__lane">The Forces</span><span class="lead__desc">Walk a unit to an adjacent land hex — 1 AP.</span></button>' +
         '<button class="lead" type="button" id="def-tech" data-soon disabled><b>Technology</b><span class="lead__lane">The Forces</span><span class="lead__desc">Research military technologies.</span></button>' +
       '</div></section>';
     el.querySelectorAll('.lead').forEach(stampCost);
@@ -1593,8 +1580,8 @@
     if (b) { actionBtns.push(b); b.addEventListener('click', function () { if (!b.disabled) openBuildBase(); }); }
     var ex = document.getElementById('def-expand');
     if (ex) { actionBtns.push(ex); ex.addEventListener('click', function () { if (!ex.disabled) openExpand(); }); }
-    var dp = document.getElementById('def-deploy');
-    if (dp) { actionBtns.push(dp); dp.addEventListener('click', function () { if (!dp.disabled) openDeploy(); }); }
+    var mv = document.getElementById('def-move');
+    if (mv) { actionBtns.push(mv); mv.addEventListener('click', function () { if (!mv.disabled) openMove(); }); }
   }
 
   // ---- Cabinet Ministries card: every portfolio with its sitting minister and party. A ministry is
