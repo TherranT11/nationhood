@@ -522,7 +522,7 @@
   import { ideologyLabel, partyColor } from '/archetypes.js';
   import { MINISTRIES } from '/ministries.js';
   import { hasUnvotedFloorMeasure } from '/proposals.js';   // ONE source (shared with the Legislature nav dot)
-  import { nationColors, drawNationMiniMap } from '/hexmap.js';
+  import { nationColors, drawNationMiniMap, axialToPix } from '/hexmap.js';
 
   mountTopbar();   // shared top bar into #topbar + the settings gear (Log out lives there now)
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -995,9 +995,42 @@
   // authoritative on every rule — the modal just surfaces which neighbours are reachable. Fires move_unit.
   var moveModal = document.getElementById('moveModal');
   var closeMove = wireModalClose(moveModal, 'moveClose');
-  var MOV = { units: [], landSet: null, foeSet: null, tick: 0, sel: null };
-  // Axial 6-neighbourhood — matches move_unit's adjacency check exactly.
-  function hexNeighbors(q, r) { return [[q, r - 1], [q, r + 1], [q - 1, r], [q + 1, r], [q + 1, r - 1], [q - 1, r + 1]]; }
+  var MOV = { units: [], landSet: null, foeSet: null, hexMap: null, myNation: null, tick: 0, sel: null };
+  // Pointy-top hex corner ring (matches axialToPix's layout, hexmap.js) for the mini-map polygons.
+  function hexCorners(cx, cy, s) {
+    var p = [];
+    for (var i = 0; i < 6; i++) { var a = Math.PI / 180 * (60 * i - 30); p.push((cx + s * Math.cos(a)).toFixed(1) + ',' + (cy + s * Math.sin(a)).toFixed(1)); }
+    return p.join(' ');
+  }
+  // A compact hex mini-map centred on the unit: its hex carries the counter, and the 6 neighbours are
+  // clickable when they're a reachable land hex (sea / enemy-held are dimmed + blocked). Axial distance
+  // 1 = a neighbour. Colours: water blue, own land / other land tan, enemy-held red; reachable hexes get
+  // a green ring + dot. The server re-checks every rule; this only makes the choice legible.
+  function moveMapSvg(u) {
+    var S = 24, R = 3, mine = MOV.myNation, c = axialToPix(u.q, u.r, S, 0, 0);
+    var minx = 1e9, maxx = -1e9, miny = 1e9, maxy = -1e9, body = '';
+    for (var dq = -R; dq <= R; dq++) for (var dr = -R; dr <= R; dr++) {
+      if (Math.abs(dq + dr) > R) continue;   // hex disk of radius R around the unit
+      var q = u.q + dq, r = u.r + dr, key = q + ',' + r, h = MOV.hexMap[key];
+      var land = !!(h && h.terrain === 'land'), foe = MOV.foeSet.has(key), isUnit = (dq === 0 && dr === 0);
+      var ok = ((Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2 === 1) && land && !foe;
+      var p = axialToPix(q, r, S, 0, 0), x = p.x - c.x, y = p.y - c.y;
+      minx = Math.min(minx, x); maxx = Math.max(maxx, x); miny = Math.min(miny, y); maxy = Math.max(maxy, y);
+      var fill = !land ? '#a9cfdd' : (foe ? '#d98b84' : (h.nation_id === mine ? '#dfe7d4' : '#e9e3d4'));
+      var title = isUnit ? esc(u.name) : (!land ? 'Sea — blocked' : foe ? 'Enemy-held — blocked' : ('Move to (' + q + ', ' + r + ')'));
+      body += '<polygon points="' + hexCorners(x, y, S - 1) + '" fill="' + fill + '" stroke="' + (ok ? '#16915a' : '#fff') +
+        '" stroke-opacity="' + (ok ? 0.95 : 0.5) + '" stroke-width="' + (ok ? 2.2 : 1) + '"' +
+        (ok ? ' data-q="' + q + '" data-r="' + r + '" data-ok="1" style="cursor:pointer"' : '') +
+        '><title>' + title + '</title></polygon>';
+      if (ok) body += '<circle cx="' + x + '" cy="' + y + '" r="3.2" fill="#16915a" pointer-events="none"/>';
+    }
+    var mark = u.unit_type === 'armor'
+      ? '<ellipse cx="0" cy="0" rx="5.5" ry="3.6" fill="none" stroke="#c2ead1" stroke-width="1.4"/>'
+      : '<line x1="-7" y1="-4.5" x2="7" y2="4.5" stroke="#c2ead1" stroke-width="1.3"/><line x1="-7" y1="4.5" x2="7" y2="-4.5" stroke="#c2ead1" stroke-width="1.3"/>';
+    body += '<g pointer-events="none"><rect x="-10" y="-7" width="20" height="14" rx="2.5" fill="#1d5a34" stroke="#c2ead1" stroke-width="1.4"/>' + mark + '</g>';
+    var pad = S + 4, vb = (minx - pad).toFixed(1) + ' ' + (miny - pad).toFixed(1) + ' ' + ((maxx - minx) + pad * 2).toFixed(1) + ' ' + ((maxy - miny) + pad * 2).toFixed(1);
+    return '<svg viewBox="' + vb + '" style="width:100%;max-height:300px;display:block;margin:2px auto 4px;border:1px solid var(--line);border-radius:12px;background:#bcdae6">' + body + '</svg>';
+  }
   function openMove() {
     if (acting || !feedCtx) return;
     document.getElementById('moveBody').innerHTML = '<p class="empty">Loading…</p>';
@@ -1010,11 +1043,13 @@
       var res = await Promise.all([
         supabase.from('military_units').select('id, name, unit_type, q, r, ready_tick, move_tick, moves_used').eq('nation_id', nid).order('name'),
         supabase.from('military_units').select('q, r').neq('nation_id', nid),   // foreign-held hexes (blocked targets)
-        supabase.from('world_hexes').select('q, r').eq('terrain', 'land')        // valid destinations are land
+        selectAll('world_hexes', 'q, r, terrain, nation_id')                     // whole world (past the 1000-row cap), for the mini-map
       ]);
+      MOV.myNation = nid;
       MOV.units = (res[0].data || []).filter(function (u) { return u.q != null && u.r != null; });
       MOV.foeSet = new Set((res[1].data || []).map(function (u) { return u.q + ',' + u.r; }));
-      MOV.landSet = new Set((res[2].data || []).map(function (h) { return h.q + ',' + h.r; }));
+      MOV.hexMap = {}; MOV.landSet = new Set();
+      (res[2].data || []).forEach(function (h) { var k = h.q + ',' + h.r; MOV.hexMap[k] = h; if (h.terrain === 'land') MOV.landSet.add(k); });
       try { MOV.tick = await currentTick(); } catch (e) { MOV.tick = 0; }
       MOV.sel = MOV.units.length ? MOV.units[0].id : null;
       renderMove();
@@ -1038,16 +1073,7 @@
     var ready = u.ready_tick <= MOV.tick, left = moMovesLeft(u), targets = '', note = '';
     if (!ready) note = '<p class="exp-warn">This unit is still being raised — it can move next month.</p>';
     else if (left < 1) note = '<p class="exp-warn">This unit has used all its movement this month.</p>';
-    else {
-      var cells = hexNeighbors(u.q, u.r).map(function (nb) {
-        var q = nb[0], r = nb[1], key = q + ',' + r, land = MOV.landSet.has(key), foe = MOV.foeSet.has(key), ok = land && !foe;
-        var why = !land ? 'Sea — blocked' : (foe ? 'Enemy — blocked' : 'Move here');
-        return '<div class="ucard" data-q="' + q + '" data-r="' + r + '" data-ok="' + (ok ? 1 : 0) + '"' +
-          (ok ? '' : ' style="opacity:.4;cursor:not-allowed"') + '>' +
-          '<div class="uname">(' + q + ', ' + r + ')</div><div class="ucost">' + why + '</div></div>';
-      }).join('');
-      targets = '<label class="exp-lab">Move to an adjacent hex</label><div class="units">' + cells + '</div>';
-    }
+    else targets = '<label class="exp-lab">Tap an adjacent hex to move — green rings are reachable</label>' + moveMapSvg(u);
     body.innerHTML =
       '<label class="exp-lab">Unit</label><select id="movSel" class="exp-sel">' + opts + '</select>' +
       '<p style="font-size:12px;color:var(--soft);margin:6px 0 12px">At (' + u.q + ', ' + u.r + ') · ' + left + ' move' + (left === 1 ? '' : 's') +
