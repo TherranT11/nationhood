@@ -25,11 +25,12 @@ begin
 end $$;
 revoke all on function public._require_campaign(text) from public, anon, authenticated;
 
--- One-time use (per campaign): each of the four campaign actions may be run ONCE per general
--- election. The key is (party, election_tick, action) — because the tick is the party's
--- next_election_tick, the allowance resets automatically the moment the next election is scheduled.
--- Public-read so the Elections page can grey out an action a party has already spent; written only by
--- _campaign_use_once (security definer).
+-- One campaign action per general election, TOTAL: a party may run any ONE of the campaign moves and
+-- then it's done for that campaign — using Attack (even on one party) spends the whole allowance, so it
+-- can't turn around and use another move or re-target. This table records which action was spent; the
+-- key is (party, election_tick, action), and because the tick is the party's next_election_tick the
+-- allowance resets automatically the moment the next election is scheduled. Public-read so the Elections
+-- page can lock the trail once spent; written only by _campaign_use_once (security definer).
 create table if not exists public.campaign_actions_used (
   party_id      uuid not null references public.parties (id) on delete cascade,
   election_tick int  not null,
@@ -41,19 +42,22 @@ alter table public.campaign_actions_used enable row level security;
 drop policy if exists "campaign_actions_used_select_all" on public.campaign_actions_used;
 create policy "campaign_actions_used_select_all" on public.campaign_actions_used for select using (true);
 
--- Claim a party's single use of one campaign action for the current election. Raises (rolling the
--- whole action back) if it has already been used this campaign. ONE gate, called by all four RPCs.
+-- Claim a party's ONE campaign action for the current election. Raises (rolling the whole action back)
+-- if the party has already run ANY campaign move this campaign — one total, not one per type. ONE gate,
+-- called by every campaign RPC. p_label is retained for signature stability (the six callers pass it);
+-- the message is generic now that the allowance is shared. The caller holds a FOR UPDATE lock on the
+-- party (_lock_party), so the exists-check + insert can't be raced into two actions.
 create or replace function public._campaign_use_once(p_party uuid, p_nation text, p_action text, p_label text)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_next int;
 begin
   select next_election_tick into v_next from public.nations where id = p_nation;
-  begin
-    insert into public.campaign_actions_used (party_id, election_tick, action)
-      values (p_party, coalesce(v_next, 0), p_action);
-  exception when unique_violation then
-    raise exception 'Your party has already run % this campaign.', p_label;
-  end;
+  if exists (select 1 from public.campaign_actions_used
+              where party_id = p_party and election_tick = coalesce(v_next, 0)) then
+    raise exception 'Your party has already run a campaign action this campaign — you get one.';
+  end if;
+  insert into public.campaign_actions_used (party_id, election_tick, action)
+    values (p_party, coalesce(v_next, 0), p_action);
 end $$;
 revoke all on function public._campaign_use_once(uuid, text, text, text) from public, anon, authenticated;
 
