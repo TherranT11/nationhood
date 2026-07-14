@@ -2095,6 +2095,9 @@
             opts.querySelectorAll('.np-opt').forEach(function (x, xi) { x.classList.toggle('on', xi === i); });
             var nel = opts.closest('.np-nation'), curEl = nel && nel.querySelector('[data-cur]');
             if (curEl) curEl.textContent = npOptName(def, i);
+          }).catch(function (e) {   // a rejected request (e.g. network) must still re-enable the buttons
+            opts.querySelectorAll('.np-opt').forEach(function (x) { x.disabled = false; });
+            alert('Couldn’t save: ' + ((e && e.message) || 'network error'));
           });
         };
       });
