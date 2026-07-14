@@ -244,7 +244,15 @@
       SPEND = contribs.filter(function (c) { return c.amount < 0; }).sort(function (a, b) { return a.amount - b.amount; });
       var totalRev = REV.reduce(function (t, c) { return t + c.amount; }, 0);
       var totalSpend = SPEND.reduce(function (t, c) { return t + Math.abs(c.amount); }, 0);
-      var balance = totalRev - totalSpend, bneg = balance < 0;
+      // Headline Budget Balance = the SERVER value (nation_stat_values → _nation_budget_balance) — the same
+      // figure the Government page and the debt engine use. The client sum above is the GROSS of policy
+      // contributions; the gap is Corruption's collection loss on % of GDP revenue (schema/210), surfaced as
+      // a spending line so the breakdown reconciles to the headline. One source: the server.
+      var serverBal = null;
+      try { const { data } = await supabase.rpc('nation_stat_values', { p_nation: party.nation_id, p_stats: ['Budget Balance'] }); if (data && data['Budget Balance'] != null) serverBal = Number(data['Budget Balance']); } catch (e) {}
+      var leak = (serverBal != null && isFinite(serverBal)) ? ((totalRev - totalSpend) - serverBal) : 0;
+      if (leak >= 0.05) { SPEND.push({ name: 'Collection loss · Corruption', amount: -leak }); SPEND.sort(function (a, b) { return a.amount - b.amount; }); totalSpend += leak; }
+      var balance = (serverBal != null && isFinite(serverBal)) ? serverBal : (totalRev - totalSpend), bneg = balance < 0;
       document.getElementById('balVal').innerHTML = (bneg ? '−' : '') + esc(CUR) + (Math.round(Math.abs(balance) * 10) / 10) + 'bn<span class="bhero__u"> /yr</span>';
       document.getElementById('balVal').style.color = bneg ? 'var(--red)' : 'var(--green)';
       document.getElementById('revVal').textContent = fmt(totalRev);
