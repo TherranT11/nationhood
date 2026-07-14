@@ -64,6 +64,7 @@
   .mstat{background:var(--field,var(--surface));border:1px solid var(--line);border-radius:14px;padding:16px 18px}
   .mstat__k{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
   .mstat__v{font-weight:800;font-size:22px;letter-spacing:-.01em;color:var(--ink);margin-top:9px}
+  .mstat__v.mv--good{color:var(--green)} .mstat__v.mv--mod{color:var(--amber)} .mstat__v.mv--bad{color:var(--red)}
   a.mstat--link{display:block;text-decoration:none;transition:border-color .15s,background .15s}
   a.mstat--link:hover{border-color:var(--indigo);background:var(--indigo-soft)}
   a.mstat--link .mstat__k{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -181,6 +182,42 @@
   // computes from the nation's admin-authored ministry_stats base + in-force policy contributions
   // (policies.js), so a cell shows "--" only when nothing has set it. Every POLICY_STATS entry is
   // placed in a group here, so any stat an admin can author (or a policy can target) actually surfaces.
+  // Colour polarity for the stat cells: green = good, amber = moderate, red = bad. dir 'high' → higher
+  // is better (green at/above g, red at/below b); dir 'low' → higher is worse (green at/below g, red
+  // at/above b). Most stats are 0–100 (g:60/b:40 for good-high, g:40/b:60 for bad-low); a handful sit on
+  // their own scale. Stats NOT listed render uncoloured on purpose — an unbounded scale (Public Debt,
+  // Armed Forces Funding, CO₂/Global Warming), a policy dial (Tax Burden, Bureaucracy), or an
+  // ideologically-neutral reading (Oppression, Cult of Personality, Immigration, Religion, Birth Rate,
+  // National Pride, Military Research). Budget Balance keeps its own red/green formatting in cellVal.
+  var STAT_TONE = {
+    'Growth': { dir: 'high', g: 3, b: 0 },                 // GDP growth %
+    'Wages': { dir: 'high', g: 60, b: 40 }, 'Innovation': { dir: 'high', g: 60, b: 40 },
+    'Infrastructure': { dir: 'high', g: 60, b: 40 }, 'Prosperity': { dir: 'high', g: 60, b: 40 },
+    'Press Freedom': { dir: 'high', g: 60, b: 40 }, 'Social Integration': { dir: 'high', g: 60, b: 40 },
+    'Health': { dir: 'high', g: 60, b: 40 }, 'Education': { dir: 'high', g: 60, b: 40 },
+    'Pension Quality': { dir: 'high', g: 60, b: 40 }, 'Rule of Law': { dir: 'high', g: 60, b: 40 },
+    'Standard of Living': { dir: 'high', g: 60, b: 40 }, 'Housing Affordability': { dir: 'high', g: 60, b: 40 },
+    'Equity Between Generations': { dir: 'high', g: 60, b: 40 }, 'Civil Liberties': { dir: 'high', g: 60, b: 40 },
+    'Minority Rights': { dir: 'high', g: 60, b: 40 }, 'Cybersecurity': { dir: 'high', g: 60, b: 40 },
+    'Environment': { dir: 'high', g: 60, b: 40 }, 'Control': { dir: 'high', g: 60, b: 40 },
+    'Energy Availability': { dir: 'high', g: 20, b: 0 },
+    'Crime': { dir: 'low', g: 40, b: 60 }, 'Poverty': { dir: 'low', g: 40, b: 60 },
+    'Unemployment': { dir: 'low', g: 40, b: 60 }, 'Extremism': { dir: 'low', g: 40, b: 60 },
+    'Corruption': { dir: 'low', g: 40, b: 60 }, 'Demographic Pressure': { dir: 'low', g: 40, b: 60 },
+    'Revolt Risk': { dir: 'low', g: 40, b: 60 },
+    'Inflation': { dir: 'low', g: 3, b: 6 },               // %
+    'Interest Rates': { dir: 'low', g: 5, b: 10 },         // %
+    'Government Default': { dir: 'low', g: 30, b: 70 }      // 0–100 risk (matches the event thresholds)
+  };
+  // 'good' | 'mod' | 'bad' | null for a stat's raw value, per STAT_TONE above.
+  function statTone(stat, v) {
+    var c = STAT_TONE[stat];
+    if (!c || v == null || !isFinite(Number(v))) return null;
+    v = Number(v);
+    if (c.dir === 'high') return v >= c.g ? 'good' : (v <= c.b ? 'bad' : 'mod');
+    return v <= c.g ? 'good' : (v >= c.b ? 'bad' : 'mod');   // dir 'low' — higher is worse
+  }
+
   var STAT_GROUPS = [
     { name: 'Head of Government', stats: ['Budget Balance', 'Growth', 'Bureaucracy'] },
     { name: 'Finance', stats: ['Tax Burden', 'Public Debt', 'Interest Rates', 'Inflation', 'Government Default'] },
@@ -220,12 +257,14 @@
     return STAT_GROUPS.map(function (g) {
       var cells = g.stats.map(function (s) {
         var val = cellVal(s);
+        var tone = statTone(s, STAT_VALUES[s]);            // colour by good/moderate/bad
+        var vcls = 'mstat__v' + (tone ? ' mv--' + tone : '');
         var href = STAT_LINKS[s];
         if (href) {
           return '<a class="mstat mstat--link" href="' + href + '"><div class="mstat__k">' + esc(s) +
-            '<span class="mstat__chev">&rsaquo;</span></div><div class="mstat__v">' + val + '</div></a>';
+            '<span class="mstat__chev">&rsaquo;</span></div><div class="' + vcls + '">' + val + '</div></a>';
         }
-        return '<div class="mstat"><div class="mstat__k">' + esc(s) + '</div><div class="mstat__v">' + val + '</div></div>';
+        return '<div class="mstat"><div class="mstat__k">' + esc(s) + '</div><div class="' + vcls + '">' + val + '</div></div>';
       }).join('');
       return '<section class="mgroup"><button class="mgroup__hd" type="button"><span>' + esc(g.name) + '</span>' +
         '<svg class="mgroup__chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button>' +
