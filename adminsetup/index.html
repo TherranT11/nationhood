@@ -924,7 +924,7 @@
               <div><div class="flabel">Budget Balance cost <span class="hint">while it runs</span></div>
                 <div style="display:flex;gap:8px"><input id="i-byear" type="number" step="any" value="5" style="flex:1;min-width:0">
                   <select id="i-byear-unit" style="flex:0 0 118px"><option value="flat">$B / yr</option><option value="gdp">% of GDP</option></select></div></div>
-              <div><div class="flabel">Influence <span class="hint">(upfront to enact)</span></div><input id="i-influence" type="number" step="1" value="5"></div>
+              <div><div class="flabel">Action Point cost <span class="hint">(to enact)</span></div><input id="i-influence" type="number" step="1" min="1" value="1"></div>
             </div>
             <div class="flabel" style="margin-top:14px">Build-up length <span class="hint">(months, min–max — before the production increase lands)</span></div>
             <div class="two"><input id="i-minM" type="number" value="16"><input id="i-maxM" type="number" value="36"></div>
@@ -3581,7 +3581,7 @@
 
       function iBlank() {
         return { name: '', description: '', resource: 'Energy', quantity: 1, cadence: 'one_time',
-          sectors: iSectorSet('Energy'), budgetPerYear: 5, budgetUnit: 'flat', influence: 5, minM: 16, maxM: 36, global: false, nations: {},
+          sectors: iSectorSet('Energy'), budgetPerYear: 5, budgetUnit: 'flat', influence: 1, minM: 16, maxM: 36, global: false, nations: {},
           joint: { on: false, partner: '', quantity: 1, target: 'Energy' },
           startEvent: '', finishEvent: '' };
       }
@@ -3612,7 +3612,7 @@
       }
       // The standing cost line: the Budget Balance cost (flat $bn/yr or % of GDP) the whole time it
       // runs + the upfront Influence the Minister spends to enact it.
-      function iCostExpr() { return '−' + fmtInitiativeCost(IN.budgetPerYear, IN.budgetUnit === 'gdp') + ' · ' + IN.influence + ' Influence'; }
+      function iCostExpr() { return '−' + fmtInitiativeCost(IN.budgetPerYear, IN.budgetUnit === 'gdp') + ' · ' + IN.influence + ' AP'; }
       // The ticked sectors — ONE source for the preview line and the saved definition.
       function iChosenSectors() { return CATEGORIES.filter(function (c) { return IN.sectors[c]; }); }
       function iNatName(id) { var n = INAT.filter(function (x) { return x.id === id; })[0]; return n ? (n.name || id) : id; }

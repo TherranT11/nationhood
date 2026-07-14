@@ -116,7 +116,7 @@ drop function if exists public.card_play(uuid, uuid);
 create or replace function public.card_play(p_deck_card uuid, p_target uuid default null, p_hex_q int default null, p_hex_r int default null,
   p_corp uuid default null, p_corp2 uuid default null)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_uid uuid; v_dc record; v_party record; v_def jsonb; v_name text; v_tick int; v_acts int; v_tgt_nat text; v_body text;
+declare v_uid uuid; v_dc record; v_party record; v_def jsonb; v_name text; v_tick int; v_acts int; v_tgt_nat text; v_body text; v_tname text;
 begin
   v_uid := auth.uid();
   if v_uid is null then raise exception 'Not signed in.'; end if;
@@ -176,9 +176,18 @@ begin
   -- campaign event (schema/176).
   v_name := coalesce(v_def->>'name', 'a card');
   if coalesce(v_def->>'persistV', 'no') = 'yes' or not public._def_fires_kind(v_def, array['hex_pop']) then
-    v_body := 'In ' || coalesce((select name from public.nations where id = v_dc.nation_id), v_dc.nation_id)
-              || ', ' || coalesce(nullif(v_def->>'desc', ''), v_name);
-    if v_body !~ '[.!?]$' then v_body := v_body || '.'; end if;
+    -- A party-targeted ATTACK card (a party_lose effect on a chosen party) announces the clash by name —
+    -- "The {attacker} has launched a scathing political campaign against the {target}." — instead of the
+    -- generic "In {nation}, {description}." Falls back to the generic line for every other card.
+    if p_target is not null and public._def_fires_kind(v_def, array['party_lose']) then
+      select name into v_tname from public.parties where id = p_target;
+      v_body := 'The ' || public._bare_party(v_party.name) || ' has launched a scathing political campaign against the '
+                || public._bare_party(coalesce(v_tname, 'opposition')) || '.';
+    else
+      v_body := 'In ' || coalesce((select name from public.nations where id = v_dc.nation_id), v_dc.nation_id)
+                || ', ' || coalesce(nullif(v_def->>'desc', ''), v_name);
+      if v_body !~ '[.!?]$' then v_body := v_body || '.'; end if;
+    end if;
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_dc.nation_id, v_party.id, 'card', v_body, public.current_game_date());
   end if;
