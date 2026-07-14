@@ -64,6 +64,58 @@
   .cm .relpickrow .relgo{padding:8px 13px;border-radius:8px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
   .cm .relpickrow .relcancel{padding:8px 13px;border-radius:8px;border:1px solid var(--line);background:var(--field);color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
 
+  /* ---- COIN card table (Tempo Track + claims + Active/Upcoming cards) ---- */
+  .cm .cmempty{color:var(--soft);font-size:12.5px;font-style:italic;padding:6px 2px}
+  /* tempo track */
+  .cm .tempo__row{display:flex;gap:8px;flex-wrap:wrap}
+  .cm .tcard{flex:1;min-width:148px;background:var(--field);border:1px solid var(--line);border-radius:12px;padding:9px 11px}
+  .cm .tcard.you{border-color:var(--inf);box-shadow:0 0 0 1px var(--inf) inset}
+  .cm .tcard__top{display:flex;align-items:center;gap:7px}
+  .cm .tcard__pos{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft)}
+  .cm .tcard__dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px}
+  .cm .tcard__abbr{font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700}
+  .cm .tcard__you{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.1em;color:var(--inf);border:1px solid color-mix(in srgb,var(--inf) 55%,transparent);border-radius:5px;padding:1px 5px}
+  .cm .tcard__ideo{font-size:10.5px;color:var(--muted);margin-top:4px}
+  .cm .tcard__seats{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;color:var(--soft);margin-top:3px;text-transform:uppercase}
+  /* the four claims */
+  .cm .acts{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  @media(max-width:820px){.cm .acts{grid-template-columns:1fr 1fr}}
+  @media(max-width:520px){.cm .acts{grid-template-columns:1fr}}
+  .cm .act4{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 13px;border-top-width:3px}
+  .cm .act4__name{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.06em}
+  .cm .act4__cost{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;color:var(--ink);margin:6px 0 4px}
+  .cm .act4__desc{font-size:11px;color:var(--muted);line-height:1.45}
+  /* active + upcoming cards */
+  .cm .cards2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.cm .cards2{grid-template-columns:1fr}}
+  .cm .bcard{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .cm .bcard__strip{height:4px}
+  .cm .bcard__body{padding:15px 17px}
+  .cm .bcard__meta{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .cm .ckind{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);border-radius:6px;padding:2px 8px;color:var(--soft)}
+  .cm .ckind.nat{color:var(--indigo);border-color:color-mix(in srgb,var(--indigo) 45%,transparent)}
+  .cm .apbadge{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--inf);color:#0a0d13;font-family:'Space Mono',monospace;font-weight:700;font-size:14px}
+  .cm .bcard__title{display:flex;align-items:center;gap:11px;margin:11px 0 6px}
+  .cm .bcard__flag{width:40px;height:40px;border-radius:9px;object-fit:cover;border:1px solid var(--line)}
+  .cm .bcard__name{font-weight:800;font-size:18px;line-height:1.2}
+  .cm .bcard__flavor{font-size:12.5px;color:var(--muted);line-height:1.5}
+  .cm .bcard__cost{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft);margin-top:9px}
+  .cm .bcard__cost b{color:var(--ink)}
+  .cm .claimrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+  .cm .cbtn{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.04em;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--surface);color:var(--ink);cursor:pointer}
+  .cm .cbtn:hover:not(:disabled){border-color:var(--indigo)}
+  .cm .cbtn.on{background:var(--indigo);color:#fff;border-color:var(--indigo)}
+  .cm .cbtn:disabled{opacity:.5;cursor:default}
+  .cm .cothers{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);margin-top:7px}
+  .cm .passbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+  .cm .passbar .lbl{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;color:var(--soft)}
+  .cm .passbar .cbtn.on{background:var(--green);border-color:var(--green);color:#fff}
+  .cm .upgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+  .cm .ucard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 13px;opacity:.92}
+  .cm .ucard__meta{display:flex;justify-content:space-between;align-items:center;gap:6px}
+  .cm .ucard__ap{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft)}
+  .cm .ucard__name{font-weight:800;font-size:14px;margin:7px 0 4px;line-height:1.25}
+  .cm .ucard__flavor{font-size:11px;color:var(--muted);line-height:1.4;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 </style>
 </head>
 <body>
@@ -75,7 +127,7 @@
     <div class="phead">
       <span class="eye" id="eye">The Party</span>
       <h1>Home</h1>
-      <p>Your nation and the world at a glance — the timelines and any government decisions awaiting a call. Cards are claimed on the <a href="/play/theater/">Political Theater</a> page.</p>
+      <p>Your nation and the world at a glance — the timelines, any decisions awaiting a call, and the month's card table: claim a card down the Tempo Track.</p>
     </div>
 
     <div class="cm">
@@ -96,8 +148,22 @@
         </div>
       </div>
 
-      <!-- The sealed-bid market + hand were retired with the auction; cards are now claimed on the
-           Political Theater page (/play/theater/). Timelines + government decisions remain here. -->
+      <!-- Tempo Track: the claim order (schema/206), highest Tempo first. -->
+      <div class="sect gap">Tempo Track <span class="note">parties act in this order · re-sorted by tempo spent each turn · EVENT −5 · AP −3 · BOTH → LAST · PASS → FIRST</span></div>
+      <div class="tempo__row" id="tempoRow"><div class="cmempty">Loading parties…</div></div>
+
+      <!-- The four claims (explainer). -->
+      <div class="sect gap">The Four Claims <span class="note">one per party per turn, taken in order down the track</span></div>
+      <div class="acts" id="acts"></div>
+
+      <!-- Active cards — claim resolves at the next tick. -->
+      <div class="sect gap">On The Table Now <span class="note">claim resolves at the next tick</span></div>
+      <div class="passbar" id="passbar"></div>
+      <div class="cards2" id="activeCards"><div class="cmempty">Loading cards…</div></div>
+
+      <!-- Upcoming cards. -->
+      <div class="sect gap">Upcoming Cards <span class="note">queued behind the two on the table</span></div>
+      <div class="upgrid" id="upcoming"><div class="cmempty">Loading…</div></div>
     </div>
   </main>
 </div>
@@ -106,10 +172,8 @@
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { esc, tickToDate, hexSeats, fmtPop } from '/util.js';
-  import { regionalApproval } from '/regional.js';   // one source for per-hex party approval
-  import { ideologyLabel } from '/archetypes.js';
-  import { drawNationMiniMap } from '/hexmap.js';
+  import { esc, tickToDate } from '/util.js';
+  import { ideologyLabel, partyColor } from '/archetypes.js';
 
   mountTopbar();
   mountSidenav();
@@ -222,6 +286,102 @@
     }).join('');
   }
 
+  // ---- COIN card table ------------------------------------------------------------------------
+  // The four claims — a static explainer of the actions a party may take on an Active Card.
+  var CLAIMS = [
+    { name: 'EVENT', cost: '−5 TEMPO', color: 'var(--indigo)', desc: "Play the card's event — your side's reading of it." },
+    { name: 'ACTION POINTS', cost: '−3 TEMPO', color: 'var(--inf)', desc: "Bank the card's AP for your own operations." },
+    { name: 'EVENT + AP', cost: 'LAST IN TEMPO', color: 'var(--red)', desc: 'Take both — an exclusive claim nobody else can touch.' },
+    { name: 'PASS', cost: 'FIRST NEXT TURN', color: 'var(--green)', desc: 'Do nothing, jump the queue. Only one party may pass per turn.' }
+  ];
+  function renderClaims() {
+    document.getElementById('acts').innerHTML = CLAIMS.map(function (c) {
+      return '<div class="act4" style="border-top-color:' + c.color + '">' +
+        '<div class="act4__name" style="color:' + c.color + '">' + esc(c.name) + '</div>' +
+        '<div class="act4__cost">' + esc(c.cost) + '</div>' +
+        '<div class="act4__desc">' + esc(c.desc) + '</div></div>';
+    }).join('');
+  }
+
+  // Tempo Track: claim order = real Tempo standing (schema/206), highest first; id breaks ties.
+  function renderTempo(parties) {
+    var row = document.getElementById('tempoRow');
+    if (!parties.length) { row.innerHTML = '<div class="cmempty">No parties in this nation yet.</div>'; return; }
+    var order = parties.slice().sort(function (a, b) { return (Number(b.tempo) || 0) - (Number(a.tempo) || 0) || String(a.id).localeCompare(String(b.id)); });
+    row.innerHTML = order.map(function (p, i) {
+      var you = PARTY && p.id === PARTY.id, col = partyColor(p);
+      return '<div class="tcard' + (you ? ' you' : '') + '"><div class="tcard__top"><span class="tcard__pos">' + (i + 1) + '</span>' +
+        '<span class="tcard__dot" style="background:' + col + '"></span>' +
+        '<span class="tcard__abbr" style="color:' + col + '">' + esc(p.abbreviation || p.name || '—') + '</span>' +
+        (you ? '<span class="tcard__you">YOU</span>' : '') + '</div>' +
+        '<div class="tcard__ideo">' + esc(ideologyLabel(p)) + '</div>' +
+        '<div class="tcard__seats">' + (Number(p.seats) || 0) + ' seats</div></div>';
+    }).join('');
+  }
+
+  function cardKind(def) {
+    if (def.lim === 'nation') return { label: 'Nation · ' + (NATION_NAME || 'this nation'), cls: 'nat' };
+    if (def.type === 'ar' || def.type === 'dr') return { label: 'Stance', cls: '' };
+    return { label: 'Generic', cls: '' };
+  }
+  function cardAP(def) { return Math.max(1, Math.min(10, Number(def.acts) || 1)); }   // 1–10, matching the Card Creator + the AP the resolver banks
+  function cardCost(def) { return Math.max(1, Number(def.cost) || 0); }
+  function stripColor(def) { return def.lim === 'nation' ? 'var(--indigo)' : (def.type === 'ar' || def.type === 'dr' ? 'var(--inf)' : 'var(--soft)'); }
+
+  // The (≤2) Active Cards with live claim buttons. `mine` is the caller's claim; `abbr` maps party→label.
+  function renderActive(active, claims, mine, abbr) {
+    var box = document.getElementById('activeCards');
+    if (!active.length) { box.innerHTML = '<div class="cmempty">The market is empty this turn — no cards on the table.</div>'; return; }
+    function btn(cardId, action, label) {
+      var on = mine && mine.action === action && String(mine.deck_card_id) === String(cardId);
+      return '<button class="cbtn' + (on ? ' on' : '') + '" data-card="' + esc(cardId) + '" data-action="' + action + '"' + (BUSY ? ' disabled' : '') + '>' + label + '</button>';
+    }
+    box.innerHTML = active.map(function (c) {
+      var def = c.definition || {}, k = cardKind(def), ap = cardAP(def);
+      var flag = (def.lim === 'nation' && NATION_FLAGS[NATION_ID]) ? '<img class="bcard__flag" src="' + esc(NATION_FLAGS[NATION_ID]) + '" alt="">' : '';
+      var others = (claims || []).filter(function (x) { return String(x.deck_card_id) === String(c.id) && (!mine || x.party_id !== mine.party_id); })
+        .map(function (x) { return esc((abbr[x.party_id] || '?')) + '·' + x.action.toUpperCase(); });
+      return '<div class="bcard"><div class="bcard__strip" style="background:' + stripColor(def) + '"></div><div class="bcard__body">' +
+        '<div class="bcard__meta"><span class="ckind ' + k.cls + '">' + esc(k.label) + '</span>' +
+        '<span class="apbadge" title="Action Points on play">' + ap + '</span></div>' +
+        '<div class="bcard__title">' + flag + '<div class="bcard__name">' + esc(def.name || 'Untitled card') + '</div></div>' +
+        '<div class="bcard__flavor">' + (def.desc ? esc(def.desc) : '<span style="color:var(--soft)">No description.</span>') + '</div>' +
+        '<div class="bcard__cost"><b>' + ap + '</b> AP on play</div>' +
+        '<div class="claimrow">' + btn(c.id, 'event', '★ Event −5') + btn(c.id, 'ap', '⚡ AP −3') + btn(c.id, 'both', '✦ Both → last') + '</div>' +
+        (others.length ? '<div class="cothers">also claimed: ' + others.join(' · ') + '</div>' : '') +
+        '</div></div>';
+    }).join('');
+  }
+
+  function renderPassbar(mine) {
+    var on = mine && mine.action === 'pass';
+    document.getElementById('passbar').innerHTML = '<span class="lbl">Or skip the cards:</span>' +
+      '<button class="cbtn' + (on ? ' on' : '') + '" data-card="" data-action="pass"' + (BUSY ? ' disabled' : '') + '>🕊 Pass → first next turn</button>';
+  }
+
+  function renderUpcoming(cards) {
+    var box = document.getElementById('upcoming'), rest = cards.slice(2);
+    if (!rest.length) { box.innerHTML = '<div class="cmempty">No further cards queued this turn.</div>'; return; }
+    box.innerHTML = rest.map(function (c) {
+      var def = c.definition || {}, ap = cardAP(def), k = cardKind(def);
+      return '<div class="ucard"><div class="ucard__meta"><span class="ckind ' + k.cls + '">' + esc(k.label) + '</span>' +
+        '<span class="ucard__ap">▶ ' + ap + ' AP</span></div>' +
+        '<div class="ucard__name">' + esc(def.name || 'Untitled card') + '</div>' +
+        '<div class="ucard__flavor">' + (def.desc ? esc(def.desc) : '') + '</div></div>';
+    }).join('');
+  }
+
+  // Claim a card (or pass) — routed through run() for the shared BUSY lock + reload.
+  async function claim(cardId, action) {
+    await run(function () { return supabase.rpc('claim_card', { p_deck_card: (action === 'pass' ? null : cardId), p_action: action }); });
+  }
+  // One delegated handler covers the card buttons and the pass button.
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('.cbtn');
+    if (!b || b.disabled) return;
+    claim(b.dataset.card || null, b.dataset.action);
+  });
+
   // ---- the one remaining action: resolving a Government Decision (locks BUSY, then reloads) ----
   async function decideCard(id, opt, nation) { await run(function () { return supabase.rpc('card_decide', { p_decision: id, p_option: opt, p_nation: nation || null }); }); }
   async function run(fn) {
@@ -234,26 +394,39 @@
       alert((e && e.message) || 'That action failed.');
     } finally { BUSY = false; setDisabled(false); }
   }
-  function setDisabled(on) { document.querySelectorAll('.cm button.decopt').forEach(function (b) { b.disabled = on; }); }
+  function setDisabled(on) { document.querySelectorAll('.cm button.decopt, .cm .cbtn').forEach(function (b) { b.disabled = on; }); }
 
   function setEye() {
     document.getElementById('eye').innerHTML = esc(NATION_NAME) + ' · ' + esc(tickToDate(CUR_TICK));
   }
 
   async function loadAll() {
-    // Refresh the party (influence still moves via other actions), then decisions + timelines. The card
-    // market + hand were retired with the auction — cards are claimed on /play/theater/ now.
+    // Refresh the party (influence still moves via other actions), then decisions + timelines + the card
+    // table (Tempo Track, Active/Upcoming cards, claims).
     try {
       const { data: p } = await supabase.from('parties').select('id, name, archetype, nation_id, influence, action_points, turn_acted_tick').eq('user_id', PARTY.user_id).single();
       if (p) { PARTY = Object.assign(PARTY, p); setTopbarActions(PARTY.influence); }
     } catch (e) { /* keep the last known party */ }
 
-    var roster = [], events = [], world = [], decisions = [];
+    var roster = [], events = [], world = [], decisions = [], cards = [], claims = [], mine = null, abbr = {};
     try {
-      const { data } = await supabase.from('parties').select('id, name, abbreviation, archetype, color').eq('nation_id', NATION_ID).order('name', { ascending: true }).order('id', { ascending: true });
+      // One party read powers the decision labels AND the Tempo Track (so it carries tempo + seats).
+      const { data } = await supabase.from('parties').select('id, name, abbreviation, archetype, color, seats, tempo').eq('nation_id', NATION_ID).order('name', { ascending: true }).order('id', { ascending: true });
       roster = data || [];
     } catch (e) {}
     window.__roster = roster;
+    roster.forEach(function (p) { abbr[p.id] = p.abbreviation || p.name; });
+    try {
+      // Active + Upcoming cards = this nation's on-block cards, oldest first (the first two are Active,
+      // matching _active_cards, schema/207).
+      const { data } = await supabase.from('deck_cards').select('id, created_at, cards(definition)').eq('nation_id', NATION_ID).eq('status', 'on_block').order('created_at', { ascending: true });
+      cards = (data || []).map(function (r) { return { id: r.id, definition: (r.cards && r.cards.definition) || {} }; });
+    } catch (e) {}
+    try {
+      const { data } = await supabase.from('card_claims').select('party_id, deck_card_id, action').eq('nation_id', NATION_ID).eq('tick', CUR_TICK);
+      claims = data || [];
+      mine = claims.find(function (x) { return PARTY && x.party_id === PARTY.id; }) || null;
+    } catch (e) {}
     try {
       const { data } = await supabase.from('events').select('kind, body, game_date, created_at').eq('nation_id', NATION_ID).order('created_at', { ascending: false }).limit(25);
       events = data || [];
@@ -288,9 +461,14 @@
     renderDecisions(decisions);
     renderTimeline('timeline', events, false);
     renderTimeline('worldline', world, true);
+    renderTempo(roster);
+    renderActive(cards.slice(0, 2), claims, mine, abbr);
+    renderPassbar(mine);
+    renderUpcoming(cards);
   }
 
   (async () => {
+    renderClaims();
     if (!isConfigured) return;
     const user = await requireUser();
     if (!user) return;
