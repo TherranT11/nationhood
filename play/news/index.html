@@ -170,7 +170,7 @@
     <div class="phead">
       <span class="eye" id="eye">The Party</span>
       <h1>Home</h1>
-      <p>Your nation and the world at a glance — the card market and the cards in your hand. Each month you may play or discard one card, and bid on cards freely.</p>
+      <p>Your nation and the world at a glance — the timelines and any government decisions awaiting a call. Cards are claimed on the <a href="/play/theater/">Political Theater</a> page.</p>
     </div>
 
     <div class="cm">
@@ -191,17 +191,8 @@
         </div>
       </div>
 
-      <!-- action container -->
-      <div class="sect gap">This Month <span class="note" id="actNote"></span></div>
-      <div id="actions"></div>
-
-      <!-- market -->
-      <div class="sect gap">The Market <span class="note" id="marketNote"></span></div>
-      <div class="market" id="market"><div class="empty"><b>Loading…</b></div></div>
-
-      <!-- hand -->
-      <div class="sect gap">Your Hand <span class="note" id="handNote"></span></div>
-      <div class="hand" id="hand"></div>
+      <!-- The sealed-bid market + hand were retired with the auction; cards are now claimed on the
+           Political Theater page (/play/theater/). Timelines + government decisions remain here. -->
     </div>
   </main>
 </div>
@@ -785,31 +776,19 @@
   }
 
   async function loadAll() {
-    // Refresh the party (influence changes with bids/plays), then market / hand / timelines.
+    // Refresh the party (influence still moves via other actions), then decisions + timelines. The card
+    // market + hand were retired with the auction — cards are claimed on /play/theater/ now.
     try {
       const { data: p } = await supabase.from('parties').select('id, name, archetype, nation_id, influence, action_points, turn_acted_tick').eq('user_id', PARTY.user_id).single();
       if (p) { PARTY = Object.assign(PARTY, p); setTopbarActions(PARTY.influence); }
     } catch (e) { /* keep the last known party */ }
 
-    var roster = [], market = [], hand = [], bids = {}, events = [], world = [], decisions = [];
+    var roster = [], events = [], world = [], decisions = [];
     try {
       const { data } = await supabase.from('parties').select('id, name, abbreviation, archetype, color').eq('nation_id', NATION_ID).order('name', { ascending: true }).order('id', { ascending: true });
       roster = data || [];
     } catch (e) {}
     window.__roster = roster;
-    try {
-      const { data } = await supabase.from('deck_cards').select('id, cards(definition)').eq('nation_id', NATION_ID).eq('status', 'on_block');
-      market = (data || []).map(function (r) { return { id: r.id, definition: (r.cards && r.cards.definition) || {} }; });
-    } catch (e) {}
-    try {
-      const { data } = await supabase.from('card_bids').select('deck_card_id, amount').eq('party_id', PARTY.id);   // RLS returns only mine anyway
-      (data || []).forEach(function (b) { bids[b.deck_card_id] = b.amount; });
-    } catch (e) {}
-    try {
-      const { data } = await supabase.from('deck_cards').select('id, cards(definition)').eq('party_id', PARTY.id).eq('status', 'in_hand');
-      hand = (data || []).map(function (r) { return { id: r.id, definition: (r.cards && r.cards.definition) || {} }; });
-      window.__hand = hand;   // renderHand's target picker reads definitions back from here
-    } catch (e) {}
     try {
       const { data } = await supabase.from('events').select('kind, body, game_date, created_at').eq('nation_id', NATION_ID).order('created_at', { ascending: false }).limit(25);
       events = data || [];
@@ -840,12 +819,8 @@
       decisions = q.data || [];
     } catch (e) {}
 
-    BIDS = bids;   // live bids drive the "bidding this month" gate (renderActions/renderHand/renderMarket)
     setEye();
-    renderActions();
     renderDecisions(decisions);
-    renderMarket(market, bids);
-    renderHand(hand);
     renderTimeline('timeline', events, false);
     renderTimeline('worldline', world, true);
   }

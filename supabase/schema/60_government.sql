@@ -455,11 +455,11 @@ begin
   -- close — a fed nation grows +1M, each unmet demand drops its stat, then the flags reset.
   begin perform public._resolve_economy_demands(v_tick);
   exception when others then raise warning 'tick %: economy demands failed — %', v_tick, sqlerrm; end;
-  -- Card auctions (schema/172): every tick, each nation's sealed-bid auctions resolve — the top bid on
-  -- each on-block card wins it into that party's hand, losing bids are refunded — then the block is
-  -- topped back up to (parties + 1) from the deck.
-  begin perform public._resolve_card_auctions(v_tick);
-  exception when others then raise warning 'tick %: card auctions failed — %', v_tick, sqlerrm; end;
+  -- Card block upkeep (schema/208): the sealed-bid auction is retired — the COIN claim loop (schema/207)
+  -- is the sole card mechanic — so each tick simply keeps every nation's on-block market topped up to
+  -- (active parties + 1) from the deck, ready to be claimed.
+  begin perform public._refill_all_card_blocks(v_tick);
+  exception when others then raise warning 'tick %: card block upkeep failed — %', v_tick, sqlerrm; end;
   -- Turn rotation (schema/173): after the auction hands out cards, advance each nation's turn cursor
   -- by one party (the next slot by turn_seq, wrapping). This is the new month's active party — whose
   -- turn it now is, and the only party that may play a card until the next tick.
