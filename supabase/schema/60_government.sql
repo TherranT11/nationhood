@@ -568,6 +568,10 @@ begin
   -- allocated seats. Isolated — a failure warns and never aborts the tick.
   begin perform public._resolve_coalitions(v_tick);
   exception when others then raise warning 'tick %: coalition resolution failed — %', v_tick, sqlerrm; end;
+  -- COIN card claims (schema/207): resolve each nation's claimed Active Cards in Tempo order — fire the
+  -- events, bank AP, spend Tempo, cycle used cards. Isolated — a failure warns and never aborts the tick.
+  begin perform public._resolve_card_claims(v_tick);
+  exception when others then raise warning 'tick %: card-claim resolution failed — %', v_tick, sqlerrm; end;
   -- Auto-apply any triggered National Modifier: a modifier with start conditions "fires off"
   -- on every non-dormant nation that now meets them all (schema/70). Runs before the lift so a
   -- nation that both qualifies and has met the end conditions ends up without it.
