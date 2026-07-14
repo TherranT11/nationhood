@@ -43,21 +43,6 @@
   .cm .tlempty{color:var(--soft);font-size:12.5px;padding:6px 0}
   .cm .err{color:var(--red);font-size:12.5px;padding:8px 0}
 
-  /* action container — the three monthly choices */
-  .cm .actbox{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
-  .cm .actbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
-  .cm .apbadge{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--inf);background:color-mix(in srgb,var(--inf) 12%,transparent);border:1px solid color-mix(in srgb,var(--inf) 40%,transparent);border-radius:8px;padding:6px 11px}
-  .cm .actstat{font-size:13px;color:var(--muted)}
-  .cm .actstat b{color:var(--ink)}
-  .cm .actrow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  @media(max-width:820px){.cm .actrow{grid-template-columns:1fr}}
-  .cm .actopt{background:var(--field);border:1px solid var(--line);border-radius:12px;padding:15px 15px 13px;text-align:left;cursor:pointer;transition:border-color .15s;color:inherit;font:inherit}
-  .cm .actopt:hover:not(:disabled){border-color:var(--indigo)}
-  .cm .actopt:disabled{opacity:.45;cursor:not-allowed}
-  .cm .actopt .an{font-size:14px;font-weight:800;color:var(--ink);margin-bottom:5px}
-  .cm .actopt .ad{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);letter-spacing:.03em;line-height:1.6}
-  .cm .actopt.on{border-color:color-mix(in srgb,var(--inf) 55%,var(--line));background:color-mix(in srgb,var(--inf) 8%,var(--field))}
-  .cm .actopt.on:hover:not(:disabled){border-color:var(--inf)}
 
   /* government decisions (played Choice cards awaiting a resolver) */
   .cm .deccard{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:15px 17px;margin-bottom:11px}
@@ -79,86 +64,6 @@
   .cm .relpickrow .relgo{padding:8px 13px;border-radius:8px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
   .cm .relpickrow .relcancel{padding:8px 13px;border-radius:8px;border:1px solid var(--line);background:var(--field);color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
 
-  /* market + hand grids */
-  .cm .market{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px}
-  .cm .hand{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px}
-  .cm .cardc{background:var(--surface);border:1px solid var(--line);border-radius:13px;overflow:hidden;display:flex;flex-direction:column;position:relative}
-  .cm .c-flag{position:absolute;top:10px;right:10px;width:26px;height:17px;object-fit:cover;border-radius:3px;border:1px solid var(--line);box-shadow:0 1px 3px rgba(0,0,0,.4)}
-  .cm .stripe{height:4px}
-  .cm .stripe.gen{background:var(--gen)} .cm .stripe.rev{background:var(--rev)} .cm .stripe.auto{background:var(--auto)} .cm .stripe.nat{background:var(--nat)}
-  .cm .c-body{padding:13px 14px 11px;flex:1;display:flex;flex-direction:column}
-  .cm .c-kind{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
-  .cm .c-kind.gen{color:var(--gen)} .cm .c-kind.rev{color:var(--rev)} .cm .c-kind.auto{color:var(--auto)} .cm .c-kind.nat{color:var(--nat)}
-  .cm .c-name{font-size:15px;font-weight:800;line-height:1.2;margin-bottom:6px;color:var(--ink)}
-  .cm .c-req{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.05em;border-radius:5px;padding:3px 7px;display:inline-block;margin-bottom:8px;width:fit-content;color:var(--muted);background:var(--chip);border:1px solid var(--line)}
-  .cm .c-fx{font-size:11.5px;color:var(--muted);line-height:1.5;flex:1}
-  .cm .c-cost{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);margin-top:9px;letter-spacing:.04em}
-  .cm .c-cost b{color:var(--inf)}
-  .cm .c-ap{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);margin-top:9px;letter-spacing:.04em}
-  .cm .c-ap b{color:var(--indigo);font-size:11px}
-  .cm .c-ap + .c-cost{margin-top:3px}
-
-  /* bid footer (sealed — only your own bid): label + Cancel on top, stepper + Bid below */
-  .cm .c-bid{border-top:1px solid var(--line);background:var(--field);padding:10px 11px;display:flex;flex-direction:column;gap:9px}
-  .cm .bidtop{display:flex;align-items:center;justify-content:space-between;gap:8px}
-  .cm .mybid{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft)}
-  .cm .mybid b{color:var(--inf);font-size:12px}
-  .cm .bidctrl{display:flex;align-items:center;gap:6px}
-  .cm .bidctrl .bid{margin-left:auto}
-  .cm .bbtn{width:24px;height:24px;border-radius:6px;background:var(--chip);border:1px solid var(--line);color:var(--muted);font-family:'Space Mono',monospace;font-weight:700;cursor:pointer;font-size:13px;line-height:1}
-  .cm .bbtn:hover{color:var(--ink);border-color:var(--soft)}
-  .cm .bval{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--inf);min-width:22px;text-align:center}
-  .cm .act{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:7px;padding:7px 11px;cursor:pointer;border:1px solid}
-  .cm .act.bid{color:#fff;background:var(--indigo);border-color:var(--indigo)}
-  .cm .act.bid:hover{filter:brightness(1.08)}
-  .cm .act.cancel{color:var(--muted);background:var(--surface);border-color:var(--line)}
-  .cm .act.cancel:hover{color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,transparent)}
-  .cm .act.play{width:calc(100% - 24px);margin:0 12px 12px;text-align:center;color:#fff;background:var(--indigo);border-color:var(--indigo);padding:9px 0}
-  .cm .act.play:hover:not(:disabled){filter:brightness(1.08)}
-  .cm .handbtns{display:flex;gap:8px;padding:0 12px 12px}
-  .cm .handbtns .act{flex:1;width:auto;margin:0;text-align:center;padding:9px 0}
-  .cm .act.disc{color:var(--muted);background:var(--surface);border-color:var(--line)}
-  .cm .act.disc:hover:not(:disabled){color:var(--inf);border-color:color-mix(in srgb,var(--inf) 45%,transparent)}
-  .cm .act:disabled{opacity:.55;cursor:not-allowed;filter:none}
-  .cm .handbtns .tgtlbl{flex-basis:100%;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:2px 0}
-  .cm .act.tgt{color:#fff;background:var(--indigo);border-color:var(--indigo)}
-  .cm .act.tgt:hover:not(:disabled){filter:brightness(1.08)}
-  .cm .act.tgtx{color:var(--muted);background:var(--surface);border-color:var(--line);flex:0 0 auto;padding:9px 12px}
-  .cm .handbtns:has(.tgt){flex-wrap:wrap}
-  .hexov{position:fixed;inset:0;z-index:1000;background:rgba(10,10,14,.72);display:flex;align-items:center;justify-content:center;padding:20px}
-  .hexbox{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;width:min(400px,94vw);max-height:92vh;overflow:auto}
-  .hexhd{font-size:13px;color:var(--muted);margin-bottom:12px}
-  .hexhd b{color:var(--ink)}
-  .hexmapwrap{position:relative;width:100%;height:300px;border-radius:12px;overflow:hidden;border:1px solid var(--line);cursor:crosshair;background:#bcd9e6}
-  .hexcv{width:100%;height:100%;display:block}
-  .hexhint{position:absolute;left:8px;bottom:8px;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;color:#15151b;background:rgba(255,255,255,.72);padding:3px 7px;border-radius:6px;pointer-events:none}
-  .hexsel{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin:11px 0}.hexsel b{color:var(--ink)}
-  .hexstats:empty{display:none}
-  .hexstats{margin:0 0 11px}
-  .hxs-top{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);padding-bottom:6px;border-bottom:1px solid var(--line)}.hxs-top b{color:var(--ink)}
-  .hxs-rows{display:flex;flex-direction:column;gap:2px;margin-top:6px}
-  .hxs-row{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;font-size:12px;padding:4px 6px;border-radius:6px}
-  .hxs-row.me{background:color-mix(in srgb,var(--indigo) 12%,transparent)}
-  .hxs-n{font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .hxs-pop{font-variant-numeric:tabular-nums;color:var(--ink)}
-  .hxs-d{font-style:normal;font-size:10px;margin-left:4px;font-variant-numeric:tabular-nums}.hxs-d.up{color:var(--green)}.hxs-d.dn{color:var(--red)}
-  .hxs-s{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--muted);white-space:nowrap}
-  .hexmode{display:flex;gap:8px;margin-bottom:9px}.hexmode .hxm{flex:1}
-  .hexriv{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}
-  .hexbtns{display:flex;gap:8px;margin-top:4px}.hexbtns .hexgo{flex:1;color:#fff;background:var(--indigo);border-color:var(--indigo)}.hexbtns .hexx{flex:0 0 auto}
-  .hexov .act{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:8px;padding:9px 11px;cursor:pointer;border:1px solid var(--line);background:var(--field);color:var(--muted)}
-  .hexov .act.on{color:#fff;background:var(--indigo);border-color:var(--indigo)}
-  .hexov .act:disabled{opacity:.5;cursor:not-allowed}
-  .corplbl{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin:10px 0 5px}
-  .corplist{display:flex;flex-direction:column;gap:5px;max-height:180px;overflow:auto}
-  .corprow{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-transform:none!important;letter-spacing:0!important;text-align:left;width:100%}
-  .corprow .cr-n{font-size:12px;font-weight:700;color:var(--ink)}
-  .corprow.on .cr-n{color:#fff}
-  .corprow .cr-m{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft)}
-  .corprow.on .cr-m{color:rgba(255,255,255,.8)}
-
-  .cm .empty{background:var(--surface);border:1px dashed var(--line);border-radius:13px;padding:26px 20px;text-align:center;color:var(--soft);font-size:13px}
-  .cm .empty b{display:block;color:var(--muted);font-size:14px;margin-bottom:5px}
 </style>
 </head>
 <body>
@@ -170,7 +75,7 @@
     <div class="phead">
       <span class="eye" id="eye">The Party</span>
       <h1>Home</h1>
-      <p>Your nation and the world at a glance — the card market and the cards in your hand. Each month you may play or discard one card, and bid on cards freely.</p>
+      <p>Your nation and the world at a glance — the timelines and any government decisions awaiting a call. Cards are claimed on the <a href="/play/theater/">Political Theater</a> page.</p>
     </div>
 
     <div class="cm">
@@ -191,17 +96,8 @@
         </div>
       </div>
 
-      <!-- action container -->
-      <div class="sect gap">This Month <span class="note" id="actNote"></span></div>
-      <div id="actions"></div>
-
-      <!-- market -->
-      <div class="sect gap">The Market <span class="note" id="marketNote"></span></div>
-      <div class="market" id="market"><div class="empty"><b>Loading…</b></div></div>
-
-      <!-- hand -->
-      <div class="sect gap">Your Hand <span class="note" id="handNote"></span></div>
-      <div class="hand" id="hand"></div>
+      <!-- The sealed-bid market + hand were retired with the auction; cards are now claimed on the
+           Political Theater page (/play/theater/). Timelines + government decisions remain here. -->
     </div>
   </main>
 </div>
@@ -219,448 +115,13 @@
   mountSidenav();
 
   var PARTY = null, NATION_ID = null, NATION_NAME = '', BUSY = false;
-  var draft = {};                 // per-market-card intended bid amount
   var CUR_TICK = 1;               // current month, for the eyebrow + the one-action-per-tick gate
-  var BIDS = {};                  // my live bids this tick: deck_card_id → amount (the "bidding this month" marker)
   var NATIONS = {};               // nation id → name, for the world timeline tags
   var NATION_FLAGS = {};          // nation id → flag URL, for the world timeline tags + inline mentions
   var PARTY_NATION = {};          // party id → nation id, to attribute broadcast events to their AUTHOR nation
-  var NATION_FLAG = '';           // this nation's flag URL, stamped on its nation-specific cards
   // Party micro-actions stay off the World Timeline — it's for nation-scale news.
   var LOCAL_KINDS = { rally:1, fundraise:1, attack:1, adblitz:1, recruit:1, party:1 };
 
-  // Every party acts every month (schema/187). Two INDEPENDENT actions per month:
-  //   • ONE terminal card choice — play a card (banks its Action Points) OR discard a card (+3 Influence,
-  //     back to the deck). Play and discard are mutually exclusive with each other; both stamp
-  //     turn_acted_tick, so whichever you pick first bars the other for the month.
-  //   • bid on cards — DECOUPLED: always available (repeatable, up to the hand cap), whether or not you
-  //     also played/discarded this month.
-  function hasActed() { return PARTY && Number(PARTY.turn_acted_tick) === Number(CUR_TICK); }   // played/discarded this month
-  function bidCount() { return Object.keys(BIDS).length; }                                       // live bids this month
-  function canCardAct() { return !hasActed(); }   // play/discard barred only once you've played/discarded this month
-  function apLeft() { return (PARTY && Number(PARTY.action_points)) || 0; }
-
-  // Card kind → label + colour class, from the stored definition (one source: the Card Creator's fields).
-  function kindOf(def) {
-    if (def.lim === 'nation') return { label: 'Nation · ' + (NATION_NAME || 'this nation'), cls: 'nat' };
-    if (def.type === 'generic') return { label: 'Generic', cls: 'gen' };
-    if (def.type === 'ar') return { label: 'Stance · Autocratic / Reform', cls: 'auto' };
-    return { label: 'Stance · Democratic / Revolutionary', cls: 'rev' };
-  }
-  // A card's requirement line — informational only (there's no party stance to gate on yet).
-  function reqOf(def) {
-    if (def.type === 'ar') return 'A' + (def.reqD || 1) + '+ / Ref' + (def.reqR || 1) + '+';
-    if (def.type === 'dr') return 'D' + (def.reqD || 1) + '+ / R' + (def.reqR || 1) + '+';
-    return '';
-  }
-  function cardHead(def) {
-    var k = kindOf(def);
-    var req = reqOf(def);
-    var acts = Math.max(1, Math.min(6, Number(def.acts) || 1));   // Action Points this card grants on play
-    return '<div class="stripe ' + k.cls + '"></div>' +
-      (def.lim === 'nation' && NATION_FLAG ? '<img class="c-flag" src="' + esc(NATION_FLAG) + '" alt="">' : '') +
-      '<div class="c-body">' +
-      '<div class="c-kind ' + k.cls + '">' + esc(k.label) + '</div>' +
-      '<div class="c-name">' + esc(def.name || 'Untitled card') + '</div>' +
-      (req ? '<div class="c-req">' + esc(req) + '</div>' : '') +
-      '<div class="c-fx">' + (def.desc ? esc(def.desc) : '<span style="color:var(--soft)">No description.</span>') + '</div>' +
-      '<div class="c-ap">▶ <b>' + acts + '</b> AP on play</div>';
-  }
-
-  function renderMarket(cards, myBids) {
-    var el = document.getElementById('market');
-    // Flat 3-bid cap (server: schema/187), independent of the cards you already hold: you can chase up to
-    // three market cards at once. At three you can't bid on a NEW card until you cancel one (raising a bid
-    // you already hold is always allowed).
-    var full = Object.keys(myBids).length >= 3;
-    document.getElementById('marketNote').innerHTML = 'sealed bids · you have <span class="inf">⚡' + (PARTY.influence || 0) + '</span> · ' +
-      (full ? '<span class="inf">3 bids max</span> — cancel a bid to bid on another'
-       : 'highest bid wins at next month’s auction');
-    if (!cards.length) { el.innerHTML = '<div class="empty"><b>The market is quiet.</b>No cards are up for auction here yet.</div>'; return; }
-    el.innerHTML = cards.map(function (c) {
-      var def = c.definition || {};
-      var cost = Math.max(1, Number(def.cost) || 0);
-      var mine = myBids[c.id] || 0;                // sealed: only your own bid
-      var afford = (PARTY.influence || 0) + mine;  // raising refunds the old bid first, so it's spendable
-      if (draft[c.id] == null) draft[c.id] = Math.max(cost, mine);
-      var v = draft[c.id];
-      var noRoom = !mine && full;                  // a bid on a NEW card, but already at 3 bids
-      var bidDis = noRoom || v > afford;
-      var bidTitle = noRoom ? ' title="3 bids max — cancel a bid to bid on another"'
-        : (v > afford ? ' title="Not enough Influence"' : '');
-      return '<div class="cardc">' + cardHead(def) +
-        '<div class="c-cost">Base ⚡<b>' + cost + '</b></div></div>' +
-        '<div class="c-bid">' +
-          '<div class="bidtop">' +
-            '<span class="mybid">' + (mine ? 'Your bid <b>⚡' + mine + '</b>' : (noRoom ? '3 bids max' : 'No bid')) + '</span>' +
-            (mine ? '<button class="act cancel" data-cancel="' + c.id + '">Cancel</button>' : '') +
-          '</div>' +
-          '<div class="bidctrl">' +
-            '<button class="bbtn" data-dec="' + c.id + '">−</button>' +
-            '<span class="bval">' + v + '</span>' +
-            '<button class="bbtn" data-inc="' + c.id + '">+</button>' +
-            '<button class="act bid" data-bid="' + c.id + '"' + (bidDis ? ' disabled' : '') + bidTitle + '>' + (mine ? 'Raise' : 'Bid') + '</button>' +
-          '</div>' +
-        '</div></div>';
-    }).join('');
-
-    el.querySelectorAll('[data-dec]').forEach(function (b) { b.onclick = function () { var id = b.dataset.dec, cost = minBid(cards, id); draft[id] = Math.max(cost, (draft[id] || cost) - 1); refreshVal(id); }; });
-    el.querySelectorAll('[data-inc]').forEach(function (b) { b.onclick = function () { var id = b.dataset.inc, afford = (PARTY.influence || 0) + (myBids[id] || 0), next = (draft[id] || 0) + 1; if (next <= afford) { draft[id] = next; refreshVal(id); } }; });
-    el.querySelectorAll('[data-bid]').forEach(function (b) { b.onclick = function () { placeBid(b.dataset.bid, draft[b.dataset.bid]); }; });
-    el.querySelectorAll('[data-cancel]').forEach(function (b) { b.onclick = function () { cancelBid(b.dataset.cancel); }; });
-  }
-  function minBid(cards, id) { var c = cards.find(function (x) { return x.id === id; }); return Math.max(1, Number(c && c.definition && c.definition.cost) || 0); }
-  function refreshVal(id) { var el = document.querySelector('[data-bid="' + id + '"]'); if (el) el.closest('.bidctrl').querySelector('.bval').textContent = draft[id]; }
-
-  function renderHand(cards) {
-    var el = document.getElementById('hand');
-    var canAct = canCardAct();   // play/discard is this month's terminal choice — only before you've played/discarded
-    document.getElementById('handNote').innerHTML = cards.length + '/4 held · ' +
-      (hasActed() ? 'card played/discarded this month — you hold <span class="inf">' + apLeft() + ' AP</span>'
-       : '<span class="inf">your move</span> — play or discard a card');
-    if (!cards.length) { el.innerHTML = '<div class="empty"><b>Your hand is empty.</b>Win cards at auction to hold them here.</div>'; return; }
-    el.innerHTML = cards.map(function (c) {
-      var def = c.definition || {};
-      var acts = Math.max(1, Math.min(6, Number(def.acts) || 1));
-      return '<div class="cardc">' + cardHead(def) + '</div>' +
-        '<div class="handbtns">' +
-          '<button class="act play" data-play="' + c.id + '"' + (canAct ? '' : ' disabled') + '>Play · +' + acts + ' AP</button>' +
-          '<button class="act disc" data-disc="' + c.id + '"' + (canAct ? '' : ' disabled') + ' title="Discard for +3 Influence">Discard · +3⚡</button>' +
-        '</div></div>';
-    }).join('');
-    el.querySelectorAll('[data-play]').forEach(function (b) { b.onclick = function () { onPlay(b.dataset.play); }; });
-    el.querySelectorAll('[data-disc]').forEach(function (b) { b.onclick = function () { discardCard(b.dataset.disc); }; });
-  }
-
-  // Does this card fire an effect of one of these kinds on play? A generic card's every effect fires;
-  // a stance card only its 'both'-sided effects (176); choice/persistent cards never fire fx on play.
-  // The one predicate behind the play-time pickers: party target (party_gain/lose), hex (hex_pop/hex_el).
-  function cardFires(def, kinds) {
-    def = def || {};
-    if (def.mech === 'choice' || def.persistV === 'yes') return false;
-    var generic = def.type === 'generic';
-    return (Array.isArray(def.fx) ? def.fx : []).some(function (e) {
-      return kinds.indexOf(e.kind) >= 0 && (generic || (e.side || 'both') === 'both');
-    });
-  }
-  function hexAmount(def) {
-    var e = (Array.isArray(def && def.fx) ? def.fx : []).find(function (x) { return x.kind === 'hex_pop'; });
-    return Math.max(0, Number(e && e.p && e.p.x) || 0);
-  }
-
-  // Play a hand card: a hex_el card opens the election modal; a hex_pop card opens the boost/hit map
-  // picker; a party-target card swaps in a party picker; anything else plays straight through.
-  function onPlay(id) {
-    var card = (window.__hand || []).find(function (x) { return x.id === id; });
-    var def = card && card.definition;
-    if (card && cardFires(def, ['hex_el'])) { openHexElection(id, def); return; }
-    if (card && cardFires(def, ['hex_pop'])) { openHexPicker(id, def); return; }
-    if (card && cardFires(def, ['corp_grow', 'corp_shrink'])) { openCorpPicker(id, def, 'one'); return; }
-    if (card && cardFires(def, ['corp_acquire'])) { openCorpPicker(id, def, 'two'); return; }
-    if (!card || !cardFires(def, ['party_gain', 'party_lose'])) { playCard(id); return; }
-    var rivals = (window.__roster || []).filter(function (p) { return !PARTY || p.id !== PARTY.id; });
-    if (!rivals.length) { playCard(id); return; }   // no rival to hit → play untargeted
-    var row = document.querySelector('[data-play="' + id + '"]');
-    row = row && row.parentNode;
-    if (!row) { playCard(id); return; }
-    row.innerHTML = '<span class="tgtlbl">Target a party:</span>' +
-      rivals.map(function (p) { return '<button class="act tgt" data-tp="' + p.id + '">' + esc(p.abbreviation || p.name || '—') + '</button>'; }).join('') +
-      '<button class="act tgtx" data-tx="1">Cancel</button>';
-    row.querySelectorAll('[data-tp]').forEach(function (b) { b.onclick = function () { playCard(id, b.dataset.tp); }; });
-    var x = row.querySelector('[data-tx]'); if (x) x.onclick = function () { renderHand(window.__hand || []); };
-  }
-
-  // The nation's land hexes, fetched once and cached (includes population for the election modal).
-  async function loadHexes() {
-    if (!window.__hexes) {
-      try {
-        var res = await supabase.from('world_hexes').select('q, r, terrain, nation_id, name, population').eq('nation_id', NATION_ID);
-        window.__hexes = res.error ? [] : (res.data || []);
-      } catch (e) { window.__hexes = []; }
-    }
-    return (window.__hexes || []).filter(function (h) { return h.terrain === 'land'; });
-  }
-  // Paint the nation map into an overlay and wire click → onPick(hex) (own land only). Returns a
-  // repaint(sel) fn that redraws with a selection ring. Shared by the hex-pop and hex-election modals.
-  function wireHexMap(ov, land, onPick) {
-    var cv = ov.querySelector('.hexcv'), wrap = ov.querySelector('.hexmapwrap'), mapObj = null;
-    function paint(sel) { mapObj = drawNationMiniMap(cv, wrap, { hexes: land, natColor: {}, viewedId: NATION_ID, mode: 'nation', selected: sel }); }
-    requestAnimationFrame(function () { paint(null); });   // wait for the wrap to have layout
-    cv.onclick = function (e) {
-      if (!mapObj) return;
-      var rect = cv.getBoundingClientRect();
-      var h = mapObj.hexAt(e.clientX - rect.left, e.clientY - rect.top);
-      if (h && h.nation_id === NATION_ID) onPick(h);   // only your own land is selectable
-    };
-    return paint;
-  }
-
-  // Regional stats for the hex picker: national seats + population, every party's national popularity/
-  // seats, the card-driven per-hex bias, and any elected regional seats. Cached for the session.
-  async function loadHexStats() {
-    if (window.__hexStats) return window.__hexStats;
-    var s = { natSeats: 0, natPop: 0, parties: [], biasMap: {}, seatsByHex: {} };
-    try { var nr = await supabase.from('nations').select('legislature_seats').eq('id', NATION_ID).single(); s.natSeats = (nr.data && Number(nr.data.legislature_seats)) || 0; } catch (e) {}
-    try { var pr = await supabase.from('parties').select('id, name, abbreviation, popularity, seats').eq('nation_id', NATION_ID); s.parties = pr.data || []; } catch (e) {}
-    try {
-      var ids = s.parties.map(function (p) { return p.id; });
-      if (ids.length) {
-        var br = await supabase.from('party_hex_bias').select('party_id, q, r, bias').in('party_id', ids);
-        (br.error ? [] : (br.data || [])).forEach(function (row) { (s.biasMap[row.party_id] || (s.biasMap[row.party_id] = {}))[row.q + ',' + row.r] = Number(row.bias) || 0; });
-      }
-    } catch (e) {}
-    try {
-      var sr = await supabase.from('hex_seats').select('q, r, party_id, seats').eq('nation_id', NATION_ID);
-      (sr.error ? [] : (sr.data || [])).forEach(function (row) { (s.seatsByHex[row.q + ',' + row.r] || (s.seatsByHex[row.q + ',' + row.r] = {}))[row.party_id] = Number(row.seats) || 0; });
-    } catch (e) {}
-    var land = await loadHexes();
-    s.natPop = land.reduce(function (a, h) { return a + (Number(h.population) || 0); }, 0);
-    window.__hexStats = s;
-    return s;
-  }
-
-  // Render the selected hex's makeup: population, seats it elects, and every party's approval here (with
-  // its ± swing off national) + its seats here (the elected result, or a proportional projection).
-  function renderHexStats(el, h, stats) {
-    var key = h.q + ',' + h.r;
-    var seatsTot = hexSeats(stats.natSeats, Number(h.population) || 0, stats.natPop);
-    var elected = stats.seatsByHex[key];   // { pid: seats } when this hex has voted, else undefined
-    var mine = PARTY && PARTY.id;
-    var rows = stats.parties.map(function (p) {
-      var reg = regionalApproval(p, h.q, h.r, stats.biasMap);
-      return { p: p, reg: reg, delta: reg - (Number(p.popularity) || 0) };
-    }).sort(function (a, b) { return b.reg - a.reg; });
-    var sumReg = rows.reduce(function (a, x) { return a + x.reg; }, 0);
-    var seatOf = function (x) { return elected ? (elected[x.p.id] || 0) : (sumReg > 0 ? Math.round(seatsTot * x.reg / sumReg) : 0); };
-    el.innerHTML =
-      '<div class="hxs-top"><span>Population <b>' + fmtPop(h.population) + '</b></span>' +
-        '<span>Seats <b>' + seatsTot + '</b> · ' + (elected ? 'elected' : 'projected') + '</span></div>' +
-      '<div class="hxs-rows">' + rows.map(function (x) {
-        var d = (x.delta >= 0 ? '+' : '') + x.delta.toFixed(1);
-        var st = seatOf(x);
-        return '<div class="hxs-row' + (x.p.id === mine ? ' me' : '') + '">' +
-          '<span class="hxs-n">' + esc(x.p.abbreviation || x.p.name || '—') + (x.p.id === mine ? ' (you)' : '') + '</span>' +
-          '<span class="hxs-pop">' + x.reg.toFixed(1) + '% <i class="hxs-d ' + (x.delta >= 0 ? 'up' : 'dn') + '">' + d + '</i></span>' +
-          '<span class="hxs-s">' + st + ' seat' + (st === 1 ? '' : 's') + '</span></div>';
-      }).join('') + '</div>';
-  }
-
-  // Interactive hex picker for a hex_pop card: click a land hex, choose to boost your party (+X) or hit
-  // a rival (−X) there, then play. The server validates the hex again.
-  async function openHexPicker(id, def) {
-    var amt = hexAmount(def);
-    var land = await loadHexes();
-    if (!land.length) { alert('Your nation has no land hexes to target.'); return; }
-    var stats = await loadHexStats();
-    var rivals = (window.__roster || []).filter(function (p) { return !PARTY || p.id !== PARTY.id; });
-
-    var sel = null, mode = 'self', rival = rivals.length ? rivals[0].id : null;
-    var ov = document.createElement('div');
-    ov.className = 'hexov';
-    ov.innerHTML =
-      '<div class="hexbox">' +
-        '<div class="hexhd">Choose a hex — <b>' + esc(def.name || 'card') + '</b></div>' +
-        '<div class="hexmapwrap"><canvas class="hexcv"></canvas><div class="hexhint">Tap a land hex</div></div>' +
-        '<div class="hexsel" id="hexSel">No hex selected</div>' +
-        '<div class="hexstats" id="hexStats"></div>' +
-        '<div class="hexmode">' +
-          '<button class="act hxm on" data-m="self">Boost my party +' + amt + '</button>' +
-          (rivals.length ? '<button class="act hxm" data-m="rival">Hit a rival −' + amt + '</button>' : '') +
-        '</div>' +
-        '<div class="hexriv" id="hexRiv" style="display:none">' +
-          rivals.map(function (p) { return '<button class="act rv" data-r="' + p.id + '">' + esc(p.abbreviation || p.name || '—') + '</button>'; }).join('') +
-        '</div>' +
-        '<div class="hexbtns">' +
-          '<button class="act hexx" id="hexCancel">Cancel</button>' +
-          '<button class="act hexgo" id="hexGo" disabled>Play here</button>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(ov);
-
-    function updRiv() { ov.querySelectorAll('.rv').forEach(function (b) { b.classList.toggle('on', b.dataset.r === rival); }); }
-    function updGo() { ov.querySelector('#hexGo').disabled = !(sel && (mode === 'self' || rival)); }
-    var repaint = wireHexMap(ov, land, function (h) {
-      sel = { q: h.q, r: h.r };
-      ov.querySelector('#hexSel').innerHTML = 'Hex <b>' + h.q + ', ' + h.r + '</b>' + (h.name ? ' · ' + esc(h.name) : '');
-      renderHexStats(ov.querySelector('#hexStats'), h, stats);
-      repaint(sel); updGo();
-    });
-    ov.querySelectorAll('.hxm').forEach(function (b) {
-      b.onclick = function () {
-        mode = b.dataset.m;
-        ov.querySelectorAll('.hxm').forEach(function (x) { x.classList.toggle('on', x === b); });
-        ov.querySelector('#hexRiv').style.display = (mode === 'rival') ? '' : 'none';
-        updRiv(); updGo();
-      };
-    });
-    ov.querySelectorAll('.rv').forEach(function (b) { b.onclick = function () { rival = b.dataset.r; updRiv(); updGo(); }; });
-    updRiv();
-    ov.querySelector('#hexCancel').onclick = function () { ov.remove(); };
-    ov.querySelector('#hexGo').onclick = function () {
-      if (!sel) return;
-      var tgt = (mode === 'rival') ? rival : null;
-      ov.remove();
-      playCard(id, tgt, sel.q, sel.r);
-    };
-  }
-
-  // Interactive election modal for a hex_el card: the map of your nation; tap a hex to see its seat
-  // count and current makeup (elected result, or the population projection if it hasn't voted) plus its
-  // 12-tick cooldown; hold the election in a hex that's off cooldown and big enough for a seat. The
-  // server reapportions the hex's seats by regional standing (181) and re-enforces the cooldown.
-  async function openHexElection(id, def) {
-    var land = await loadHexes();
-    if (!land.length) { alert('Your nation has no land hexes.'); return; }
-    var natSeats = 0, seatsByHex = {}, cdByHex = {};
-    try { var nr = await supabase.from('nations').select('legislature_seats').eq('id', NATION_ID).single(); natSeats = (nr.data && Number(nr.data.legislature_seats)) || 0; } catch (e) {}
-    try {
-      var hr = await supabase.from('hex_seats').select('q, r, party_id, seats, elected_tick').eq('nation_id', NATION_ID);
-      (hr.data || []).forEach(function (row) { var k = row.q + ',' + row.r; (seatsByHex[k] = seatsByHex[k] || []).push(row); cdByHex[k] = Math.max(cdByHex[k] || 0, Number(row.elected_tick) || 0); });
-    } catch (e) {}
-    var natPop = land.reduce(function (s, h) { return s + (Number(h.population) || 0); }, 0);
-    var hexSeatCount = function (h) { return hexSeats(natSeats, Number(h.population) || 0, natPop); };
-    var cooldownLeft = function (h) { var last = cdByHex[h.q + ',' + h.r]; return last ? Math.max(0, last + 12 - (Number(CUR_TICK) || 0)) : 0; };
-
-    var sel = null;
-    var ov = document.createElement('div');
-    ov.className = 'hexov';
-    ov.innerHTML =
-      '<div class="hexbox">' +
-        '<div class="hexhd">Hold an election — <b>' + esc(def.name || 'card') + '</b></div>' +
-        '<div class="hexmapwrap"><canvas class="hexcv"></canvas><div class="hexhint">Tap a hex to see its seats</div></div>' +
-        '<div class="hexsel" id="hexSel">Tap a hex to see its current seats</div>' +
-        '<div class="hexbtns">' +
-          '<button class="act hexx" id="hexCancel">Cancel</button>' +
-          '<button class="act hexgo" id="hexGo" disabled>Hold election here</button>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(ov);
-
-    var repaint = wireHexMap(ov, land, function (h) {
-      sel = { q: h.q, r: h.r };
-      var cd = cooldownLeft(h), cnt = hexSeatCount(h), k = h.q + ',' + h.r;
-      var rows = (seatsByHex[k] || []).slice().sort(function (a, b) { return b.seats - a.seats; });
-      var makeup = rows.length
-        ? rows.map(function (rw) { return esc(partyLabel(rw.party_id)) + ' ' + rw.seats; }).join(' · ')
-        : (cnt > 0 ? 'no election held yet — projected split' : 'too small for a seat');
-      ov.querySelector('#hexSel').innerHTML =
-        '<b>' + (h.name ? esc(h.name) + ' ' : '') + '(' + h.q + ',' + h.r + ')</b> · ' + cnt + ' seat' + (cnt === 1 ? '' : 's') +
-        '<br>' + makeup + (cd > 0 ? '<br><span class="inf">on cooldown — ' + cd + ' tick' + (cd === 1 ? '' : 's') + ' left</span>' : '');
-      repaint(sel);
-      ov.querySelector('#hexGo').disabled = !(cnt > 0 && cd === 0);
-    });
-    ov.querySelector('#hexCancel').onclick = function () { ov.remove(); };
-    ov.querySelector('#hexGo').onclick = function () { if (!sel) return; ov.remove(); playCard(id, null, sel.q, sel.r); };
-  }
-
-  // Corporation picker for a corp_grow / corp_shrink card ('one' firm, your nation only) or a corp_acquire
-  // card ('two' — an acquirer then a target, any nation). Reads placed firms straight from the table
-  // (RLS: corp_select_all). For acquire the client previews the ≥2× cash rule; the server (schema/185)
-  // re-checks it and rolls the play back with a clear message if it fails.
-  async function openCorpPicker(id, def, mode) {
-    var res;
-    try { res = await supabase.from('corporations').select('id, name, nation_id, category, cash, type').eq('status', 'placed').order('name'); }
-    catch (e) { res = { data: [] }; }
-    var all = (res && res.data) || [];
-    var mine = all.filter(function (c) { return c.nation_id === NATION_ID; });
-    var pool = (mode === 'two') ? all : mine;
-    if (!pool.length) { alert(mode === 'two' ? 'There are no corporations to acquire.' : 'You have no corporations to affect.'); return; }
-
-    var acq = null, tgt = null;   // acq = the firm (grow/shrink) or acquirer; tgt = acquisition target
-    var ov = document.createElement('div'); ov.className = 'hexov';
-    var firmName = function (cid) { var c = pool.find(function (x) { return x.id === cid; }); return c ? c.name : '—'; };
-    var firmCash = function (cid) { var c = pool.find(function (x) { return x.id === cid; }); return c ? Number(c.cash) || 0 : 0; };
-    function row(c) {
-      var nat = c.nation_id === NATION_ID ? 'yours' : (NATIONS[c.nation_id] || c.nation_id);
-      return '<button class="act corprow" data-c="' + c.id + '">' +
-        '<span class="cr-n">' + esc(c.name) + '</span>' +
-        '<span class="cr-m">' + esc(c.category) + ' · ' + esc(nat) + ' · $' + (Number(c.cash) || 0).toFixed(1) + '</span></button>';
-    }
-    var hd = mode === 'two' ? 'Choose the acquirer, then its target' : 'Choose one of your corporations';
-    ov.innerHTML =
-      '<div class="hexbox">' +
-        '<div class="hexhd">' + esc(hd) + ' — <b>' + esc(def.name || 'card') + '</b></div>' +
-        (mode === 'two' ? '<div class="corplbl" id="corpL1">Acquirer</div>' : '') +
-        '<div class="corplist" id="corpList1">' + pool.map(function (c) { return row(c); }).join('') + '</div>' +
-        (mode === 'two' ? '<div class="corplbl" id="corpL2">Target</div><div class="corplist" id="corpList2"></div>' : '') +
-        '<div class="hexsel" id="corpSel">Nothing selected</div>' +
-        '<div class="hexbtns">' +
-          '<button class="act hexx" id="corpCancel">Cancel</button>' +
-          '<button class="act hexgo" id="corpGo" disabled>Play</button>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(ov);
-
-    function paintTargets() {   // acquire: list every OTHER firm as a possible target
-      var l2 = ov.querySelector('#corpList2'); if (!l2) return;
-      l2.innerHTML = pool.filter(function (c) { return c.id !== acq; }).map(function (c) { return row(c); }).join('');
-      l2.querySelectorAll('.corprow').forEach(function (b) { b.onclick = function () { tgt = b.dataset.c; syncSel(); }; });
-    }
-    function syncSel() {
-      ov.querySelectorAll('#corpList1 .corprow').forEach(function (b) { b.classList.toggle('on', b.dataset.c === acq); });
-      ov.querySelectorAll('#corpList2 .corprow').forEach(function (b) { b.classList.toggle('on', b.dataset.c === tgt); });
-      var go = ov.querySelector('#corpGo'), sel = ov.querySelector('#corpSel');
-      if (mode === 'two') {
-        if (acq && tgt) {
-          var enough = firmCash(acq) >= 2 * firmCash(tgt);
-          sel.innerHTML = '<b>' + esc(firmName(acq)) + '</b> acquires <b>' + esc(firmName(tgt)) + '</b>' +
-            (enough ? '' : '<br><span class="inf">⚠ ' + esc(firmName(acq)) + ' needs ≥2× the target’s cash ($' + (2 * firmCash(tgt)).toFixed(1) + ') — it holds $' + firmCash(acq).toFixed(1) + '</span>');
-          go.disabled = !enough;
-        } else { sel.innerHTML = acq ? 'Now choose a target to acquire' : 'Choose the acquiring corporation'; go.disabled = true; }
-      } else {
-        sel.innerHTML = acq ? 'Selected <b>' + esc(firmName(acq)) + '</b>' : 'Nothing selected';
-        go.disabled = !acq;
-      }
-    }
-    ov.querySelectorAll('#corpList1 .corprow').forEach(function (b) {
-      b.onclick = function () { acq = b.dataset.c; if (mode === 'two') { tgt = null; paintTargets(); } syncSel(); };
-    });
-    ov.querySelector('#corpCancel').onclick = function () { ov.remove(); };
-    ov.querySelector('#corpGo').onclick = function () {
-      if (!acq || (mode === 'two' && !tgt)) return;
-      ov.remove();
-      playCard(id, null, null, null, acq, (mode === 'two' ? tgt : null));
-    };
-  }
-
-  // Jump to a section (the market to bid, the hand to play/discard).
-  function goTo(id) { var e = document.getElementById(id); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-
-  // The month's choice: ALWAYS the same three buttons — Bid / Play / Discard — one per tick. Each routes
-  // to where you carry it out (the Market for bids, your Hand for play/discard) and reflects what's still
-  // open: Bid is highlighted while you're bidding; Play/Discard lock while you hold bids (cancel them to
-  // free the choice); all three lock once you've played or discarded this month.
-  function renderActions() {
-    var el = document.getElementById('actions'), note = document.getElementById('actNote');
-    var ap = apLeft();
-    var acted = hasActed();        // played or discarded this month — the choice is spent
-    var bidding = bidCount() > 0;  // committed to bidding this month
-    var canCard = canCardAct();    // play/discard availability — the one predicate renderHand also reads
-
-    var bits = [];
-    if (acted) bits.push('card played/discarded');
-    if (bidding) bits.push(bidCount() + ' bid' + (bidCount() > 1 ? 's' : '') + ' live');
-    note.innerHTML = bits.length ? '<span class="inf">' + bits.join(' · ') + '</span>' : 'your move';
-    var status = acted
-      ? 'You’ve played or discarded a card this month — you can still <b>bid</b>. Spend Action Points on moves anytime, each costs <b>1 AP</b>.'
-      : 'Each month you may <b>play or discard one card</b>, and <b>bid</b> on cards freely.';
-    var cardTitle = acted ? 'You’ve already played or discarded a card this month' : '';
-
-    function opt(id, name, desc, dis, on, title) {
-      return '<button class="actopt' + (on ? ' on' : '') + '" id="' + id + '"' + (dis ? ' disabled' : '') +
-        (title ? ' title="' + title + '"' : '') + '><div class="an">' + name + '</div><div class="ad">' + desc + '</div></button>';
-    }
-    el.innerHTML = '<div class="actbox"><div class="actbar"><span class="apbadge">▶ ' + ap + ' AP</span>' +
-      '<span class="actstat">' + status + '</span></div>' +
-      '<div class="actrow">' +
-        opt('optBid', 'Bid on a Card', 'Sealed bids in The Market · win at next month’s auction', false, bidding, '') +
-        opt('optPlay', 'Play a Card', 'Play a hand card · banks its Action Points', !canCard, false, cardTitle) +
-        opt('optDisc', 'Discard a Card', '+3 Influence · back to the nation’s deck', !canCard, false, cardTitle) +
-      '</div></div>';
-    var b = document.getElementById('optBid'); if (b) b.onclick = function () { goTo('market'); };
-    var p = document.getElementById('optPlay'); if (p) p.onclick = function () { goTo('hand'); };
-    var d = document.getElementById('optDisc'); if (d) d.onclick = function () { goTo('hand'); };
-  }
 
   // Pending Government Choice decisions for the nation. The resolver gets clickable options; everyone
   // else sees who it's waiting on. Effects fire server-side when the resolver picks (card_decide).
@@ -761,55 +222,38 @@
     }).join('');
   }
 
-  // ---- actions (each locks BUSY, then reloads everything) ----
-  async function placeBid(id, amount) { await run(function () { return supabase.rpc('card_bid', { p_deck_card: id, p_amount: amount }); }); }
-  async function cancelBid(id) { await run(function () { return supabase.rpc('card_bid_cancel', { p_deck_card: id }); }); }
-  async function playCard(id, target, q, r, corp, corp2) { await run(function () { return supabase.rpc('card_play', { p_deck_card: id, p_target: target || null, p_hex_q: (q == null ? null : q), p_hex_r: (r == null ? null : r), p_corp: corp || null, p_corp2: corp2 || null }); }); }
-  async function discardCard(id) { if (!confirm('Return this card to the deck for +3 Influence? It leaves your hand.')) return; await run(function () { return supabase.rpc('card_discard', { p_deck_card: id }); }); }
+  // ---- the one remaining action: resolving a Government Decision (locks BUSY, then reloads) ----
   async function decideCard(id, opt, nation) { await run(function () { return supabase.rpc('card_decide', { p_decision: id, p_option: opt, p_nation: nation || null }); }); }
   async function run(fn) {
     if (BUSY) return; BUSY = true; setDisabled(true);
     try {
       const { error } = await fn();
       if (error) throw error;
-      draft = {};            // clear drafts so re-render reseeds from the new bids
       await loadAll();
     } catch (e) {
       alert((e && e.message) || 'That action failed.');
     } finally { BUSY = false; setDisabled(false); }
   }
-  function setDisabled(on) { document.querySelectorAll('.cm .act, .cm .bbtn, .cm .actopt, .cm button.decopt').forEach(function (b) { b.disabled = on; }); }
+  function setDisabled(on) { document.querySelectorAll('.cm button.decopt').forEach(function (b) { b.disabled = on; }); }
 
   function setEye() {
     document.getElementById('eye').innerHTML = esc(NATION_NAME) + ' · ' + esc(tickToDate(CUR_TICK));
   }
 
   async function loadAll() {
-    // Refresh the party (influence changes with bids/plays), then market / hand / timelines.
+    // Refresh the party (influence still moves via other actions), then decisions + timelines. The card
+    // market + hand were retired with the auction — cards are claimed on /play/theater/ now.
     try {
       const { data: p } = await supabase.from('parties').select('id, name, archetype, nation_id, influence, action_points, turn_acted_tick').eq('user_id', PARTY.user_id).single();
       if (p) { PARTY = Object.assign(PARTY, p); setTopbarActions(PARTY.influence); }
     } catch (e) { /* keep the last known party */ }
 
-    var roster = [], market = [], hand = [], bids = {}, events = [], world = [], decisions = [];
+    var roster = [], events = [], world = [], decisions = [];
     try {
       const { data } = await supabase.from('parties').select('id, name, abbreviation, archetype, color').eq('nation_id', NATION_ID).order('name', { ascending: true }).order('id', { ascending: true });
       roster = data || [];
     } catch (e) {}
     window.__roster = roster;
-    try {
-      const { data } = await supabase.from('deck_cards').select('id, cards(definition)').eq('nation_id', NATION_ID).eq('status', 'on_block');
-      market = (data || []).map(function (r) { return { id: r.id, definition: (r.cards && r.cards.definition) || {} }; });
-    } catch (e) {}
-    try {
-      const { data } = await supabase.from('card_bids').select('deck_card_id, amount').eq('party_id', PARTY.id);   // RLS returns only mine anyway
-      (data || []).forEach(function (b) { bids[b.deck_card_id] = b.amount; });
-    } catch (e) {}
-    try {
-      const { data } = await supabase.from('deck_cards').select('id, cards(definition)').eq('party_id', PARTY.id).eq('status', 'in_hand');
-      hand = (data || []).map(function (r) { return { id: r.id, definition: (r.cards && r.cards.definition) || {} }; });
-      window.__hand = hand;   // renderHand's target picker reads definitions back from here
-    } catch (e) {}
     try {
       const { data } = await supabase.from('events').select('kind, body, game_date, created_at').eq('nation_id', NATION_ID).order('created_at', { ascending: false }).limit(25);
       events = data || [];
@@ -840,12 +284,8 @@
       decisions = q.data || [];
     } catch (e) {}
 
-    BIDS = bids;   // live bids drive the "bidding this month" gate (renderActions/renderHand/renderMarket)
     setEye();
-    renderActions();
     renderDecisions(decisions);
-    renderMarket(market, bids);
-    renderHand(hand);
     renderTimeline('timeline', events, false);
     renderTimeline('worldline', world, true);
   }
@@ -876,14 +316,13 @@
       } catch (e) {}
       const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', NATION_ID).single();
       NATION_NAME = (nation && nation.name) || NATIONS[NATION_ID] || NATION_ID;
-      NATION_FLAG = (nation && nation.flag) || '';   // a nation-specific card in this market is always this nation's
       document.getElementById('tlNat').textContent = NATION_NAME;
       document.getElementById('pname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + NATION_NAME;
       if (nation && nation.flag) { const f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
       await loadAll();
     } catch (e) {
-      document.getElementById('market').innerHTML = '<div class="err">Couldn’t load Home. Refresh to try again.</div>';
+      var tl = document.getElementById('timeline'); if (tl) tl.innerHTML = '<div class="err">Couldn’t load Home. Refresh to try again.</div>';
     }
   })();
 </script>

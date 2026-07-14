@@ -455,16 +455,13 @@ begin
   -- close — a fed nation grows +1M, each unmet demand drops its stat, then the flags reset.
   begin perform public._resolve_economy_demands(v_tick);
   exception when others then raise warning 'tick %: economy demands failed — %', v_tick, sqlerrm; end;
-  -- Card auctions (schema/172): every tick, each nation's sealed-bid auctions resolve — the top bid on
-  -- each on-block card wins it into that party's hand, losing bids are refunded — then the block is
-  -- topped back up to (parties + 1) from the deck.
-  begin perform public._resolve_card_auctions(v_tick);
-  exception when others then raise warning 'tick %: card auctions failed — %', v_tick, sqlerrm; end;
-  -- Turn rotation (schema/173): after the auction hands out cards, advance each nation's turn cursor
-  -- by one party (the next slot by turn_seq, wrapping). This is the new month's active party — whose
-  -- turn it now is, and the only party that may play a card until the next tick.
-  begin perform public._advance_turns();
-  exception when others then raise warning 'tick %: turn rotation failed — %', v_tick, sqlerrm; end;
+  -- Card block upkeep (schema/208): the sealed-bid auction is retired — the COIN claim loop (schema/207)
+  -- is the sole card mechanic — so each tick simply keeps every nation's on-block market topped up to
+  -- (active parties + 1) from the deck, ready to be claimed.
+  begin perform public._refill_all_card_blocks(v_tick);
+  exception when others then raise warning 'tick %: card block upkeep failed — %', v_tick, sqlerrm; end;
+  -- (Turn rotation retired with the auction — every party claims every tick now, so there is no cursor
+  --  to advance. _advance_turns and the turn state were dropped in schema/209.)
   -- Every tick: the nation's Budget Balance moves Public Debt by the annual balance / 12 — a surplus
   -- pays it down, a deficit adds to it (symmetric) — _apply_budget_balance (schema/152).
   begin perform public._apply_budget_balance(v_tick);
@@ -568,6 +565,10 @@ begin
   -- allocated seats. Isolated — a failure warns and never aborts the tick.
   begin perform public._resolve_coalitions(v_tick);
   exception when others then raise warning 'tick %: coalition resolution failed — %', v_tick, sqlerrm; end;
+  -- COIN card claims (schema/207): resolve each nation's claimed Active Cards in Tempo order — fire the
+  -- events, bank AP, spend Tempo, cycle used cards. Isolated — a failure warns and never aborts the tick.
+  begin perform public._resolve_card_claims(v_tick);
+  exception when others then raise warning 'tick %: card-claim resolution failed — %', v_tick, sqlerrm; end;
   -- Auto-apply any triggered National Modifier: a modifier with start conditions "fires off"
   -- on every non-dormant nation that now meets them all (schema/70). Runs before the lift so a
   -- nation that both qualifies and has met the end conditions ends up without it.

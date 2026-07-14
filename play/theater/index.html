@@ -72,6 +72,15 @@
   .claimrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
   .claimchip{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;border:1px solid var(--line);border-radius:7px;padding:5px 8px;color:var(--muted)}
   .claimchip b{color:var(--ink)}
+  /* interactive claim buttons */
+  .cbtn{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.04em;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--surface);color:var(--ink);cursor:pointer}
+  .cbtn:hover:not(:disabled){border-color:var(--indigo)}
+  .cbtn.on{background:var(--indigo);color:#fff;border-color:var(--indigo)}
+  .cbtn:disabled{opacity:.5;cursor:default}
+  .cothers{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);margin-top:7px}
+  .passbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+  .passbar .lbl{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;color:var(--soft)}
+  .passbar .cbtn.on{background:var(--green);border-color:var(--green);color:#fff}
   .upgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
   .ucard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 13px;opacity:.92}
   .ucard__meta{display:flex;justify-content:space-between;align-items:center;gap:6px}
@@ -90,7 +99,7 @@
       <span class="eye" id="eye">Political Theater</span>
       <h1>The Card Table</h1>
       <p>The month's play, in order — your nation's timeline and the world's, the tempo of who acts first, and the cards on the table now and next.</p>
-      <div class="pvbar"><b>Preview.</b> The timelines, cards, and the <b>Tempo Track</b> order (each party's real, randomly-assigned Tempo standing) are all live. The four claim actions below still describe the planned model — claiming a card isn't wired yet. That's the next stage.</div>
+      <div class="pvbar"><b>Claims are live.</b> Pick an action on an Active Card (or take the Pass) — it's recorded now and <b>resolves at the next tick</b> in Tempo order, spending Tempo and banking AP. Today's bid/play/discard still runs alongside this while we trial it.</div>
     </div>
 
     <!-- Timelines -->
@@ -121,7 +130,8 @@
 
     <!-- Active cards -->
     <div class="sec">
-      <div class="sec__h">On the table now</div>
+      <div class="sec__h">On the table now — claim resolves at the next tick</div>
+      <div class="passbar" id="passbar"></div>
       <div class="cards2" id="activeCards"><div class="empty">Loading cards…</div></div>
     </div>
 
@@ -193,16 +203,24 @@
     if (def.type === 'ar' || def.type === 'dr') return { label: 'Stance', cls: '' };
     return { label: 'Card', cls: '' };
   }
-  function cardAP(def) { return Math.max(1, Math.min(6, Number(def.acts) || 1)); }
+  function cardAP(def) { return Math.max(1, Math.min(10, Number(def.acts) || 1)); }   // 1–10, matching the Card Creator + the AP the resolver actually banks
   function cardCost(def) { return Math.max(1, Number(def.cost) || 0); }
   function stripColor(def) { return def.lim === 'nation' ? 'var(--indigo)' : (def.type === 'ar' || def.type === 'dr' ? 'var(--amber,#E0820E)' : 'var(--soft)'); }
 
-  function renderActive(cards, nationName, nationFlag) {
+  // Active Cards, each with live claim buttons. `active` is the (≤2) Active Cards; `claims` is every
+  // party's claim this turn (for showing who's on what); `mine` is the caller's claim ({deck_card_id, action}).
+  function renderActive(active, nationName, nationFlag, claims, mine, abbr) {
     var box = document.getElementById('activeCards');
-    if (!cards.length) { box.innerHTML = '<div class="empty">The market is empty this turn — no cards on the table.</div>'; return; }
-    box.innerHTML = cards.slice(0, 2).map(function (c) {
+    if (!active.length) { box.innerHTML = '<div class="empty">The market is empty this turn — no cards on the table.</div>'; return; }
+    function btn(cardId, action, label) {
+      var on = mine && mine.action === action && String(mine.deck_card_id) === String(cardId);
+      return '<button class="cbtn' + (on ? ' on' : '') + '" data-card="' + esc(cardId) + '" data-action="' + action + '"' + (BUSY ? ' disabled' : '') + '>' + label + '</button>';
+    }
+    box.innerHTML = active.map(function (c) {
       var def = c.definition || {}, k = cardKind(def, nationName), ap = cardAP(def);
       var flag = (def.lim === 'nation' && nationFlag) ? '<img class="bcard__flag" src="' + esc(nationFlag) + '" alt="">' : '';
+      var others = (claims || []).filter(function (x) { return String(x.deck_card_id) === String(c.id) && (!mine || x.party_id !== mine.party_id); })
+        .map(function (x) { return esc((abbr[x.party_id] || '?')) + '·' + x.action.toUpperCase(); });
       return '<div class="bcard"><div class="bcard__strip" style="background:' + stripColor(def) + '"></div>' +
         '<div class="bcard__body">' +
         '<div class="bcard__meta"><span class="ckind ' + k.cls + '">' + esc(k.label) + '</span>' +
@@ -210,13 +228,17 @@
         '<div class="bcard__title">' + flag + '<div class="bcard__name">' + esc(def.name || 'Untitled card') + '</div></div>' +
         '<div class="bcard__flavor">' + (def.desc ? esc(def.desc) : '<span style="color:var(--soft)">No description.</span>') + '</div>' +
         '<div class="bcard__cost">Base bid ⚡<b>' + cardCost(def) + '</b> · <b>' + ap + '</b> AP on play</div>' +
-        '<div class="claimrow">' +
-          '<span class="claimchip"><b>★ Event</b> −5</span>' +
-          '<span class="claimchip"><b>⚡ AP</b> −3</span>' +
-          '<span class="claimchip"><b>✦ Both</b> → last</span>' +
-          '<span class="claimchip"><b>Pass</b> → first</span>' +
-        '</div></div></div>';
+        '<div class="claimrow">' + btn(c.id, 'event', '★ Event −5') + btn(c.id, 'ap', '⚡ AP −3') + btn(c.id, 'both', '✦ Both → last') + '</div>' +
+        (others.length ? '<div class="cothers">also claimed: ' + others.join(' · ') + '</div>' : '') +
+        '</div></div>';
     }).join('');
+  }
+
+  function renderPassbar(mine) {
+    var on = mine && mine.action === 'pass';
+    document.getElementById('passbar').innerHTML =
+      '<span class="lbl">Or skip the cards:</span>' +
+      '<button class="cbtn' + (on ? ' on' : '') + '" data-card="" data-action="pass"' + (BUSY ? ' disabled' : '') + '>🕊 Pass → first next turn</button>';
   }
 
   function renderUpcoming(cards) {
@@ -232,6 +254,66 @@
     }).join('');
   }
 
+  var BUSY = false, PARTY = null, NATION_NAME = '', NATION_FLAG = null;
+
+  // Everything that changes when a claim is made — Tempo order, the Active/Upcoming cards, and the
+  // claim state — reloads together so the board always reflects the latest.
+  async function reloadBoard() {
+    var abbr = {};
+    try {
+      const { data: parties } = await supabase.from('parties')
+        .select('id, name, abbreviation, archetype, color, seats, tempo').eq('nation_id', PARTY.nation_id);
+      (parties || []).forEach(function (p) { abbr[p.id] = p.abbreviation || p.name; });
+      renderTempo(parties || [], PARTY.id);
+    } catch (e) { document.getElementById('tempoRow').innerHTML = '<div class="empty">Couldn’t load parties.</div>'; }
+
+    var tick = 0;
+    try { const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle(); if (gs) tick = gs.current_tick || 0; } catch (e) {}
+
+    try {
+      const { data: deck } = await supabase.from('deck_cards')
+        .select('id, created_at, cards(definition)').eq('nation_id', PARTY.nation_id).eq('status', 'on_block')
+        .order('created_at', { ascending: true });
+      var cards = (deck || []).map(function (d) { return { id: d.id, definition: (d.cards && d.cards.definition) || {} }; });
+      var active = cards.slice(0, 2);   // the two oldest on the block = this turn's Active Cards (matches _active_cards)
+      var claims = [], mine = null;
+      try {
+        const { data: cc } = await supabase.from('card_claims')
+          .select('party_id, deck_card_id, action').eq('nation_id', PARTY.nation_id).eq('tick', tick);
+        claims = cc || [];
+        mine = claims.find(function (x) { return x.party_id === PARTY.id; }) || null;
+      } catch (e) {}
+      renderActive(active, NATION_NAME, NATION_FLAG, claims, mine, abbr);
+      renderPassbar(mine);
+      renderUpcoming(cards);
+    } catch (e) {
+      document.getElementById('activeCards').innerHTML = '<div class="empty">Couldn’t load the card market.</div>';
+      document.getElementById('upcoming').innerHTML = '';
+    }
+  }
+
+  async function claim(cardId, action) {
+    if (BUSY) return;
+    BUSY = true;
+    document.querySelectorAll('.cbtn').forEach(function (b) { b.disabled = true; });
+    try {
+      const { error } = await supabase.rpc('claim_card', { p_deck_card: (action === 'pass' ? null : cardId), p_action: action });
+      if (error) throw error;
+    } catch (e) {
+      alert((e && e.message) || 'That claim failed.');
+    } finally {
+      BUSY = false;                 // clear BEFORE reload so the re-rendered buttons aren't left disabled
+      await reloadBoard();          // refresh on success or failure so the board always matches server state
+    }
+  }
+
+  // One delegated handler covers the card buttons and the pass button.
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('.cbtn');
+    if (!b || b.disabled) return;
+    claim(b.dataset.card || null, b.dataset.action);
+  });
+
   (async () => {
     renderClaims();
     if (!isConfigured) { document.getElementById('eye').textContent = 'Supabase not configured'; return; }
@@ -241,31 +323,15 @@
       const { data: party, error } = await supabase.from('parties')
         .select('id, nation_id, name, abbreviation, archetype, color, seats, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
+      PARTY = party;
       setTopbarActions(party.influence);
 
       const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', party.nation_id).single();
-      var nationName = (nation && nation.name) || party.nation_id;
-      document.getElementById('eye').textContent = nationName + ' · Political Theater';
+      NATION_NAME = (nation && nation.name) || party.nation_id;
+      NATION_FLAG = nation && nation.flag;
+      document.getElementById('eye').textContent = NATION_NAME + ' · Political Theater';
 
-
-      // Parties (Tempo track), on-block cards (Active + Upcoming), the two timelines — each isolated so
-      // one empty/failed read never blanks the rest of the page.
-      try {
-        const { data: parties } = await supabase.from('parties')
-          .select('id, name, abbreviation, archetype, color, seats, tempo').eq('nation_id', party.nation_id);
-        renderTempo(parties || [], party.id);
-      } catch (e) { document.getElementById('tempoRow').innerHTML = '<div class="empty">Couldn’t load parties.</div>'; }
-
-      try {
-        const { data: deck } = await supabase.from('deck_cards')
-          .select('id, cards(definition)').eq('nation_id', party.nation_id).eq('status', 'on_block');
-        var cards = (deck || []).map(function (d) { return { id: d.id, definition: (d.cards && d.cards.definition) || {} }; });
-        renderActive(cards, nationName, nation && nation.flag);
-        renderUpcoming(cards);
-      } catch (e) {
-        document.getElementById('activeCards').innerHTML = '<div class="empty">Couldn’t load the card market.</div>';
-        document.getElementById('upcoming').innerHTML = '';
-      }
+      await reloadBoard();
 
       try {
         const { data: nat } = await supabase.from('events')
