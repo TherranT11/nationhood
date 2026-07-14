@@ -3573,7 +3573,7 @@
         return CATEGORIES.filter(function (c) { return (CATEGORY_BONUS[c] || {}).tag === '+ ' + res + ' production'; });
       }
       var INAT = [];         // live nations, fetched once (for the eligibility tiles)
-      var iNatName = {};     // id → name for EVERY nation (incl. dormant), for the list's eligibility labels
+      var iNatNames = {};    // id → name for EVERY nation (incl. dormant) — the ONE name source, read via iNatName()
       var IN = null, iEditId = null, iSaving = false, iCache = [];
 
       // The producing sectors for a resource, as a {sector:true} set (default: all of them ticked).
@@ -3611,11 +3611,11 @@
         return s;
       }
       // The standing cost line: the Budget Balance cost (flat $bn/yr or % of GDP) the whole time it
-      // runs + the upfront Influence the Minister spends to enact it.
+      // runs + the upfront Action Points the Minister spends to enact it.
       function iCostExpr() { return '−' + fmtInitiativeCost(IN.budgetPerYear, IN.budgetUnit === 'gdp') + ' · ' + IN.influence + ' AP'; }
       // The ticked sectors — ONE source for the preview line and the saved definition.
       function iChosenSectors() { return CATEGORIES.filter(function (c) { return IN.sectors[c]; }); }
-      function iNatName(id) { var n = INAT.filter(function (x) { return x.id === id; })[0]; return n ? (n.name || id) : id; }
+      function iNatName(id) { return iNatNames[id] || id; }   // ONE accessor over the iNatNames map
 
       function iRenderResource() { document.getElementById('i-resource').innerHTML = RESOURCES.map(function (r) { return '<option' + (r === IN.resource ? ' selected' : '') + '>' + r + '</option>'; }).join(''); }
       function iRenderCadence() { document.querySelectorAll('#i-cadence [data-cad]').forEach(function (b) { b.classList.toggle('on', IN.cadence === b.dataset.cad); }); }
@@ -3694,7 +3694,7 @@
         box.innerHTML = iCache.map(function (row) {
           var d = row.definition || {}, elig = d.eligibleNations;
           var n = (elig === '*') ? 'All Nations'
-            : (Array.isArray(elig) && elig.length) ? elig.map(function (id) { return esc(iNatName[id] || id); }).join(', ')
+            : (Array.isArray(elig) && elig.length) ? elig.map(function (id) { return esc(iNatName(id)); }).join(', ')
             : 'No nations';
           var secN = (d.sectors || []).join(', ') || 'any sector';
           return '<div class="plcard"><div><div class="plcard__name">' + esc(d.name || 'Untitled initiative') + '</div>' +
@@ -3739,7 +3739,7 @@
         // Live nations, fetched once (best-effort — the builder still opens without them).
         if (!INAT.length) {
           try { const { data } = await supabase.from('nations').select('id, name, dormant').order('name');
-            (data || []).forEach(function (n) { iNatName[n.id] = n.name; });   // all nations (incl. dormant) for the labels
+            (data || []).forEach(function (n) { iNatNames[n.id] = n.name; });   // all nations (incl. dormant) for the labels
             INAT = (data || []).filter(function (n) { return !n.dormant; }); } catch (e) { INAT = []; }
         }
         var box = document.getElementById('iList');

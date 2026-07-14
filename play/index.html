@@ -2122,8 +2122,8 @@
           panel.hidden = false;
         }).catch(function () { /* leave hidden on failure */ });
       // National Initiatives panel: what's available + the one under way. The Minister of Economic
-      // Development enacts through initiative_enact (1 AP per $10B of cost) via performAction
-      // (Influence + feed refresh),
+      // Development enacts through initiative_enact (the authored Action-Point cost) via performAction
+      // (AP budget + feed refresh),
       // then the panel reloads.
       function loadInitiatives(){
         fetchNationInitiatives(party.nation_id).then(function(data){
