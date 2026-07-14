@@ -285,9 +285,10 @@
       var abbr = pabbr.value.trim().toUpperCase();
       if (saving || !name || !abbrOk()) return;
       if (!isConfigured) { fail('Not connected yet.'); return; }
+      saving = true; join.disabled = true;   // lock BEFORE the await so a rapid double-click can't slip a second submit through
       var user = await requireUser();
       if (!user) return; // redirected to login
-      saving = true; join.disabled = true; picked.className = 'picked'; picked.textContent = (refound ? 'Relaunching ' : 'Founding ') + name + '…';
+      picked.className = 'picked'; picked.textContent = (refound ? 'Relaunching ' : 'Founding ') + name + '…';
       try {
         // No two parties in a nation may share a name (case-insensitive) or
         // abbreviation. Pre-check for a clear message; the DB unique indexes are
@@ -329,7 +330,11 @@
           // if it started between load and submit — re-check the cooldown to give the right message.
           const left = await cooldownTicksLeft(user.id);
           if (left > 0) { saving = false; showCooldown(left); return; }
-          fail('That name or abbreviation is already taken in this nation.'); return;
+          // Only a genuine unique-violation (23505) means the name/abbr is taken. Any OTHER error is a
+          // real fault (e.g. a schema issue) — surface it rather than masking it as "name taken", which
+          // sends the player chasing a name change that can never work.
+          if (error && error.code === '23505') { fail('That name or abbreviation is already taken in this nation.'); return; }
+          fail((error && error.message) ? ('Couldn’t create your ' + noun + ': ' + error.message) : ('Couldn’t create your ' + noun + '. Try again.')); return;
         }
         if (refound) { try { await supabase.rpc('party_relaunch'); } catch (e) { /* flag clears on next relaunch attempt */ } }  // retire the relaunch prompt
         else await seedLeader(created.id);  // a brand-new party gets its Party Leader (a relaunch already has one)

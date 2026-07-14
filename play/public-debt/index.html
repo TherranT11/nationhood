@@ -159,7 +159,8 @@
       var defaultLine = (isFinite(gdp) && gdp > 0) ? gdp * 3 : null;
 
       var debt = Number(ec.debt);
-      if (ec.debt != null && ec.debt !== '' && isFinite(debt)) {
+      var haveDebt = ec.debt != null && ec.debt !== '' && isFinite(debt);   // one guard, read by the headline + the chart anchor
+      if (haveDebt) {
         document.getElementById('debtVal').textContent = fmtBn(debt);
         if (defaultLine) {
           var ratio = Math.round(debt / gdp * 100);
@@ -182,7 +183,7 @@
         // line even though the nation is now well under it. economy.debt is the source of truth for "now",
         // so anchor the chart's final point to it whenever it has drifted from the last ledger entry. This
         // keeps the curve's endpoint equal to the headline and renders the restructuring as a visible drop.
-        if (ec.debt != null && ec.debt !== '' && isFinite(debt)) {
+        if (haveDebt) {
           var last = series.length ? series[series.length - 1].v : null;
           if (last === null || Math.abs(debt - last) >= 0.05) series.push({ v: debt, date: (curTick != null ? tickToDate(curTick) : '') });
         }
