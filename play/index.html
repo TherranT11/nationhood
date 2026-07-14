@@ -995,7 +995,7 @@
   // authoritative on every rule — the modal just surfaces which neighbours are reachable. Fires move_unit.
   var moveModal = document.getElementById('moveModal');
   var closeMove = wireModalClose(moveModal, 'moveClose');
-  var MOV = { units: [], foeSet: null, hexMap: null, myNation: null, tick: 0, sel: null };
+  var MOV = { units: [], foeSet: null, hexMap: null, natColor: null, natName: null, tick: 0, sel: null };
   // Pointy-top hex corner ring (matches axialToPix's layout, hexmap.js) for the mini-map polygons.
   function hexCorners(cx, cy, s) {
     var p = [];
@@ -1007,7 +1007,7 @@
   // 1 = a neighbour. Colours: water blue, own land / other land tan, enemy-held red; reachable hexes get
   // a green ring + dot. The server re-checks every rule; this only makes the choice legible.
   function moveMapSvg(u) {
-    var S = 24, R = 3, mine = MOV.myNation, c = axialToPix(u.q, u.r, S, 0, 0);
+    var S = 24, R = 3, c = axialToPix(u.q, u.r, S, 0, 0);
     var minx = 1e9, maxx = -1e9, miny = 1e9, maxy = -1e9, body = '';
     for (var dq = -R; dq <= R; dq++) for (var dr = -R; dr <= R; dr++) {
       if (Math.abs(dq + dr) > R) continue;   // hex disk of radius R around the unit
@@ -1016,13 +1016,20 @@
       var ok = ((Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2 === 1) && land && !foe;
       var p = axialToPix(q, r, S, 0, 0), x = p.x - c.x, y = p.y - c.y;
       minx = Math.min(minx, x); maxx = Math.max(maxx, x); miny = Math.min(miny, y); maxy = Math.max(maxy, y);
-      var fill = !land ? '#a9cfdd' : (foe ? '#d98b84' : (h.nation_id === mine ? '#dfe7d4' : '#e9e3d4'));
-      var title = isUnit ? esc(u.name) : (!land ? 'Sea — blocked' : foe ? 'Enemy-held — blocked' : ('Move to (' + q + ', ' + r + ')'));
-      body += '<polygon points="' + hexCorners(x, y, S - 1) + '" fill="' + fill + '" stroke="' + (ok ? '#16915a' : '#fff') +
-        '" stroke-opacity="' + (ok ? 0.95 : 0.5) + '" stroke-width="' + (ok ? 2.2 : 1) + '"' +
+      // Colour by the OWNING nation (same palette as the world map); unclaimed land is tan, sea is blue.
+      var owner = (land && h.nation_id) ? (MOV.natName[h.nation_id] || 'A nation') : null;
+      var fill = !land ? '#a9cfdd' : (h.nation_id ? (MOV.natColor[h.nation_id] || '#e9e3d4') : '#e9e3d4');
+      var stroke = ok ? '#16915a' : (foe ? '#c42b2b' : '#fff'), hot = ok || foe;
+      var title = isUnit ? (esc(u.name) + ' — your unit')
+        : foe ? 'Enemy unit here — blocked'
+        : ok ? ('Move to ' + esc(owner || 'unclaimed land') + ' (' + q + ', ' + r + ')')
+        : (!land ? 'Sea' : esc(owner || 'Unclaimed')) + ' — blocked';
+      body += '<polygon points="' + hexCorners(x, y, S - 1) + '" fill="' + fill + '" stroke="' + stroke +
+        '" stroke-opacity="' + (hot ? 0.95 : 0.5) + '" stroke-width="' + (hot ? 2.2 : 1) + '"' +
         (ok ? ' data-q="' + q + '" data-r="' + r + '" data-ok="1" style="cursor:pointer"' : '') +
         '><title>' + title + '</title></polygon>';
       if (ok) body += '<circle cx="' + x + '" cy="' + y + '" r="3.2" fill="#16915a" pointer-events="none"/>';
+      else if (foe) body += '<circle cx="' + x + '" cy="' + y + '" r="3.2" fill="#c42b2b" pointer-events="none"/>';
     }
     var mark = u.unit_type === 'armor'
       ? '<ellipse cx="0" cy="0" rx="5.5" ry="3.6" fill="none" stroke="#c2ead1" stroke-width="1.4"/>'
@@ -1043,13 +1050,18 @@
       var res = await Promise.all([
         supabase.from('military_units').select('id, name, unit_type, q, r, ready_tick, move_tick, moves_used').eq('nation_id', nid).order('name'),
         supabase.from('military_units').select('q, r').neq('nation_id', nid),   // foreign-held hexes (blocked targets)
-        selectAll('world_hexes', 'q, r, terrain, nation_id')                     // whole world (past the 1000-row cap), for the mini-map
+        selectAll('world_hexes', 'q, r, terrain, nation_id'),                    // whole world (past the 1000-row cap), for the mini-map
+        supabase.from('nations').select('id, name, color')                       // per-nation map colours (same source as the world map)
       ]);
-      MOV.myNation = nid;
       MOV.units = (res[0].data || []).filter(function (u) { return u.q != null && u.r != null; });
       MOV.foeSet = new Set((res[1].data || []).map(function (u) { return u.q + ',' + u.r; }));
       MOV.hexMap = {};
       (res[2].data || []).forEach(function (h) { MOV.hexMap[h.q + ',' + h.r] = h; });
+      // Nation colours + names — one source (hexmap.js nationColors, the world map's palette). Falls back
+      // to a colourless list if the `color` column isn't migrated (nationColors then assigns a palette hue).
+      var nations = res[3].error ? ((await supabase.from('nations').select('id, name')).data || []) : (res[3].data || []);
+      MOV.natColor = nationColors(nations);
+      MOV.natName = {}; nations.forEach(function (n) { MOV.natName[n.id] = n.name; });
       try { MOV.tick = await currentTick(); } catch (e) { MOV.tick = 0; }
       MOV.sel = MOV.units.length ? MOV.units[0].id : null;
       renderMove();
