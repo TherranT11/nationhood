@@ -90,7 +90,7 @@
       <span class="eye" id="eye">Political Theater</span>
       <h1>The Card Table</h1>
       <p>The month's play, in order — your nation's timeline and the world's, the tempo of who acts first, and the cards on the table now and next.</p>
-      <div class="pvbar"><b>Layout preview.</b> The timelines and cards are live. The <b>Tempo Track</b> order is illustrative for now, and the four claim actions below describe the planned model — no claims are wired to the backend yet. React to the shape; the mechanics come next.</div>
+      <div class="pvbar"><b>Preview.</b> The timelines, cards, and the <b>Tempo Track</b> order (each party's real, randomly-assigned Tempo standing) are all live. The four claim actions below still describe the planned model — claiming a card isn't wired yet. That's the next stage.</div>
     </div>
 
     <!-- Timelines -->
@@ -160,18 +160,11 @@
     }).join('');
   }
 
-  // A deterministic per-turn order so the same tick always shows the same "assignment" (no flicker on
-  // reload) while still looking randomised. Real random assignment is part of the mechanics build.
-  function hashSort(id, salt) {
-    var s = String(id) + ':' + String(salt), h = 5381;
-    for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
-    return h;
-  }
-
-  function renderTempo(parties, myPartyId, tick) {
+  function renderTempo(parties, myPartyId) {
     var row = document.getElementById('tempoRow');
     if (!parties.length) { row.innerHTML = '<div class="empty">No parties in this nation yet.</div>'; return; }
-    var order = parties.slice().sort(function (a, b) { return hashSort(a.id, tick) - hashSort(b.id, tick); });
+    // Claim order = real Tempo standing (schema/206), highest first; party id breaks ties for a stable order.
+    var order = parties.slice().sort(function (a, b) { return (Number(b.tempo) || 0) - (Number(a.tempo) || 0) || String(a.id).localeCompare(String(b.id)); });
     row.innerHTML = order.map(function (p, i) {
       var you = p.id === myPartyId, col = partyColor(p);
       return '<div class="tcard' + (you ? ' you' : '') + '">' +
@@ -254,15 +247,13 @@
       var nationName = (nation && nation.name) || party.nation_id;
       document.getElementById('eye').textContent = nationName + ' · Political Theater';
 
-      var curTick = 1;
-      try { const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle(); if (gs && gs.current_tick) curTick = gs.current_tick; } catch (e) {}
 
       // Parties (Tempo track), on-block cards (Active + Upcoming), the two timelines — each isolated so
       // one empty/failed read never blanks the rest of the page.
       try {
         const { data: parties } = await supabase.from('parties')
-          .select('id, name, abbreviation, archetype, color, seats').eq('nation_id', party.nation_id);
-        renderTempo(parties || [], party.id, curTick);
+          .select('id, name, abbreviation, archetype, color, seats, tempo').eq('nation_id', party.nation_id);
+        renderTempo(parties || [], party.id);
       } catch (e) { document.getElementById('tempoRow').innerHTML = '<div class="empty">Couldn’t load parties.</div>'; }
 
       try {
