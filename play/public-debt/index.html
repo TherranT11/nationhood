@@ -55,7 +55,7 @@
 
     <section class="panel">
       <h2>Debt over time</h2>
-      <svg class="dchart" id="debtChart" viewBox="0 0 600 220" preserveAspectRatio="none" aria-label="Public debt over time"></svg>
+      <svg class="dchart" id="debtChart" viewBox="0 0 600 220" aria-label="Public debt over time"></svg>
       <div class="dlegend"><span><i></i> Public Debt</span><span><i class="def"></i> Government Default (300% of GDP)</span></div>
     </section>
 
@@ -152,7 +152,9 @@
       var ec = (nation && nation.economy) || {};
       CUR = ec.currency || '$';
       var gdp = Number(nation && nation.gdp);
-      var defaultLine = (isFinite(gdp) && gdp > 0) ? gdp * 3 : null;   // Government Default 100 = debt at 300% of GDP
+      // Government Default 100 = debt at 300% of GDP. MIRRORS _nation_govt_default's (debt/gdp)*100/3 in
+      // schema/201 — if that /3 divisor is ever tuned, update this 3× too (it ignores the usually-0 policy term).
+      var defaultLine = (isFinite(gdp) && gdp > 0) ? gdp * 3 : null;
 
       var debt = Number(ec.debt);
       if (ec.debt != null && ec.debt !== '' && isFinite(debt)) {
