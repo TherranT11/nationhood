@@ -161,9 +161,9 @@ revoke all on function public._initiative_start(text, uuid, text, uuid, text, in
 drop function if exists public.initiative_enact(uuid, uuid);
 create or replace function public.initiative_enact(p_initiative uuid, p_ownership text, p_corp uuid default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_p public.parties%rowtype; v_def jsonb; v_res jsonb; v_need int;
+declare v_p public.parties%rowtype; v_def jsonb; v_res jsonb; v_need int; i int;
 begin
-  v_p := public._begin_action(0);   -- lock caller's party, require >= 1 Influence
+  v_p := public._begin_action(0);   -- lock caller's party + spend the first Action Point
   if not exists (select 1 from public.governments where nation_id = v_p.nation_id and status = 'active') then
     raise exception 'There is no sitting government to enact an initiative.';
   end if;
@@ -177,12 +177,21 @@ begin
     raise exception 'This is a joint project — propose it to the partner nation instead.';
   end if;
 
-  -- Upfront Influence = the authored figure — gate first, before starting.
+  -- Enacting costs the authored number of ACTION POINTS (definition.influence — the key name is kept for
+  -- back-compat but it no longer means Influence). _begin_action already spent the first AP; spend the
+  -- rest so the total is v_need. Gate on the banked balance first for a clear message; the whole enact is
+  -- one transaction, so a shortfall rolls everything back.
   v_need := public._initiative_influence(v_def);
+  if v_need > 1 then
+    if (select coalesce(action_points, 0) from public.parties where id = v_p.id) < v_need - 1 then
+      raise exception 'Enacting this initiative costs % Action Points — you don''t have enough banked.', v_need;
+    end if;
+    for i in 2..v_need loop perform public._spend_action_point(v_p.id); end loop;
+  end if;
 
   v_res := public._initiative_start(v_p.nation_id, p_initiative, p_ownership, p_corp, null, 0);
 
-  return v_res || jsonb_build_object('actions', v_p.influence, 'influence_cost', v_need);
+  return v_res || jsonb_build_object('actions', v_p.influence, 'ap_cost', v_need);
 end $$;
 grant execute on function public.initiative_enact(uuid, text, uuid) to authenticated;
 

@@ -924,7 +924,7 @@
               <div><div class="flabel">Budget Balance cost <span class="hint">while it runs</span></div>
                 <div style="display:flex;gap:8px"><input id="i-byear" type="number" step="any" value="5" style="flex:1;min-width:0">
                   <select id="i-byear-unit" style="flex:0 0 118px"><option value="flat">$B / yr</option><option value="gdp">% of GDP</option></select></div></div>
-              <div><div class="flabel">Influence <span class="hint">(upfront to enact)</span></div><input id="i-influence" type="number" step="1" value="5"></div>
+              <div><div class="flabel">Action Point cost <span class="hint">(to enact)</span></div><input id="i-influence" type="number" step="1" min="1" value="1"></div>
             </div>
             <div class="flabel" style="margin-top:14px">Build-up length <span class="hint">(months, min–max — before the production increase lands)</span></div>
             <div class="two"><input id="i-minM" type="number" value="16"><input id="i-maxM" type="number" value="36"></div>
@@ -3572,7 +3572,8 @@
       function resourceCategories(res) {
         return CATEGORIES.filter(function (c) { return (CATEGORY_BONUS[c] || {}).tag === '+ ' + res + ' production'; });
       }
-      var INAT = [];   // live nations, fetched once (for the eligibility tiles)
+      var INAT = [];         // live nations, fetched once (for the eligibility tiles)
+      var iNatName = {};     // id → name for EVERY nation (incl. dormant), for the list's eligibility labels
       var IN = null, iEditId = null, iSaving = false, iCache = [];
 
       // The producing sectors for a resource, as a {sector:true} set (default: all of them ticked).
@@ -3580,7 +3581,7 @@
 
       function iBlank() {
         return { name: '', description: '', resource: 'Energy', quantity: 1, cadence: 'one_time',
-          sectors: iSectorSet('Energy'), budgetPerYear: 5, budgetUnit: 'flat', influence: 5, minM: 16, maxM: 36, global: false, nations: {},
+          sectors: iSectorSet('Energy'), budgetPerYear: 5, budgetUnit: 'flat', influence: 1, minM: 16, maxM: 36, global: false, nations: {},
           joint: { on: false, partner: '', quantity: 1, target: 'Energy' },
           startEvent: '', finishEvent: '' };
       }
@@ -3611,7 +3612,7 @@
       }
       // The standing cost line: the Budget Balance cost (flat $bn/yr or % of GDP) the whole time it
       // runs + the upfront Influence the Minister spends to enact it.
-      function iCostExpr() { return '−' + fmtInitiativeCost(IN.budgetPerYear, IN.budgetUnit === 'gdp') + ' · ' + IN.influence + ' Influence'; }
+      function iCostExpr() { return '−' + fmtInitiativeCost(IN.budgetPerYear, IN.budgetUnit === 'gdp') + ' · ' + IN.influence + ' AP'; }
       // The ticked sectors — ONE source for the preview line and the saved definition.
       function iChosenSectors() { return CATEGORIES.filter(function (c) { return IN.sectors[c]; }); }
       function iNatName(id) { var n = INAT.filter(function (x) { return x.id === id; })[0]; return n ? (n.name || id) : id; }
@@ -3691,7 +3692,10 @@
         var box = document.getElementById('iList');
         if (!iCache.length) { box.innerHTML = '<p class="empty">No initiatives yet. Click “New initiative” to create one.</p>'; return; }
         box.innerHTML = iCache.map(function (row) {
-          var d = row.definition || {}, n = (d.eligibleNations === '*') ? 'Global' : ((d.eligibleNations || []).length + ' nation' + ((d.eligibleNations || []).length === 1 ? '' : 's'));
+          var d = row.definition || {}, elig = d.eligibleNations;
+          var n = (elig === '*') ? 'All Nations'
+            : (Array.isArray(elig) && elig.length) ? elig.map(function (id) { return esc(iNatName[id] || id); }).join(', ')
+            : 'No nations';
           var secN = (d.sectors || []).join(', ') || 'any sector';
           return '<div class="plcard"><div><div class="plcard__name">' + esc(d.name || 'Untitled initiative') + '</div>' +
             '<div class="plcard__meta">+' + (d.quantity || 0) + ' ' + esc(d.resource || '—') + ' · ' + esc(secN) + ' · ' + n + '</div></div>' +
@@ -3734,7 +3738,9 @@
       async function loadInitiatives() {
         // Live nations, fetched once (best-effort — the builder still opens without them).
         if (!INAT.length) {
-          try { const { data } = await supabase.from('nations').select('id, name, dormant').order('name'); INAT = (data || []).filter(function (n) { return !n.dormant; }); } catch (e) { INAT = []; }
+          try { const { data } = await supabase.from('nations').select('id, name, dormant').order('name');
+            (data || []).forEach(function (n) { iNatName[n.id] = n.name; });   // all nations (incl. dormant) for the labels
+            INAT = (data || []).filter(function (n) { return !n.dormant; }); } catch (e) { INAT = []; }
         }
         var box = document.getElementById('iList');
         try { const { data, error } = await supabase.from('national_initiatives').select('id, definition').order('created_at', { ascending: true }); if (error) throw error; iCache = data || []; }
