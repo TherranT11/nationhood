@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Political Theater · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
+<style>
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
+  .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
+  .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
+  .phead p{color:var(--muted);font-size:13.5px;margin-top:5px;max-width:640px}
+  /* preview banner */
+  .pvbar{margin-top:14px;border:1px dashed color-mix(in srgb,var(--indigo) 45%,var(--line));border-radius:12px;
+    background:color-mix(in srgb,var(--indigo) 7%,transparent);padding:10px 14px;font-size:12.5px;color:var(--muted)}
+  .pvbar b{color:var(--ink)}
+  .sec{margin-top:20px}
+  .sec__h{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft);margin-bottom:10px}
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+  /* timelines */
+  .tlwrap{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.tlwrap{grid-template-columns:1fr}}
+  .tl__list{display:flex;flex-direction:column;gap:0;max-height:280px;overflow-y:auto}
+  .tle{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)} .tle:last-child{border-bottom:none}
+  .tle .tdot{flex:0 0 6px;height:6px;border-radius:50%;background:var(--indigo);margin-top:6px}
+  .tle.world .tdot{background:var(--soft)}
+  .tle .when{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);flex:0 0 92px}
+  .tle .tt{font-size:12.5px;color:var(--ink);line-height:1.45;min-width:0}
+  .tlempty{color:var(--soft);font-size:13px;font-style:italic;padding:6px 0}
+  /* tempo track */
+  .tempo__meta{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .tempo__rule{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;color:var(--soft)}
+  .tempo__row{display:flex;gap:8px;flex-wrap:wrap}
+  .tcard{flex:1;min-width:148px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:9px 11px}
+  .tcard.you{border-color:var(--amber,#E0820E);box-shadow:0 0 0 1px var(--amber,#E0820E) inset}
+  .tcard__top{display:flex;align-items:center;gap:7px}
+  .tcard__pos{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft)}
+  .tcard__dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px}
+  .tcard__abbr{font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700}
+  .tcard__you{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.1em;color:var(--amber,#E0820E);border:1px solid color-mix(in srgb,var(--amber,#E0820E) 55%,transparent);border-radius:5px;padding:1px 5px}
+  .tcard__ideo{font-size:10.5px;color:var(--muted);margin-top:4px}
+  .tcard__seats{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;color:var(--soft);margin-top:3px;text-transform:uppercase}
+  /* 4 actions */
+  .acts{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  @media(max-width:820px){.acts{grid-template-columns:1fr 1fr}}
+  @media(max-width:520px){.acts{grid-template-columns:1fr}}
+  .act4{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 13px;border-top-width:3px}
+  .act4__name{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.06em;display:flex;align-items:center;gap:7px}
+  .act4__cost{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;color:var(--ink);margin:6px 0 4px}
+  .act4__desc{font-size:11px;color:var(--muted);line-height:1.45}
+  /* active + upcoming cards */
+  .cards2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.cards2{grid-template-columns:1fr}}
+  .bcard{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.12)}
+  .bcard__strip{height:4px}
+  .bcard__body{padding:15px 17px}
+  .bcard__meta{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .ckind{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);border-radius:6px;padding:2px 8px;color:var(--soft)}
+  .ckind.nat{color:var(--indigo);border-color:color-mix(in srgb,var(--indigo) 45%,transparent)}
+  .apbadge{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--amber,#E0820E);color:#0a0d13;font-family:'Space Mono',monospace;font-weight:700;font-size:14px}
+  .bcard__title{display:flex;align-items:center;gap:11px;margin:11px 0 6px}
+  .bcard__flag{width:40px;height:40px;border-radius:9px;object-fit:cover;border:1px solid var(--line)}
+  .bcard__name{font-weight:800;font-size:18px;line-height:1.2}
+  .bcard__flavor{font-size:12.5px;color:var(--muted);line-height:1.5}
+  .bcard__cost{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft);margin-top:9px}
+  .bcard__cost b{color:var(--ink)}
+  .claimrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+  .claimchip{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;border:1px solid var(--line);border-radius:7px;padding:5px 8px;color:var(--muted)}
+  .claimchip b{color:var(--ink)}
+  .upgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+  .ucard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 13px;opacity:.92}
+  .ucard__meta{display:flex;justify-content:space-between;align-items:center;gap:6px}
+  .ucard__ap{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft)}
+  .ucard__name{font-weight:800;font-size:14px;margin:7px 0 4px;line-height:1.25}
+  .ucard__flavor{font-size:11px;color:var(--muted);line-height:1.4;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .empty{color:var(--soft);font-size:13px;font-style:italic;padding:6px 2px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div>
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <div class="phead">
+      <span class="eye" id="eye">Political Theater</span>
+      <h1>The Card Table</h1>
+      <p>The month's play, in order — your nation's timeline and the world's, the tempo of who acts first, and the cards on the table now and next.</p>
+      <div class="pvbar"><b>Layout preview.</b> The timelines and cards are live. The <b>Tempo Track</b> order is illustrative for now, and the four claim actions below describe the planned model — no claims are wired to the backend yet. React to the shape; the mechanics come next.</div>
+    </div>
+
+    <!-- Timelines -->
+    <div class="sec">
+      <div class="tlwrap">
+        <div class="panel"><div class="sec__h">Nation Timeline</div><div class="tl__list" id="tlNation"><div class="tlempty">Loading…</div></div></div>
+        <div class="panel"><div class="sec__h">World Timeline</div><div class="tl__list" id="tlWorld"><div class="tlempty">Loading…</div></div></div>
+      </div>
+    </div>
+
+    <!-- Tempo track -->
+    <div class="sec">
+      <div class="sec__h">Tempo Track</div>
+      <div class="panel">
+        <div class="tempo__meta">
+          <span class="tempo__rule">Parties act in this order · re-sorted by tempo spent each turn</span>
+          <span class="tempo__rule">EVENT −5 · AP −3 · BOTH → LAST · PASS → FIRST</span>
+        </div>
+        <div class="tempo__row" id="tempoRow"><div class="empty">Loading parties…</div></div>
+      </div>
+    </div>
+
+    <!-- The four actions -->
+    <div class="sec">
+      <div class="sec__h">The four claims — taken in order down the track</div>
+      <div class="acts" id="acts"></div>
+    </div>
+
+    <!-- Active cards -->
+    <div class="sec">
+      <div class="sec__h">On the table now</div>
+      <div class="cards2" id="activeCards"><div class="empty">Loading cards…</div></div>
+    </div>
+
+    <!-- Upcoming -->
+    <div class="sec">
+      <div class="sec__h">Upcoming cards</div>
+      <div class="upgrid" id="upcoming"><div class="empty">Loading…</div></div>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { esc } from '/util.js';
+  import { ideologyLabel, partyColor } from '/archetypes.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+
+  mountTopbar();
+  mountSidenav();
+
+  // The four claim actions — the planned model, shown as an explainer (not yet wired to the backend).
+  var CLAIMS = [
+    { icon: '★', name: 'EVENT', cost: '−5 TEMPO', color: 'var(--indigo)', desc: "Play the card's event — your side's reading of it." },
+    { icon: '⚡', name: 'ACTION POINTS', cost: '−3 TEMPO', color: 'var(--amber,#E0820E)', desc: "Bank the card's AP for your own operations." },
+    { icon: '✦', name: 'EVENT + AP', cost: 'LAST IN TEMPO', color: 'var(--red)', desc: 'Take both — an exclusive claim nobody else can touch.' },
+    { icon: '🕊', name: 'PASS', cost: 'FIRST NEXT TURN', color: 'var(--green)', desc: 'Do nothing, jump the queue. Only one party may pass per turn.' }
+  ];
+
+  function renderClaims() {
+    document.getElementById('acts').innerHTML = CLAIMS.map(function (c) {
+      return '<div class="act4" style="border-top-color:' + c.color + '">' +
+        '<div class="act4__name" style="color:' + c.color + '">' + esc(c.name) + '</div>' +
+        '<div class="act4__cost">' + esc(c.cost) + '</div>' +
+        '<div class="act4__desc">' + esc(c.desc) + '</div></div>';
+    }).join('');
+  }
+
+  // A deterministic per-turn order so the same tick always shows the same "assignment" (no flicker on
+  // reload) while still looking randomised. Real random assignment is part of the mechanics build.
+  function hashSort(id, salt) {
+    var s = String(id) + ':' + String(salt), h = 5381;
+    for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+    return h;
+  }
+
+  function renderTempo(parties, myPartyId, tick) {
+    var row = document.getElementById('tempoRow');
+    if (!parties.length) { row.innerHTML = '<div class="empty">No parties in this nation yet.</div>'; return; }
+    var order = parties.slice().sort(function (a, b) { return hashSort(a.id, tick) - hashSort(b.id, tick); });
+    row.innerHTML = order.map(function (p, i) {
+      var you = p.id === myPartyId, col = partyColor(p);
+      return '<div class="tcard' + (you ? ' you' : '') + '">' +
+        '<div class="tcard__top"><span class="tcard__pos">' + (i + 1) + '</span>' +
+        '<span class="tcard__dot" style="background:' + col + '"></span>' +
+        '<span class="tcard__abbr" style="color:' + col + '">' + esc(p.abbreviation || p.name || '—') + '</span>' +
+        (you ? '<span class="tcard__you">YOU</span>' : '') + '</div>' +
+        '<div class="tcard__ideo">' + esc(ideologyLabel(p)) + '</div>' +
+        '<div class="tcard__seats">' + (Number(p.seats) || 0) + ' seats</div></div>';
+    }).join('');
+  }
+
+  function renderTimeline(elId, events, world) {
+    var el = document.getElementById(elId);
+    if (!events || !events.length) { el.innerHTML = '<div class="tlempty">No events yet.</div>'; return; }
+    el.innerHTML = events.map(function (e) {
+      return '<div class="tle' + (world ? ' world' : '') + '"><span class="tdot"></span>' +
+        '<div class="when">' + esc((e.game_date || '').replace(',', '')) + '</div>' +
+        '<div class="tt">' + esc(e.body || '') + '</div></div>';
+    }).join('');
+  }
+
+  function cardKind(def, nationName) {
+    if (def.lim === 'nation') return { label: 'Nation · ' + (nationName || 'this nation'), cls: 'nat' };
+    if (def.type === 'generic') return { label: 'Generic', cls: '' };
+    if (def.type === 'ar' || def.type === 'dr') return { label: 'Stance', cls: '' };
+    return { label: 'Card', cls: '' };
+  }
+  function cardAP(def) { return Math.max(1, Math.min(6, Number(def.acts) || 1)); }
+  function cardCost(def) { return Math.max(1, Number(def.cost) || 0); }
+  function stripColor(def) { return def.lim === 'nation' ? 'var(--indigo)' : (def.type === 'ar' || def.type === 'dr' ? 'var(--amber,#E0820E)' : 'var(--soft)'); }
+
+  function renderActive(cards, nationName, nationFlag) {
+    var box = document.getElementById('activeCards');
+    if (!cards.length) { box.innerHTML = '<div class="empty">The market is empty this turn — no cards on the table.</div>'; return; }
+    box.innerHTML = cards.slice(0, 2).map(function (c) {
+      var def = c.definition || {}, k = cardKind(def, nationName), ap = cardAP(def);
+      var flag = (def.lim === 'nation' && nationFlag) ? '<img class="bcard__flag" src="' + esc(nationFlag) + '" alt="">' : '';
+      return '<div class="bcard"><div class="bcard__strip" style="background:' + stripColor(def) + '"></div>' +
+        '<div class="bcard__body">' +
+        '<div class="bcard__meta"><span class="ckind ' + k.cls + '">' + esc(k.label) + '</span>' +
+        '<span class="apbadge" title="Action Points on play">' + ap + '</span></div>' +
+        '<div class="bcard__title">' + flag + '<div class="bcard__name">' + esc(def.name || 'Untitled card') + '</div></div>' +
+        '<div class="bcard__flavor">' + (def.desc ? esc(def.desc) : '<span style="color:var(--soft)">No description.</span>') + '</div>' +
+        '<div class="bcard__cost">Base bid ⚡<b>' + cardCost(def) + '</b> · <b>' + ap + '</b> AP on play</div>' +
+        '<div class="claimrow">' +
+          '<span class="claimchip"><b>★ Event</b> −5</span>' +
+          '<span class="claimchip"><b>⚡ AP</b> −3</span>' +
+          '<span class="claimchip"><b>✦ Both</b> → last</span>' +
+          '<span class="claimchip"><b>Pass</b> → first</span>' +
+        '</div></div></div>';
+    }).join('');
+  }
+
+  function renderUpcoming(cards) {
+    var box = document.getElementById('upcoming');
+    var rest = cards.slice(2);
+    if (!rest.length) { box.innerHTML = '<div class="empty">No further cards queued this turn.</div>'; return; }
+    box.innerHTML = rest.map(function (c) {
+      var def = c.definition || {}, ap = cardAP(def), k = cardKind(def);
+      return '<div class="ucard"><div class="ucard__meta"><span class="ckind ' + k.cls + '">' + esc(k.label) + '</span>' +
+        '<span class="ucard__ap">▶ ' + ap + ' AP</span></div>' +
+        '<div class="ucard__name">' + esc(def.name || 'Untitled card') + '</div>' +
+        '<div class="ucard__flavor">' + (def.desc ? esc(def.desc) : '') + '</div></div>';
+    }).join('');
+  }
+
+  (async () => {
+    renderClaims();
+    if (!isConfigured) { document.getElementById('eye').textContent = 'Supabase not configured'; return; }
+    const user = await requireUser();
+    if (!user) return;
+    try {
+      const { data: party, error } = await supabase.from('parties')
+        .select('id, nation_id, name, abbreviation, archetype, color, seats, influence').eq('user_id', user.id).single();
+      if (error || !party) { window.location.replace('/nation-select/'); return; }
+      setTopbarActions(party.influence);
+
+      const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', party.nation_id).single();
+      var nationName = (nation && nation.name) || party.nation_id;
+      document.getElementById('eye').textContent = nationName + ' · Political Theater';
+
+      var curTick = 1;
+      try { const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle(); if (gs && gs.current_tick) curTick = gs.current_tick; } catch (e) {}
+
+      // Parties (Tempo track), on-block cards (Active + Upcoming), the two timelines — each isolated so
+      // one empty/failed read never blanks the rest of the page.
+      try {
+        const { data: parties } = await supabase.from('parties')
+          .select('id, name, abbreviation, archetype, color, seats').eq('nation_id', party.nation_id);
+        renderTempo(parties || [], party.id, curTick);
+      } catch (e) { document.getElementById('tempoRow').innerHTML = '<div class="empty">Couldn’t load parties.</div>'; }
+
+      try {
+        const { data: deck } = await supabase.from('deck_cards')
+          .select('id, cards(definition)').eq('nation_id', party.nation_id).eq('status', 'on_block');
+        var cards = (deck || []).map(function (d) { return { id: d.id, definition: (d.cards && d.cards.definition) || {} }; });
+        renderActive(cards, nationName, nation && nation.flag);
+        renderUpcoming(cards);
+      } catch (e) {
+        document.getElementById('activeCards').innerHTML = '<div class="empty">Couldn’t load the card market.</div>';
+        document.getElementById('upcoming').innerHTML = '';
+      }
+
+      try {
+        const { data: nat } = await supabase.from('events')
+          .select('kind, body, game_date, created_at').eq('nation_id', party.nation_id)
+          .order('created_at', { ascending: false }).limit(20);
+        renderTimeline('tlNation', nat || [], false);
+      } catch (e) { document.getElementById('tlNation').innerHTML = '<div class="tlempty">Couldn’t load the nation timeline.</div>'; }
+
+      try {
+        const { data: world } = await supabase.from('events')
+          .select('kind, body, game_date, created_at, nation_id').neq('nation_id', party.nation_id)
+          .order('created_at', { ascending: false }).limit(30);
+        // Dedupe broadcast events that land one row per nation (same body) so the world feed reads clean.
+        var seen = {}, wlist = [];
+        (world || []).forEach(function (e) { var key = e.body || ''; if (seen[key]) return; seen[key] = 1; wlist.push(e); });
+        renderTimeline('tlWorld', wlist.slice(0, 20), true);
+      } catch (e) { document.getElementById('tlWorld').innerHTML = '<div class="tlempty">Couldn’t load the world timeline.</div>'; }
+    } catch (e) {
+      document.getElementById('eye').textContent = 'Couldn’t load the page — refresh to try again.';
+    }
+  })();
+</script>
+</body>
+</html>
