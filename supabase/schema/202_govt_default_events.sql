@@ -10,10 +10,15 @@
 -- At 100 the nation actually DEFAULTS, with real consequences:
 --   • Debt written down — creditors take the haircut — to the level where Default reads 80 AFTER the
 --     recession below (so the tick settles at exactly 80, not back above it). This resets the clock.
---   • Recession: GDP −15%.
---   • Standing hits: Prosperity −2 and Crime +2, via _apply_card_stat (schema/176) — the canonical,
---     correctly-clamped mover (real-backed vs delta-layer). [Order/Image are retired stats; Crime is
---     the unrest signal that replaced Order.]
+--   • Recession: GDP −5%.
+--   • Party fallout: every GOVERNING party −7% Party Popularity (blamed for the collapse); every
+--     OPPOSITION party +5% (floor-respecting drop / ceiling-respecting raise, schema/70 movers).
+--   • Growth −10 — a lasting scar that also drags GDP down in the annual malaise pass (schema/125).
+--   • Recession stat hits: Unemployment +5, Poverty +4, Standard of Living −4 (the human cost).
+--   • Standing hits: Prosperity −2 and Crime +2. [Order/Image are retired stats; Crime is the unrest
+--     signal that replaced Order.]
+--   All stat moves route through _apply_card_stat (schema/176) — the canonical, correctly-clamped
+--   mover (real-backed stats vs the display delta layer).
 --
 -- Called once per tick from _advance_tick (schema/60), isolated so it can never abort the tick. A
 -- one-time backfill seeds gd_fired with each nation's already-met thresholds so shipping this feature
@@ -72,11 +77,12 @@ begin
           values (r.id, 'default', v_body, public.current_game_date(), v_tone);
         v_new := v_new || to_jsonb(v_thresh);
 
-        -- The default itself: write down the debt, tip into recession, and take the standing hits.
+        -- The default itself: write down the debt, tip into recession, punish the government, and take
+        -- the recession + standing stat hits.
         if v_thresh = 100 then
           v_gdp := coalesce(r.gdp, 0);
           if v_gdp > 0 then
-            v_new_gdp  := round(v_gdp * 0.85, 2);                                            -- recession −15%
+            v_new_gdp  := round(v_gdp * 0.95, 2);                                            -- recession −5%
             v_policy   := coalesce(public._nation_policy_stat(r.id, 'Government Default'), 0);
             v_new_debt := greatest(0, round(v_new_gdp * 3 * (80 - v_policy) / 100.0, 2));     -- haircut → Default 80 post-recession
             update public.nations
@@ -84,8 +90,21 @@ begin
                    economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{debt}', to_jsonb(v_new_debt))
              where id = r.id;
           end if;
-          perform public._apply_card_stat(r.id, 'Prosperity', -2);   -- real-backed (schema/176 clamps 1–100)
-          perform public._apply_card_stat(r.id, 'Crime',       2);   -- display stat → stat_deltas
+          -- Party fallout: the government is blamed, the opposition gains. Floor-respecting drop /
+          -- ceiling-respecting raise (schema/70), matching the coalition-collapse penalty (schema/165).
+          update public.parties p
+             set popularity = public._clamp_pop(public._mod_floor_drop(r.id, p.archetype, p.popularity, p.popularity - 7))
+           where p.nation_id = r.id and p.in_government;
+          update public.parties p
+             set popularity = public._mod_cap_raise(r.id, p.archetype, p.popularity, p.popularity + 5)
+           where p.nation_id = r.id and not p.in_government;
+          -- Stat fallout — all through _apply_card_stat (schema/176, correctly clamped):
+          perform public._apply_card_stat(r.id, 'Growth',            -10);  -- lasting scar; also drags GDP in the annual pass
+          perform public._apply_card_stat(r.id, 'Unemployment',        5);  -- recession throws people out of work
+          perform public._apply_card_stat(r.id, 'Poverty',             4);
+          perform public._apply_card_stat(r.id, 'Standard of Living',  -4);
+          perform public._apply_card_stat(r.id, 'Prosperity',         -2);
+          perform public._apply_card_stat(r.id, 'Crime',               2);
         end if;
       end if;
     end loop;
