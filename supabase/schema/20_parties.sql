@@ -84,6 +84,12 @@ alter table public.parties add constraint parties_description_len check (char_le
 -- Archetype is no longer chosen at creation; relax the NOT NULL for new parties.
 alter table public.parties alter column archetype drop not null;
 
+-- One party per player. The `unique (user_id)` above only takes on a FRESH create table — on any
+-- pre-existing parties table `create table if not exists` skips it — so it must ALSO exist as its own
+-- idempotent index, or the signup upsert's ON CONFLICT (user_id) has no constraint to match and fails
+-- on every attempt (mislabeled client-side as "name taken"). This is that idempotent guard.
+create unique index if not exists parties_user_id_uniq on public.parties (user_id);
+
 -- No two parties in the same nation may share a name (case-insensitive) or an
 -- abbreviation — enforced server-side, not just in the client.
 create unique index if not exists parties_nation_name_uniq on public.parties (nation_id, lower(name));
