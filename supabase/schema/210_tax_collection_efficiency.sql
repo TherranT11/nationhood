@@ -1,15 +1,21 @@
 -- ===========================================================================
--- 210 · Tax collection efficiency — Corruption shaves collected revenue.
+-- 210 · Tax collection efficiency — Corruption + Unemployment shave collected revenue.
 --
--- A nation's Corruption reduces how much of its % of GDP tax revenue it actually collects. Only the
--- POSITIVE % of GDP Budget Balance effects are shaved (taxes that scale with the economy) — flat-$
--- effects and spending (negative effects) are untouched, per design. The loss:
+-- A nation's Corruption and Unemployment reduce how much of its % of GDP tax revenue it actually
+-- collects. Only the POSITIVE % of GDP Budget Balance effects are shaved (taxes that scale with the
+-- economy) — flat-$ effects and spending (negative effects) are untouched, per design:
 --
---     leakage    = (positive % of GDP revenue) × (Corruption / 100) × MAX_LEAKAGE
---     collected  = revenue − leakage
+--     collection efficiency = (1 − Corruption/100 × MAX_LEAKAGE)      -- graft / evasion
+--     employment fraction   = (1 − Unemployment/100 × UNEMP_SENS)     -- fewer earners to tax
+--     collected             = revenue × collection efficiency × employment fraction
 --
--- ONE KNOB — MAX_LEAKAGE (0.5): at Corruption 100 a nation loses up to 50% of its % of GDP revenue;
--- at Corruption 50, 25%; at Corruption 0, nothing. Tune this single constant to taste.
+-- TWO KNOBS: MAX_LEAKAGE (0.5) — up to 50% lost to graft at Corruption 100; UNEMP_SENS (1.0) — full
+-- (100 − Unemployment)/100, so 20% unemployment loses 20% of the tax base. Tune each to taste.
+--
+-- Corruption is read via _nation_live_stat (its ministry-stat home); Unemployment from
+-- economy.unemployment — the live economic value cards / crises / corp-climate / malaise all use (NOT
+-- the separate, admin-authored ministry_stats.Unemployment the Government page displays; see the note
+-- at the end of this file — those two stores are unsynced today).
 --
 -- ONE SOURCE: the shave lives in _nation_budget_balance, which drives BOTH the actual debt movement
 -- (_apply_budget_balance) AND the displayed total (nation_stat_values → the Government page), so they
@@ -65,14 +71,19 @@ revoke all on function public._nation_policy_stat(text, text, boolean) from publ
 create or replace function public._nation_budget_balance(p_nation text)
 returns numeric language plpgsql stable security definer set search_path = public as $$
 declare
-  v_sum numeric; v_rev numeric; v_corr numeric; r record; v_yc numeric;
-  v_max_leakage constant numeric := 0.5;   -- ONE KNOB: up to 50% of % of GDP revenue lost at Corruption 100
+  v_sum numeric; v_rev numeric; v_corr numeric; v_unemp numeric; v_eff numeric; r record; v_yc numeric;
+  v_max_leakage constant numeric := 0.5;   -- KNOB 1: up to 50% of % of GDP revenue lost to graft at Corruption 100
+  v_unemp_sens  constant numeric := 1.0;   -- KNOB 2: employment fraction = (100 − Unemployment)/100 in full
 begin
   v_sum := public._nation_policy_stat(p_nation, 'Budget Balance');            -- gross of every Budget Balance effect
-  -- Collection efficiency: Corruption eats into the corruptible tax revenue (positive % of GDP effects).
+  -- Collected fraction of the corruptible tax revenue (positive % of GDP effects) = collection efficiency
+  -- (Corruption) × employment fraction (Unemployment). Subtract the uncollected remainder.
   v_rev  := public._nation_policy_stat(p_nation, 'Budget Balance', true);     -- that positive % of GDP revenue
   v_corr := least(100, greatest(0, coalesce(public._nation_live_stat(p_nation, 'Corruption'), 0)));
-  v_sum  := v_sum - v_rev * (v_corr / 100.0) * v_max_leakage;                 -- shave the leakage
+  select least(100, greatest(0, coalesce(public._to_num(economy->>'unemployment'), 0)))
+    into v_unemp from public.nations where id = p_nation;
+  v_eff  := (1 - v_corr / 100.0 * v_max_leakage) * (1 - v_unemp / 100.0 * v_unemp_sens);
+  v_sum  := v_sum - v_rev * (1 - v_eff);                                      -- shave the uncollected portion
   -- Running initiatives: this nation's standing share of each active programme's $bn/yr (as the
   -- enacting nation, (100 − share)%; as a joint partner, share%). Flat $bn or % of the ENACTING nation's GDP.
   for r in
@@ -91,5 +102,14 @@ begin
   return v_sum;
 end $$;
 revoke all on function public._nation_budget_balance(text) from public, anon, authenticated;
+
+-- KNOWN, PRE-EXISTING ONE-SOURCE ISSUE (not introduced here, flagged for a follow-up decision):
+-- Unemployment lives in TWO unsynced places — economy.unemployment (the live economic value cards,
+-- events, crises, corp-climate and the malaise pass all move + read) and ministry_stats.Unemployment
+-- (admin-authored, what the Government page displays via _nation_live_stat / nation_stat_values). They
+-- can drift (e.g. a card that raises Unemployment moves only economy.*). This function reads the
+-- economic value — correct for an economic mechanic — but it may differ from the number shown on the
+-- Government page. Reconciling the two (make the display read economy.unemployment, or sync them) is a
+-- separate change worth making so the mechanic reads exactly what the player sees.
 
 notify pgrst, 'reload schema';
