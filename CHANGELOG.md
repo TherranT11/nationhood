@@ -2,6 +2,81 @@
 
 All notable changes to Nationhood are recorded here.
 
+## 0.7.2 — 2026-07-14
+
+A new world map, named military units, a reworked card turn, international organizations
+with a living law-book, and a deep statistics layer — the numbers a nation runs on are now
+computed from the game rather than typed in, with a regime-stability layer on top.
+
+### The World Map (Home)
+- **A living map** — the home screen is now the world map. Your capital flies a golden star,
+  other cities are drawn as medieval hamlets, and every settlement sits on the hex grid.
+- **This month's events** — a marker sits over each capital where something is happening;
+  tap it to read that nation's feed, each entry stamped with its month and year.
+- **Political / Military filter** — toggle between the political view and a military view that
+  shows unit counters on the map.
+- **Topbar & countdown** — a live "next tick" countdown alongside your Action Points,
+  Influence, and the in-game date, framed by a clean map border. A raft of mobile fixes so
+  taps land where you mean them and panels open reliably.
+
+### Military — Named Units
+- **Build named units** — deploying from a base now opens a proper builder: choose the base,
+  name the unit ("1st Infantry Division"), and pick **Infantry** or **Armor**. Armor is the
+  heavier class and costs **1 Energy + 1 Mineral** to field.
+- **On the map** — each unit shows as a NATO-style counter (green for yours, red for foreign)
+  with its class and strength, and its name labelled beside it.
+
+### Cards, Turns & Action Points
+- **Play *or* discard, bid freely** — each month you make one terminal choice, play a card or
+  discard it, and that's it for the choice. **Bidding is now decoupled**: you can place or
+  raise bids any time, whether or not you've already played or discarded.
+- **A flat three-bid cap** — you may chase up to three market cards at once, independent of
+  how many cards you're holding, so a full hand no longer blocks the auction.
+- **Action Points bank and persist** — playing a card adds its Action Points to a running
+  bank that carries across months; on top of that every party gets a fresh baseline of 2 AP
+  each month, use-it-or-lose-it.
+- **Card play reads cleanly** — a played card announces itself as "In {nation}, {what it is}.",
+  and a Government Choice fires a *separate* second event when the government decides — with the
+  chosen option's effects listed out on the timeline.
+- **Card Creator** — mob and militia hex effects can now be authored as **Enemy**-aligned
+  rather than always belonging to a party.
+
+### International Organizations
+- **Cohesion** — every organization runs on a Cohesion score that starts at 20 and grows +0.5
+  each tick; a member leaving costs the bloc 5 Cohesion.
+- **The Resource law-book** — spend Cohesion to enact live laws: **Joint Pricing** (a shared
+  buy price), **Emergency Reserves**, and **Survey Sharing** (each member produces +1 of the
+  bloc's resource while they stay in). Laws are proposed, costed, and voted through the charter.
+- **Membership by application** — outside nations **Apply for Membership**; a member review
+  admits them **as a Member** (a voting seat) or **as an Observer** (presence only), or rejects
+  them, and an unanswered application auto-fails after six ticks.
+- **Upcoming Agenda** moved above the laws, below the chat.
+
+### The Nation's Statistics
+- **Computed, not typed** — roughly fifteen stats are now **derived** from the game and their
+  hand-set inputs removed from nation setup: Tax Burden, Bureaucracy, Military Research, Civil
+  Liberties, Armed Forces Funding, CO₂ Emissions, Global Warming, Energy Availability, Interest
+  Rates, and connector-driven Crime, Poverty, Demographic Pressure, Standard of Living, and
+  Equity Between Generations. Admins tune the couplings live rather than typing values.
+- **Regime stability** — a new layer of stats: **Control** (the regime's grip), **Revolt Risk**,
+  **Inflation**, **Cult of Personality** (a stock that autocracies build through propaganda and
+  that decays over time), and **Government Default**. **Oppression** is added as a hand-set core
+  stat that Control reads. Terrorism is tracked internally but hidden from the readout.
+- **Government Default & sovereign default** — Default is a 0–100 risk from the debt-to-GDP
+  ratio (150% of GDP → 50, 300% → 100). As it climbs, headlines fire at **30 / 50 / 70 / 80 /
+  90 / 100**, re-arming if a nation recovers and slides back. At **100 the nation defaults**:
+  its debt is written down, GDP takes a 15% recession hit, and Prosperity and Crime worsen.
+- **Colour-coded readouts** — stat cells on the Government page are now shaded green / amber /
+  red by whether the value is good, middling, or bad for the nation.
+
+### Governance & Interface
+- **Coalitions with a majority** — a party that wins an outright majority can now still open the
+  Coalition tab and invite partners; take no action and it simply governs alone as before.
+- **Bill titles** — an amended policy's auto-filled bill title now reads "{Policy} Bill" instead
+  of "{Policy} (Amendment)".
+- **Actions tab** — a new (placeholder) Actions item sits in the navigation between Home and Party.
+- **Influence** shows as a lightning bolt everywhere it appears.
+
 ## 0.6.1 — 2026-07-11
 
 The card system: a deck, a market, and a hand for every party — political plays authored in
