@@ -1987,7 +1987,7 @@
       // former_ruling_party feed the one-party-restored banner. If the full select
       // errors (e.g. an older DB missing those two columns), fall back to the core
       // columns so a drifted optional column can't blank the whole nation snapshot.
-      var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, former_ruling_party, no_confidence_until_tick, produce_until_tick, call_election_until_tick, diplo_until_tick, population, gdp, production, on_hand, declarations, legislature_seats, next_election_tick, election_frequency_months').eq('id', party.nation_id).single();
+      var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, former_ruling_party, no_confidence_until_tick, produce_until_tick, call_election_until_tick, population, gdp, production, on_hand, declarations, legislature_seats, next_election_tick, election_frequency_months').eq('id', party.nation_id).single();
       var nation = nsel.data;
       if (nsel.error) nation = (await supabase.from('nations').select('name, flag, stats, economy, policies').eq('id', party.nation_id).single()).data;
       const nationName = (nation && nation.name) || party.nation_id;
@@ -2071,7 +2071,14 @@
         renderEconDevBar(isEconDevMin);
         const { data: famin } = await supabase.rpc('is_foreign_affairs_minister'); // holds Foreign Affairs → charters organizations
         renderForeignBar(famin === true);
-        applyDiploCooldown(curTick, nation && nation.diplo_until_tick);   // 12-tick Diplomatic Outreach cooldown gate
+        // Read the Diplomatic Outreach cooldown in ISOLATION (deliberately NOT bundled into the big nation
+        // select above): on a live DB that hasn't yet added diplo_until_tick, the missing column just
+        // returns null here instead of blanking the whole nation snapshot. Only the FA minister has the
+        // button, so only they need this. Server stays authoritative if the initial display is missing.
+        if (famin === true) {
+          const { data: dcd } = await supabase.from('nations').select('diplo_until_tick').eq('id', party.nation_id).maybeSingle();
+          applyDiploCooldown(curTick, dcd && dcd.diplo_until_tick);   // 12-tick Diplomatic Outreach cooldown gate
+        }
       } catch (e) { /* leave the PM bar hidden if the government can't be read */ }
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));
