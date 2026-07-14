@@ -40,6 +40,9 @@ create table if not exists public.card_claims (
   unique (party_id, tick)
 );
 create index if not exists card_claims_nation_tick_idx on public.card_claims (nation_id, tick);
+-- Only one party per nation may take the pass each turn. claim_card checks this for a friendly message,
+-- but this partial unique index is the race-proof guard (two simultaneous passes can't both land).
+create unique index if not exists card_claims_one_pass on public.card_claims (nation_id, tick) where action = 'pass';
 
 alter table public.card_claims enable row level security;
 drop policy if exists "card_claims_select_all" on public.card_claims;
@@ -142,9 +145,12 @@ begin
       end if;
 
       select definition into v_def from public.cards c join public.deck_cards dc on dc.card_id = c.id where dc.id = v_card;
-      v_acts := greatest(1, least(10, coalesce((v_def->>'acts')::int, 1)));
+      v_acts := greatest(1, least(10, coalesce((v_def->>'acts')::int, 1)));   -- card AP, 1–10 (same rule as 174/187; a shared _card_acts helper is a pending cleanup)
 
-      -- Event (or both): fire through the SAME path card_play uses (one source).
+      -- Event (or both): fire through the SAME path card_play uses (one source). KNOWN LIMITATION: a
+      -- claim carries no hex/target pick, so a card whose effect needs one (hex_pop / hex_el / a
+      -- party-targeted attack) fires only its non-targeted effects here. Restricting such cards to
+      -- AP-only claims is a follow-up (flagged to the design owner).
       if v_party.action in ('event', 'both') then
         if coalesce(v_def->>'persistV', 'no') = 'yes' then
           perform public._mint_card_modifier(v_nat.id, v_party.id, v_def, p_tick);

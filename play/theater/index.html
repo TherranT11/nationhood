@@ -203,7 +203,7 @@
     if (def.type === 'ar' || def.type === 'dr') return { label: 'Stance', cls: '' };
     return { label: 'Card', cls: '' };
   }
-  function cardAP(def) { return Math.max(1, Math.min(6, Number(def.acts) || 1)); }
+  function cardAP(def) { return Math.max(1, Math.min(10, Number(def.acts) || 1)); }   // 1–10, matching the Card Creator + the AP the resolver actually banks
   function cardCost(def) { return Math.max(1, Number(def.cost) || 0); }
   function stripColor(def) { return def.lim === 'nation' ? 'var(--indigo)' : (def.type === 'ar' || def.type === 'dr' ? 'var(--amber,#E0820E)' : 'var(--soft)'); }
 
