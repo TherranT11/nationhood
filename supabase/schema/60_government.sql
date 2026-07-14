@@ -541,8 +541,9 @@ begin
   begin perform public._nation_cult_tick();
   exception when others then raise warning 'tick %: cult-of-personality tick failed — %', v_tick, sqlerrm; end;
   -- Government Default headlines (schema/202): fire the 30/50/70/80/90/100 threshold events as a nation's
-  -- debt-to-GDP climbs (re-arming on recovery); at 100 the nation defaults — debt written down, GDP −15%,
-  -- Prosperity −2, Crime +2. Runs after this tick's debt moves (budget balance, interest) have settled.
+  -- debt-to-GDP climbs (re-arming on recovery); at 100 the nation defaults, with the debt haircut and the
+  -- economic/political fallout enumerated in schema/202 (the one source). Runs after this tick's debt
+  -- moves (budget balance, interest) have settled.
   begin perform public._nation_govt_default_events(v_tick);
   exception when others then raise warning 'tick %: government-default events failed — %', v_tick, sqlerrm; end;
   -- Regime is the sole switch between one-party and multiparty. This tick's economics
