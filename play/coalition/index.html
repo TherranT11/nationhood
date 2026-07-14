@@ -163,6 +163,7 @@
   // contain the player (redundant partners trimmed), so the page never blanks.
   function buildCoalitions() {
     var mySeats = MY_PARTY.seats || 0;
+    var majAlone = mySeats >= MAJ;   // the player already holds a majority → partners are optional, not critical
     var others = PARTIES.filter(function (p) { return p.id !== MY_ID && (p.seats || 0) > 0; }).sort(bySeats);
     if (others.length > 16) others = others.slice(0, 16);   // 2^16 guard; nations cap at 8 parties
     var n = others.length, found = [], seen = {};
@@ -171,7 +172,9 @@
       var mem = [MY_ID], seats = mySeats, arr = [MY_PARTY];
       for (var i = 0; i < n; i++) if (mask & (1 << i)) { mem.push(others[i].id); seats += others[i].seats || 0; arr.push(others[i]); }
       if (seats < MAJ) continue;
-      if (!arr.every(function (p) { return seats - (p.seats || 0) < MAJ; })) continue;   // every member critical
+      // When the player is a majority alone, no partner is ever "critical", so the criticality filter would
+      // kill every partner combo and leave only the solo set. Skip it there — offer solo + any partner add.
+      if (!majAlone && !arr.every(function (p) { return seats - (p.seats || 0) < MAJ; })) continue;   // every member critical
       addCoalition(found, seen, mem, seats);
     }
 
@@ -208,6 +211,11 @@
   }
   function coalitionNote(c) {
     var arr = c.members.map(function (m) { return byId[m]; });
+    if (arr.length === 1) {   // the solo option — a majority party governing alone
+      var solo = (c.seats - MAJ);
+      return 'Govern alone — no partners. ' + c.seats + ' seats, ' +
+        (solo === 0 ? 'exactly on the majority line.' : solo + ' clear of the line.');
+    }
     var clashes = 0;
     for (var i = 0; i < arr.length; i++) for (var j = i + 1; j < arr.length; j++)
       if (opposes(arr[i].archetype, arr[j].archetype)) clashes++;
@@ -226,7 +234,9 @@
   // coalition once every OTHER member has already cast — then Yes-but is off.
   function playerIsLast(members, key) {
     var others = members.filter(function (m) { return m !== MY_ID; });
-    return others.length > 0 && others.every(function (m) { return voteOf(key, m) !== 'none'; });
+    // A solo coalition (majority party governing alone) has no other members, so a "Yes, but" demand
+    // has no one to table it to — treat the player as last (Yes-but off), matching cast_coalition_vote.
+    return others.length === 0 || others.every(function (m) { return voteOf(key, m) !== 'none'; });
   }
 
   function demandText(d) {
@@ -536,19 +546,17 @@
         showMessage('No assembly yet', 'Coalitions form after a general election seats the National Assembly.');
         return;
       }
-      if ((MY_PARTY.seats || 0) >= MAJ) {
-        document.getElementById('clede').textContent = 'Your party won an outright majority — no coalition is needed to govern.';
-        document.getElementById('content').innerHTML = assemblyPanel(null) +
-          '<div class="panel"><div class="empty"><b>An outright majority</b><span>' + esc(MY_PARTY.name) + ' holds ' +
-          (MY_PARTY.seats || 0) + ' of ' + TOTAL + ' seats and can govern alone — there is no coalition to build.</span></div></div>';
-        return;
-      }
+      var majAlone = (MY_PARTY.seats || 0) >= MAJ;
 
       COALITIONS = buildCoalitions();
-      document.getElementById('clede').innerHTML =
-        'No party holds the <b>' + MAJ + '</b> seats needed to govern the ' + TOTAL + '-seat National Assembly, so the government is decided by coalition. ' +
-        'Every party votes on the coalitions it belongs to — <b>Yes</b>, <b>Yes, but…</b> (with a demand tabled to the others), or <b>No</b>. ' +
-        'Yes counts 1, Yes-but 1.5, No counts 0. At the next tick the highest-scoring coalition forms the government; ties break to the most votes cast, then to the most seats.';
+      document.getElementById('clede').innerHTML = majAlone
+        ? esc(MY_PARTY.name) + ' won an <b>outright majority</b> (' + (MY_PARTY.seats || 0) + ' of ' + TOTAL + ' seats) and can govern alone. ' +
+          'You may also <b>invite partners into a coalition</b> — cast a vote on any set below. ' +
+          'Yes counts 1, Yes-but 1.5, No counts 0; at the next tick the highest-scoring coalition forms. ' +
+          'Take no action and you simply keep governing alone.'
+        : 'No party holds the <b>' + MAJ + '</b> seats needed to govern the ' + TOTAL + '-seat National Assembly, so the government is decided by coalition. ' +
+          'Every party votes on the coalitions it belongs to — <b>Yes</b>, <b>Yes, but…</b> (with a demand tabled to the others), or <b>No</b>. ' +
+          'Yes counts 1, Yes-but 1.5, No counts 0. At the next tick the highest-scoring coalition forms the government; ties break to the most votes cast, then to the most seats.';
 
       if (!COALITIONS.length) { showMessage('No majority coalition includes you', 'No combination of parties reaches a majority with ' + esc(MY_PARTY.name) + ' at the table.'); return; }
 

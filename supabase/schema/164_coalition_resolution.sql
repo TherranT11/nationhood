@@ -1,8 +1,9 @@
 -- ===========================================================================
 -- 164 · Coalition resolution — seat the winning coalition at the tick.
 -- Stage 2 of the coalition-voting feature (persistence + voting UI shipped in
--- 163). Each tick, every multiparty nation with no single-party majority has its
--- governing coalition re-derived from the assembly's live votes:
+-- 163). Each tick, every multiparty nation has its governing coalition re-derived
+-- from the assembly's live votes — including a nation where one party holds a
+-- majority, which may now opt into a coalition instead of governing alone:
 --
 --   score  = Σ  (Yes 1, Yes-but 1.5, No 0)   -- the schema/163 weights, one source
 --   winner = highest score → most votes cast (Yes + Yes-but) → most seats
@@ -42,11 +43,11 @@ begin
   loop
     v_maj := public._majority(v_n.seats);
 
-    -- A single party already holds a majority → it governs alone (seated by
-    -- resolve_election). Coalition voting doesn't apply; leave it be.
-    if exists (select 1 from public.parties where nation_id = v_n.id and seats >= v_maj) then
-      continue;
-    end if;
+    -- A single-party majority governs ALONE BY DEFAULT (seated by resolve_election), but may now
+    -- OPT INTO a coalition (schema/164 update): if partners have been voted onto a winning set below,
+    -- that coalition seats instead. No short-circuit here anymore. With a majority party in play every
+    -- winning coalition necessarily includes it (no set excluding it can reach the line), so normal
+    -- vote resolution is safe; when nothing is voted (v_win_key null) the solo government simply stands.
 
     -- The winning coalition among those this nation has voted on. A coalition_key
     -- is only a candidate when every id in it is still one of the nation's parties
