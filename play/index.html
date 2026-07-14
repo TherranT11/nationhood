@@ -584,6 +584,7 @@
   // Produce/Reshuffle/Election are nation-wide cooldown-gated: while the until-tick is in the
   // future the action stays disabled for everyone in the nation, on top of the usual Action-Point gate.
   var NOW_TICK = 0, produceUntilTick = 0, produceBtn = null, reshuffleUntilTick = 0, reshuffleBtn = null, electionUntilTick = 0, electionBtn = null;
+  var diploUntilTick = 0, diploBtn = null;
   function setActions(n) {
     partyActions = n;
     setTopbarActions(n);
@@ -594,6 +595,8 @@
     if (produceBtn && produceUntilTick > NOW_TICK) produceBtn.disabled = true;
     if (reshuffleBtn && reshuffleUntilTick > NOW_TICK) reshuffleBtn.disabled = true;
     if (electionBtn && electionUntilTick > NOW_TICK) electionBtn.disabled = true;
+    // Diplomatic Outreach costs 2 AP and is on its own nation cooldown, so it needs both gates.
+    if (diploBtn && (n < 2 || diploUntilTick > NOW_TICK)) diploBtn.disabled = true;
   }
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
@@ -1300,6 +1303,19 @@
     }
   }
 
+  // Mirror the nation-wide Diplomatic Outreach cooldown on the Foreign Affairs button (disabled + a
+  // "Cooldown" pill while active), exactly like Produce. The server stays authoritative.
+  function applyDiploCooldown(now, until) {
+    NOW_TICK = now; diploUntilTick = until || 0;
+    if (!diploBtn) return;
+    var left = diploUntilTick - now, pill = diploBtn.querySelector('.lead__cost');
+    if (left > 0) {
+      diploBtn.disabled = true;
+      diploBtn.title = 'Diplomatic outreach is on cooldown for this nation — ' + left + ' more tick' + (left === 1 ? '' : 's') + '.';
+      if (pill) { pill.textContent = 'Cooldown'; pill.classList.add('lead__cost--soon'); }
+    }
+  }
+
   // Minister of Trade bar — shown to a party that holds the Trade portfolio, above the
   // Influence. The Import card just navigates to the Economy page (where the actual
   // import happens); the "1 AP" pill is informational here.
@@ -1353,16 +1369,31 @@
   // Found Charter action opens the founding modal (charter a new international organization + invite).
   function renderForeignBar(isForeignMin) {
     var el = document.getElementById('foreignbar'); if (!el) return;
-    if (!isForeignMin) { el.innerHTML = ''; return; }
+    if (!isForeignMin) { el.innerHTML = ''; diploBtn = null; return; }
     el.innerHTML = '<section class="panel leadbar">' +
       '<div class="glance-hd"><span>Minister of Foreign Affairs &middot; This Week’s Action</span></div>' +
       '<p class="leadbar__sub">Your party holds the Foreign Affairs portfolio. Charter an international organization and invite other nations to join it.</p>' +
       '<div class="leadbar__grid">' +
         '<button class="lead" type="button" id="foreign-charter" data-cost="2"><b>Found Intl. Org</b><span class="lead__lane">Intl. Organizations</span><span class="lead__desc">Charter a new organization and invite nations — 5 Diplomacy · 1 AP.</span></button>' +
+        '<button class="lead" type="button" id="foreign-outreach" data-cost="2"><b>Diplomatic Outreach</b><span class="lead__lane">Intl. Organizations</span><span class="lead__desc">Bank Diplomacy equal to your nation’s Diplomacy production — 2 AP · 12-tick cooldown.</span></button>' +
       '</div></section>';
     el.querySelectorAll('.lead').forEach(stampCost);
     var fb = document.getElementById('foreign-charter');
     if (fb) { actionBtns.push(fb); fb.addEventListener('click', function () { if (!fb.disabled) openFoundCharter(); }); }
+    // Diplomatic Outreach: 2 AP, 12-tick nation cooldown. Fires via performAction (Influence budget +
+    // feed refresh); the returned `until` greys it out at once, like Produce.
+    diploBtn = document.getElementById('foreign-outreach');
+    if (diploBtn) {
+      var dpill = diploBtn.querySelector('.lead__cost'); if (dpill) dpill.textContent = '2 AP';   // the pill is generic "1 AP" otherwise
+      actionBtns.push(diploBtn);
+      diploBtn.addEventListener('click', function () {
+        if (diploBtn.disabled) return;
+        performAction(function () { return supabase.rpc('diplomatic_outreach'); }, function (d) {
+          if (d && d.until != null) applyDiploCooldown(NOW_TICK, d.until);
+          return 'Diplomatic outreach run — ' + ((d && d.diplomacy_added) || 0) + ' Diplomacy banked to the national stockpile.';
+        });
+      });
+    }
   }
 
   // FOUND CHARTER — the Minister of Foreign Affairs charters an international organization: pick a name,
@@ -1956,7 +1987,7 @@
       // former_ruling_party feed the one-party-restored banner. If the full select
       // errors (e.g. an older DB missing those two columns), fall back to the core
       // columns so a drifted optional column can't blank the whole nation snapshot.
-      var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, former_ruling_party, no_confidence_until_tick, produce_until_tick, call_election_until_tick, population, gdp, production, on_hand, declarations, legislature_seats, next_election_tick, election_frequency_months').eq('id', party.nation_id).single();
+      var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, former_ruling_party, no_confidence_until_tick, produce_until_tick, call_election_until_tick, diplo_until_tick, population, gdp, production, on_hand, declarations, legislature_seats, next_election_tick, election_frequency_months').eq('id', party.nation_id).single();
       var nation = nsel.data;
       if (nsel.error) nation = (await supabase.from('nations').select('name, flag, stats, economy, policies').eq('id', party.nation_id).single()).data;
       const nationName = (nation && nation.name) || party.nation_id;
@@ -2040,6 +2071,7 @@
         renderEconDevBar(isEconDevMin);
         const { data: famin } = await supabase.rpc('is_foreign_affairs_minister'); // holds Foreign Affairs → charters organizations
         renderForeignBar(famin === true);
+        applyDiploCooldown(curTick, nation && nation.diplo_until_tick);   // 12-tick Diplomatic Outreach cooldown gate
       } catch (e) { /* leave the PM bar hidden if the government can't be read */ }
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));
