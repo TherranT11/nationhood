@@ -161,7 +161,7 @@
         '<label class="lbl" style="margin-top:14px">Proposed change <span class="hint" style="text-transform:none;letter-spacing:0">— pick a rung</span></label><div id="l-ladder" class="ladder"></div>' +
       '</section>' +
       '<section class="mod"><div class="mod__hd"><span>The Bill</span><span class="hint">filled in for you — edit freely</span></div>' +
-        '<label class="lbl">Bill title</label><input id="l-title" class="inp" type="text" maxlength="120" placeholder="e.g. Public Health Programmes (Amendment)">' +
+        '<label class="lbl">Bill title</label><input id="l-title" class="inp" type="text" maxlength="120" placeholder="e.g. Public Health Programmes Bill">' +
         '<label class="lbl" style="margin-top:14px">Introductory article</label><textarea id="l-intro" class="inp" rows="3" maxlength="400" placeholder="An Act to…" style="resize:vertical;line-height:1.55"></textarea>' +
       '</section></div>' +
       '<div class="preview"><div class="pvlabel">Live Preview</div>' +
@@ -324,7 +324,7 @@
       if (sel.proposed == null) return;
       var def = curDef(), opts = policyOptions(def), pname = def.name || 'this policy';
       var cur = opts[inForceIdx()], prop = opts[sel.proposed];
-      if (!touched.title) titleInp.value = pname + ' (Amendment)';
+      if (!touched.title) titleInp.value = pname + ' Bill';
       if (!touched.intro) introInp.value = 'An Act to amend the ' + pname + ', changing provision from ' +
         (cur && cur.name || 'the current rung') + ' to ' + (prop && prop.name || 'the proposed rung') + ', with effect from the next session.';
     }
