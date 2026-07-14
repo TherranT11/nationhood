@@ -68,7 +68,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
-  import { esc, declaredValue } from '/util.js';
+  import { esc, declaredValue, tickToDate } from '/util.js';
   import { ideologyLabel } from '/archetypes.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
@@ -136,6 +136,8 @@
       const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations').select('name, flag, declarations, economy, gdp').eq('id', party.nation_id).single();
+      var curTick = null;
+      try { const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle(); if (gs) curTick = gs.current_tick; } catch (e) {}
 
       var nationName = (nation && nation.name) || party.nation_id;
       try {
@@ -175,6 +177,15 @@
           .order('created_at', { ascending: true })
           .limit(120);
         var series = (hist || []).map(function (e) { return { v: Number(e.debt_after), date: e.game_date }; }).filter(function (s) { return isFinite(s.v); });
+        // The ledger only records debt on a debt-moving tick; a direct edit to economy.debt (a debt
+        // restructuring) bypasses it, so the ledger's last value can be stale — sitting above the default
+        // line even though the nation is now well under it. economy.debt is the source of truth for "now",
+        // so anchor the chart's final point to it whenever it has drifted from the last ledger entry. This
+        // keeps the curve's endpoint equal to the headline and renders the restructuring as a visible drop.
+        if (ec.debt != null && ec.debt !== '' && isFinite(debt)) {
+          var last = series.length ? series[series.length - 1].v : null;
+          if (last === null || Math.abs(debt - last) >= 0.05) series.push({ v: debt, date: (curTick != null ? tickToDate(curTick) : '') });
+        }
         drawChart(series, defaultLine);
         renderTimeline(series);
       } catch (e) {
