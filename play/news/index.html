@@ -411,8 +411,11 @@
     var roster = [], events = [], world = [], decisions = [], cards = [], claims = [], mine = null, abbr = {};
     try {
       // One party read powers the decision labels AND the Tempo Track (so it carries tempo + seats).
-      const { data } = await supabase.from('parties').select('id, name, abbreviation, archetype, color, seats, tempo').eq('nation_id', NATION_ID).order('name', { ascending: true }).order('id', { ascending: true });
-      roster = data || [];
+      // Resilient to drift: if `tempo` (schema/206) isn't deployed yet the column select errors, so fall
+      // back to the tempo-less read — the decision labels must never break on a missing Tempo column.
+      var pq = await supabase.from('parties').select('id, name, abbreviation, archetype, color, seats, tempo').eq('nation_id', NATION_ID).order('name', { ascending: true }).order('id', { ascending: true });
+      if (pq.error) pq = await supabase.from('parties').select('id, name, abbreviation, archetype, color, seats').eq('nation_id', NATION_ID).order('name', { ascending: true }).order('id', { ascending: true });
+      roster = pq.data || [];
     } catch (e) {}
     window.__roster = roster;
     roster.forEach(function (p) { abbr[p.id] = p.abbreviation || p.name; });
