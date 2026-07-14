@@ -995,7 +995,7 @@
   // authoritative on every rule — the modal just surfaces which neighbours are reachable. Fires move_unit.
   var moveModal = document.getElementById('moveModal');
   var closeMove = wireModalClose(moveModal, 'moveClose');
-  var MOV = { units: [], landSet: null, foeSet: null, hexMap: null, myNation: null, tick: 0, sel: null };
+  var MOV = { units: [], foeSet: null, hexMap: null, myNation: null, tick: 0, sel: null };
   // Pointy-top hex corner ring (matches axialToPix's layout, hexmap.js) for the mini-map polygons.
   function hexCorners(cx, cy, s) {
     var p = [];
@@ -1048,8 +1048,8 @@
       MOV.myNation = nid;
       MOV.units = (res[0].data || []).filter(function (u) { return u.q != null && u.r != null; });
       MOV.foeSet = new Set((res[1].data || []).map(function (u) { return u.q + ',' + u.r; }));
-      MOV.hexMap = {}; MOV.landSet = new Set();
-      (res[2].data || []).forEach(function (h) { var k = h.q + ',' + h.r; MOV.hexMap[k] = h; if (h.terrain === 'land') MOV.landSet.add(k); });
+      MOV.hexMap = {};
+      (res[2].data || []).forEach(function (h) { MOV.hexMap[h.q + ',' + h.r] = h; });
       try { MOV.tick = await currentTick(); } catch (e) { MOV.tick = 0; }
       MOV.sel = MOV.units.length ? MOV.units[0].id : null;
       renderMove();
