@@ -196,29 +196,31 @@
   }
 
   async function loadOrgs() {
-    // Orgs this nation touches: ones it hosts, is a member of, or was invited to.
-    var hosted = (await supabase.from('organizations').select('id').eq('host_nation', ME)).data || [];
+    // The Established list shows EVERY organization in the world, even ones this nation has no part in
+    // (org data is public). So we read all orgs + all rosters, and only SCOPE the founding banners and
+    // the "your diplomacy" summary tiles to this nation's own involvement.
+    var mineHost = (await supabase.from('organizations').select('id').eq('host_nation', ME)).data || [];
     var myMem  = (await supabase.from('organization_members').select('org_id').eq('nation_id', ME)).data || [];
     var myInv  = (await supabase.from('organization_invitations').select('org_id').eq('nation_id', ME)).data || [];
-    var ids = {};
-    hosted.forEach(function (o) { ids[o.id] = 1; });
-    myMem.forEach(function (m) { ids[m.org_id] = 1; });
-    myInv.forEach(function (i) { ids[i.org_id] = 1; });
-    var orgIds = Object.keys(ids);
+    var mine = {};
+    mineHost.forEach(function (o) { mine[o.id] = 1; });
+    myMem.forEach(function (m) { mine[m.org_id] = 1; });
+    myInv.forEach(function (i) { mine[i.org_id] = 1; });
 
-    var orgs = orgIds.length ? ((await supabase.from('organizations').select('id, host_nation, name, emblem, org_type, charter, status, founded_tick').in('id', orgIds)).data || []) : [];
-    var members = orgIds.length ? ((await supabase.from('organization_members').select('org_id, nation_id, role').in('org_id', orgIds)).data || []) : [];
-    var invites = orgIds.length ? ((await supabase.from('organization_invitations').select('org_id, nation_id, status').in('org_id', orgIds)).data || []) : [];
+    var orgs = (await supabase.from('organizations').select('id, host_nation, name, emblem, org_type, charter, status, founded_tick')).data || [];
+    var members = (await supabase.from('organization_members').select('org_id, nation_id, role')).data || [];
+    var invites = (await supabase.from('organization_invitations').select('org_id, nation_id, status')).data || [];
     var memByOrg = {}, invByOrg = {};
     members.forEach(function (m) { (memByOrg[m.org_id] = memByOrg[m.org_id] || []).push(m); });
     invites.forEach(function (i) { (invByOrg[i.org_id] = invByOrg[i.org_id] || []).push(i); });
 
-    // Summary tiles.
+    // Summary tiles — about ME.
     var activeMemberships = members.filter(function (m) {
       var o = orgs.find(function (x) { return x.id === m.org_id; });
       return m.nation_id === ME && o && o.status === 'active';
     }).length;
-    var founding = orgs.filter(function (o) { return o.status === 'founding'; });
+    // Founding banners carry act-on-it buttons (accept / ratify), so keep them to orgs I'm part of.
+    var founding = orgs.filter(function (o) { return o.status === 'founding' && mine[o.id]; });
     // Diplomacy I've spent founding = 5 per organization I host (charged at charter time, schema/186).
     var hostedOrgs = orgs.filter(function (o) { return o.host_nation === ME; }).length;
     document.getElementById('sMem').textContent = activeMemberships;
