@@ -8,8 +8,9 @@
 -- it's folded into _nation_live_stat (schema/175) — the ONE source every screen reads via
 -- nation_stat_values — so a reform's contribution shows wherever the stat renders.
 --
--- Reforms are authored one at a time. So far: MONARCHY reform 1 · Great Charter (+8 Rule of Law,
--- +4 Civil Liberties). Every other reform returns no effect until we design it.
+-- Reforms are authored one at a time. So far: MONARCHY reform 1 · Great Charter (+6 Bureaucracy,
+-- +2 Rule of Law). Every other reform returns no effect until we design it. (A reform can also carry
+-- a UNIQUE mechanic beyond stats — that gets a bespoke hook where its theme calls for it.)
 --
 -- Depends on: 166 (_regime_type / _regime_reform), 175 (_nation_live_stat), 177 (nation_stat_values),
 -- 47/152 (_nation_policy_stat, _nation_tax_burden, _to_num). Idempotent. Apply after 177.
@@ -24,7 +25,7 @@ create or replace function public._reform_effects(p_type text, p_n int)
 returns jsonb language sql immutable set search_path = public as $$
   select case
     when p_type = 'monarchy' and p_n = 1
-      then '[{"t":"Rule of Law","v":8},{"t":"Civil Liberties","v":4}]'::jsonb   -- Great Charter
+      then '[{"t":"Bureaucracy","v":6},{"t":"Rule of Law","v":2}]'::jsonb   -- Great Charter
     else '[]'::jsonb
   end;
 $$;

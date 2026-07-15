@@ -39,7 +39,7 @@ export function reformName(type, n) {
 export const REFORM_EFFECTS = {
   democracy: [],
   monarchy: [
-    [{ t: 'Rule of Law', v: 8 }, { t: 'Civil Liberties', v: 4 }],   // 1 · Great Charter
+    [{ t: 'Bureaucracy', v: 6 }, { t: 'Rule of Law', v: 2 }],   // 1 · Great Charter
   ],
   autocracy: [],
 };
