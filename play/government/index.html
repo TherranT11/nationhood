@@ -95,7 +95,7 @@
   import { esc, majority, declaredValue, loadHogTitleSlot } from '/util.js';
   import { fetchAdministrations, renderAdministrations } from '/administrations.js';
   import { partyColor, ideologyLabel } from '/archetypes.js';
-  import { nationStockMarket } from '/ladders.js';
+  import { nationStockMarket, stockMarketRating } from '/ladders.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
@@ -247,8 +247,10 @@
       // lives on economy.stock_market and starts INACTIVE for every nation (ONE source: ladders.js).
       if (s === 'Stock Market'){
         var sm = nationStockMarket(nation && nation.economy || {});
-        return (sm.active && sm.price != null)
-          ? esc(sm.price.toLocaleString())
+        // Computed from the four live levers (Growth/Prosperity/Rule of Law/Corruption) already in
+        // STAT_VALUES — the same source as the cells around it, so the number stays consistent.
+        return sm.active
+          ? esc(stockMarketRating(STAT_VALUES).price.toLocaleString())
           : '<span style="color:var(--soft)">Inactive</span>';
       }
       var v = STAT_VALUES[s];

@@ -117,11 +117,41 @@ export function clampStockPrice(n) {
   if (!isFinite(v)) return null;
   return Math.max(STOCK_PRICE_MIN, Math.min(STOCK_PRICE_MAX, v));
 }
-// → { active, price } where price is a clamped 1–100,000 rating, or null when inactive/unset.
+// Whether a nation has a live market. Absent OR active:false → inactive (no rating yet).
 export function nationStockMarket(economy) {
   const sm = economy && economy.stock_market;
-  if (!sm || sm.active !== true) return { active: false, price: null };
-  return { active: true, price: clampStockPrice(sm.price) };
+  return { active: !!(sm && sm.active === true) };
+}
+
+// The Price Rating is COMPUTED from four live stats (the same values nation_stat_values feeds the
+// Government page), not stored — so it can never disagree with the stats shown above it. A weighted
+// Market Score S (0–100) maps onto the 1–100,000 index on a decade curve: par = 1,000 at S=50, and
+// every 25 points of S is one decade (×10). Corruption is inverted (100 − Corruption); an unset
+// lever falls back to neutral (Corruption → 0 = none, the rest → 50). ONE source for both surfaces.
+export const STOCK_LEVERS = [
+  { key: 'Growth',      weight: 0.30, invert: false },
+  { key: 'Prosperity',  weight: 0.30, invert: false },
+  { key: 'Rule of Law', weight: 0.25, invert: false },
+  { key: 'Corruption',  weight: 0.15, invert: true  },
+];
+function stockLever(stats, key, invert) {
+  let n = Number(stats && stats[key]);
+  if (!isFinite(n)) n = invert ? 0 : 50;                 // unset → neutral
+  n = Math.max(0, Math.min(100, n));
+  return invert ? (100 - n) : n;                          // Corruption counts as (100 − C)
+}
+// Market Score S (0–100) — the weighted blend of the four levers.
+export function stockMarketScore(stats) {
+  return STOCK_LEVERS.reduce((s, L) => s + L.weight * stockLever(stats, L.key, L.invert), 0);
+}
+// Index from the score: par 1,000 at S=50, one decade per 25 points, clamped 1–100,000.
+export function stockPriceFromScore(score) {
+  return clampStockPrice(1000 * Math.pow(10, (score - 50) / 25));
+}
+// Live rating for a set of stat values → { score, price }.
+export function stockMarketRating(stats) {
+  const score = stockMarketScore(stats);
+  return { score, price: stockPriceFromScore(score) };
 }
 
 // The tier label for a regime object — e.g. "Full Democracy". Null for an unset/invalid regime.

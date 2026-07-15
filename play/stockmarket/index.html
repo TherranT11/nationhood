@@ -43,6 +43,18 @@
   .cta[disabled]{background:var(--chip);color:var(--soft);border-color:var(--line);cursor:not-allowed}
   .soon{display:block;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-top:12px}
 
+  /* Rating breakdown — the four live levers → Market Score → Price Rating. */
+  .sxbreak{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px 18px 16px}
+  .brk{display:grid;grid-template-columns:1fr 66px 56px 62px;gap:8px;align-items:center;padding:11px 0;border-top:1px solid var(--line);font-size:14px}
+  .brk:first-child{border-top:none}
+  .brk--hd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .brk__k{font-weight:700;color:var(--ink)}
+  .brk__w,.brk__v,.brk__c{font-family:'Space Mono',monospace;text-align:right;color:var(--muted)}
+  .brk--tot .brk__k{font-weight:800}
+  .brk--tot .brk__c{color:var(--ink);font-weight:800}
+  .brk__note{font-size:12.5px;color:var(--muted);padding:13px 0 2px;border-top:1px solid var(--line);line-height:1.55;margin-top:2px}
+  .brk__note b{color:var(--ink)}
+
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -84,6 +96,9 @@
         <button class="cta" id="sxFound" disabled>Found / Join a Stock Exchange</button>
         <span class="soon">Coming next — the exchange system</span>
       </div>
+
+      <!-- Rating breakdown (active markets only) — how the four levers make the number. -->
+      <div class="sxbreak" id="sxBreak" hidden></div>
     </div>
   </main>
 </div>
@@ -94,7 +109,7 @@
   import { ideologyLabel } from '/archetypes.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { nationStockMarket } from '/ladders.js';
+  import { nationStockMarket, stockMarketRating, STOCK_LEVERS } from '/ladders.js';
 
   mountTopbar();   // shared top bar (Discord/Influence/Budget Balance/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
@@ -122,17 +137,52 @@
       setTopbarActions(party.influence);
 
       // Stock Market state — ONE source (ladders.js). Inactive for every nation today; when the
-      // exchange system lands, an active market fills in the Price Rating and swaps the empty state.
+      // exchange system lands, an active market computes a live Price Rating from the four levers.
       var sm = nationStockMarket(nation.economy || {});
-      if (sm.active && sm.price != null) {
-        document.getElementById('sxVal').textContent = sm.price.toLocaleString();
+      if (sm.active) {
+        // Read the four levers from nation_stat_values (schema/177) — the SAME source the Government
+        // page shows — so the rating can never disagree with the stats it's built from.
+        var stats = {};
+        try {
+          const { data } = await supabase.rpc('nation_stat_values', { p_nation: party.nation_id, p_stats: STOCK_LEVERS.map(function (l) { return l.key; }) });
+          stats = data || {};
+        } catch (e) {}
+        var r = stockMarketRating(stats);
+        document.getElementById('sxVal').textContent = r.price.toLocaleString();
         document.getElementById('sxVal').classList.remove('inactive');
         var pill = document.getElementById('sxPill'); pill.classList.add('active');
         document.getElementById('sxPillTxt').textContent = 'Active';
-        document.getElementById('sxDesc').textContent = 'This nation’s market trades on a listed stock exchange. The Price Rating tracks the aggregate value of its listed corporations.';
+        document.getElementById('sxDesc').textContent = 'This market trades on a listed stock exchange. Its Price Rating is set by four live indicators — growth, prosperity, rule of law and (inversely) corruption.';
         document.getElementById('sxEmpty').hidden = true;
+        renderBreakdown(stats, r);
       }
     } catch (e) { /* placeholders already shown; topbar still renders */ }
+
+    // The rating breakdown: each lever's live value, its weight, the points it adds, then the
+    // Market Score and the index it maps to. Built from the same numbers the headline uses.
+    function renderBreakdown(stats, r) {
+      var box = document.getElementById('sxBreak');
+      if (!box) return;
+      var rows = STOCK_LEVERS.map(function (L) {
+        var raw = Number(stats[L.key]);
+        if (!isFinite(raw)) raw = L.invert ? 0 : 50;
+        raw = Math.max(0, Math.min(100, raw));
+        var used = L.invert ? (100 - raw) : raw;
+        var pts = Math.round(L.weight * used * 10) / 10;
+        var label = esc(L.key) + (L.invert ? ' <span style="color:var(--soft)">(100 − ' + raw + ')</span>' : '');
+        return '<div class="brk"><span class="brk__k">' + label + '</span>' +
+          '<span class="brk__w">×' + L.weight.toFixed(2) + '</span>' +
+          '<span class="brk__v">' + used + '</span>' +
+          '<span class="brk__c">' + pts + '</span></div>';
+      }).join('');
+      var score = Math.round(r.score * 10) / 10;
+      box.innerHTML =
+        '<div class="brk brk--hd"><span class="brk__k">Indicator</span><span class="brk__w">Weight</span><span class="brk__v">Value</span><span class="brk__c">Points</span></div>' +
+        rows +
+        '<div class="brk brk--tot"><span class="brk__k">Market Score</span><span class="brk__w"></span><span class="brk__v"></span><span class="brk__c">' + score + '</span></div>' +
+        '<div class="brk__note">Score ' + score + ' → Price Rating <b>' + r.price.toLocaleString() + '</b>. Par is 1,000 at a score of 50, and the index multiplies ×10 for every 25 points above it.</div>';
+      box.hidden = false;
+    }
   })();
 </script>
 </body>
