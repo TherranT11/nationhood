@@ -30,9 +30,12 @@ begin
   v_p := public._begin_action(0);   -- lock caller's party + spend 1 Action Point; no funds/Diplomacy cost
   v_nation := v_p.nation_id;
 
-  -- Founding is once per nation. (Also makes a double-fired button harmless — the second call errors.)
+  -- Founding is once per nation. Lock the nation row FOR UPDATE so two DIFFERENT parties in the same
+  -- nation can't both pass this check and each apply the +8 Growth (a cross-party double-found race —
+  -- _begin_action only locks the caller's own party row, not the nation). The second founder waits
+  -- here, then reads active = true and is refused. Also makes a double-fired button harmless.
   select coalesce((economy->'stock_market'->>'active')::boolean, false)
-    into v_active from public.nations where id = v_nation;
+    into v_active from public.nations where id = v_nation for update;
   if v_active then raise exception 'Your nation already has a stock exchange.'; end if;
 
   -- Open the market (the active flag the client reads) and grant the founding bonus: +8 Growth,

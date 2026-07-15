@@ -142,20 +142,27 @@
       if (sm.active) {
         // Read the four levers from nation_stat_values (schema/177) — the SAME source the Government
         // page shows — so the rating can never disagree with the stats it's built from.
-        var stats = {};
+        var stats = null;
         try {
-          const { data } = await supabase.rpc('nation_stat_values', { p_nation: party.nation_id, p_stats: STOCK_LEVERS.map(function (l) { return l.key; }) });
-          stats = data || {};
+          const { data, error } = await supabase.rpc('nation_stat_values', { p_nation: party.nation_id, p_stats: STOCK_LEVERS.map(function (l) { return l.key; }) });
+          if (!error) stats = data || {};
         } catch (e) {}
-        // ONE computation drives both the headline and the breakdown below — no re-derivation.
-        var b = stockMarketBreakdown(stats);
-        document.getElementById('sxVal').textContent = b.price.toLocaleString();
-        document.getElementById('sxVal').classList.remove('inactive');
         var pill = document.getElementById('sxPill'); pill.classList.add('active');
         document.getElementById('sxPillTxt').textContent = 'Active';
-        document.getElementById('sxDesc').textContent = 'This market trades on a listed stock exchange. Its Price Rating is set by four live indicators — growth, prosperity, rule of law and (inversely) corruption.';
         document.getElementById('sxEmpty').hidden = true;
-        renderBreakdown(b);
+        if (!stats) {
+          // Active market, but the levers couldn't be read — don't fabricate a number from defaults.
+          document.getElementById('sxVal').textContent = '—';
+          document.getElementById('sxVal').classList.remove('inactive');
+          document.getElementById('sxDesc').textContent = 'This market is active, but its rating couldn’t be loaded just now. Refresh to try again.';
+        } else {
+          // ONE computation drives both the headline and the breakdown below — no re-derivation.
+          var b = stockMarketBreakdown(stats);
+          document.getElementById('sxVal').textContent = b.price.toLocaleString();
+          document.getElementById('sxVal').classList.remove('inactive');
+          document.getElementById('sxDesc').textContent = 'This market trades on a listed stock exchange. Its Price Rating is set by four live indicators — growth, prosperity, rule of law and (inversely) corruption.';
+          renderBreakdown(b);
+        }
       } else {
         // No market yet — offer founding. One click opens the market + grants +8 Growth (schema/211).
         var foundBtn = document.getElementById('sxFound');
