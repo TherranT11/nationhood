@@ -121,7 +121,7 @@
     try {
       const { data: party, error } = await supabase.from('parties').select('nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      var nRes = await supabase.from('nations').select('name, flag, declarations, economy').eq('id', party.nation_id).single();
+      var nRes = await supabase.from('nations').select('name, flag, declarations, economy, gdp').eq('id', party.nation_id).single();
       var nation = nRes.data || {};
 
       var nationName = nation.name || party.nation_id;
@@ -164,14 +164,24 @@
           renderBreakdown(b);
         }
       } else {
-        // No market yet — offer founding. One click opens the market + grants +8 Growth (schema/211).
+        // No market yet — only the Treasury (Ministry of Finance) minister may found one. Gate the
+        // button (server enforces this too), and show the standing −1%-of-GDP Budget Balance cost.
         var foundBtn = document.getElementById('sxFound');
-        if (foundBtn) {
+        var note = document.querySelector('.soon');
+        var cur = (nation.economy && nation.economy.currency) || '$';
+        var upkeep = Math.round((Number(nation.gdp) || 0) * 0.01 * 100) / 100;   // 1% of GDP, $bn
+        var isTreasury = false;
+        try { const { data, error } = await supabase.rpc('is_treasury_minister'); if (!error) isTreasury = data === true; } catch (e) {}
+        if (foundBtn && !isTreasury) {
+          foundBtn.hidden = true;
+          if (note) note.textContent = 'Only the Minister of Finance can found a stock exchange.';
+        } else if (foundBtn) {
+          if (note) note.textContent = 'Grants +8 Growth, then costs 1% of GDP a year (' + cur + upkeep + 'bn) in Budget Balance · 1 Action Point.';
           foundBtn.disabled = false;
           var founding = false;   // double-fire lock — founding spends an Action Point + grants a stat
           foundBtn.addEventListener('click', async function () {
             if (founding) return;
-            if (!confirm('Found a national stock exchange? This opens your market and grants +8 Growth. Costs 1 Action Point.')) return;
+            if (!confirm('Found a national stock exchange?\n\n• +8 Growth now\n• −1% of GDP a year (' + cur + upkeep + 'bn) to your Budget Balance\n• Costs 1 Action Point')) return;
             founding = true; foundBtn.disabled = true;
             var prev = foundBtn.textContent; foundBtn.textContent = 'Founding…';
             try {
