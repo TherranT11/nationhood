@@ -376,7 +376,7 @@
 
   async function loadAll() {
     try {
-      const { data: p } = await supabase.from('parties').select('id, name, archetype, nation_id, influence, action_points, turn_acted_tick').eq('user_id', PARTY.user_id).single();
+      const { data: p } = await supabase.from('parties').select('id, influence').eq('user_id', PARTY.user_id).single();
       if (p) { PARTY = Object.assign(PARTY, p); setTopbarActions(PARTY.influence); }
     } catch (e) { /* keep the last known party */ }
 
@@ -438,7 +438,7 @@
     const user = await requireUser();
     if (!user) return;
     try {
-      const { data: party } = await supabase.from('parties').select('id, name, archetype, nation_id, influence, action_points, turn_acted_tick').eq('user_id', user.id).maybeSingle();
+      const { data: party } = await supabase.from('parties').select('id, name, archetype, nation_id, influence').eq('user_id', user.id).maybeSingle();
       if (!party) { window.location.replace('/nation-select/'); return; }
       PARTY = Object.assign({ user_id: user.id }, party);
       NATION_ID = party.nation_id;
@@ -455,12 +455,12 @@
         const { data: pn } = await supabase.from('parties').select('id, nation_id');
         (pn || []).forEach(function (p) { PARTY_NATION[p.id] = p.nation_id; });
       } catch (e) {}
-      const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', NATION_ID).single();
-      NATION_NAME = (nation && nation.name) || NATIONS[NATION_ID] || NATION_ID;
-      // Topbar identity (shared chrome).
+      // The own nation's name + flag are already in the all-nations maps above — no extra fetch.
+      NATION_NAME = NATIONS[NATION_ID] || NATION_ID;
       var nameEl = document.getElementById('pname'); if (nameEl) nameEl.textContent = party.name;
       var subEl = document.getElementById('psub'); if (subEl) subEl.textContent = ideologyLabel(party) + ' · ' + NATION_NAME;
-      if (nation && nation.flag) { const f = document.getElementById('flag'); if (f) { f.onload = function () { f.hidden = false; }; f.src = nation.flag; } }
+      var myFlag = NATION_FLAGS[NATION_ID];
+      if (myFlag) { const f = document.getElementById('flag'); if (f) { f.onload = function () { f.hidden = false; }; f.src = myFlag; } }
       await loadAll();
     } catch (e) {
       var el = document.getElementById('evFeed'); if (el) el.innerHTML = '<div class="ev-err">Couldn’t load the Events page. Refresh to try again.</div>';
