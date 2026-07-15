@@ -1317,6 +1317,11 @@
     // The five ministry stats that were consolidated out of the "Starting X" fields — each maps to the
     // legacy stats/economy field the backend still reads. ONE source for both directions: the grid's
     // migration fallback (below) reads from here, and the nation save feeds these fields from here.
+    // KNOWN ISSUE (schema/221): Growth is now FULLY DERIVED (stock market + policies + reforms + deltas)
+    // and no longer reads an authored base, so this Growth input no longer moves the DISPLAYED Growth.
+    // It still writes stats.growth, which the un-rewired mirror readers (business climate, crises,
+    // malaise, thresholds) currently consume — so it's not inert yet. Once those readers are rewired to
+    // the derived value (the flagged 221 follow-up), remove the Growth row from this grid.
     var CONSOLIDATED_STATS = [
       { m: 'Prosperity',   col: 'stats',   key: 'prosperity' },
       { m: 'Growth',       col: 'stats',   key: 'growth' },
