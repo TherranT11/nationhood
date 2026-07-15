@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Stock Market · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
+<style>
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+
+  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
+
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
+  .page{max-width:900px}
+  .back{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-decoration:none;margin-bottom:14px}
+  .back:hover{color:var(--ink)}
+  .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
+  .phead h1{font-weight:900;font-size:clamp(26px,4vw,36px);letter-spacing:-.025em;margin:6px 0 22px}
+
+  /* Price-Rating headline — the nation's stock-market index on the 1–100,000 scale. */
+  .sxhero{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:18px}
+  .sxhero__hd{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .sxhero__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .sxhero__v{font-size:38px;font-weight:900;letter-spacing:-.03em;color:var(--ink)}
+  .sxhero__v.inactive{color:var(--soft);font-size:26px}
+  .sxhero__scale{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft);margin-top:4px}
+  .sxhero__desc{color:var(--muted);font-size:13.5px;line-height:1.6;margin-top:14px;max-width:640px}
+
+  .pill{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--chip);color:var(--soft)}
+  .pill .dot{width:8px;height:8px;border-radius:50%;background:var(--soft)}
+  .pill.active{color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,var(--line))}
+  .pill.active .dot{background:var(--green)}
+
+  /* Empty state — no exchange yet, so no market. */
+  .sxempty{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:30px 24px;text-align:center}
+  .sxempty h2{font-size:18px;font-weight:900;letter-spacing:-.01em;margin:0 0 8px}
+  .sxempty p{color:var(--muted);font-size:13.5px;line-height:1.6;max-width:520px;margin:0 auto 18px}
+  .cta{font-family:'Space Mono',monospace;font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);border-radius:10px;padding:11px 20px;background:var(--ink);color:var(--bg);cursor:pointer}
+  .cta[disabled]{background:var(--chip);color:var(--soft);border-color:var(--line);cursor:not-allowed}
+  .soon{display:block;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-top:12px}
+
+  /* Rating breakdown — the four live levers → Market Score → Price Rating. */
+  .sxbreak{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px 18px 16px}
+  .brk{display:grid;grid-template-columns:1fr 66px 56px 62px;gap:8px;align-items:center;padding:11px 0;border-top:1px solid var(--line);font-size:14px}
+  .brk:first-child{border-top:none}
+  .brk--hd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .brk__k{font-weight:700;color:var(--ink)}
+  .brk__w,.brk__v,.brk__c{font-family:'Space Mono',monospace;text-align:right;color:var(--muted)}
+  .brk--tot .brk__k{font-weight:800}
+  .brk--tot .brk__c{color:var(--ink);font-weight:800}
+  .brk__note{font-size:12.5px;color:var(--muted);padding:13px 0 2px;border-top:1px solid var(--line);line-height:1.55;margin-top:2px}
+  .brk__note b{color:var(--ink)}
+
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
+
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <div class="page">
+      <a class="back" href="/play/government/">&lsaquo; Government</a>
+      <div class="phead">
+        <span class="eye" id="snation">The Nation</span>
+        <h1>Stock Market</h1>
+      </div>
+
+      <!-- Price Rating headline. Inactive for every nation until it founds or joins a stock
+           exchange (a later stage) — so it starts empty here. -->
+      <div class="sxhero">
+        <div class="sxhero__hd">
+          <div>
+            <div class="sxhero__k">Price Rating</div>
+            <div class="sxhero__v inactive" id="sxVal">Inactive</div>
+            <div class="sxhero__scale">Scale 1 – 100,000</div>
+          </div>
+          <span class="pill" id="sxPill"><span class="dot"></span><span id="sxPillTxt">Inactive</span></span>
+        </div>
+        <div class="sxhero__desc" id="sxDesc">
+          This nation has no stock market yet. A market opens — and a Price Rating appears — once the
+          nation founds or joins a stock exchange through the Ministry of Finance.
+        </div>
+      </div>
+
+      <!-- Empty state / entry point. The Found/Join exchange system is the next stage. -->
+      <div class="sxempty" id="sxEmpty">
+        <h2>No stock exchange</h2>
+        <p>Your corporations have nowhere to list. Found a national stock exchange to open a market and
+           start building a Price Rating.</p>
+        <button class="cta" id="sxFound" disabled>Found a Stock Exchange</button>
+        <span class="soon">Grants +8 Growth · costs 1 Action Point. Joining another nation’s exchange — coming next.</span>
+      </div>
+
+      <!-- Rating breakdown (active markets only) — how the four levers make the number. -->
+      <div class="sxbreak" id="sxBreak" hidden></div>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { esc, declaredValue } from '/util.js';
+  import { ideologyLabel } from '/archetypes.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+  import { nationStockMarket, stockMarketBreakdown, STOCK_LEVERS } from '/ladders.js';
+
+  mountTopbar();   // shared top bar (Discord/Influence/Budget Balance/date/gear) into #topbar
+  mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
+
+  (async () => {
+    if (!isConfigured) return;
+    const user = await requireUser();
+    if (!user) return; // redirected to login
+    try {
+      const { data: party, error } = await supabase.from('parties').select('nation_id, name, archetype, influence').eq('user_id', user.id).single();
+      if (error || !party) { window.location.replace('/nation-select/'); return; }
+      var nRes = await supabase.from('nations').select('name, flag, declarations, economy').eq('id', party.nation_id).single();
+      var nation = nRes.data || {};
+
+      var nationName = nation.name || party.nation_id;
+      try {
+        const { data: slots } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed').eq('slug', 'formal_state_name').limit(1);
+        var formal = (slots && slots[0]) ? declaredValue(slots[0], nation.declarations) : '';
+        if (formal && formal !== '—') nationName = formal;
+      } catch (e) {}
+      document.getElementById('snation').textContent = nationName;
+      document.getElementById('pname').textContent = party.name;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + (nation.name || party.nation_id);
+      if (nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
+      setTopbarActions(party.influence);
+
+      // Stock Market state — ONE source (ladders.js). Inactive for every nation today; when the
+      // exchange system lands, an active market computes a live Price Rating from the four levers.
+      var sm = nationStockMarket(nation.economy || {});
+      if (sm.active) {
+        // Read the four levers from nation_stat_values (schema/177) — the SAME source the Government
+        // page shows — so the rating can never disagree with the stats it's built from.
+        var stats = null;
+        try {
+          const { data, error } = await supabase.rpc('nation_stat_values', { p_nation: party.nation_id, p_stats: STOCK_LEVERS.map(function (l) { return l.key; }) });
+          if (!error) stats = data || {};
+        } catch (e) {}
+        var pill = document.getElementById('sxPill'); pill.classList.add('active');
+        document.getElementById('sxPillTxt').textContent = 'Active';
+        document.getElementById('sxEmpty').hidden = true;
+        if (!stats) {
+          // Active market, but the levers couldn't be read — don't fabricate a number from defaults.
+          document.getElementById('sxVal').textContent = '—';
+          document.getElementById('sxVal').classList.remove('inactive');
+          document.getElementById('sxDesc').textContent = 'This market is active, but its rating couldn’t be loaded just now. Refresh to try again.';
+        } else {
+          // ONE computation drives both the headline and the breakdown below — no re-derivation.
+          var b = stockMarketBreakdown(stats);
+          document.getElementById('sxVal').textContent = b.price.toLocaleString();
+          document.getElementById('sxVal').classList.remove('inactive');
+          document.getElementById('sxDesc').textContent = 'This market trades on a listed stock exchange. Its Price Rating is set by four live indicators — growth, prosperity, rule of law and (inversely) corruption.';
+          renderBreakdown(b);
+        }
+      } else {
+        // No market yet — offer founding. One click opens the market + grants +8 Growth (schema/211).
+        var foundBtn = document.getElementById('sxFound');
+        if (foundBtn) {
+          foundBtn.disabled = false;
+          var founding = false;   // double-fire lock — founding spends an Action Point + grants a stat
+          foundBtn.addEventListener('click', async function () {
+            if (founding) return;
+            if (!confirm('Found a national stock exchange? This opens your market and grants +8 Growth. Costs 1 Action Point.')) return;
+            founding = true; foundBtn.disabled = true;
+            var prev = foundBtn.textContent; foundBtn.textContent = 'Founding…';
+            try {
+              const { error } = await supabase.rpc('found_stock_exchange');
+              if (error) throw error;
+              window.location.reload();   // market now active — re-render with the live rating
+            } catch (e2) {
+              alert((e2 && e2.message) || 'Could not found a stock exchange.');
+              founding = false; foundBtn.disabled = false; foundBtn.textContent = prev;
+            }
+          });
+        }
+      }
+    } catch (e) { /* placeholders already shown; topbar still renders */ }
+
+    // The rating breakdown: each lever's live value, its weight, the points it adds, then the
+    // Market Score and the index it maps to. Reads the SAME breakdown object the headline used.
+    function renderBreakdown(b) {
+      var box = document.getElementById('sxBreak');
+      if (!box) return;
+      var rows = b.levers.map(function (L) {
+        var pts = Math.round(L.points * 10) / 10;
+        var label = esc(L.key) + (L.invert ? ' <span style="color:var(--soft)">(100 − ' + L.raw + ')</span>' : '');
+        return '<div class="brk"><span class="brk__k">' + label + '</span>' +
+          '<span class="brk__w">×' + L.weight.toFixed(2) + '</span>' +
+          '<span class="brk__v">' + L.used + '</span>' +
+          '<span class="brk__c">' + pts + '</span></div>';
+      }).join('');
+      var score = Math.round(b.score * 10) / 10;
+      box.innerHTML =
+        '<div class="brk brk--hd"><span class="brk__k">Indicator</span><span class="brk__w">Weight</span><span class="brk__v">Value</span><span class="brk__c">Points</span></div>' +
+        rows +
+        '<div class="brk brk--tot"><span class="brk__k">Market Score</span><span class="brk__w"></span><span class="brk__v"></span><span class="brk__c">' + score + '</span></div>' +
+        '<div class="brk__note">Score ' + score + ' → Price Rating <b>' + b.price.toLocaleString() + '</b>. Par is 1,000 at a score of 50, and the index multiplies ×10 for every 25 points above it.</div>';
+      box.hidden = false;
+    }
+  })();
+</script>
+</body>
+</html>

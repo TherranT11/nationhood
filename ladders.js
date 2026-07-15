@@ -104,6 +104,53 @@ export function nationRegime(economy) {
   return { type: type, reform: reformOf({ reform: economy.regime_reform }) };
 }
 
+// ---- Stock Market -------------------------------------------------------------------
+// A nation's Stock Market is a "Price Rating" on a 1–100,000 scale. It starts INACTIVE for every
+// nation (no admin starting input) — a nation only gains a market by founding or joining a stock
+// exchange (a later stage), which sets economy.stock_market = { active: true }. The rating itself
+// is COMPUTED from live stats (never stored), so it can't drift from the numbers it's built on.
+const STOCK_PRICE_MIN = 1;
+const STOCK_PRICE_MAX = 100000;
+function clampStockPrice(n) {
+  const v = Math.round(Number(n));
+  if (!isFinite(v)) return null;
+  return Math.max(STOCK_PRICE_MIN, Math.min(STOCK_PRICE_MAX, v));
+}
+
+// Whether a nation has a live market. Absent OR active:false → inactive (no rating yet).
+export function nationStockMarket(economy) {
+  const sm = economy && economy.stock_market;
+  return { active: !!(sm && sm.active === true) };
+}
+
+// The four live levers that set the Price Rating — the same values nation_stat_values feeds the
+// Government page. Corruption is inverted (100 − Corruption). Also the ONE source for the stat list.
+export const STOCK_LEVERS = [
+  { key: 'Growth',      weight: 0.30, invert: false },
+  { key: 'Prosperity',  weight: 0.30, invert: false },
+  { key: 'Rule of Law', weight: 0.25, invert: false },
+  { key: 'Corruption',  weight: 0.15, invert: true  },
+];
+// Index from the Market Score: par 1,000 at S=50, one decade (×10) per 25 points, clamped 1–100,000.
+function stockPriceFromScore(score) {
+  return clampStockPrice(1000 * Math.pow(10, (score - 50) / 25));
+}
+// The ONE stock computation — per-lever detail, the Market Score (0–100), and the Price Rating it
+// maps to. Both the headline number and its breakdown read THIS single result, so they can never
+// disagree. An unset/missing lever falls back to neutral (Corruption → 0 = none, the rest → 50).
+export function stockMarketBreakdown(stats) {
+  const levers = STOCK_LEVERS.map(function (L) {
+    const v = (stats && stats[L.key] != null) ? stats[L.key] : NaN;   // null stats / missing key → unset
+    let raw = Number(v);
+    if (!isFinite(raw)) raw = L.invert ? 0 : 50;                       // unset → neutral
+    raw = Math.max(0, Math.min(100, raw));
+    const used = L.invert ? (100 - raw) : raw;                         // Corruption counts as (100 − C)
+    return { key: L.key, weight: L.weight, invert: L.invert, raw: raw, used: used, points: L.weight * used };
+  });
+  const score = levers.reduce(function (s, L) { return s + L.points; }, 0);
+  return { levers: levers, score: score, price: stockPriceFromScore(score) };
+}
+
 // The tier label for a regime object — e.g. "Full Democracy". Null for an unset/invalid regime.
 export function regimeLabel(regime) {
   if (!regime || !REGIME_BANDS[regime.type]) return null;

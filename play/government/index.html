@@ -95,6 +95,7 @@
   import { esc, majority, declaredValue, loadHogTitleSlot } from '/util.js';
   import { fetchAdministrations, renderAdministrations } from '/administrations.js';
   import { partyColor, ideologyLabel } from '/archetypes.js';
+  import { nationStockMarket, stockMarketBreakdown } from '/ladders.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
@@ -224,7 +225,7 @@
     // Regime-stability layer (schema/201). Terrorism is intentionally absent — it's a hidden stat.
     { name: 'Regime Stability', stats: ['Oppression', 'Control', 'Revolt Risk', 'Cult of Personality'] },
     { name: 'Interior', stats: ['Crime', 'Immigration', 'Extremism', 'Corruption', 'Religious Influence', 'Birth Rate', 'Demographic Pressure'] },
-    { name: 'Economy', stats: ['Unemployment', 'Poverty', 'Wages', 'Innovation', 'Infrastructure'] },
+    { name: 'Economy', stats: ['Unemployment', 'Poverty', 'Wages', 'Innovation', 'Infrastructure', 'Stock Market'] },
     { name: 'Labor, Health and Social Affairs', stats: ['Prosperity', 'Press Freedom', 'Social Integration', 'Health', 'Education', 'Pension Quality'] },
     { name: 'Society', stats: ['Rule of Law', 'Standard of Living', 'Housing Affordability', 'Equity Between Generations', 'National Pride', 'Civil Liberties', 'Minority Rights'] },
     { name: 'Defense', stats: ['Armed Forces Funding', 'Military Research', 'Cybersecurity'] },
@@ -232,7 +233,7 @@
   ];
   // Stats with their own detail screen — a slug→href map keeps that special-case out of the
   // generic cell loop.
-  var STAT_LINKS = { 'Budget Balance': '/play/budget/', 'Bureaucracy': '/play/bureaucracy/', 'Growth': '/play/growth/', 'Tax Burden': '/play/tax-burden/', 'Public Debt': '/play/public-debt/' };
+  var STAT_LINKS = { 'Budget Balance': '/play/budget/', 'Bureaucracy': '/play/bureaucracy/', 'Growth': '/play/growth/', 'Tax Burden': '/play/tax-burden/', 'Public Debt': '/play/public-debt/', 'Stock Market': '/play/stockmarket/' };
   // Ministry stat values come from the nation's admin-authored ministry_stats map (schema/150,
   // keyed by the same stat names) — the ONE source. Some cells are computed instead: Budget
   // Balance and Bureaucracy = the sum of in-force policy effects (policies.js, the same figures
@@ -242,6 +243,16 @@
     // Values come from STAT_VALUES (nation_stat_values RPC, schema/177) — the one server-side source.
     // cellVal only FORMATS: Budget Balance ±$bn/yr, Bureaucracy %, Public Debt $bn, the rest a number.
     function cellVal(s){
+      // Stock Market isn't an admin-authored ministry stat — it's a Price Rating (1–100,000) that
+      // lives on economy.stock_market and starts INACTIVE for every nation (ONE source: ladders.js).
+      if (s === 'Stock Market'){
+        var sm = nationStockMarket(nation && nation.economy || {});
+        // Computed from the four live levers (Growth/Prosperity/Rule of Law/Corruption) already in
+        // STAT_VALUES — the same source as the cells around it, so the number stays consistent.
+        return sm.active
+          ? esc(stockMarketBreakdown(STAT_VALUES).price.toLocaleString())
+          : '<span style="color:var(--soft)">Inactive</span>';
+      }
       var v = STAT_VALUES[s];
       if (v == null || !isFinite(Number(v))) return '--';
       v = Number(v);
