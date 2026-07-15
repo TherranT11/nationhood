@@ -41,7 +41,7 @@ export function initiativeInfluence(d){ return Math.max(1, parseInt(d && d.influ
 export function initiativeCostLabel(d){ return fmtInitiativeCost(d && d.budgetPerYear, d && d.budgetUnit === 'gdp'); }
 
 // Active initiatives that hit a nation's Budget Balance — its own running ones plus any joint project
-// it partners — shaped for initiativeBudgetItems / nationBudgetBalance (policies.js). ownerGdp (the
+// it partners — shaped for initiativeBudgetItems / nationBudgetContributions (policies.js). ownerGdp (the
 // enacting nation's GDP) resolves a %-of-GDP cost. Best-effort → [].
 export async function fetchBudgetInitiatives(nationId){
   try {

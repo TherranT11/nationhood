@@ -5,8 +5,6 @@
 import { supabase, wireDeletePartyMenu, logout } from '/supabase.js';
 import { partyColor } from '/archetypes.js';
 import { liveGameDate, mountGameDate } from '/gamedate.js';
-import { nationBudgetBalance } from '/policies.js';
-import { fetchBudgetInitiatives } from '/initiatives.js';
 import { mountCoalitionBanner } from '/coalition-banner.js';
 import { msUntilNextTick, fmtCountdown } from '/util.js';
 
@@ -171,9 +169,9 @@ async function refreshTopbarBudget(){
     if (p) { setTopbarAP(p.action_points); setTopbarInfluence(p.influence); }
   } catch (e) { /* keep the last shown values */ }
 }
-// The nation's Budget Balance — the computed net of its in-force policy effects (one source:
-// nationBudgetBalance in policies.js), shown ±-coloured and suffixed "bn /yr". Internal:
-// loadChrome computes it once per page; it only moves when a policy changes.
+// The nation's Budget Balance — the SERVER figure (nation_stat_values → _nation_budget_balance, the
+// one source the Budget page also reads), shown ±-coloured and suffixed "bn /yr". Internal:
+// loadChrome fetches it once per page.
 function setTopbarBudget(currency, balance){
   const el = document.getElementById('tbBal');
   if (!el) return;
@@ -236,13 +234,14 @@ async function loadChrome(){
     setAccent(partyColor(p));               // chosen colour, else archetype default (one source: archetypes.js)
     setTopbarAP(p.action_points);           // action budget (Action Points, per turn)
     setTopbarInfluence(p.influence);        // card currency (Influence)
-    // Budget Balance = the net of the nation's in-force policy effects minus its running initiatives'
-    // standing $bn/yr (one source: policies.js).
+    // Budget Balance — the SERVER value (nation_stat_values → _nation_budget_balance), the exact same
+    // figure the Budget page shows. ONE source: never recompute it client-side (that copy drifted from
+    // the server, which also folds in stock-exchange upkeep + corruption/unemployment leakage).
     try {
-      const { data: n } = await supabase.from('nations').select('economy, policies, gdp').eq('id', p.nation_id).maybeSingle();
-      const { data: pols } = await supabase.from('policies').select('id, definition');
-      const inits = await fetchBudgetInitiatives(p.nation_id);
-      setTopbarBudget((n && n.economy && n.economy.currency) || '$', nationBudgetBalance(pols || [], (n && n.policies) || {}, n && n.gdp, inits));
-    } catch (e) { /* leave the chip hidden if policies/nation can't be read */ }
+      const { data: n } = await supabase.from('nations').select('economy').eq('id', p.nation_id).maybeSingle();
+      const { data: sv } = await supabase.rpc('nation_stat_values', { p_nation: p.nation_id, p_stats: ['Budget Balance'] });
+      const bal = (sv && sv['Budget Balance'] != null) ? Number(sv['Budget Balance']) : null;
+      setTopbarBudget((n && n.economy && n.economy.currency) || '$', bal);
+    } catch (e) { /* leave the chip hidden if it can't be read */ }
   } catch (e) { /* leave the defaults if the party can't be read */ }
 }

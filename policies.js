@@ -188,9 +188,8 @@ export function nationBudgetContributions(policyRows, overrides, gdp, initiative
   ini.forEach(function (i) { total += i.amount; });
   return { total: total, items: pol.items.concat(ini) };
 }
-export function nationBudgetBalance(policyRows, overrides, gdp, initiativeRows) {
-  return nationBudgetContributions(policyRows, overrides, gdp, initiativeRows).total;
-}
+// (nationBudgetBalance removed — the top bar now reads the SERVER Budget Balance via
+// nation_stat_values, the same one source as the Budget page, so no client total is recomputed.)
 
 // Budget/Debt/Income are money targets — their value scales by the nation's size/wealth.
 export function isMoneyTarget(t) { return t === 'Budget' || t === 'Debt' || t === 'Income'; }
