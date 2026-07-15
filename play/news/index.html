@@ -110,12 +110,8 @@
   .cm .passbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
   .cm .passbar .lbl{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;color:var(--soft)}
   .cm .passbar .cbtn.on{background:var(--green);border-color:var(--green);color:#fff}
-  .cm .upgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
-  .cm .ucard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 13px;opacity:.92}
-  .cm .ucard__meta{display:flex;justify-content:space-between;align-items:center;gap:6px}
-  .cm .ucard__ap{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft)}
-  .cm .ucard__name{font-weight:800;font-size:14px;margin:7px 0 4px;line-height:1.25}
-  .cm .ucard__flavor{font-size:11px;color:var(--muted);line-height:1.4;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  /* Upcoming cards use the SAME .bcard box as Active (in the .cards2 grid), just dimmed and non-interactive. */
+  .cm .bcard--up{opacity:.62}
 </style>
 </head>
 <body>
@@ -162,8 +158,8 @@
       <div class="cards2" id="activeCards"><div class="cmempty">Loading cards…</div></div>
 
       <!-- Upcoming cards. -->
-      <div class="sect gap">Upcoming Cards <span class="note">queued behind the two on the table</span></div>
-      <div class="upgrid" id="upcoming"><div class="cmempty">Loading…</div></div>
+      <div class="sect gap">Upcoming Cards <span class="note">the next two, queued behind the table</span></div>
+      <div class="cards2" id="upcoming"><div class="cmempty">Loading…</div></div>
     </div>
   </main>
 </div>
@@ -359,15 +355,20 @@
       '<button class="cbtn' + (on ? ' on' : '') + '" data-card="" data-action="pass"' + (BUSY ? ' disabled' : '') + '>🕊 Pass → first next turn</button>';
   }
 
+  // The next two upcoming cards — the SAME .bcard box as the Active cards (dimmed, no claim buttons).
   function renderUpcoming(cards) {
-    var box = document.getElementById('upcoming'), rest = cards.slice(2);
+    var box = document.getElementById('upcoming'), rest = cards.slice(2, 4);   // only ever the next two
     if (!rest.length) { box.innerHTML = '<div class="cmempty">No further cards queued this turn.</div>'; return; }
     box.innerHTML = rest.map(function (c) {
       var def = c.definition || {}, ap = cardAP(def), k = cardKind(def);
-      return '<div class="ucard"><div class="ucard__meta"><span class="ckind ' + k.cls + '">' + esc(k.label) + '</span>' +
-        '<span class="ucard__ap">▶ ' + ap + ' AP</span></div>' +
-        '<div class="ucard__name">' + esc(def.name || 'Untitled card') + '</div>' +
-        '<div class="ucard__flavor">' + (def.desc ? esc(def.desc) : '') + '</div></div>';
+      var flag = (def.lim === 'nation' && NATION_FLAGS[NATION_ID]) ? '<img class="bcard__flag" src="' + esc(NATION_FLAGS[NATION_ID]) + '" alt="">' : '';
+      return '<div class="bcard bcard--up"><div class="bcard__strip" style="background:' + stripColor(def) + '"></div><div class="bcard__body">' +
+        '<div class="bcard__meta"><span class="ckind ' + k.cls + '">' + esc(k.label) + '</span>' +
+        '<span class="apbadge" title="Action Points on play">' + ap + '</span></div>' +
+        '<div class="bcard__title">' + flag + '<div class="bcard__name">' + esc(def.name || 'Untitled card') + '</div></div>' +
+        '<div class="bcard__flavor">' + (def.desc ? esc(def.desc) : '<span style="color:var(--soft)">No description.</span>') + '</div>' +
+        '<div class="bcard__cost"><b>' + ap + '</b> AP on play</div>' +
+        '</div></div>';
     }).join('');
   }
 
