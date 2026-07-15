@@ -107,9 +107,9 @@
           btn.disabled = false;
           return;
         }
-        // Returning player with a party → their Home (the news desk); otherwise the menu.
+        // Returning player with a party → their Home; otherwise the menu.
         const party = await currentParty();
-        window.location.href = party ? '/play/news/' : '/home/';
+        window.location.href = party ? '/play/home2/' : '/home/';
       } catch (err) {
         setMsg('Something went wrong. Please try again.', 'error');
         submitting = false;

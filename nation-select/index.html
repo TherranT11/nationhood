@@ -190,10 +190,10 @@
     }
 
     (async () => {
-      // Already have a party? You're committed to a nation — go to your Home (news desk),
+      // Already have a party? You're committed to a nation — go to your Home,
       // not the join screen (re-joining would overwrite your party).
       const mine = await currentParty();
-      if (mine) { window.location.replace('/play/news/'); return; }
+      if (mine) { window.location.replace('/play/home2/'); return; }
       if (!isConfigured) { err('Nation data isn’t connected yet.'); return; }
       try {
         // Dormant nations are hidden — they exist but aren't joinable until activated
