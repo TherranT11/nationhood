@@ -11,12 +11,13 @@ import { hasUnvotedFloorMeasure } from '/proposals.js';
 
 // The nav items — the single source for both the rail and the bottom bar. href:null
 // marks a section that isn't built yet (shown disabled).
-// Home (the nation-and-world dashboard — turn queue, card market, and your hand) leads as the landing page you see on login;
-// Party sits right after it, then the tutorial spine (Nation · Government · Legislature ·
-// Elections · Trade · World · Conflict · Forum · Wiki); the real-game extras (Policies,
-// Corporations) slot next to their siblings, and "Trade" is the Economy page.
+// Home (/play/home2/) leads as the landing page you see on login; Events (/play/news/ — the turn
+// queue, card market, and your hand) follows, then Actions and the tutorial spine (Party · Nation ·
+// Government · Legislature · Elections · Trade · World · Conflict · Forum · Wiki); the real-game extras
+// (Policies, Corporations) slot next to their siblings, and "Trade" is the Economy page.
 const NAV = [
-  { href: '/play/news/',        label: 'Home',         svg: '<path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/>' },
+  { href: '/play/home2/',       label: 'Home',         svg: '<path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/>' },
+  { href: '/play/news/',        label: 'Events',       svg: '<path d="M4 5h12v15H4z"/><path d="M16 9h4v9a2 2 0 0 1-2 2h-2"/><path d="M7 9h6M7 13h6M7 17h4"/>' },
   { href: '/play/actions/',     label: 'Actions',      svg: '<path d="M13 2L4 14h6l-1 8 9-12h-6z"/>' },
   { href: '/play/party/',       label: 'Party',        svg: '<path d="M4 21V4"/><path d="M4 4c3-2 6 2 9 0s6-2 9 0v9c-3 2-6-2-9 0s-6 2-9 0"/>' },
   { href: '/play/',             label: 'Nation',       svg: '<path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/>' },
@@ -32,11 +33,10 @@ const NAV = [
   { href: '/play/conflict/',    label: 'Conflict',     svg: '<path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/>' },
   { href: '/play/forum/',      label: 'Forum',        svg: '<path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/>' },
   { href: '/play/wiki/',        label: 'Wiki',         svg: '<path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/>' },
-  { href: '/play/home2/',       label: 'Home2',        svg: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>' },
 ];
 // Destinations pinned to the mobile bottom bar; everything else falls into the More sheet.
-// Home leads (the login landing); Elections lives in the More sheet, being a periodic stop.
-const PRIMARY = ['/play/news/', '/play/', '/play/government/', '/play/legislature/'];
+// Home leads (the login landing); Events lives in the More sheet, being a periodic stop.
+const PRIMARY = ['/play/home2/', '/play/', '/play/government/', '/play/legislature/'];
 
 const CSS = `
 /* Desktop rail (>820px) — the original sidebar, now owned here. */
@@ -91,8 +91,8 @@ const CSS = `
 function svgEl(inner) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + inner + '</svg>'; }
 
 // Active = the item whose href matches the current path. The /play/ index (Nation) matches
-// only itself; every other section — Home (/play/news/) included — also matches its sub-pages
-// (e.g. /play/legislature/bill/).
+// only itself; every other section — Home (/play/home2/), Events (/play/news/) included — also
+// matches its sub-pages (e.g. /play/legislature/bill/).
 function isActive(path, href) {
   if (!href) return false;
   if (href === '/play/') return path === '/play/' || path === '/play';
