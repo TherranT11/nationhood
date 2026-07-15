@@ -93,7 +93,7 @@
         <h2>No stock exchange</h2>
         <p>Your corporations have nowhere to list. The <b>Minister of Finance</b> can found a national
            stock exchange from the <a href="/play/actions/">Actions</a> page to open a market.</p>
-        <span class="soon">A market's Growth tracks its listed firms — the corporations' performance can lift or drag it. Costs 1% of GDP a year in Budget Balance · 2 Action Points.</span>
+        <span class="soon">Once listed, your corporations pay dividends into the treasury — and a host skims a fee from every member nation. Upkeep is 1% of GDP a year to host, 0.2% to join · 2 Action Points.</span>
       </div>
 
       <!-- Rating breakdown (active markets only) — how the four levers make the number. -->
@@ -146,19 +146,28 @@
           const { data, error } = await supabase.rpc('nation_stat_values', { p_nation: party.nation_id, p_stats: STOCK_LEVERS.map(function (l) { return l.key; }) });
           if (!error) stats = data || {};
         } catch (e) {}
-        // The exchange this nation lists on (name/abbr), plus its live market_growth — the pooled
-        // corporate performance that feeds national Growth (schema/228).
-        var exName = '', exAbbr = '', exGrowth = null;
+        // The exchange this nation lists on (name/abbr), for the identity line below.
+        var exName = '', exAbbr = '';
         try {
-          const { data: ex } = await supabase.from('stock_exchanges').select('name, abbr, market_growth').eq('id', sm.exchangeId).maybeSingle();
-          if (ex) { exName = ex.name || ''; exAbbr = ex.abbr || ''; exGrowth = Number(ex.market_growth); }
+          const { data: ex } = await supabase.from('stock_exchanges').select('name, abbr').eq('id', sm.exchangeId).maybeSingle();
+          if (ex) { exName = ex.name || ''; exAbbr = ex.abbr || ''; }
         } catch (e) {}
         var listedOn = exName ? ('Listed on ' + exName + (exAbbr ? ' (' + exAbbr + ')' : '') + (sm.role === 'member' ? ' — hosted abroad' : '') + '. ') : '';
-        // The market's corporations lift or drag national Growth by this much (pooled across every listed
-        // nation). !isFinite guards a column not deployed; 0 (no firms yet / neutral) gets its own copy.
-        var perf = !isFinite(exGrowth) ? ''
-          : exGrowth === 0 ? 'Its listed corporations have no net effect on national Growth right now. '
-          : 'Its listed corporations move national Growth by ' + (exGrowth > 0 ? '+' : '') + (Math.round(exGrowth * 10) / 10) + ' right now. ';
+        // The market's payoff: listed corporations pay dividends into the treasury (schema/230, the ONE
+        // source — we never recompute the rate/fee here). Host income includes fees skimmed from members.
+        // Check error explicitly: an RPC error returns {data:null} (Number(null)===0 would misread as "no
+        // dividends"), so only a successful, non-null numeric produces a line.
+        var divTxt = '';
+        try {
+          const { data: div, error: divErr } = await supabase.rpc('nation_stock_dividend', { p_nation: party.nation_id });
+          var dv = Number(div);
+          if (!divErr && div != null && isFinite(dv)) {
+            divTxt = dv > 0
+              ? 'Your listed corporations pay ₣' + dv.toFixed(2) + 'B/yr in dividends to the treasury'
+                + (sm.role === 'host' ? ', including listing fees from member nations' : '') + '.'
+              : 'It earns no dividends yet — treasury income grows as this nation places corporations.';
+          }
+        } catch (e) { /* RPC not deployed → no dividend line */ }
         var pill = document.getElementById('sxPill'); pill.classList.add('active');
         document.getElementById('sxPillTxt').textContent = 'Active';
         document.getElementById('sxEmpty').hidden = true;
@@ -166,13 +175,13 @@
           // Active market, but the levers couldn't be read — don't fabricate a number from defaults.
           document.getElementById('sxVal').textContent = '—';
           document.getElementById('sxVal').classList.remove('inactive');
-          document.getElementById('sxDesc').textContent = listedOn + perf + 'This market is active, but its rating couldn’t be loaded just now. Refresh to try again.';
+          document.getElementById('sxDesc').textContent = [listedOn.trim(), divTxt, 'This market is active, but its rating couldn’t be loaded just now. Refresh to try again.'].filter(Boolean).join(' ');
         } else {
           // ONE computation drives both the headline and the breakdown below — no re-derivation.
           var b = stockMarketBreakdown(stats);
           document.getElementById('sxVal').textContent = b.price.toLocaleString();
           document.getElementById('sxVal').classList.remove('inactive');
-          document.getElementById('sxDesc').textContent = listedOn + perf + 'The Price Rating is set by four live indicators — growth, prosperity, rule of law and (inversely) corruption.';
+          document.getElementById('sxDesc').textContent = [listedOn.trim(), 'The Price Rating is set by four live indicators — growth, prosperity, rule of law and (inversely) corruption.', divTxt].filter(Boolean).join(' ');
           renderBreakdown(b);
         }
       }

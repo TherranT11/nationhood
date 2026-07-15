@@ -21,7 +21,7 @@
   .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
   .phead h1{font-weight:900;font-size:clamp(26px,4vw,36px);letter-spacing:-.025em;margin:6px 0 22px}
 
-  /* Growth headline + sparkline. Growth is derived: Σ in-force policy effects + stock market + reforms. */
+  /* Growth headline + sparkline. Growth is derived: Σ in-force policy effects + reforms + deltas. */
   .bhero{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:14px}
   .bhero__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:8px}
   .bhero__v{font-size:34px;font-weight:900;letter-spacing:-.03em;color:var(--ink)}
@@ -66,7 +66,7 @@
       </div>
 
       <!-- Growth value + sparkline. Growth is derived (no authored base): Σ in-force policy Growth
-           effects + stock market + reforms (one source — the same figure the Government page shows). -->
+           effects + reforms + deltas (one source — the same figure the Government page shows). -->
 
       <div class="bhero">
         <div class="bhero__k">Growth</div>
@@ -94,7 +94,6 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { nationStatContributions } from '/policies.js';
-  import { nationStockMarket } from '/ladders.js';
 
   mountTopbar();   // shared top bar (Discord/Influence/Budget Balance/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
@@ -151,9 +150,10 @@
     try {
       const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      // Growth is fully DERIVED (no authored base, schema/221) — its contributors are policies + the stock
-      // market (economy.stock_market) + reforms + deltas, so we need policies/economy, not ministry_stats.
-      var nRes = await supabase.from('nations').select('name, flag, declarations, policies, gdp, economy').eq('id', party.nation_id).single();
+      // Growth is fully DERIVED (no authored base, schema/221) — its contributors are policy effects +
+      // reforms + writable-stats deltas, so we need policies (not ministry_stats). The stock market no
+      // longer contributes to Growth (schema/229).
+      var nRes = await supabase.from('nations').select('name, flag, declarations, policies, gdp').eq('id', party.nation_id).single();
       var nation = nRes.data || {};
 
       // Eyebrow = the nation's formal state name if declared, else its plain name.
@@ -169,22 +169,11 @@
       if (nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
       setTopbarActions(party.influence);
 
-      // Growth = Σ in-force policy Growth contributions (+ the stock-market line added below). Same
-      // policy composition the Government page shows — one source (policies.js).
+      // Growth = Σ in-force policy Growth contributions. Same policy composition the Government page
+      // shows — one source (policies.js).
       var pols = [];
       try { const { data } = await supabase.from('policies').select('id, definition'); pols = data || []; } catch (e) {}
       var contrib = nationStatContributions(pols, nation.policies, nation.gdp, 'Growth');   // for the UP/DOWN breakdown below
-      // The stock market's Growth = its corporations' performance (schema/228): the exchange's live
-      // market_growth, the cash-weighted average firm growth across every listed nation, refreshed each
-      // tick. Pooled — the nation reads its own exchange whether it HOSTS or is a MEMBER — and signed, so
-      // a booming market lifts Growth and a failing one drags it (it lands in the UP or DOWN list below).
-      try {
-        const smId = nationStockMarket(nation.economy || {}).exchangeId;   // one source for the membership pointer
-        if (smId) {
-          const { data: ex } = await supabase.from('stock_exchanges').select('name, abbr, market_growth').eq('id', smId).limit(1);
-          if (ex && ex[0]) contrib.items.push({ name: ex[0].name + ' (' + ex[0].abbr + ')', amount: Number(ex[0].market_growth) || 0 });
-        }
-      } catch (e) { /* no exchange / column not deployed → no line */ }
       // Headline value from the one server source — nation_stat_values (schema/177): base + policy +
       // writable-stats delta. Leave the "--" placeholder when the RPC has no value for it.
       try {
