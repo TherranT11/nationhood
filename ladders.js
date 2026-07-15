@@ -104,6 +104,26 @@ export function nationRegime(economy) {
   return { type: type, reform: reformOf({ reform: economy.regime_reform }) };
 }
 
+// ---- Stock Market -------------------------------------------------------------------
+// A nation's Stock Market is a "Price Rating" on a 1–100,000 scale. It starts INACTIVE for
+// every nation (no admin starting input) — a nation only gains a market by founding or joining
+// a stock exchange (a later stage). Stored in economy.stock_market:
+//   { active: bool, price: number }   — absent OR active:false  →  inactive (no rating yet).
+// ONE source for reading + clamping it, so the Government tile and the Stock Market page agree.
+export const STOCK_PRICE_MIN = 1;
+export const STOCK_PRICE_MAX = 100000;
+export function clampStockPrice(n) {
+  const v = Math.round(Number(n));
+  if (!isFinite(v)) return null;
+  return Math.max(STOCK_PRICE_MIN, Math.min(STOCK_PRICE_MAX, v));
+}
+// → { active, price } where price is a clamped 1–100,000 rating, or null when inactive/unset.
+export function nationStockMarket(economy) {
+  const sm = economy && economy.stock_market;
+  if (!sm || sm.active !== true) return { active: false, price: null };
+  return { active: true, price: clampStockPrice(sm.price) };
+}
+
 // The tier label for a regime object — e.g. "Full Democracy". Null for an unset/invalid regime.
 export function regimeLabel(regime) {
   if (!regime || !REGIME_BANDS[regime.type]) return null;

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Stock Market · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
+<style>
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+
+  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
+
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
+  .page{max-width:900px}
+  .back{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-decoration:none;margin-bottom:14px}
+  .back:hover{color:var(--ink)}
+  .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
+  .phead h1{font-weight:900;font-size:clamp(26px,4vw,36px);letter-spacing:-.025em;margin:6px 0 22px}
+
+  /* Price-Rating headline — the nation's stock-market index on the 1–100,000 scale. */
+  .sxhero{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:18px}
+  .sxhero__hd{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .sxhero__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .sxhero__v{font-size:38px;font-weight:900;letter-spacing:-.03em;color:var(--ink)}
+  .sxhero__v.inactive{color:var(--soft);font-size:26px}
+  .sxhero__scale{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft);margin-top:4px}
+  .sxhero__desc{color:var(--muted);font-size:13.5px;line-height:1.6;margin-top:14px;max-width:640px}
+
+  .pill{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--chip);color:var(--soft)}
+  .pill .dot{width:8px;height:8px;border-radius:50%;background:var(--soft)}
+  .pill.active{color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,var(--line))}
+  .pill.active .dot{background:var(--green)}
+
+  /* Empty state — no exchange yet, so no market. */
+  .sxempty{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:30px 24px;text-align:center}
+  .sxempty h2{font-size:18px;font-weight:900;letter-spacing:-.01em;margin:0 0 8px}
+  .sxempty p{color:var(--muted);font-size:13.5px;line-height:1.6;max-width:520px;margin:0 auto 18px}
+  .cta{font-family:'Space Mono',monospace;font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);border-radius:10px;padding:11px 20px;background:var(--ink);color:var(--bg);cursor:pointer}
+  .cta[disabled]{background:var(--chip);color:var(--soft);border-color:var(--line);cursor:not-allowed}
+  .soon{display:block;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-top:12px}
+
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
+
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <div class="page">
+      <a class="back" href="/play/government/">&lsaquo; Government</a>
+      <div class="phead">
+        <span class="eye" id="snation">The Nation</span>
+        <h1>Stock Market</h1>
+      </div>
+
+      <!-- Price Rating headline. Inactive for every nation until it founds or joins a stock
+           exchange (a later stage) — so it starts empty here. -->
+      <div class="sxhero">
+        <div class="sxhero__hd">
+          <div>
+            <div class="sxhero__k">Price Rating</div>
+            <div class="sxhero__v inactive" id="sxVal">Inactive</div>
+            <div class="sxhero__scale">Scale 1 – 100,000</div>
+          </div>
+          <span class="pill" id="sxPill"><span class="dot"></span><span id="sxPillTxt">Inactive</span></span>
+        </div>
+        <div class="sxhero__desc" id="sxDesc">
+          This nation has no stock market yet. A market opens — and a Price Rating appears — once the
+          nation founds or joins a stock exchange through the Ministry of Finance.
+        </div>
+      </div>
+
+      <!-- Empty state / entry point. The Found/Join exchange system is the next stage. -->
+      <div class="sxempty" id="sxEmpty">
+        <h2>No stock exchange</h2>
+        <p>Your corporations have nowhere to list. Found your own exchange, or join an existing one hosted
+           by another nation, to open a market and start building a Price Rating.</p>
+        <button class="cta" id="sxFound" disabled>Found / Join a Stock Exchange</button>
+        <span class="soon">Coming next — the exchange system</span>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { esc, declaredValue } from '/util.js';
+  import { ideologyLabel } from '/archetypes.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+  import { nationStockMarket } from '/ladders.js';
+
+  mountTopbar();   // shared top bar (Discord/Influence/Budget Balance/date/gear) into #topbar
+  mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
+
+  (async () => {
+    if (!isConfigured) return;
+    const user = await requireUser();
+    if (!user) return; // redirected to login
+    try {
+      const { data: party, error } = await supabase.from('parties').select('nation_id, name, archetype, influence').eq('user_id', user.id).single();
+      if (error || !party) { window.location.replace('/nation-select/'); return; }
+      var nRes = await supabase.from('nations').select('name, flag, declarations, economy').eq('id', party.nation_id).single();
+      var nation = nRes.data || {};
+
+      var nationName = nation.name || party.nation_id;
+      try {
+        const { data: slots } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed').eq('slug', 'formal_state_name').limit(1);
+        var formal = (slots && slots[0]) ? declaredValue(slots[0], nation.declarations) : '';
+        if (formal && formal !== '—') nationName = formal;
+      } catch (e) {}
+      document.getElementById('snation').textContent = nationName;
+      document.getElementById('pname').textContent = party.name;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + (nation.name || party.nation_id);
+      if (nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
+      setTopbarActions(party.influence);
+
+      // Stock Market state — ONE source (ladders.js). Inactive for every nation today; when the
+      // exchange system lands, an active market fills in the Price Rating and swaps the empty state.
+      var sm = nationStockMarket(nation.economy || {});
+      if (sm.active && sm.price != null) {
+        document.getElementById('sxVal').textContent = sm.price.toLocaleString();
+        document.getElementById('sxVal').classList.remove('inactive');
+        var pill = document.getElementById('sxPill'); pill.classList.add('active');
+        document.getElementById('sxPillTxt').textContent = 'Active';
+        document.getElementById('sxDesc').textContent = 'This nation’s market trades on a listed stock exchange. The Price Rating tracks the aggregate value of its listed corporations.';
+        document.getElementById('sxEmpty').hidden = true;
+      }
+    } catch (e) { /* placeholders already shown; topbar still renders */ }
+  })();
+</script>
+</body>
+</html>
