@@ -94,6 +94,53 @@ export function policyInForceEffects(def, optionIdx) {
   inForce.forEach(function (o) { ((o && o.effects) || []).forEach(function (e) { out.push(e); }); });
   return out;
 }
+// ---- Policy prerequisites -------------------------------------------------------------------------
+// A policy can be gated behind other policies' in-force options. def.requires =
+//   { mode:'any'|'all', conds:[ {policy:<id>, opt:<optionIdx>} … ] }
+// A condition holds when that policy's in-force option (policyOptionIdx) equals opt. mode 'all' → every
+// condition must hold; 'any' → at least one. No requires / no conds → always available. `defsById` maps a
+// policyId → its definition (the nation.policies overrides feed policyOptionIdx). ONE source for the gate,
+// read by the Propose flow + the Policies slate. Prereqs are only checked at enact/change time — nothing
+// auto-reverts if a prerequisite is lost after the fact.
+export function policyRequirementsMet(def, overrides, defsById) {
+  var req = def && def.requires;
+  var conds = (req && req.conds) || [];
+  if (!conds.length) return true;
+  function holds(c) {
+    var d = defsById && defsById[c.policy];
+    if (!d) return false;   // the referenced policy was removed → its condition can no longer be satisfied
+    return policyOptionIdx(d, overrides, c.policy) === (Number(c.opt) || 0);
+  }
+  return req.mode === 'all' ? conds.every(holds) : conds.some(holds);
+}
+// One condition as human text: on/off → "<policy> enabled/disabled" (index 1 = the On state by the
+// editor's [Off, On] convention); spectrum → "<policy> · <level name>". Unknown id → "(unknown policy)".
+function policyCondText(c, defsById) {
+  var d = defsById && defsById[c.policy];
+  if (!d) return '(unknown policy)';
+  var idx = Number(c.opt) || 0, name = d.name || 'policy';
+  if (d.type !== 'spectrum') return name + (idx === 1 ? ' enabled' : ' disabled');
+  var o = policyOptions(d)[idx];
+  return name + ' · ' + ((o && o.name) || ('Level ' + (idx + 1)));
+}
+// Index a list of policy rows ({id, definition}) into { id → definition } — the map policyRequirementsMet
+// / policyRequiresText take as defsById. ONE source so the propose page, the Policies slate and the admin
+// editor build it the same way.
+export function policyDefsById(rows) {
+  var m = {};
+  (rows || []).forEach(function (r) { if (r && r.id) m[r.id] = r.definition; });
+  return m;
+}
+// The full requirement line, e.g. "Requires: Central Bank enabled or Tax Reform · Level B". Empty string
+// when the policy has no prerequisite. Joined with "and"/"or" to match the policy's mode.
+export function policyRequiresText(def, defsById) {
+  var req = def && def.requires;
+  var conds = (req && req.conds) || [];
+  if (!conds.length) return '';
+  return 'Requires: ' + conds.map(function (c) { return policyCondText(c, defsById); })
+    .join(req.mode === 'all' ? ' and ' : ' or ');
+}
+
 // Aggregate a list of {t,v,unit} effects into one signed total per {t,unit}. Helper for the delta below.
 function aggregateEffects(list) {
   var agg = [], pos = {};

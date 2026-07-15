@@ -1192,7 +1192,7 @@
     import { regimeLabel, nationRegime, statName } from '/ladders.js';
     import { SIZES, CATEGORIES, CATEGORY_BONUS, corpMoney } from '/corporations.js';
     import { ARCHETYPES } from '/archetypes.js';
-    import { policyOptions, policyDefaultIdx, policyOptionIdx, isMoneyTarget, POLICY_STATS, MINISTRY_STATS, STAT_RANGES, fmtInitiativeCost } from '/policies.js';
+    import { policyOptions, policyDefaultIdx, policyOptionIdx, policyDefsById, policyRequiresText, isMoneyTarget, POLICY_STATS, MINISTRY_STATS, STAT_RANGES, fmtInitiativeCost } from '/policies.js';
     import { MINISTRIES } from '/ministries.js';
 
     // ONE image-upload path: push a file to a Supabase storage bucket (optionally under a folder)
@@ -2792,6 +2792,13 @@
       polOpts().forEach(function (o) {
         if (o && o.effects) o.effects = o.effects.filter(function (e) { return (e.t || '').indexOf('Party Popularity') !== 0; });
       });
+      // Availability: keep only conditions that name a policy; drop the whole block when none remain, so
+      // no empty {requires} lingers. Coerce mode to a known value.
+      if (P.requires) {
+        P.requires.conds = (P.requires.conds || []).filter(function (c) { return c && c.policy; });
+        if (!P.requires.conds.length) delete P.requires;
+        else P.requires.mode = (P.requires.mode === 'all') ? 'all' : 'any';
+      }
       try{
         if (polEditingId){
           const { error } = await supabase.from('policies').update({ definition: P }).eq('id', polEditingId);
@@ -2956,6 +2963,9 @@
       polOpts().forEach(function(o,i){ oc.appendChild(buildPolOpt(o,i)); });
       box.appendChild(oc);
 
+      // Availability — the policy can be gated behind other policies' in-force options (def.requires).
+      var rc=document.createElement('div'); rc.className='card'; rc.id='pol-reqCard'; box.appendChild(rc);
+
       var foot=document.createElement('div'); foot.style.display='flex'; foot.style.gap='8px'; foot.style.flexWrap='wrap';
       var sv=document.createElement('button'); sv.className='btn btn-solid'; sv.type='button'; sv.textContent=polEditingId?'Save changes':'Create policy'; sv.onclick=savePolicy;
       var cx=document.createElement('button'); cx.className='btn btn-ghost'; cx.type='button'; cx.textContent='Close'; cx.onclick=function(){ document.getElementById('polEditorPanel').hidden=true; };
@@ -2967,6 +2977,54 @@
       var impl=box.querySelector('#pol-impl'); if(impl)impl.oninput=function(e){ P.impl=parseInt(e.target.value,10)||0; };
       var pr=box.querySelector('#pol-poprais'); if(pr)pr.oninput=function(e){ P.popRaise=parseFloat(e.target.value)||0; renderPolPrev(); };
       var ao=box.querySelector('#pol-addOpt'); if(ao)ao.onclick=function(){ P.spectrum.push({name:'Level '+String.fromCharCode(65+P.spectrum.length),desc:'',effects:[]}); renderPolEditor(); renderPolPrev(); };
+      renderPolReq();
+    }
+    // ---- Availability (policy prerequisites) — authors def.requires = { mode, conds:[{policy,opt}] } ----
+    // The gate itself lives in policies.js (policyRequirementsMet), read by the Propose flow; here we only
+    // author the rule. Other policies (except this one + the trade policy) are the referenceable targets.
+    function reqPolList(){ return polCache.filter(function(r){ return r.id !== polEditingId && !(r.definition && r.definition.special==='trade'); }); }
+    function reqDefsById(){ return policyDefsById(polCache); }   // one source (policies.js)
+    function renderPolReq(){
+      var card=document.getElementById('pol-reqCard'); if(!card) return;
+      var list=reqPolList(), defs=reqDefsById();
+      var req=(P.requires && Array.isArray(P.requires.conds)) ? P.requires : null;
+      var conds=(req && req.conds) || [];
+      var head='<div class="opthd"><span class="t">Availability</span><button class="addopt" id="req-add" type="button">+ condition</button></div>'+
+        '<p class="hint" style="margin:0 0 10px">Leave empty for a policy that’s always available. Otherwise it can only be enacted while these hold — existing choices are never auto-reverted.</p>';
+      if (!conds.length){ card.innerHTML=head+(list.length?'':'<p class="hint">No other policies to reference yet.</p>'); wireReqAdd(card,list); return; }
+      var modeSeg = conds.length>1
+        ? '<div class="f" style="margin:0 0 10px"><label>Match</label><div class="seg" id="req-modeSeg"><span data-v="any" class="'+(req.mode!=='all'?'on':'')+'">Any (or)</span><span data-v="all" class="'+(req.mode==='all'?'on':'')+'">All (and)</span></div></div>'
+        : '';
+      var rows=conds.map(function(c,ci){
+        var pols='<option value="">Select policy…</option>'+list.map(function(r){ return '<option value="'+esc(r.id)+'"'+(r.id===c.policy?' selected':'')+'>'+esc((r.definition&&r.definition.name)||'Untitled')+'</option>'; }).join('');
+        var tgt=c.policy ? defs[c.policy] : null;
+        var states=tgt ? policyOptions(tgt).map(function(o,oi){
+          var label=(tgt.type!=='spectrum') ? ((oi===1?'enabled — ':'disabled — ')+(o.name||('Option '+(oi+1)))) : (o.name||('Level '+(oi+1)));
+          return '<option value="'+oi+'"'+(oi===(Number(c.opt)||0)?' selected':'')+'>'+esc(label)+'</option>';
+        }).join('') : '<option value="">—</option>';
+        return '<div class="reqrow" data-ci="'+ci+'" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">'+
+          '<select class="req-pol inp" style="flex:1;min-width:160px">'+pols+'</select>'+
+          '<select class="req-state inp" style="flex:1;min-width:140px"'+(tgt?'':' disabled')+'>'+states+'</select>'+
+          '<button class="xb req-x" type="button">×</button></div>';
+      }).join('');
+      card.innerHTML=head+modeSeg+rows;
+      var seg=card.querySelector('#req-modeSeg'); if(seg) seg.querySelectorAll('span').forEach(function(s){ s.onclick=function(){ P.requires.mode=s.dataset.v; renderPolReq(); renderPolPrev(); }; });
+      card.querySelectorAll('.reqrow').forEach(function(row){
+        var ci=+row.dataset.ci, c=P.requires.conds[ci];
+        row.querySelector('.req-pol').onchange=function(e){
+          c.policy=e.target.value||null;
+          c.opt=1;   // default: on/off → enabled; spectrum → first non-base level
+          if(c.policy){ var d=defs[c.policy]; if(d) c.opt=Math.min(1, Math.max(0, policyOptions(d).length-1)); }
+          renderPolReq(); renderPolPrev();
+        };
+        var st=row.querySelector('.req-state'); if(st) st.onchange=function(e){ c.opt=parseInt(e.target.value,10)||0; renderPolPrev(); };
+        row.querySelector('.req-x').onclick=function(){ P.requires.conds.splice(ci,1); if(!P.requires.conds.length) delete P.requires; renderPolReq(); renderPolPrev(); };
+      });
+      wireReqAdd(card,list);
+    }
+    function wireReqAdd(card,list){
+      var add=card.querySelector('#req-add'); if(!add) return;
+      add.onclick=function(){ if(!list.length) return; P.requires=(P.requires&&Array.isArray(P.requires.conds))?P.requires:{mode:'any',conds:[]}; P.requires.conds.push({policy:null,opt:1}); renderPolReq(); renderPolPrev(); };
     }
     function buildPolOpt(o,i){
       o.effects = o.effects || [];
@@ -3025,6 +3083,8 @@
         ? ('Spectrum · '+P.spectrum.length+' levels · '+(P.impl||0)+' mo')
         : 'On/Off';
       var html='<div class="pvname">'+esc(P.name||'Untitled policy')+'</div><span class="pvtype">'+typeLabel+'</span>';
+      var reqTxt=policyRequiresText(P, reqDefsById());
+      if (reqTxt) html+='<div class="pvreq" style="margin:8px 0 2px;font-size:12px;font-weight:700;color:var(--amber,#d9a441)">'+esc(reqTxt)+'</div>';
       polOpts().forEach(function(o,i){
         var isStart=P.type==='spectrum' && i===P.defaultIdx;   // only spectrum has a starting level
         var isBase=P.type==='spectrum'&&i===0;   // base level carries no transition effects

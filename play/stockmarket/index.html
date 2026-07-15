@@ -154,11 +154,11 @@
           if (ex) { exName = ex.name || ''; exAbbr = ex.abbr || ''; exGrowth = Number(ex.market_growth); }
         } catch (e) {}
         var listedOn = exName ? ('Listed on ' + exName + (exAbbr ? ' (' + exAbbr + ')' : '') + (sm.role === 'member' ? ' — hosted abroad' : '') + '. ') : '';
-        // The market's corporations either lift or drag national Growth by this much (pooled across every
-        // listed nation). IsFinite guards a market with no firms / column not deployed.
-        var perf = isFinite(exGrowth)
-          ? 'Its listed corporations move national Growth by ' + (exGrowth >= 0 ? '+' : '') + (Math.round(exGrowth * 10) / 10) + ' right now. '
-          : '';
+        // The market's corporations lift or drag national Growth by this much (pooled across every listed
+        // nation). !isFinite guards a column not deployed; 0 (no firms yet / neutral) gets its own copy.
+        var perf = !isFinite(exGrowth) ? ''
+          : exGrowth === 0 ? 'Its listed corporations have no net effect on national Growth right now. '
+          : 'Its listed corporations move national Growth by ' + (exGrowth > 0 ? '+' : '') + (Math.round(exGrowth * 10) / 10) + ' right now. ';
         var pill = document.getElementById('sxPill'); pill.classList.add('active');
         document.getElementById('sxPillTxt').textContent = 'Active';
         document.getElementById('sxEmpty').hidden = true;
