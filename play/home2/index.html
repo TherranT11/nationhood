@@ -66,6 +66,37 @@
     opacity:0;transition:opacity .2s ease;will-change:transform;pointer-events:none}
   .map-area.milmode .unitlabel{opacity:1}
 
+  /* Intl Orgs map mode: a row of org chips under the mode toggle, and a legend card bottom-left.
+     Home2 is a light-sea map, so both are white/light cards matching the mapmode toggle. */
+  .orgchips{position:absolute;left:14px;top:92px;z-index:10;display:none;flex-wrap:wrap;gap:6px;max-width:min(62vw,340px)}
+  .orgchips.show{display:flex}
+  .org-chip{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono','JetBrains Mono',monospace;
+    font-size:10px;letter-spacing:.04em;padding:5px 9px;border:1px solid var(--line);border-left:3px solid transparent;
+    border-radius:7px;background:rgba(255,255,255,.92);color:#3a3f4c;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.16);
+    -webkit-tap-highlight-color:transparent}
+  .org-chip .oc-em{font-size:12px;line-height:1}
+  .org-chip .oc-key{font-weight:700;text-transform:uppercase}
+  .org-chip .oc-cnt{font-size:9px;color:#8a8f9c;background:#eef0f4;border-radius:8px;padding:1px 5px;min-width:15px;text-align:center}
+  .org-chip.on{color:#15151b;background:#fff;box-shadow:0 3px 12px rgba(0,0,0,.24)}
+  .org-empty{font-family:'Space Mono','JetBrains Mono',monospace;font-size:10px;color:rgba(20,20,30,.62);
+    background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:7px;padding:5px 9px}
+  .orglegend{position:absolute;left:14px;bottom:14px;z-index:11;width:242px;max-width:calc(100% - 28px);
+    background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.28);
+    overflow:hidden;display:none;color:#15151b}
+  .orglegend.show{display:block}
+  .ol-accent{height:3px}
+  .ol-body{padding:11px 13px}
+  .ol-head{display:flex;gap:9px;align-items:center}
+  .ol-em{font-size:20px;line-height:1;flex:none}
+  .ol-name{font-weight:700;font-size:14px;line-height:1.15}
+  .ol-count{font-family:'Space Mono','JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:#8a8f9c;
+    margin-top:8px;text-transform:uppercase}
+  .ol-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;max-height:132px;overflow-y:auto}
+  .ol-chip{font-family:'Space Mono','JetBrains Mono',monospace;font-size:10px;padding:2px 7px;border-radius:5px;
+    border:1px solid #e2e2ea;background:#f4f5f8;color:#3a3f4c}
+  /* Non-member nation labels dim while an org is highlighted (grey + lowered opacity). */
+  .natlabel.org-dim{opacity:.55;color:#8a8a8a;text-shadow:0 0 3px #fff,0 0 3px #fff}
+
   /* Nation snapshot panel (click a nation) — real data, styled to Home2's dark theme. */
   .natpanel{position:absolute;top:58px;right:14px;width:290px;max-width:calc(100% - 28px);z-index:15;
     background:#181820;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.45);
@@ -185,11 +216,18 @@
       <div class="zoombtn" id="zoomOut">−</div>
     </div>
 
-    <!-- Political / Military map filter -->
+    <!-- Political / Military / Intl Orgs map filter -->
     <div class="mapmode" id="mapMode">
       <button class="mm-btn on" data-mode="pol" type="button">Political</button>
       <button class="mm-btn" data-mode="mil" type="button">Military</button>
+      <button class="mm-btn" data-mode="orgs" type="button">Intl Orgs</button>
     </div>
+
+    <!-- Intl Orgs: one chip per active organization (shown only in Intl Orgs mode) -->
+    <div class="orgchips" id="orgChips"></div>
+
+    <!-- Intl Orgs legend (bottom-left; shown while an org is selected) -->
+    <div class="orglegend" id="orgLegend"></div>
 
     <!-- nation snapshot panel (click a nation) -->
     <div class="natpanel" id="natPanel"></div>
@@ -356,6 +394,11 @@ function applyTransform() {
   // Military units (schema/199) — public-readable; drawn as counters in Military map mode.
   var units = [];
   try { const { data } = await selectAll('military_units', 'nation_id, name, unit_type, strength, q, r'); units = data || []; } catch (e) {}
+  // International organizations (public — RLS is select-using-true) for the Intl Orgs map mode: keep the
+  // active ones and their membership so a chip can highlight its member nations. Fetched once at load.
+  var orgs = [], orgMembers = [];
+  try { const { data } = await supabase.from('organizations').select('id, name, emblem, org_type, host_nation, status'); orgs = (data || []).filter(function (o) { return o.status === 'active'; }); } catch (e) {}
+  try { const { data } = await supabase.from('organization_members').select('org_id, nation_id'); orgMembers = data || []; } catch (e) {}
   try { const { data } = await supabase.from('declarations').select('slug, options, default_index, custom_allowed').eq('slug', 'capital_name').maybeSingle(); capSlot = data || null; } catch (e) {}
 
   var natById = {}; nations.forEach(function (n) { natById[n.id] = n; });
@@ -476,12 +519,145 @@ function applyTransform() {
   var natLabels = [];
   Object.keys(natSum).forEach(function (nid) {
     var s = natSum[nid], nm = natById[nid] ? natById[nid].name : '';
-    if (nm && s.n) natLabels.push({ x: s.x / s.n, y: s.y / s.n, text: nm });
+    if (nm && s.n) natLabels.push({ x: s.x / s.n, y: s.y / s.n, text: nm, nid: nid });
   });
   overlayEl.innerHTML =
-    natLabels.map(function (l) { return '<div class="natlabel" data-x="' + l.x + '" data-y="' + l.y + '">' + esc(l.text) + '</div>'; }).join('') +
+    natLabels.map(function (l) { return '<div class="natlabel" data-nid="' + esc(l.nid) + '" data-x="' + l.x + '" data-y="' + l.y + '">' + esc(l.text) + '</div>'; }).join('') +
     cityLabels.map(function (l) { return '<div class="citylabel' + (l.cap ? ' cap' : '') + '" data-x="' + l.x + '" data-y="' + l.y + '">' + esc(l.text) + '</div>'; }).join('') +
     unitLabels.map(function (l) { return '<div class="unitlabel" data-x="' + l.x + '" data-y="' + l.y + '">' + esc(l.text) + '</div>'; }).join('');
+
+  /* ---------------- INTL ORGS MAP MODE ---------------- */
+  // A third map filter: highlight one organization's member nations at a time. Organizations have no
+  // colour column, so each active org gets a stable accent by cycling a small palette in sorted order.
+  var ORG_PALETTE = ['#f0a03c', '#4a4af0', '#2c9c8a', '#d8344a', '#8a5fd0', '#e07f2c'];
+  var orgChips = document.getElementById('orgChips'), orgLegend = document.getElementById('orgLegend');
+  var activeOrgs = orgs.slice().sort(function (a, b) { return String(a.name || '').localeCompare(String(b.name || '')); });
+  var orgById = {}, orgColor = {}, orgMemberSet = {};
+  activeOrgs.forEach(function (o, i) { orgById[o.id] = o; orgColor[o.id] = ORG_PALETTE[i % ORG_PALETTE.length]; orgMemberSet[o.id] = {}; });
+  orgMembers.forEach(function (m) { if (orgMemberSet[m.org_id]) orgMemberSet[m.org_id][m.nation_id] = 1; });
+  var selectedOrg = null;
+
+  // A compact key for the chip: initials for a multi-word name, else the (truncated) name. The legend
+  // carries the full name, so this only needs to be recognisable at a glance.
+  function orgKey(o) {
+    var n = String(o.name || '').trim(), words = n.split(/\s+/).filter(Boolean);
+    if (words.length >= 2) return words.map(function (w) { return w.charAt(0); }).join('').toUpperCase().slice(0, 5);
+    return n.toUpperCase().slice(0, 6);
+  }
+
+  // Mix a colour toward the light sea (#a9cfdd) — used to fade non-member land while an org is selected.
+  function mixHex(a, b, t) {
+    var pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+    var r = Math.round(((pa >> 16) & 255) * (1 - t) + ((pb >> 16) & 255) * t);
+    var g = Math.round(((pa >> 8) & 255) * (1 - t) + ((pb >> 8) & 255) * t);
+    var bl = Math.round((pa & 255) * (1 - t) + (pb & 255) * t);
+    return '#' + (0x1000000 + (r << 16) + (g << 8) + bl).toString(16).slice(1);
+  }
+  function desaturate(hex) {
+    if (!hex || hex.charAt(0) !== '#' || hex.length !== 7) return '#cfd8dd';
+    return mixHex(hex, '#a9cfdd', 0.55);
+  }
+
+  // Render the chip row (one per active org), or a small note when there are none.
+  if (!activeOrgs.length) {
+    orgChips.innerHTML = '<span class="org-empty">No organizations yet</span>';
+  } else {
+    orgChips.innerHTML = activeOrgs.map(function (o) {
+      var cnt = Object.keys(orgMemberSet[o.id]).length;
+      return '<button class="org-chip" data-org="' + esc(o.id) + '" type="button">' +
+        '<span class="oc-em">' + esc(o.emblem || '🏛') + '</span>' +
+        '<span class="oc-key">' + esc(orgKey(o)) + '</span>' +
+        '<span class="oc-cnt">' + cnt + '</span></button>';
+    }).join('');
+  }
+
+  // Highlight the selected org's members (normal fill + a thick org-accent border) and fade everyone
+  // else (desaturated fill, muted border); dim non-member nation labels. Originals are stashed on each
+  // polygon the first time so restorePolitical() can put the base map back exactly.
+  function applyOrgHighlight(orgId) {
+    var members = orgMemberSet[orgId] || {}, accent = orgColor[orgId] || '#4a5cd0';
+    Array.prototype.forEach.call(svgEl.querySelectorAll('polygon[data-nid]'), function (p) {
+      if (p.getAttribute('data-ofill') === null) {
+        p.setAttribute('data-ofill', p.getAttribute('fill'));
+        p.setAttribute('data-ostroke', p.getAttribute('stroke') || '');
+        p.setAttribute('data-osw', p.getAttribute('stroke-width') || '');
+        p.setAttribute('data-oso', p.getAttribute('stroke-opacity') || '');
+      }
+      var nid = p.getAttribute('data-nid'), ofill = p.getAttribute('data-ofill');
+      if (nid && members[nid]) {
+        p.setAttribute('fill', ofill);
+        p.setAttribute('stroke', accent);
+        p.setAttribute('stroke-width', '2.4');
+        p.setAttribute('stroke-opacity', '0.95');
+      } else {
+        p.setAttribute('fill', ofill === LAND_NEUTRAL ? '#e4ded2' : desaturate(ofill));
+        p.setAttribute('stroke', '#fff');
+        p.setAttribute('stroke-width', p.getAttribute('data-osw') || '1');
+        p.setAttribute('stroke-opacity', '0.12');
+      }
+    });
+    Array.prototype.forEach.call(overlayEl.querySelectorAll('.natlabel'), function (el) {
+      var nid = el.getAttribute('data-nid');
+      el.classList.toggle('org-dim', !(nid && members[nid]));
+    });
+  }
+  // Put the base political map back: restore each hex's stashed fill/stroke and un-dim every label.
+  function restorePolitical() {
+    Array.prototype.forEach.call(svgEl.querySelectorAll('polygon[data-nid]'), function (p) {
+      if (p.getAttribute('data-ofill') === null) return;
+      p.setAttribute('fill', p.getAttribute('data-ofill'));
+      p.setAttribute('stroke', p.getAttribute('data-ostroke'));
+      p.setAttribute('stroke-width', p.getAttribute('data-osw'));
+      p.setAttribute('stroke-opacity', p.getAttribute('data-oso'));
+    });
+    Array.prototype.forEach.call(overlayEl.querySelectorAll('.natlabel'), function (el) { el.classList.remove('org-dim'); });
+  }
+  function hideLegend() { orgLegend.classList.remove('show'); orgLegend.innerHTML = ''; }
+  function renderLegend(orgId) {
+    var o = orgById[orgId]; if (!o) return;
+    var accent = orgColor[orgId];
+    var names = Object.keys(orgMemberSet[orgId] || {}).map(function (nid) { return natById[nid] ? natById[nid].name : null; })
+      .filter(Boolean).sort(function (a, b) { return a.localeCompare(b); });
+    orgLegend.innerHTML =
+      '<div class="ol-accent" style="background:' + accent + '"></div>' +
+      '<div class="ol-body">' +
+        '<div class="ol-head"><span class="ol-em">' + esc(o.emblem || '🏛') + '</span>' +
+          '<div class="ol-name">' + esc(o.name || '') + '</div></div>' +
+        '<div class="ol-count">' + names.length + ' MEMBER NATION' + (names.length === 1 ? '' : 'S') + ' — HIGHLIGHTED ON MAP</div>' +
+        '<div class="ol-chips">' + (names.length ? names.map(function (nm) { return '<span class="ol-chip">' + esc(nm) + '</span>'; }).join('') : '<span class="ol-chip">No members yet</span>') + '</div>' +
+      '</div>';
+    orgLegend.classList.add('show');
+  }
+  // Apply the current selection to the map (highlight if one is picked, else the plain political map).
+  function refreshOrgView() {
+    if (selectedOrg) { applyOrgHighlight(selectedOrg); renderLegend(selectedOrg); }
+    else { restorePolitical(); hideLegend(); }
+  }
+  // Click a chip: toggle it (exactly one org selected at a time), then repaint.
+  orgChips.addEventListener('click', function (e) {
+    var btn = e.target.closest('.org-chip'); if (!btn) return;
+    var id = btn.getAttribute('data-org');
+    selectedOrg = (selectedOrg === id) ? null : id;
+    Array.prototype.forEach.call(orgChips.querySelectorAll('.org-chip'), function (c) {
+      var on = c.getAttribute('data-org') === selectedOrg;
+      c.classList.toggle('on', on);
+      c.style.borderLeftColor = on ? orgColor[c.getAttribute('data-org')] : 'transparent';
+    });
+    refreshOrgView();
+  });
+
+  // The single map-mode switch (replaces the load-time pol/mil handler): Political/Military behave as
+  // before; Intl Orgs reveals the chip row and applies any current org selection. Leaving orgs mode
+  // hides the chips + legend and restores the political colours.
+  function setMode(mode) {
+    Array.prototype.forEach.call(document.querySelectorAll('#mapMode .mm-btn'), function (x) { x.classList.toggle('on', x.dataset.mode === mode); });
+    mapArea.classList.toggle('milmode', mode === 'mil');
+    var orgsOn = mode === 'orgs';
+    orgChips.classList.toggle('show', orgsOn);
+    if (orgsOn) refreshOrgView();
+    else { restorePolitical(); hideLegend(); }
+  }
+  document.querySelectorAll('#mapMode .mm-btn').forEach(function (b) { b.onclick = function () { setMode(b.dataset.mode); }; });
 
   // Floor the zoom-out at "the whole world roughly fills the viewport" (with a little sea margin), so
   // the map can never shrink to a distant speck. Falls back to the default floor if bounds are empty.
@@ -711,13 +887,8 @@ function zoomAt(factor, cxp, cyp) {
 }
 document.getElementById('zoomIn').onclick = function () { zoomAt(1.2, mapArea.clientWidth / 2, mapArea.clientHeight / 2); };
 document.getElementById('zoomOut').onclick = function () { zoomAt(1 / 1.2, mapArea.clientWidth / 2, mapArea.clientHeight / 2); };
-// Political / Military map filter: toggle the .milmode class (CSS shows the unit counters + names).
-document.querySelectorAll('#mapMode .mm-btn').forEach(function (b) {
-  b.onclick = function () {
-    document.querySelectorAll('#mapMode .mm-btn').forEach(function (x) { x.classList.toggle('on', x === b); });
-    mapArea.classList.toggle('milmode', b.dataset.mode === 'mil');
-  };
-});
+// The map-mode filter (Political / Military / Intl Orgs) is wired inside the load block via setMode(),
+// which needs the loaded org data + hex handles to highlight members.
 mapArea.addEventListener('wheel', function (e) { e.preventDefault(); var rect = mapArea.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - rect.left, e.clientY - rect.top); }, { passive: false });
 
 /* ---------------- TOUCH: one finger pans, two fingers pinch-zoom ---------------- */
