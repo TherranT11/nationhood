@@ -262,6 +262,7 @@
           'bn<span style="font-size:13px;font-weight:700;color:var(--soft)"> /yr</span></span>';
       }
       if (s === 'Bureaucracy') return Math.round(v) + '%';
+      if (s === 'Interest Rates') return (Math.round(v * 10) / 10) + '%';   // derived policy rate (schema/225)
       if (s === 'Public Debt') return esc(cur) + Math.abs(v) + 'bn';
       return esc(String(Math.round(v * 10) / 10));
     }
