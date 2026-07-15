@@ -1192,7 +1192,7 @@
     import { regimeLabel, nationRegime, statName } from '/ladders.js';
     import { SIZES, CATEGORIES, CATEGORY_BONUS, corpMoney } from '/corporations.js';
     import { ARCHETYPES } from '/archetypes.js';
-    import { policyOptions, policyDefaultIdx, policyOptionIdx, policyRequiresText, isMoneyTarget, POLICY_STATS, MINISTRY_STATS, STAT_RANGES, fmtInitiativeCost } from '/policies.js';
+    import { policyOptions, policyDefaultIdx, policyOptionIdx, policyDefsById, policyRequiresText, isMoneyTarget, POLICY_STATS, MINISTRY_STATS, STAT_RANGES, fmtInitiativeCost } from '/policies.js';
     import { MINISTRIES } from '/ministries.js';
 
     // ONE image-upload path: push a file to a Supabase storage bucket (optionally under a folder)
@@ -2983,7 +2983,7 @@
     // The gate itself lives in policies.js (policyRequirementsMet), read by the Propose flow; here we only
     // author the rule. Other policies (except this one + the trade policy) are the referenceable targets.
     function reqPolList(){ return polCache.filter(function(r){ return r.id !== polEditingId && !(r.definition && r.definition.special==='trade'); }); }
-    function reqDefsById(){ var m={}; polCache.forEach(function(r){ m[r.id]=r.definition; }); return m; }
+    function reqDefsById(){ return policyDefsById(polCache); }   // one source (policies.js)
     function renderPolReq(){
       var card=document.getElementById('pol-reqCard'); if(!card) return;
       var list=reqPolList(), defs=reqDefsById();

@@ -125,7 +125,7 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, policyDefaultIdx, policyRequirementsMet, policyRequiresText, policyEffectChange, effectText, policyInForceEffects, fiscalFactor, policyMoney, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity } from '/policies.js';
+  import { policyOptions, policyOptionIdx, policyDefaultIdx, policyDefsById, policyRequirementsMet, policyRequiresText, policyEffectChange, effectText, policyInForceEffects, fiscalFactor, policyMoney, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
   import { isMonarchy, regimeText, nationRegime } from '/ladders.js';
 
@@ -189,7 +189,7 @@
     var sel = { proposed: null };          // chosen rung index, or null
     var touched = { title: false, intro: false };
     // policyId → definition, for resolving each policy's prerequisites (one source: policyRequirementsMet).
-    var defsById = {}; policies.forEach(function (p) { defsById[p.id] = p.definition; });
+    var defsById = policyDefsById(policies);
     function curPolicy() { return policies[+polSel.value] || policies[0]; }
     function curDef() { return curPolicy().definition || {}; }
     // The option in force for this nation (one source: policies.js).

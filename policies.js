@@ -123,6 +123,14 @@ function policyCondText(c, defsById) {
   var o = policyOptions(d)[idx];
   return name + ' · ' + ((o && o.name) || ('Level ' + (idx + 1)));
 }
+// Index a list of policy rows ({id, definition}) into { id → definition } — the map policyRequirementsMet
+// / policyRequiresText take as defsById. ONE source so the propose page, the Policies slate and the admin
+// editor build it the same way.
+export function policyDefsById(rows) {
+  var m = {};
+  (rows || []).forEach(function (r) { if (r && r.id) m[r.id] = r.definition; });
+  return m;
+}
 // The full requirement line, e.g. "Requires: Central Bank enabled or Tax Reform · Level B". Empty string
 // when the policy has no prerequisite. Joined with "and"/"or" to match the policy's mode.
 export function policyRequiresText(def, defsById) {
