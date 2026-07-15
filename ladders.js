@@ -125,6 +125,11 @@ export function nationStockMarket(economy) {
   return { active: !!id, exchangeId: id || null, role: (sm && sm.role) || null };
 }
 
+// One-time Growth granted to the nation that FOUNDS a stock exchange. Display mirror of the SQL
+// (found_stock_exchange, schema/214) — the server bakes this into the Growth base; the Growth page
+// re-shows it as a named line so the player can see where the boost came from.
+export const STOCK_FOUND_GROWTH = 8;
+
 // The four live levers that set the Price Rating — the same values nation_stat_values feeds the
 // Government page. Corruption is inverted (100 − Corruption). Also the ONE source for the stat list.
 export const STOCK_LEVERS = [

@@ -8,13 +8,21 @@
 // so the Phase-3 runtime reads it straight back. Colours use the app's design tokens (+ color-mix)
 // so the panel works in both light and dark themes.
 import { supabase } from '/supabase.js';
+import { POLICY_STATS } from '/policies.js';   // the ONE ministry-stat vocabulary, shared with the policy editor
 import { esc } from '/util.js';   // shared HTML-escape (one source)
 import { cardEffectText, resLabel } from '/card-effect-text.js';   // one source for effect → text (shared with the legislature pages)
 import { CATEGORIES } from '/corporations.js';   // the real sector list — for the "create a state firm in [sector]" effect
 const cap = function (s) { return (s || '').charAt(0).toUpperCase() + (s || '').slice(1); };   // Title-case a word (one source)
 
 // ---- effect vocabulary (Phase 3 interprets these; the creator only authors them) ----
-const STATS = ['Budget Balance', 'Growth', 'Bureaucracy', 'Tax Burden', 'Public Debt', 'Interest Rates', 'Crime', 'Immigration', 'Extremism', 'Birth Rates', 'Unemployment', 'Poverty', 'Wages', 'Innovation', 'Infrastructure', 'Prosperity', 'Press Freedom', 'Social Integration', 'Health', 'Education', 'Pension Quality', 'Rule of Law', 'Standard of Living', 'Housing Affordability', 'Equity Between Generations', 'Armed Forces Funding', 'Military Research', 'Cybersecurity', 'CO2 Emissions', 'Energy Prices', 'Environment', 'National Pride', 'Civil Liberties', 'Minority Rights', 'Corruption', 'Religious Influence'];
+// Card-effect stat targets ARE the ministry-stat vocabulary (POLICY_STATS, policies.js) — ONE source,
+// so any stat added to the Government set (Oppression, Control, Revolt Risk, …) is instantly targetable
+// here with no second list to drift. statOptions prepends a legacy value an older card stored under a
+// name since renamed/removed, so editing that card never silently swaps its stat.
+function statOptions(sel) {
+  var list = (sel && POLICY_STATS.indexOf(sel) < 0) ? [sel].concat(POLICY_STATS) : POLICY_STATS;
+  return list.map(function (s) { return '<option' + (s === sel ? ' selected' : '') + '>' + s + '</option>'; }).join('');
+}
 // The real cabinet portfolios (server source: _ministries(), schema/138) — so a card's Decision
 // Handler routes to an actual minister.
 const MINISTRIES = ['Defence', 'Treasury', 'Interior', 'Foreign Affairs', 'Trade', 'Labour', 'Justice', 'Health', 'Education', 'Energy', 'Economic Development'];
@@ -48,7 +56,7 @@ const KINDS = {
   rel_pick:   { label: 'Relations with a nation of the decider’s choice increase by X (decision cards)' },
   prod_up:    { label: 'Increase production of [resource] by X for N ticks' },
   prod_down:  { label: 'Decrease production of [resource] by X for N ticks' },
-  deck_add:   { label: 'Activate a dormant card into a nation’s deck (now or in N ticks)' },
+  deck_add:   { label: 'Seed a specific card into a nation’s deck (a dormant card, now or in N ticks)' },
   shuffle:    { label: 'Shuffle this card back into the deck (instead of discarding)' },
   corp_grow:    { label: 'Add growth to one of your corporations (chosen on play)' },
   corp_shrink:  { label: 'Cut growth from one of your corporations (chosen on play)' },
@@ -490,7 +498,7 @@ export async function mountCardCreator(mount) {
   /* ── effect builder ── */
   function fxParamsHTML(f, i) {
     var h = '';
-    function statSel(v, field) { return '<select data-i="' + i + '" data-f="' + field + '">' + STATS.map(function (s) { return '<option' + (s === v ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>'; }
+    function statSel(v, field) { return '<select data-i="' + i + '" data-f="' + field + '">' + statOptions(v) + '</select>'; }
     function num(v, field) { return '<input type="number" value="' + (v || 0) + '" data-i="' + i + '" data-f="' + field + '" min="0" max="99">'; }
     if (f.kind === 'stat_up' || f.kind === 'stat_down') h = '<span class="lbl">stat</span>' + statSel(f.p.stat, 'stat') + '<span class="lbl">by</span>' + num(f.p.x, 'x');
     if (f.kind === 'party_gain' || f.kind === 'party_lose') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">target chosen on play</span>';
@@ -548,7 +556,7 @@ export async function mountCardCreator(mount) {
       h += '<div class="nest"><span class="lbl">' + (f.kind === 'appoint' ? 'or else →' : 'then →') + '</span>' +
         '<select data-i="' + i + '" data-f="nk">' + SIMPLE.map(function (k) { return '<option value="' + k + '"' + (k === f.p.nk ? ' selected' : '') + '>' + KINDS[k].label + '</option>'; }).join('') + '</select>';
       var nk = f.p.nk || 'party_lose';
-      if (nk === 'stat_up' || nk === 'stat_down') h += '<select data-i="' + i + '" data-f="nstat">' + STATS.map(function (s) { return '<option' + (s === (f.p.np && f.p.np.stat) ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>';
+      if (nk === 'stat_up' || nk === 'stat_down') h += '<select data-i="' + i + '" data-f="nstat">' + statOptions(f.p.np && f.p.np.stat) + '</select>';
       if (nk !== 'no_conf' && nk !== 'nat_el' && nk !== 'coal_up' && nk !== 'coal_down') h += '<input type="number" value="' + ((f.p.np && f.p.np.x) || 2) + '" data-i="' + i + '" data-f="nx" min="0" max="99">';
       h += '</div>';
     }
@@ -615,7 +623,7 @@ export async function mountCardCreator(mount) {
       : v === 'bill' ? { name: '', pass: [{ kind: 'stat_up', p: { stat: 'Growth', x: 5 } }], fail: [{ kind: 'stat_down', p: { stat: 'Growth', x: 3 } }] }
       : (v === 'decider_gain' || v === 'decider_lose' || v === 'coal_pop_up' || v === 'coal_pop_down') ? { x: 2 }
       : (v === 'mob_add' || v === 'mob_rem' || v === 'mil_add' || v === 'mil_rem') ? { hex: '16,-5', side: 'own' }
-      : { stat: STATS[1], x: 3 };
+      : { stat: POLICY_STATS[1], x: 3 };
   }
   // Apply one field change to an effect object; returns true when the row needs a re-render (renderFx).
   // ONE source for every effect-row change handler (top-level, side, option, and bill sub-effects).
