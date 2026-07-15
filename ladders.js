@@ -125,11 +125,6 @@ export function nationStockMarket(economy) {
   return { active: !!id, exchangeId: id || null, role: (sm && sm.role) || null };
 }
 
-// One-time Growth granted to the nation that FOUNDS a stock exchange. Display mirror of the SQL
-// (found_stock_exchange, schema/214) — the server bakes this into the Growth base; the Growth page
-// re-shows it as a named line so the player can see where the boost came from.
-export const STOCK_FOUND_GROWTH = 8;
-
 // Interest Rate model — JS mirror of the SQL knobs (_nation_interest_rate, schema/225) for the
 // detail-page breakdown. The server value is authoritative; this only itemises what moves it.
 export const INTEREST_RATE = { neutral: 3, target: 2, slope: 0.5, min: 0, max: 25 };
