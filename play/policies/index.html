@@ -43,6 +43,8 @@
   .peff.wide{display:block;line-height:1.55}
   .peff.wide .cad{margin-left:8px}
   .peff.none{color:var(--soft);font-style:italic}
+  .preq{margin-top:12px;font-size:11.5px;font-weight:700;line-height:1.45;color:var(--amber,#d9a441)}
+  .preq.unmet{color:var(--red,#e5484d)}
   .pcard__foot{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);display:flex}
   .pchange{margin-left:auto;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:9px;padding:9px 14px;text-decoration:none;cursor:pointer}
   .pchange:hover{filter:brightness(.97)}
@@ -70,7 +72,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
   import { fetchPolicies } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, effectText, optMoney, moneyNet, isMoneyTarget, isTradePolicy, tradeEffectText } from '/policies.js';
+  import { policyOptions, policyOptionIdx, policyRequiresText, policyRequirementsMet, effectText, optMoney, moneyNet, isMoneyTarget, isTradePolicy, tradeEffectText } from '/policies.js';
 
   mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -80,11 +82,15 @@
   // One policy card: the option in force for THIS nation (its stored override, else the
   // policy default — same one-source rule the propose page uses) and that option's
   // standing effects, with a link into the propose flow. pop/pros scale money effects.
-  function policyCard(p, overrides, pop, pros){
+  function policyCard(p, overrides, pop, pros, defsById){
     var def = p.definition || {};
     var opts = policyOptions(def);
     var cur = policyOptionIdx(def, overrides, p.id);
     var o = opts[cur] || {};
+    // Prerequisite line (one source: policies.js). Amber when the requirement is currently met, red +
+    // a lock when it isn't (the policy can't be enacted/raised until it is — only repealed).
+    var reqTxt = policyRequiresText(def, defsById), reqMet = policyRequirementsMet(def, overrides, defsById);
+    var reqLine = reqTxt ? '<div class="preq' + (reqMet ? '' : ' unmet') + '">' + (reqMet ? '' : '🔒 ') + esc(reqTxt) + '</div>' : '';
     // Recurring money → ONE net figure (Income + Budget − Debt, per year — its ongoing contribution
     // to the budget); the rest of the standing effects (stats) list individually. One-time 'once'
     // effects are excluded — they fired when the policy was enacted.
@@ -103,6 +109,7 @@
       '<div class="pforce"><div class="pforce__k">In force now</div>' +
         '<div class="pforce__v"><span class="pdot"></span><span class="opt">' + esc(o.name || ('Option ' + (cur + 1))) + '</span></div>' +
         '<div class="peffs">' + effHtml + '</div></div>' +
+      reqLine +
       '<div class="pcard__foot"><a class="pchange" href="/play/legislature/propose/">Propose change ▸</a></div>' +
     '</div>';
   }
@@ -115,7 +122,8 @@
     }
     var overrides = (nation && nation.policies) || {};
     var pop = nation && nation.population, pros = nation && nation.stats && nation.stats.prosperity;
-    box.innerHTML = '<div class="pgrid">' + policies.map(function(p){ return policyCard(p, overrides, pop, pros); }).join('') + '</div>';
+    var defsById = {}; policies.forEach(function(p){ defsById[p.id] = p.definition; });   // for prerequisite checks
+    box.innerHTML = '<div class="pgrid">' + policies.map(function(p){ return policyCard(p, overrides, pop, pros, defsById); }).join('') + '</div>';
   }
 
   (async () => {

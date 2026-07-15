@@ -78,6 +78,12 @@
   .rung .rbadge{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:6px;padding:3px 7px;flex:none}
   .rbadge.cur{color:var(--soft);background:var(--chip);border:1px solid var(--line2)}
   .rbadge.prop{color:var(--indigo);background:var(--surface);border:1px solid var(--indigo)}
+  .rbadge.lock{color:var(--soft);background:var(--chip);border:1px solid var(--line2)}
+  /* a rung locked behind an unmet prerequisite — dimmed and not clickable */
+  .rung.locked{opacity:.5;cursor:not-allowed}
+  .rung.locked:hover{border-color:var(--line)}
+  /* the requirement line under the ladder when the policy is locked for this nation */
+  .reqnote{margin-top:8px;font-size:12px;font-weight:700;color:var(--amber,#d9a441);line-height:1.45}
 
   /* fiscal impact — structured income/budget/net deltas (one source: the option money effects) */
   .frow{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
@@ -119,7 +125,7 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, policyEffectChange, effectText, policyInForceEffects, fiscalFactor, policyMoney, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity } from '/policies.js';
+  import { policyOptions, policyOptionIdx, policyDefaultIdx, policyRequirementsMet, policyRequiresText, policyEffectChange, effectText, policyInForceEffects, fiscalFactor, policyMoney, optOneTimeMoney, isMoneyTarget, isTradePolicy, tradeEffectText, policyVotePopularity } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
   import { isMonarchy, regimeText, nationRegime } from '/ladders.js';
 
@@ -159,6 +165,7 @@
         '<p id="l-desc" class="poldesc" hidden></p>' +
         '<label class="lbl" style="margin-top:14px">In force now</label><div id="l-current" class="curval">—</div>' +
         '<label class="lbl" style="margin-top:14px">Proposed change <span class="hint" style="text-transform:none;letter-spacing:0">— pick a rung</span></label><div id="l-ladder" class="ladder"></div>' +
+        '<div id="l-req" class="reqnote" hidden></div>' +
       '</section>' +
       '<section class="mod"><div class="mod__hd"><span>The Bill</span><span class="hint">filled in for you — edit freely</span></div>' +
         '<label class="lbl">Bill title</label><input id="l-title" class="inp" type="text" maxlength="120" placeholder="e.g. Public Health Programmes Bill">' +
@@ -181,10 +188,15 @@
 
     var sel = { proposed: null };          // chosen rung index, or null
     var touched = { title: false, intro: false };
+    // policyId → definition, for resolving each policy's prerequisites (one source: policyRequirementsMet).
+    var defsById = {}; policies.forEach(function (p) { defsById[p.id] = p.definition; });
     function curPolicy() { return policies[+polSel.value] || policies[0]; }
     function curDef() { return curPolicy().definition || {}; }
     // The option in force for this nation (one source: policies.js).
     function inForceIdx() { return policyOptionIdx(curDef(), currentPolicies, curPolicy().id); }
+    // Are this policy's prerequisites met for this nation? When not, only moving DOWN to its default
+    // (repeal) is allowed — you can't enact/raise a gated policy, but nothing already in force is touched.
+    function reqMet() { return policyRequirementsMet(curDef(), currentPolicies, defsById); }
 
     // The recurring fiscal cost of BEING on rung i (₣B/yr), cumulative like the stat effects: the rung's
     // Budget Balance contribution (flat or % of GDP — the one-source the nation's budget balance reads,
@@ -209,15 +221,21 @@
       var descEl = document.getElementById('l-desc');   // the policy's description, above In force now
       descEl.textContent = def.desc || ''; descEl.hidden = !def.desc;
       document.getElementById('l-current').textContent = (opts[cur] && opts[cur].name) || '—';
+      // Prerequisite gate: when unmet, every option except the default (repeal) is locked. A short
+      // requirement line explains why. reqDefault is the only enact-able rung while locked.
+      var met = reqMet(), defIdx = policyDefaultIdx(def);
+      var reqEl = document.getElementById('l-req');
+      if (reqEl) { reqEl.textContent = met ? '' : (policyRequiresText(def, defsById) || 'Locked'); reqEl.hidden = met; }
       var lad = document.getElementById('l-ladder');
       lad.innerHTML = opts.map(function (o, i) {
         var isCur = i === cur, isProp = i === sel.proposed;
-        var badge = isCur ? '<span class="rbadge cur">In force</span>' : isProp ? '<span class="rbadge prop">Proposed</span>' : '';
-        return '<button type="button" class="rung' + (isCur ? ' current' : '') + (isProp ? ' proposed' : '') + '" data-i="' + i + '"' + (isCur ? ' disabled' : '') + '>' +
+        var locked = !met && i !== defIdx && i !== cur;   // gated rungs (default/repeal + the current state stay reachable)
+        var badge = isCur ? '<span class="rbadge cur">In force</span>' : isProp ? '<span class="rbadge prop">Proposed</span>' : locked ? '<span class="rbadge lock">Locked</span>' : '';
+        return '<button type="button" class="rung' + (isCur ? ' current' : '') + (isProp ? ' proposed' : '') + (locked ? ' locked' : '') + '" data-i="' + i + '"' + ((isCur || locked) ? ' disabled' : '') + '>' +
           '<span><span class="rn">' + esc(o.name || ('Option ' + (i + 1))) + '</span><span class="rmeta">' + esc(rungMeta(i)) + '</span></span>' + badge + '</button>';
       }).join('');
       lad.querySelectorAll('.rung').forEach(function (btn) {
-        btn.onclick = function () { var i = +btn.dataset.i; if (i === inForceIdx()) return; sel.proposed = i; autofill(); paint(); };
+        btn.onclick = function () { if (btn.disabled) return; var i = +btn.dataset.i; if (i === inForceIdx()) return; sel.proposed = i; autofill(); paint(); };
       });
     }
 
@@ -341,15 +359,18 @@
       // Proposing costs 1 Action Point + 1 per 5 points of party-popularity swing the vote carries
       // (server: propose_law, schema/92 — one source: policyVotePopularity).
       var moved = sel.proposed != null && sel.proposed !== inForceIdx();
+      // A gated rung can't be sent: prerequisites unmet AND the proposed rung isn't the default (repeal).
+      var gated = moved && !reqMet() && sel.proposed !== policyDefaultIdx(curDef());
       var swing = moved ? Math.abs(policyVotePopularity(curDef(), inForceIdx(), sel.proposed).forVote) : 0;
       var cost = moved ? (1 + Math.floor(swing / 5)) : 0;
       var ap = Math.max(0, Number(partyAP) || 0);
       var canAfford = cost > 0 && ap >= cost;
-      var ok = !noSeats && !blocked && moved && canAfford && !lawBusy;
+      var ok = !noSeats && !blocked && moved && !gated && canAfford && !lawBusy;
       document.getElementById('l-cost').textContent = cost > 0 ? (cost + ' AP') : '—';
       sendBtn.disabled = !ok;
       if (!lawBusy) note.textContent = noSeats ? 'Your party holds no legislature seats — win seats at an election before you can propose a bill.'
         : blocked ? 'A bill to change this policy is already before the chamber — it must resolve first.'
+        : gated ? ((policyRequiresText(curDef(), defsById) || 'This policy is locked') + ' — you can only repeal it back to its default until then.')
         : (cost > 0 && !canAfford) ? ('Not enough Action Points — this bill costs ' + cost + ' AP, you have ' + ap + '.')
         : ok ? 'Sends the bill to committee — costs ' + cost + ' AP (1 base + 1 per 5 points of popularity it swings), where parties debate and endorse before it reaches the floor.' : 'Pick a rung to propose it.';
     }
@@ -362,6 +383,7 @@
     function submit() {
       var p = curPolicy(), idx = sel.proposed;
       if (lawBusy || idx == null || idx === inForceIdx()) return;  // guard mirrors paint()
+      if (!reqMet() && idx !== policyDefaultIdx(curDef())) return;  // gated: only repeal-to-default allowed
       lawBusy = true; sendBtn.disabled = true;
       note.textContent = 'Sending to committee…';
       proposeLaw(p.id, idx, titleInp.value.trim(), introInp.value.trim())
