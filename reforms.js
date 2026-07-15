@@ -40,6 +40,7 @@ export const REFORM_EFFECTS = {
   democracy: [],
   monarchy: [
     [{ t: 'Bureaucracy', v: 6 }, { t: 'Rule of Law', v: 2 }],   // 1 · Great Charter
+    [{ t: 'Prosperity', v: 1 }, { t: 'Control', v: 2 }, { t: 'Revolt Risk', v: -2 }],   // 2 · Council of Notables
   ],
   autocracy: [],
 };
