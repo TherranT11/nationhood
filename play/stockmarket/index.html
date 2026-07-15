@@ -91,10 +91,10 @@
       <!-- Empty state / entry point. The Found/Join exchange system is the next stage. -->
       <div class="sxempty" id="sxEmpty">
         <h2>No stock exchange</h2>
-        <p>Your corporations have nowhere to list. Found your own exchange, or join an existing one hosted
-           by another nation, to open a market and start building a Price Rating.</p>
-        <button class="cta" id="sxFound" disabled>Found / Join a Stock Exchange</button>
-        <span class="soon">Coming next — the exchange system</span>
+        <p>Your corporations have nowhere to list. Found a national stock exchange to open a market and
+           start building a Price Rating.</p>
+        <button class="cta" id="sxFound" disabled>Found a Stock Exchange</button>
+        <span class="soon">Grants +8 Growth · costs 1 Action Point. Joining another nation’s exchange — coming next.</span>
       </div>
 
       <!-- Rating breakdown (active markets only) — how the four levers make the number. -->
@@ -156,6 +156,27 @@
         document.getElementById('sxDesc').textContent = 'This market trades on a listed stock exchange. Its Price Rating is set by four live indicators — growth, prosperity, rule of law and (inversely) corruption.';
         document.getElementById('sxEmpty').hidden = true;
         renderBreakdown(b);
+      } else {
+        // No market yet — offer founding. One click opens the market + grants +8 Growth (schema/211).
+        var foundBtn = document.getElementById('sxFound');
+        if (foundBtn) {
+          foundBtn.disabled = false;
+          var founding = false;   // double-fire lock — founding spends an Action Point + grants a stat
+          foundBtn.addEventListener('click', async function () {
+            if (founding) return;
+            if (!confirm('Found a national stock exchange? This opens your market and grants +8 Growth. Costs 1 Action Point.')) return;
+            founding = true; foundBtn.disabled = true;
+            var prev = foundBtn.textContent; foundBtn.textContent = 'Founding…';
+            try {
+              const { error } = await supabase.rpc('found_stock_exchange');
+              if (error) throw error;
+              window.location.reload();   // market now active — re-render with the live rating
+            } catch (e2) {
+              alert((e2 && e2.message) || 'Could not found a stock exchange.');
+              founding = false; foundBtn.disabled = false; foundBtn.textContent = prev;
+            }
+          });
+        }
       }
     } catch (e) { /* placeholders already shown; topbar still renders */ }
 
