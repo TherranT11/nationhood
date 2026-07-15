@@ -72,7 +72,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
   import { fetchPolicies } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, policyDefsById, policyRequiresText, policyRequirementsMet, effectText, optMoney, moneyNet, isMoneyTarget, isTradePolicy, tradeEffectText } from '/policies.js';
+  import { policyOptions, policyOptionIdx, policyDefsById, policyRequiresText, policyRequirementsMet, policyInForceEffects, policyInForceAggregated, effectText, optMoney, moneyNet, isMoneyTarget, isTradePolicy, tradeEffectText } from '/policies.js';
 
   mountTopbar(); // shared top bar (Discord/Influence/budget/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -91,14 +91,16 @@
     // a lock when it isn't (the policy can't be enacted/raised until it is — only repealed).
     var reqTxt = policyRequiresText(def, defsById), reqMet = policyRequirementsMet(def, overrides, defsById);
     var reqLine = reqTxt ? '<div class="preq' + (reqMet ? '' : ' unmet') + '">' + (reqMet ? '' : '🔒 ') + esc(reqTxt) + '</div>' : '';
-    // Recurring money → ONE net figure (Income + Budget − Debt, per year — its ongoing contribution
-    // to the budget); the rest of the standing effects (stats) list individually. One-time 'once'
-    // effects are excluded — they fired when the policy was enacted.
-    var netY = moneyNet(optMoney(o, pop, pros));
+    // Effects shown are the CUMULATIVE in-force total — a spectrum sums every level it has climbed, so
+    // this agrees with the Growth/Budget pages and the server (_nation_policy_stat), which read the same
+    // total (one source: policyInForceEffects / policyInForceAggregated), not just the top rung.
+    var inForce = policyInForceEffects(def, cur);                    // raw cumulative (keeps cad/scale for money)
+    var netY = moneyNet(optMoney({ effects: inForce }, pop, pros));  // recurring money → ONE net figure/yr
     var netLine = Math.abs(netY) >= 0.005
       ? '<div class="peff ' + (netY > 0 ? 'pos' : 'neg') + '"><b>Net fiscal impact ' + (netY > 0 ? '+' : '−') + '₣' + Math.abs(netY).toFixed(2) + 'B</b><span class="cad">per year</span></div>'
       : '';
-    var effs = (o.effects || []).filter(function(e){ return (e && e.cad) !== 'once' && !isMoneyTarget(e.t); });  // non-money standing stats
+    // Standing stats: the cumulative total aggregated to one row per stat (Growth +7, not +2/+3/+2).
+    var effs = policyInForceAggregated(def, cur).filter(function(e){ return !isMoneyTarget(e.t) && Math.abs(Number(e.v)) >= 0.0001; });
     // Trade rungs carry their standing modifiers (import ×, tariff) outside the effects list — surface the in-force rung's.
     var tradeLine = isTradePolicy(def) ? '<div class="peff wide"><b>' + esc(tradeEffectText(o)) + '</b><span class="cad">while in force</span></div>' : '';
     var effHtml = (netLine + tradeLine + effs.map(function(e){ var t = effectText(e, pop, pros); return '<div class="peff ' + t.cls + '"><b>' + esc(t.text) + '</b><span class="cad">' + t.cad + '</span></div>'; }).join('')) ||
