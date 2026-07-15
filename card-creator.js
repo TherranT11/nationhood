@@ -56,7 +56,7 @@ const KINDS = {
   rel_pick:   { label: 'Relations with a nation of the decider’s choice increase by X (decision cards)' },
   prod_up:    { label: 'Increase production of [resource] by X for N ticks' },
   prod_down:  { label: 'Decrease production of [resource] by X for N ticks' },
-  deck_add:   { label: 'Activate a dormant card into a nation’s deck (now or in N ticks)' },
+  deck_add:   { label: 'Seed a specific card into a nation’s deck (a dormant card, now or in N ticks)' },
   shuffle:    { label: 'Shuffle this card back into the deck (instead of discarding)' },
   corp_grow:    { label: 'Add growth to one of your corporations (chosen on play)' },
   corp_shrink:  { label: 'Cut growth from one of your corporations (chosen on play)' },
