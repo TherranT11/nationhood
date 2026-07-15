@@ -75,6 +75,24 @@ const KINDS = {
 };
 const SIMPLE = ['party_gain', 'party_lose', 'coal_up', 'coal_down', 'stat_up', 'stat_down', 'no_conf', 'nat_el'];
 
+// ---- Archetype presets (the one radio row that replaces the old Mechanic / Decision / After-played /
+// Persistent sections). Each preset just STAMPS a set of lifecycle fields — the card's raw fields stay
+// the source of truth, so on load we DERIVE which preset (if any) a stored card matches. `handler` is
+// stamped only where listed; `forceReading` pins the Effects reading switch; `openChains` auto-expands
+// the Chains & Gates section. ONE source, so the label, the stamped fields and the load-derivation agree.
+const ARCHETYPES = {
+  choice:    { label: 'Choice card',       fields: { afterPlay: 'discard', persistV: 'no',  dormant: 'no'  }, handler: 'player' },
+  recurring: { label: '↻ Recurring issue', fields: { afterPlay: 'shuffle', persistV: 'no',  dormant: 'no'  } },
+  standing:  { label: '∞ Standing modifier', fields: { afterPlay: 'discard', persistV: 'yes', dormant: 'no'  } },
+  chain:     { label: '💤 Chain link',     fields: { afterPlay: 'discard', persistV: 'no',  dormant: 'yes' }, openChains: true },
+  event:     { label: '⚡ One-shot event', fields: { afterPlay: 'discard', persistV: 'no',  dormant: 'no'  }, forceReading: 'one' }
+};
+// Suggested-cost weights — the ONE tunable knob for the auto-costing formula (see suggestedCost()).
+// suggested = clamp(1,20, round( acts*acts + effect*sumEffectMagnitude + bonusAp*bonusApEffects )).
+// No effect KIND grants extra AP today, so bonusApEffects is always 0 (documented, kept in the formula
+// so a future AP-granting kind only needs counting, not a formula change).
+const COST_WEIGHTS = { acts: 1, effect: 0.5, bonusAp: 0.5 };
+
 const CSS = `
 .cc{--gen:var(--blue);--dem:var(--blue);--rev:var(--red);--auto:#9159c9;--ref:var(--green);--nat:var(--amber);--inf:var(--amber);
   display:grid;grid-template-columns:1fr 330px;gap:22px;align-items:start}
@@ -204,32 +222,42 @@ const CSS = `
 .cc .poolrow .pedit{margin-left:auto;border:1px solid var(--line2);background:var(--field);color:var(--soft);border-radius:7px;padding:5px 9px;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;cursor:pointer}
 .cc .poolrow .pedit:hover{color:var(--indigo);border-color:color-mix(in srgb,var(--indigo) 45%,transparent)}
 .cc .poolempty{color:var(--soft);font-size:12px;padding:8px 0}
+/* archetype radio + progressive-disclosure links (customize lifecycle / chains & gates) */
+.cc .seg button.on.c-arch{color:var(--indigo);border-color:var(--indigo);background:color-mix(in srgb,var(--indigo) 12%,var(--surface))}
+.cc .disclose{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:none;border:none;cursor:pointer;padding:9px 0;display:inline-block}
+.cc .disclose:hover{color:var(--ink)}
+.cc .cgbar{display:block;width:100%;text-align:left;font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);background:var(--chip);border:1px solid var(--line2);border-radius:10px;padding:12px 14px;cursor:pointer}
+.cc .cgbar:hover{color:var(--ink);border-color:var(--soft)}
+.cc .lifebox,.cc .cgbox{margin-top:4px}
+/* stance-axis picker (two-readings header) */
+.cc .axisrow{margin:2px 0 12px}
+/* suggested cost */
+.cc .costrow{display:flex;align-items:center;gap:12px}
+.cc .costsug{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--inf);background:color-mix(in srgb,var(--inf) 10%,transparent);border:1px solid color-mix(in srgb,var(--inf) 40%,transparent);border-radius:8px;padding:9px 12px;white-space:nowrap}
+.cc .costrow input[type=number]{margin:0}
+.cc .costhint{font-family:'Space Mono',monospace;font-size:8.5px;color:var(--soft);letter-spacing:.04em}
+/* lint strip (above Save) */
+.cc .lint{margin-top:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+.cc .lintline{font-family:'Space Mono',monospace;font-size:9px;padding:3px 0;color:var(--amber);line-height:1.5}
+.cc .lintline::before{content:'⚠ '}
+.cc .lint.clean .lintline{color:var(--soft)}
+.cc .lint.clean .lintline::before{content:'✓ ';color:var(--green)}
+.cc .savebtn.seed{background:var(--surface);color:var(--indigo);margin-top:8px}
+.cc .savebtn.seed:hover{filter:none;background:color-mix(in srgb,var(--indigo) 8%,var(--surface))}
 `;
 
 const TEMPLATE = `
 <div class="form">
+  <div class="frow single">
+    <div><label>Start from an existing card (optional) — loads a copy to edit as a new card</label><select id="fDup"><option value="">— blank card —</option></select></div>
+  </div>
+
   <div class="sect">Identity</div>
   <div class="frow single">
     <div><label>Card Name</label><input type="text" id="fName" maxlength="40"></div>
   </div>
   <div class="frow">
-    <div><label>Influence Cost (base auction value)</label><input type="number" id="fCost" min="0" max="20" style="width:100%"></div>
     <div><label>Number of Actions (1–10 — granted when played)</label><input type="number" id="fActs" min="1" max="10" style="width:100%"></div>
-  </div>
-  <div class="frow single">
-    <div><label>Description (flavor — shown on card)</label><textarea id="fDesc"></textarea></div>
-  </div>
-
-  <div class="sect">Type &amp; Limiter</div>
-  <div class="frow">
-    <div>
-      <label>Card Type — sets the stance axis</label>
-      <div class="seg" id="segType">
-        <button data-v="generic" class="c-gen">Generic</button>
-        <button data-v="dr" class="c-dr">Democratic / Revolutionary</button>
-        <button data-v="ar" class="c-ar">Autocratic / Reform</button>
-      </div>
-    </div>
     <div>
       <label>Limiter — which decks it enters</label>
       <div class="seg" id="segLim">
@@ -239,76 +267,99 @@ const TEMPLATE = `
       <select id="fNation" style="margin-top:8px;display:none"></select>
     </div>
   </div>
-
-  <div class="sect">Mechanic</div>
-  <div class="seg" id="segMech">
-    <button data-v="oneoff">One-Off Effect</button>
-    <button data-v="double">Double Sided</button>
-    <button data-v="choice">Government Choice</button>
-  </div>
-
-  <div class="sect">Decision &amp; Lifecycle</div>
-  <div class="frow">
-    <div>
-      <label>Decision Handler — who resolves the card's decision</label>
-      <select id="fHandler"></select>
-    </div>
-    <div>
-      <label>After it's played</label>
-      <div class="seg" id="segAfter">
-        <button data-v="discard">Discard permanently</button>
-        <button data-v="shuffle" class="c-nat">&#8635; Shuffle back to deck</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="sect">Persistence &amp; Card Chains</div>
   <div class="frow single">
-    <div>
-      <label>Persistent — stays in play as a national modifier</label>
-      <div class="seg" id="segPersist">
-        <button data-v="no">No — resolves &amp; discards</button>
-        <button data-v="yes" class="c-nat">∞ Persistent</button>
-      </div>
-    </div>
-  </div>
-  <div class="frow single">
-    <div>
-      <label>Dormant? — held out of decks until another card activates it</label>
-      <div class="seg" id="segDormant">
-        <button data-v="no">No — dealt normally</button>
-        <button data-v="yes" class="c-nat">💤 Dormant</button>
-      </div>
-    </div>
-  </div>
-  <div class="frow">
-    <div><label>Requires play of</label><select id="fReqCard"></select></div>
-    <div><label>Allows play of</label><select id="fAllowCard"></select></div>
+    <div><label>Description (flavor — shown on card)</label><textarea id="fDesc"></textarea></div>
   </div>
 
-  <div class="sect" style="margin-top:24px">Effects <span class="cnt" id="fxCount"></span></div>
+  <div class="sect">Archetype <span class="cnt">picks the lifecycle for you</span></div>
+  <div class="seg" id="segArch"></div>
+  <button class="disclose" id="lifeToggle" type="button">customize lifecycle ▸</button>
+  <div class="lifebox" id="lifeBox" style="display:none">
+    <div class="frow">
+      <div>
+        <label>Decision Handler — who resolves the card's decision</label>
+        <select id="fHandler"></select>
+      </div>
+      <div>
+        <label>After it's played</label>
+        <div class="seg" id="segAfter">
+          <button data-v="discard">Discard permanently</button>
+          <button data-v="shuffle" class="c-nat">&#8635; Shuffle back to deck</button>
+        </div>
+      </div>
+    </div>
+    <div class="frow single">
+      <div>
+        <label>Persistent — stays in play as a national modifier</label>
+        <div class="seg" id="segPersist">
+          <button data-v="no">No — resolves &amp; discards</button>
+          <button data-v="yes" class="c-nat">∞ Persistent</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sect">Effects <span class="cnt" id="fxCount"></span></div>
+  <div class="seg" id="segReading" style="margin-bottom:12px">
+    <button data-v="one">One reading</button>
+    <button data-v="two">Two readings</button>
+    <button data-v="menu">Menu choice</button>
+  </div>
+  <div class="axisrow" id="axisRow" style="display:none">
+    <label>Stance axis — the two readings</label>
+    <div class="seg" id="segAxis">
+      <button data-v="dr" class="c-dr">🏛 Democratic / ✊ Revolutionary</button>
+      <button data-v="ar" class="c-ar">👁 Autocratic / 📈 Reform</button>
+    </div>
+  </div>
   <div id="fxList"></div>
   <button class="addfx" id="addFx">+ Add Effect</button>
 
-  <div class="sect">Purchase Requirement <span class="cnt">a stance gate is optional — off by default</span></div>
-  <div class="seg" id="segStance" style="margin-bottom:12px">
-    <button data-v="none">No stance required</button>
-    <button data-v="gated">Stance-gated</button>
-  </div>
-  <div class="req" id="reqGrid">
-    <div class="reqbox d">
-      <div class="t" id="reqDT">Democratic side</div>
-      <div class="lvlseg" id="reqD"><button data-v="1">D1</button><button data-v="2">D2</button><button data-v="3">D3</button></div>
+  <div class="sect">Chains &amp; Gates <span class="cnt">rare — usually collapsed</span></div>
+  <button class="cgbar" id="cgToggle" type="button">▸ Card chains, dormancy &amp; stance gate</button>
+  <div class="cgbox" id="cgBox" style="display:none">
+    <div class="frow single">
+      <div>
+        <label>Dormant? — held out of decks until another card activates it</label>
+        <div class="seg" id="segDormant">
+          <button data-v="no">No — dealt normally</button>
+          <button data-v="yes" class="c-nat">💤 Dormant</button>
+        </div>
+      </div>
     </div>
-    <div class="reqbox r">
-      <div class="t" id="reqRT">Revolutionary side</div>
-      <div class="lvlseg" id="reqR"><button data-v="1">R1</button><button data-v="2">R2</button><button data-v="3">R3</button></div>
+    <div class="frow">
+      <div><label>Requires play of</label><select id="fReqCard"></select></div>
+      <div><label>Allows play of</label><select id="fAllowCard"></select></div>
+    </div>
+    <div class="frow single" style="margin-bottom:12px">
+      <div>
+        <label>Purchase stance gate — off by default</label>
+        <div class="seg" id="segStance">
+          <button data-v="none">No stance required</button>
+          <button data-v="gated">Stance-gated</button>
+        </div>
+      </div>
+    </div>
+    <div class="req" id="reqGrid">
+      <div class="reqbox d">
+        <div class="t" id="reqDT">Democratic side</div>
+        <div class="lvlseg" id="reqD"><button data-v="1">D1</button><button data-v="2">D2</button><button data-v="3">D3</button></div>
+      </div>
+      <div class="reqbox r">
+        <div class="t" id="reqRT">Revolutionary side</div>
+        <div class="lvlseg" id="reqR"><button data-v="1">R1</button><button data-v="2">R2</button><button data-v="3">R3</button></div>
+      </div>
     </div>
   </div>
 
+  <div class="sect">Suggested Cost</div>
+  <div class="costrow">
+    <span class="costsug" id="costSug">SUGGESTED: 4 ⚡</span>
+    <input type="number" id="fCost" min="0" max="20">
+    <span class="costhint">override if you like</span>
+  </div>
+
   <div class="sect">Card Pool</div>
-  <button class="seedbtn" id="ccSeed" title="Fill every nation's auction block up to its target by drawing from the deck">↻ Seed all markets</button>
-  <div class="savemsg" id="ccSeedMsg"></div>
   <div class="pool" id="poolList"><div class="poolempty">Loading…</div></div>
 </div>
 
@@ -327,7 +378,9 @@ const TEMPLATE = `
     </div>
   </div>
   <div class="valid" id="pValid"></div>
+  <div class="lint" id="ccLint"></div>
   <button class="savebtn" id="ccSave">Save to Card Pool</button>
+  <button class="savebtn seed" id="ccSaveSeed">Save &amp; Seed All</button>
   <button class="newbtn" id="ccNew" style="display:none">+ New card</button>
   <div class="savemsg" id="ccMsg"></div>
 </div>
@@ -350,22 +403,20 @@ export async function mountCardCreator(mount) {
   // paint both start from a clean, independent copy — the Edit flow mutates state in place.
   function freshState() {
     return {
-      name: '', cost: 4, acts: 2, desc: '',
-      type: 'dr', lim: 'all', nation: '', mech: 'oneoff',
+      name: '', cost: 4, acts: 2, desc: '', costTouched: false,   // costTouched: user overrode the suggested cost — stop auto-tracking it
+      // reading ('one'|'two'|'menu') is the Effects switch that serializes mech+type+sides; type is the
+      // stance axis when reading==='two' ('dr'|'ar'), serialized as 'generic' for one reading.
+      reading: 'one', type: 'dr', lim: 'all', nation: '',
+      archetype: 'choice',   // which lifecycle preset the radio shows (derived on load; may be null for exotic combos)
+      lifeOpen: false, cgOpen: false,   // progressive-disclosure: customize-lifecycle + Chains & Gates panels
       stanceReq: 'none', reqD: 2, reqR: 2,   // stanceReq 'none' = anyone can buy/play; 'gated' = reqD/reqR levels apply
       fx: [
-        { side: 'd', kind: 'no_conf', p: {} },
-        { side: 'r', kind: 'stat_down', p: { stat: 'Growth', x: 4 } },
-        { side: 'both', kind: 'cond', p: { stat: 'Crime', dir: 'above', x: 50, nk: 'party_lose', np: { x: 2 } } }
+        { side: 'both', kind: 'stat_up', p: { stat: 'Growth', x: 4 } }
       ],
       copt: [
         { txt: '', fx: [{ kind: 'stat_up', p: { stat: 'Immigration', x: 8 } }] },
         { txt: '', fx: [{ kind: 'stat_down', p: { stat: 'Minority Rights', x: 4 } }] }
       ],
-      dside: {
-        d: { txt: '', fx: [{ kind: 'no_conf', p: {} }] },
-        r: { txt: '', fx: [{ kind: 'stat_down', p: { stat: 'Growth', x: 4 } }] }
-      },
       persistV: 'no', dormant: 'no', reqCard: '', allowCard: '',   // dormant: held out of decks until a deck_add effect activates it
       handler: 'player',      // who resolves the card's decision: 'player' (holder decides) or a ministry name
       afterPlay: 'discard'    // 'discard' (permanent) or 'shuffle' (back into the deck)
@@ -386,14 +437,76 @@ export async function mountCardCreator(mount) {
       };
     });
   }
-  wireSeg('segType', 'type', function () { syncAxis(); renderFx(); });
   wireSeg('segLim', 'lim', function () { $('fNation').style.display = state.lim === 'nation' ? 'block' : 'none'; });
-  wireSeg('segMech', 'mech', function () { renderFx(); });
   wireSeg('segStance', 'stanceReq', syncStance);
   wireSeg('reqD', 'reqD'); wireSeg('reqR', 'reqR');
-  wireSeg('segPersist', 'persistV');
-  wireSeg('segDormant', 'dormant');
-  wireSeg('segAfter', 'afterPlay');
+  // Lifecycle segs (inside "customize lifecycle") — a manual edit re-derives which archetype preset now
+  // matches, so the radio stays honest (and deselects into an exotic combo rather than lying).
+  wireSeg('segPersist', 'persistV', reflectArchetype);
+  wireSeg('segDormant', 'dormant', reflectArchetype);
+  wireSeg('segAfter', 'afterPlay', reflectArchetype);
+
+  // The Archetype radio (built from ARCHETYPES). Picking one STAMPS its lifecycle fields, pins the
+  // reading where required, and pops open Chains & Gates for a Chain link — then a full syncForm().
+  $('segArch').innerHTML = Object.keys(ARCHETYPES).map(function (k) {
+    return '<button data-v="' + k + '" class="c-arch">' + ARCHETYPES[k].label + '</button>';
+  }).join('');
+  $('segArch').querySelectorAll('button').forEach(function (b) {
+    b.onclick = function () { applyArchetype(b.dataset.v); };
+  });
+  function applyArchetype(key) {
+    var a = ARCHETYPES[key]; if (!a) return;
+    state.archetype = key;
+    Object.keys(a.fields).forEach(function (f) { state[f] = a.fields[f]; });
+    if (a.handler) state.handler = a.handler;
+    if (a.openChains) state.cgOpen = true;
+    if (a.forceReading) setReading(a.forceReading, true);
+    syncForm();
+  }
+  // Which preset (if any) the stored/edited lifecycle fields match — the one derivation both load and any
+  // manual lifecycle edit run through. Returns a key, or null when the combo is exotic (no clean preset).
+  function deriveArchetype() {
+    var af = state.afterPlay, pv = state.persistV, dm = state.dormant;
+    var key = dm === 'yes' ? 'chain'
+      : pv === 'yes' ? 'standing'
+      : af === 'shuffle' ? 'recurring'
+      : state.reading === 'one' ? 'event'
+      : 'choice';
+    var f = ARCHETYPES[key].fields;
+    return (f.afterPlay === af && f.persistV === pv && f.dormant === dm) ? key : null;
+  }
+  // After a manual lifecycle change: re-derive the radio, auto-open customize when it lands on an exotic
+  // combo (so nothing the user did is hidden), and repaint the radio + panels.
+  function reflectArchetype() {
+    state.archetype = deriveArchetype();
+    if (!state.archetype) state.lifeOpen = true;
+    markSeg('segArch', state.archetype);
+    $('lifeBox').style.display = state.lifeOpen ? '' : 'none';
+    $('cgBox').style.display = state.cgOpen ? '' : 'none';
+    renderCost();
+  }
+
+  // The Effects reading switch (One / Two / Menu). It's the ONE control that decides mech+type+sides:
+  // one → generic oneoff (all effects 'both'); two → stance oneoff (effects grouped by side); menu → choice.
+  $('segReading').querySelectorAll('button').forEach(function (b) {
+    b.onclick = function () { setReading(b.dataset.v); syncForm(); };
+  });
+  function setReading(r, quiet) {
+    state.reading = r;
+    if (r === 'one') state.type = 'generic';
+    else if (r === 'two' && state.type === 'generic') state.type = 'dr';   // a stance axis is required for two readings
+    if (!quiet) state.archetype = deriveArchetype();   // one↔two flips the choice/event derivation
+  }
+  // Stance-axis picker (two-readings header): Dem/Rev vs Auto/Reform. Relabels the grouped effect
+  // subheadings + the gate, and repaints.
+  $('segAxis').querySelectorAll('button').forEach(function (b) {
+    b.onclick = function () { state.type = b.dataset.v; markSeg('segAxis', state.type); syncAxis(); renderFx(); renderPreview(); };
+  });
+
+  // Progressive-disclosure toggles.
+  $('lifeToggle').onclick = function () { state.lifeOpen = !state.lifeOpen; $('lifeBox').style.display = state.lifeOpen ? '' : 'none'; $('lifeToggle').textContent = state.lifeOpen ? 'customize lifecycle ▾' : 'customize lifecycle ▸'; };
+  $('cgToggle').onclick = function () { state.cgOpen = !state.cgOpen; $('cgBox').style.display = state.cgOpen ? '' : 'none'; };
+
   // Decision Handler dropdown: "Player decides", "Head of Government decides" (no ministry) + each ministry.
   $('fHandler').innerHTML = '<option value="player">Player who plays it decides</option>' +
     '<option value="hog">Head of Government decides it</option>' +
@@ -407,55 +520,99 @@ export async function mountCardCreator(mount) {
   // Reflect the whole `state` object back into every form control — the inverse of the input handlers.
   // Called after loadCard() (edit an existing card) or "New card" (reset) so the UI mirrors the data.
   function syncForm() {
-    $('fName').value = state.name; $('fCost').value = state.cost; $('fActs').value = state.acts; $('fDesc').value = state.desc;
-    markSeg('segType', state.type); markSeg('segLim', state.lim); markSeg('segMech', state.mech);
-    markSeg('segPersist', state.persistV); markSeg('reqD', state.reqD); markSeg('reqR', state.reqR);
+    $('fName').value = state.name; $('fActs').value = state.acts; $('fDesc').value = state.desc;
+    markSeg('segArch', state.archetype); markSeg('segReading', state.reading); markSeg('segAxis', state.type);
+    markSeg('segLim', state.lim); markSeg('segPersist', state.persistV); markSeg('reqD', state.reqD); markSeg('reqR', state.reqR);
     markSeg('segStance', state.stanceReq); markSeg('segAfter', state.afterPlay); markSeg('segDormant', state.dormant);
     $('fHandler').value = state.handler;
+    $('lifeBox').style.display = state.lifeOpen ? '' : 'none';
+    $('lifeToggle').textContent = state.lifeOpen ? 'customize lifecycle ▾' : 'customize lifecycle ▸';
+    $('cgBox').style.display = state.cgOpen ? '' : 'none';
+    $('axisRow').style.display = state.reading === 'two' ? '' : 'none';
     $('fNation').style.display = state.lim === 'nation' ? 'block' : 'none';
     $('fNation').value = state.nation;
     syncAxis(); syncStance();
     fillCardSelect('fReqCard', 'reqCard'); fillCardSelect('fAllowCard', 'allowCard');
-    renderFx(); renderPreview();
+    renderFx(); renderCost(); renderPreview();
   }
 
-  // Load an existing card's definition into the editor. Normalizes older shapes so the form can host
-  // every stored card: choice options / double sides may carry a single {kind,p} instead of an fx[]
-  // array (legacy authored shape), and a stored reqD/reqR means the card was Stance-gated.
-  function loadCard(id) {
-    if (saving) return;   // don't swap the editor's card out from under an in-flight save
-    var c = POOL.find(function (x) { return x.id === id; });
-    if (!c) return;
-    var d = c.def || {};
+  // Normalize a stored card `def` into a fresh editor `state`. Handles every legacy shape so the redesigned
+  // form can host all ~50 cards: choice options may carry a single {kind,p} instead of an fx[]; a stored
+  // reqD/reqR means Stance-gated; and a legacy `double` card is CONVERTED to the two-readings model —
+  // dside.d.fx → effects with side 'd', dside.r.fx → side 'r', mech becomes oneoff (safe: d/r don't fire
+  // yet). Reading is derived (generic oneoff → one; stance oneoff/double → two; choice → menu), then the
+  // archetype is derived from the lifecycle fields (null when the combo matches no preset cleanly).
+  function normalizeDef(d) {
+    d = d || {};
     var s = freshState();
     s.name = d.name || ''; s.cost = Number(d.cost) || 0; s.acts = Math.max(1, Math.min(10, Number(d.acts) || 1)); s.desc = d.desc || '';
-    s.type = d.type || 'dr'; s.lim = (d.lim === 'nation') ? 'nation' : 'all'; s.nation = d.nation || '';
-    // Dormant is now its own flag; a legacy lim='dormant' card maps to dormant + an 'all' limiter.
+    s.costTouched = true;   // a stored card carries an explicit cost — respect it, don't overwrite with the suggestion
+    s.lim = (d.lim === 'nation') ? 'nation' : 'all'; s.nation = d.nation || '';
+    // Dormant is its own flag; a legacy lim='dormant' card maps to dormant + an 'all' limiter.
     s.dormant = (d.dormant === 'yes' || d.lim === 'dormant') ? 'yes' : 'no';
-    s.mech = (d.mech === 'choice' || d.mech === 'double') ? d.mech : 'oneoff';   // legacy 'bill' mechanic → oneoff
     s.persistV = d.persistV === 'yes' ? 'yes' : 'no';
     s.reqCard = d.reqCard || ''; s.allowCard = d.allowCard || '';
     s.handler = d.handler || 'player';
     s.afterPlay = d.afterPlay === 'shuffle' ? 'shuffle' : 'discard';
+    var mech = (d.mech === 'choice' || d.mech === 'double') ? d.mech : 'oneoff';   // legacy 'bill' mechanic → oneoff
+    var type = d.type || 'dr';
     // A stance card with stored reqD/reqR was gated; otherwise no stance was required.
-    if (d.type !== 'generic' && (d.reqD != null || d.reqR != null)) {
+    if (type !== 'generic' && (d.reqD != null || d.reqR != null)) {
       s.stanceReq = 'gated'; s.reqD = Number(d.reqD) || 2; s.reqR = Number(d.reqR) || 2;
     } else { s.stanceReq = 'none'; }
-    // Effect payloads — keep the defaults for whichever mechanic isn't in use, load the one that is.
-    var normFx = function (arr) { return (Array.isArray(arr) ? arr : []).map(function (f) { return { kind: f.kind || 'stat_up', p: f.p || {}, side: f.side }; }); };
+    var normFx = function (arr) { return (Array.isArray(arr) ? arr : []).map(function (f) { return { side: f.side || 'both', kind: f.kind || 'stat_up', p: f.p || {} }; }); };
     var normSlot = function (o) {   // a choice option / double side → { txt, fx:[…] }, tolerating a legacy single {kind,p}
       if (o && Array.isArray(o.fx)) return { txt: o.txt || '', fx: normFx(o.fx) };
-      if (o && o.kind) return { txt: o.txt || '', fx: [{ kind: o.kind, p: o.p || {} }] };
-      return { txt: (o && o.txt) || '', fx: [{ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }] };
+      if (o && o.kind) return { txt: o.txt || '', fx: [{ side: 'both', kind: o.kind, p: o.p || {} }] };
+      return { txt: (o && o.txt) || '', fx: [{ side: 'both', kind: 'stat_up', p: { stat: 'Growth', x: 3 } }] };
     };
-    if (s.mech === 'choice' && Array.isArray(d.copt) && d.copt.length) {
-      s.copt = d.copt.map(normSlot);
-    } else if (s.mech === 'double' && d.dside) {
-      s.dside = { d: normSlot(d.dside.d), r: normSlot(d.dside.r) };
-    } else if (s.mech === 'oneoff' && Array.isArray(d.fx)) {
-      s.fx = d.fx.map(function (f) { return { side: f.side || 'both', kind: f.kind || 'stat_up', p: f.p || {} }; });
+    if (mech === 'choice') {
+      s.reading = 'menu'; s.type = type;
+      if (Array.isArray(d.copt) && d.copt.length) s.copt = d.copt.map(normSlot);
+    } else if (mech === 'double') {
+      // Convert Double Sided → Two readings (side-tagged flat effects). Keep the axis; a generic double → 'dr'.
+      s.reading = 'two'; s.type = (type === 'ar') ? 'ar' : 'dr';
+      var dfx = (d.dside && d.dside.d) ? normSlot(d.dside.d).fx : [];
+      var rfx = (d.dside && d.dside.r) ? normSlot(d.dside.r).fx : [];
+      s.fx = dfx.map(function (f) { return { side: 'd', kind: f.kind, p: f.p }; })
+        .concat(rfx.map(function (f) { return { side: 'r', kind: f.kind, p: f.p }; }));
+      if (!s.fx.length) s.fx = [{ side: 'both', kind: 'stat_up', p: { stat: 'Growth', x: 3 } }];
+    } else {
+      // oneoff: generic → one reading; a stance axis → two readings (effects keep their side tags).
+      if (type === 'generic') { s.reading = 'one'; s.type = 'generic'; }
+      else { s.reading = 'two'; s.type = type; }
+      if (Array.isArray(d.fx)) s.fx = normFx(d.fx);
     }
-    state = s; editingId = id;
+    s.archetype = null;
+    // Derive the archetype preset from the lifecycle fields; open customize when the combo is exotic.
+    var af = s.afterPlay, pv = s.persistV, dm = s.dormant;
+    var key = dm === 'yes' ? 'chain' : pv === 'yes' ? 'standing' : af === 'shuffle' ? 'recurring' : s.reading === 'one' ? 'event' : 'choice';
+    var kf = ARCHETYPES[key].fields;
+    if (kf.afterPlay === af && kf.persistV === pv && kf.dormant === dm) s.archetype = key; else s.lifeOpen = true;
+    if (s.dormant === 'yes' || s.reqCard || s.allowCard || s.stanceReq === 'gated') s.cgOpen = true;   // expand Chains when any of its fields is non-default
+    return s;
+  }
+
+  // Load an existing card into the editor for editing (Save → card_update).
+  function loadCard(id) {
+    if (saving) return;   // don't swap the editor's card out from under an in-flight save
+    var c = POOL.find(function (x) { return x.id === id; });
+    if (!c) return;
+    state = normalizeDef(c.def); editingId = id;
+    syncForm();
+    updateSaveMode();
+    root.scrollIntoView && root.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // "Start from…" duplicate: load a COPY of an existing card as a brand-new card (editingId stays null,
+  // name prefixed "Copy of "), so Save creates a new card and the original is untouched.
+  function duplicateCard(id) {
+    if (saving) return;
+    var c = POOL.find(function (x) { return x.id === id; });
+    if (!c) return;
+    var s = normalizeDef(c.def);
+    s.name = ('Copy of ' + (s.name || 'card')).slice(0, 40);
+    state = s; editingId = null;
     syncForm();
     updateSaveMode();
     root.scrollIntoView && root.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -471,16 +628,44 @@ export async function mountCardCreator(mount) {
     var nb = $('ccNew'); if (nb) nb.style.display = editingId ? 'inline-block' : 'none';
   }
 
-  ['fName', 'fCost', 'fActs', 'fDesc'].forEach(function (id) {
+  ['fName', 'fActs', 'fDesc'].forEach(function (id) {
     $(id).oninput = function (e) {
       if (id === 'fName') state.name = e.target.value;
-      if (id === 'fCost') state.cost = +e.target.value;
-      if (id === 'fActs') state.acts = Math.max(1, Math.min(10, +e.target.value || 1));
+      if (id === 'fActs') { state.acts = Math.max(1, Math.min(10, +e.target.value || 1)); renderCost(); }
       if (id === 'fDesc') state.desc = e.target.value;
       renderPreview();
     };
   });
+  // The cost field is an editable DEFAULT: typing in it marks the value as overridden (state.costTouched),
+  // which stops the live suggestion from overwriting it.
+  $('fCost').oninput = function (e) { state.cost = +e.target.value; state.costTouched = true; renderPreview(); };
   $('fNation').onchange = function () { state.nation = this.value; renderPreview(); };
+
+  // Flat list of every effect object in the ACTIVE reading (menu → each option's fx; else → fx), plus each
+  // committee-bill's pass/fail sub-effects. Used by the suggested-cost magnitude sum and the stat lint.
+  function activeEffects() {
+    var out = [];
+    function walk(f) { out.push(f); if (f.kind === 'bill' && f.p) { (f.p.pass || []).forEach(walk); (f.p.fail || []).forEach(walk); } }
+    if (state.reading === 'menu') state.copt.forEach(function (o) { (o.fx || []).forEach(walk); });
+    else state.fx.forEach(walk);
+    return out;
+  }
+  // Suggested influence cost — a tunable derivation from actions + total effect magnitude (see COST_WEIGHTS).
+  // bonusApEffects counts effects whose kind grants extra AP; none do today, so it's 0 (documented).
+  function suggestedCost() {
+    var mag = 0;
+    activeEffects().forEach(function (f) { mag += Math.abs(Number(f.p && f.p.x) || 0); });
+    var bonusAp = 0;
+    var n = Math.round(COST_WEIGHTS.acts * (state.acts || 1) + COST_WEIGHTS.effect * mag + COST_WEIGHTS.bonusAp * bonusAp);
+    return Math.max(1, Math.min(20, n));
+  }
+  // Repaint the SUGGESTED chip, and — while the user hasn't overridden — keep the cost field tracking it.
+  function renderCost() {
+    var sug = suggestedCost();
+    $('costSug').textContent = 'SUGGESTED: ' + sug + ' ⚡';
+    if (!state.costTouched) state.cost = sug;
+    $('fCost').value = state.cost;
+  }
 
   function axisLabels() {
     return state.type === 'ar'
@@ -581,15 +766,13 @@ export async function mountCardCreator(mount) {
       '<input type="text" class="billname" data-i="' + ref + '~name" placeholder="Name this committee bill…" value="' + esc(f.p.name || '') + '">' +
       sub(f.p.pass, 'p', '✔ If it passes', 'pass') + sub(f.p.fail, 'f', '✘ If it fails', 'fail') + '</div>';
   }
-  function activeArr() { return state.mech === 'choice' ? state.copt : state.fx; }
-  // Decode a double-sided effect's data-i ('dd0'…/'dr0'…) → { s: the side, i: effect index }, else null.
-  // One source for the encoding the side rows render and the change/delete handlers read.
-  function sideRef(di) { return /^d[dr]\d+$/.test(di) ? { s: state.dside[di.charAt(1) === 'd' ? 'd' : 'r'], i: +di.slice(2) } : null; }
+  function activeArr() { return state.reading === 'menu' ? state.copt : state.fx; }
   // Decode a Government-Choice option effect's data-i ('o<opt>_<eff>') → { o: the option, j: effect index }.
   function optRef(di) { var m = /^o(\d+)_(\d+)$/.exec(di); return m ? { o: state.copt[+m[1]], j: +m[2] } : null; }
-  // The effect object at a base ref ('o0_1' option effect, 'dd0'/'dr0' side effect) — the shared lookup a
-  // bill effect's sub-refs resolve their parent through.
-  function effectAt(ref) { var sr = sideRef(ref), or = optRef(ref); return sr ? sr.s.fx[sr.i] : or ? or.o.fx[or.j] : null; }
+  // The effect object at a base ref — a plain integer indexes the flat fx[] (one/two readings, where a
+  // committee bill can live in a converted double side); 'o0_1' indexes a Menu-choice option effect. The
+  // shared lookup a bill effect's sub-refs resolve their parent through.
+  function effectAt(ref) { if (/^\d+$/.test(ref)) return state.fx[+ref]; var or = optRef(ref); return or ? or.o.fx[or.j] : null; }
   // A bill EFFECT's name field: data-i '<baseRef>~name' → the bill effect object (or null).
   function billNameRef(di) { var m = /^(.+)~name$/.exec(di); var be = m && effectAt(m[1]); return (be && be.kind === 'bill') ? be : null; }
   // A bill EFFECT's sub-effect: data-i '<baseRef>~p<i>' (pass) / '<baseRef>~f<i>' (fail) → { list, i }.
@@ -635,9 +818,12 @@ export async function mountCardCreator(mount) {
     r.p[fd] = (fd === 'x' || fd === 'ticks') ? +v : v; return false;
   }
 
+  // Repaint after any effect edit — the effect list, the live suggestion (cost tracks magnitude) and preview.
+  function fxChanged(reRender) { if (reRender) renderFx(); renderCost(); renderPreview(); }
   function renderFx() {
     var wrap = $('fxList'); var ax = axisLabels();
-    if (state.mech === 'choice') {
+    if (state.reading === 'menu') {
+      // Menu choice — the Government-Choice options editor (A/B/C/D, each with its own effect list).
       var LET = ['A', 'B', 'C', 'D'], CLS = ['a', 'b', 'c', 'd'];
       wrap.innerHTML = state.copt.map(function (o, i) {
         var del = state.copt.length > 2 ? '<button class="del" data-i="' + i + '" style="float:right;margin-top:-2px">✕</button>' : '';
@@ -654,37 +840,35 @@ export async function mountCardCreator(mount) {
           '<input type="text" value="' + esc(o.txt || '') + '" data-i="' + i + '" data-f="txt" placeholder="What this choice looks like in the news…">' +
           effRows + add + '</div>';
       }).join('');
-      $('fxCount').textContent = state.copt.length + ' / 4 options · up to 3 effects each';
+      $('fxCount').textContent = state.copt.length + ' / 4 options · up to 3 effects each · decider picks one';
       var ab = $('addFx'); ab.style.display = 'block'; ab.textContent = '+ Add Option'; ab.disabled = state.copt.length >= 4;
-    } else if (state.mech === 'double') {
-      function sideBlock(key, ref, cls, side, lvl) {
-        var s = state.dside[key];
-        var gate = state.stanceReq === 'gated' ? ' (' + side.pre + lvl + '+)' : '';
-        var effRows = s.fx.map(function (f, i) {
-          var eref = ref + i;
-          var del = s.fx.length > 1 ? '<button class="del" data-i="' + eref + '">✕</button>' : '';
-          return '<div class="fx-top" style="margin-top:9px"><span class="n">' + (i + 1) + '</span>' +
-            '<select data-i="' + eref + '" data-f="kind">' + kindOpts(f, true) + '</select>' + del + '</div>' +
-            (f.kind === 'bill' ? renderBillEffect(f, eref) : '<div class="fx-params">' + fxParamsHTML(f, eref) + '</div>');
-        }).join('');
-        var add = s.fx.length < 3 ? '<button class="addfx sideadd" data-add="' + key + '" style="margin-top:9px">+ Add effect (' + s.fx.length + '/3)</button>' : '';
-        return '<div class="opt ' + cls + '">' +
-          '<div class="opt-h">' + side.ic + ' ' + side.name + ' side' + gate + ' — its own name + up to 3 effects:</div>' +
-          '<input type="text" value="' + esc(s.txt || '') + '" data-i="' + ref + '" data-f="txt" placeholder="Name this side of the card…">' +
-          effRows + add + '</div>';
-      }
-      wrap.innerHTML = sideBlock('d', 'dd', 'dside-d', ax.d, state.reqD) + sideBlock('r', 'dr', 'dside-r', ax.r, state.reqR);
-      $('fxCount').textContent = 'two sides · up to 3 effects each';
+    } else if (state.reading === 'two') {
+      // Two readings — effects GROUPED by side under three subheadings (Shared / Side A / Side B), each with
+      // its own "+ Add effect". No per-row side toggle: the group a row sits in IS its side.
+      var GROUPS = [
+        { side: 'both', cls: '', h: '◈ Shared (both readings)' },
+        { side: 'd', cls: 'dside-d', h: ax.d.ic + ' ' + ax.d.name + (state.stanceReq === 'gated' ? ' (' + ax.d.pre + state.reqD + '+)' : '') },
+        { side: 'r', cls: 'dside-r', h: ax.r.ic + ' ' + ax.r.name + (state.stanceReq === 'gated' ? ' (' + ax.r.pre + state.reqR + '+)' : '') }
+      ];
+      wrap.innerHTML = GROUPS.map(function (g) {
+        var members = state.fx.map(function (f, i) { return { f: f, i: i }; }).filter(function (x) { return (x.f.side || 'both') === g.side; });
+        var effRows = members.map(function (x, k) {
+          var f = x.f, ref = String(x.i);
+          var del = '<button class="del" data-i="' + ref + '">✕</button>';
+          return '<div class="fx-top" style="margin-top:9px"><span class="n">' + (k + 1) + '</span>' +
+            '<select data-i="' + ref + '" data-f="kind">' + kindOpts(f, true) + '</select>' + del + '</div>' +
+            (f.kind === 'bill' ? renderBillEffect(f, ref) : '<div class="fx-params">' + fxParamsHTML(f, ref) + '</div>');
+        }).join('') || '<div class="fxline" style="color:var(--soft);padding:4px 0">no effects on this reading</div>';
+        var add = members.length < 3 ? '<button class="addfx groupadd" data-side="' + g.side + '" style="margin-top:9px">+ Add effect</button>' : '';
+        return '<div class="opt ' + g.cls + '"><div class="opt-h">' + g.h + '</div>' + effRows + add + '</div>';
+      }).join('');
+      $('fxCount').textContent = state.fx.length + ' effects · grouped by reading';
       $('addFx').style.display = 'none';
     } else {
+      // One reading — a single flat list, every effect fires as 'both'. No side toggles, no stance.
       wrap.innerHTML = state.fx.map(function (f, i) {
-        var sideBtns = state.type === 'generic' ? '' :
-          '<div class="side-seg">' +
-          '<button data-i="' + i + '" data-s="both" class="' + (f.side === 'both' ? 'on-both' : '') + '">Both</button>' +
-          '<button data-i="' + i + '" data-s="d" class="' + (f.side === 'd' ? 'on-d' : '') + '">' + ax.d.pre + '</button>' +
-          '<button data-i="' + i + '" data-s="r" class="' + (f.side === 'r' ? 'on-r' : '') + '">' + ax.r.pre + '</button></div>';
         return '<div class="fx-row"><div class="fx-top"><span class="n">' + (i + 1) + '</span>' +
-          '<select data-i="' + i + '" data-f="kind">' + kindOpts(f) + '</select>' + sideBtns +
+          '<select data-i="' + i + '" data-f="kind">' + kindOpts(f) + '</select>' +
           '<button class="del" data-i="' + i + '">✕</button></div>' +
           '<div class="fx-params">' + fxParamsHTML(f, i) + '</div></div>';
       }).join('');
@@ -695,42 +879,40 @@ export async function mountCardCreator(mount) {
     wrap.querySelectorAll('select,input').forEach(function (el) {
       el.onchange = el.oninput = function () {
         var fd = el.dataset.f, v = el.value, di = el.dataset.i;
-        // Double-sided side NAME (side-level, not an effect).
-        if (di === 'dd' || di === 'dr') { state.dside[di === 'dd' ? 'd' : 'r'].txt = v; renderPreview(); return; }
         // A bill effect's name, then its pass/fail sub-effects ('<ref>~name' / '<ref>~p0' / '<ref>~f0').
         var bn = billNameRef(di);
         if (bn) { bn.p.name = v; renderPreview(); return; }
         var bs = billSubRef(di);
-        if (bs) { if (applyEffectChange(bs.list[bs.i], fd, v)) renderFx(); renderPreview(); return; }
-        // A double-side effect ('dd0'…) or a choice-option effect ('o0_0'…).
-        var sr = sideRef(di), or = optRef(di);
-        var special = sr ? sr.s.fx[sr.i] : or ? or.o.fx[or.j] : null;
-        if (special) { if (applyEffectChange(special, fd, v)) renderFx(); renderPreview(); return; }
-        // Top-level: a choice-option TITLE ('i', data-f=txt) or a One-Off effect ('i').
+        if (bs) { fxChanged(applyEffectChange(bs.list[bs.i], fd, v)); return; }
+        // A Menu-choice option effect ('o0_0'…).
+        var or = optRef(di);
+        if (or) { fxChanged(applyEffectChange(or.o.fx[or.j], fd, v)); return; }
+        // Top-level: a Menu-choice option TITLE ('i', data-f=txt) or a flat one/two-reading effect ('i').
         var f = activeArr()[+di];
-        if (fd === 'txt' && state.mech === 'choice') { f.txt = v; renderPreview(); return; }
-        if (applyEffectChange(f, fd, v)) renderFx();
-        renderPreview();
+        if (fd === 'txt' && state.reading === 'menu') { f.txt = v; renderPreview(); return; }
+        fxChanged(applyEffectChange(f, fd, v));
       };
-    });
-    wrap.querySelectorAll('.side-seg button').forEach(function (b) {
-      b.onclick = function () { state.fx[+b.dataset.i].side = b.dataset.s; renderFx(); renderPreview(); };
     });
     wrap.querySelectorAll('.del').forEach(function (b) {
       b.onclick = function () {
-        var di = b.dataset.i, bs = billSubRef(di), sr = sideRef(di), or = optRef(di);
+        var di = b.dataset.i, bs = billSubRef(di), or = optRef(di);
         if (bs) bs.list.splice(bs.i, 1);
-        else if (sr) sr.s.fx.splice(sr.i, 1);
         else if (or) or.o.fx.splice(or.j, 1);
         else activeArr().splice(+di, 1);
-        renderFx(); renderPreview();
+        fxChanged(true);
       };
     });
-    wrap.querySelectorAll('.sideadd').forEach(function (b) {
-      b.onclick = function () { var s = state.dside[b.dataset.add]; if (s.fx.length < 3) { s.fx.push({ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); renderFx(); renderPreview(); } };
+    // Two-readings: add an effect into a specific side group (Shared / A / B).
+    wrap.querySelectorAll('.groupadd').forEach(function (b) {
+      b.onclick = function () {
+        var side = b.dataset.side;
+        if (state.fx.filter(function (f) { return (f.side || 'both') === side; }).length < 3) {
+          state.fx.push({ side: side, kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); fxChanged(true);
+        }
+      };
     });
     wrap.querySelectorAll('.optadd').forEach(function (b) {
-      b.onclick = function () { var o = state.copt[+b.dataset.add]; if (o.fx.length < 3) { o.fx.push({ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); renderFx(); renderPreview(); } };
+      b.onclick = function () { var o = state.copt[+b.dataset.add]; if (o.fx.length < 3) { o.fx.push({ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); fxChanged(true); } };
     });
     // Add an effect to a bill effect's pass/fail list (data-add '<ref>~p' / '<ref>~f').
     wrap.querySelectorAll('.billsubadd').forEach(function (b) {
@@ -738,13 +920,13 @@ export async function mountCardCreator(mount) {
         var m = /^(.+)~([pf])$/.exec(b.dataset.add); if (!m) return;
         var be = effectAt(m[1]); if (!be || be.kind !== 'bill') return;
         var key = m[2] === 'p' ? 'pass' : 'fail'; be.p[key] = be.p[key] || [];
-        if (be.p[key].length < 5) { be.p[key].push({ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); renderFx(); renderPreview(); }
+        if (be.p[key].length < 5) { be.p[key].push({ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); fxChanged(true); }
       };
     });
   }
   $('addFx').onclick = function () {
-    if (state.mech === 'choice') { if (state.copt.length < 4) { state.copt.push({ txt: '', fx: [{ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }] }); renderFx(); renderPreview(); } }
-    else if (state.mech === 'oneoff' && state.fx.length < 5) { state.fx.push({ side: 'both', kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); renderFx(); renderPreview(); }
+    if (state.reading === 'menu') { if (state.copt.length < 4) { state.copt.push({ txt: '', fx: [{ kind: 'stat_up', p: { stat: 'Growth', x: 3 } }] }); fxChanged(true); } }
+    else if (state.reading === 'one' && state.fx.length < 5) { state.fx.push({ side: 'both', kind: 'stat_up', p: { stat: 'Growth', x: 3 } }); fxChanged(true); }
   };
 
   /* ── preview ── */
@@ -755,76 +937,71 @@ export async function mountCardCreator(mount) {
     var ax = axisLabels();
     $('pName').textContent = state.name || 'Untitled Card';
     $('pDesc').textContent = state.desc || '';
-    var stripe = state.type === 'generic' ? 'var(--gen)' : state.type === 'ar' ? 'var(--auto)' : 'var(--rev)';
+    // The stance axis is only meaningful for two readings — one reading serializes as generic.
+    var etype = state.reading === 'one' ? 'generic' : state.type;
+    var stripe = etype === 'generic' ? 'var(--gen)' : etype === 'ar' ? 'var(--auto)' : 'var(--rev)';
     $('pStripe').style.background = state.lim === 'nation' ? 'var(--nat)' : stripe;
     var pFlag = $('pFlag'), pfSrc = state.lim === 'nation' ? nationFlag(state.nation) : '';
     if (pfSrc) { pFlag.src = pfSrc; pFlag.hidden = false; } else { pFlag.hidden = true; pFlag.removeAttribute('src'); }
     var natName = nationName(state.nation);
     var kindTxt = state.dormant === 'yes' ? '💤 Dormant · ' + (state.lim === 'nation' ? (natName || '—') : 'activated by a card')
       : state.lim === 'nation' ? 'Nation · ' + (natName || '—')
-      : state.type === 'generic' ? 'Generic' : 'Stance · ' + ax.d.name + ' / ' + ax.r.name;
-    var kindCol = state.lim === 'nation' ? 'var(--nat)' : state.type === 'generic' ? 'var(--gen)' : state.type === 'ar' ? 'var(--auto)' : 'var(--rev)';
+      : state.reading === 'menu' ? 'Menu · government chooses'
+      : etype === 'generic' ? 'Generic' : 'Stance · ' + ax.d.name + ' / ' + ax.r.name;
+    var kindCol = state.lim === 'nation' ? 'var(--nat)' : etype === 'generic' ? 'var(--gen)' : etype === 'ar' ? 'var(--auto)' : 'var(--rev)';
     var pk = $('pKind'); pk.textContent = kindTxt; pk.style.color = kindCol;
 
     var reqs = '<span class="rq cost">⚡ ' + (state.cost || 0) + '</span>';
     reqs += '<span class="rq acts">▶ ' + (state.acts || 1) + ' action' + ((state.acts || 1) === 1 ? '' : 's') + '</span>';
     if (state.persistV === 'yes') reqs += '<span class="rq pers">∞ Persistent</span>';
     if (state.afterPlay === 'shuffle') reqs += '<span class="rq recyc">↻ Reshuffles</span>';
-    var gated = state.type !== 'generic' && state.stanceReq === 'gated';
+    var gated = etype !== 'generic' && state.stanceReq === 'gated';
     if (gated) reqs += '<span class="rq d">' + ax.d.ic + ' ' + ax.d.pre + state.reqD + '+</span><span class="rq r">' + ax.r.ic + ' ' + ax.r.pre + state.reqR + '+</span>';
-    else if (state.type !== 'generic') reqs += '<span class="rq">no stance req</span>';
+    else if (state.reading === 'two') reqs += '<span class="rq">no stance req</span>';
     $('pReqs').innerHTML = reqs;
 
     var html = '';
     if (state.reqCard) html += '<div class="c-reqline">⛓ Requires play of <b>' + esc(cardName(state.reqCard)) + '</b></div>';
     if (state.allowCard) html += '<div class="c-reqline">🔓 Allows play of <b>' + esc(cardName(state.allowCard)) + '</b></div>';
-    if (state.mech === 'choice') {
+    if (state.reading === 'menu') {
       var LET = ['A', 'B', 'C', 'D'], GCL = ['ga', 'gb2', 'gc', 'gd2'];
       html += '<div class="choice-banner">⚖ Holder plays → government must choose</div>';
       state.copt.forEach(function (o, i) {
         html += '<div class="fxgroup ' + GCL[i] + '"><div class="gt">' + LET[i] + ' · ' + esc(o.txt || 'untitled option') + '</div>' +
           o.fx.map(function (f) { return '<div class="fxline">' + fxText(f.kind, f.p) + '</div>'; }).join('') + '</div>';
       });
-    } else if (state.mech === 'double') {
-      html += '<div class="fxgroup gd"><div class="gt">' + ax.d.ic + ' ' + (gated ? ax.d.pre + state.reqD + '+ · ' : '') + '“' + esc(state.dside.d.txt || 'unnamed side') + '”</div>' + state.dside.d.fx.map(function (f) { return '<div class="fxline">' + fxText(f.kind, f.p) + '</div>'; }).join('') + '</div>';
-      html += '<div class="fxgroup gr"><div class="gt">' + ax.r.ic + ' ' + (gated ? ax.r.pre + state.reqR + '+ · ' : '') + '“' + esc(state.dside.r.txt || 'unnamed side') + '”</div>' + state.dside.r.fx.map(function (f) { return '<div class="fxline">' + fxText(f.kind, f.p) + '</div>'; }).join('') + '</div>';
     } else {
+      // One / Two readings share one grouped renderer — one reading files every effect under 'both'.
       var groups = { d: [], r: [], both: [] };
-      state.fx.forEach(function (f) { groups[state.type === 'generic' ? 'both' : f.side].push(fxText(f.kind, f.p)); });
+      state.fx.forEach(function (f) { groups[state.reading === 'one' ? 'both' : (f.side || 'both')].push(fxText(f.kind, f.p)); });
       if (groups.d.length) html += '<div class="fxgroup gd"><div class="gt">' + ax.d.ic + ' ' + ax.d.name + ' play' + (gated ? ' (' + ax.d.pre + state.reqD + '+)' : '') + '</div>' + groups.d.map(function (t) { return '<div class="fxline">' + t + '</div>'; }).join('') + '</div>';
       if (groups.r.length) html += '<div class="fxgroup gr"><div class="gt">' + ax.r.ic + ' ' + ax.r.name + ' play' + (gated ? ' (' + ax.r.pre + state.reqR + '+)' : '') + '</div>' + groups.r.map(function (t) { return '<div class="fxline">' + t + '</div>'; }).join('') + '</div>';
-      if (groups.both.length) html += '<div class="fxgroup gb"><div class="gt">◈ Either play</div>' + groups.both.map(function (t) { return '<div class="fxline">' + t + '</div>'; }).join('') + '</div>';
+      if (groups.both.length) html += '<div class="fxgroup gb"><div class="gt">' + (state.reading === 'two' ? '◈ Both readings' : '◈ When played') + '</div>' + groups.both.map(function (t) { return '<div class="fxline">' + t + '</div>'; }).join('') + '</div>';
     }
     $('pFx').innerHTML = html || '<div class="fxline" style="color:var(--soft)">no effects yet</div>';
 
-    var arr = state.mech === 'choice' ? state.copt.reduce(function (a, o) { return a.concat(o.fx); }, [])
-      : state.mech === 'double' ? state.dside.d.fx.concat(state.dside.r.fx) : state.fx;
-    var mechLabel = state.mech === 'choice' ? 'Gov Choice' : state.mech === 'double' ? 'Double Sided' : 'One-Off';
+    var arr = state.reading === 'menu' ? state.copt.reduce(function (a, o) { return a.concat(o.fx); }, []) : state.fx;
+    var mechLabel = state.reading === 'menu' ? 'Menu Choice' : state.reading === 'two' ? 'Two Readings' : 'One Reading';
     var tags = ['<span class="tag">' + mechLabel + '</span>'];
     if (arr.some(function (f) { return f.kind === 'party_gain' || f.kind === 'party_lose'; })) tags.push('<span class="tag" style="color:var(--auto);border-color:color-mix(in srgb,var(--auto) 45%,transparent)">Target Party</span>');
-    if (state.mech === 'choice' || arr.some(function (f) { return ['no_conf', 'nat_el', 'hex_el'].indexOf(f.kind) >= 0; })) tags.push('<span class="tag" style="color:var(--nat);border-color:color-mix(in srgb,var(--nat) 45%,transparent)">Force Gov</span>');
+    if (state.reading === 'menu' || arr.some(function (f) { return ['no_conf', 'nat_el', 'hex_el'].indexOf(f.kind) >= 0; })) tags.push('<span class="tag" style="color:var(--nat);border-color:color-mix(in srgb,var(--nat) 45%,transparent)">Force Gov</span>');
     if (arr.some(function (f) { return ['mob_add', 'mob_rem', 'mil_add', 'mil_rem'].indexOf(f.kind) >= 0; })) tags.push('<span class="tag" style="color:var(--rev);border-color:color-mix(in srgb,var(--rev) 45%,transparent)">Units on Map</span>');
     $('pTags').innerHTML = tags.join('');
 
     var v = [];
-    if (state.mech === 'choice') {
-      v.push(state.copt.length >= 2 && state.copt.length <= 4 ? ['ok', 'Options: ' + state.copt.length + ' / 4'] : ['warn', 'Choice cards need 2–4 options']);
+    if (state.reading === 'menu') {
+      v.push(state.copt.length >= 2 && state.copt.length <= 4 ? ['ok', 'Options: ' + state.copt.length + ' / 4'] : ['warn', 'Menu cards need 2–4 options']);
       v.push(state.copt.every(function (f) { return (f.txt || '').trim().length > 0; }) ? ['ok', 'All options titled'] : ['warn', 'Every option needs text — the government reads these aloud']);
       var sigs = state.copt.map(function (o) { return JSON.stringify(o.fx); });
       v.push(new Set(sigs).size === sigs.length ? ['ok', 'Options differ — a real dilemma'] : ['warn', 'Two options do the same thing — no dilemma, no card']);
-    } else if (state.mech === 'double') {
-      var dn = (state.dside.d.txt || '').trim(), rn = (state.dside.r.txt || '').trim();
-      v.push(dn && rn ? ['ok', 'Both sides named'] : ['warn', 'Each side needs its own name — it’s what the news prints']);
-      v.push(state.type === 'generic' ? ['warn', 'Double Sided needs a stance axis — switch Type off Generic']
-        : state.stanceReq === 'gated' ? ['ok', 'Sides gate at ' + ax.d.pre + state.reqD + '+ / ' + ax.r.pre + state.reqR + '+']
-        : ['ok', 'No stance required — either side is playable by anyone']);
+    } else if (state.reading === 'two') {
+      var hasD = state.fx.some(function (f) { return f.side === 'd' || f.side === 'both'; });
+      var hasR = state.fx.some(function (f) { return f.side === 'r' || f.side === 'both'; });
+      v.push(hasD && hasR ? ['ok', 'Both readings have a playable effect'] : ['warn', 'One reading has no effect — half the buyers won’t want this card']);
+      v.push(state.stanceReq === 'gated' ? ['ok', 'Readings gate at ' + ax.d.pre + state.reqD + '+ / ' + ax.r.pre + state.reqR + '+'] : ['ok', 'No stance required — either reading is playable by anyone']);
     } else {
       v.push(state.fx.length <= 5 ? ['ok', 'Effects: ' + state.fx.length + ' / 5'] : ['warn', 'Too many effects']);
-      if (state.type !== 'generic') {
-        var hasD = state.fx.some(function (f) { return f.side === 'd' || f.side === 'both'; });
-        var hasR = state.fx.some(function (f) { return f.side === 'r' || f.side === 'both'; });
-        v.push(hasD && hasR ? ['ok', 'Both stances have a playable side'] : ['warn', 'One side has no effect — half the buyers won’t want this card']);
-      }
+      v.push(state.fx.length ? ['ok', 'One reading — every effect fires when played'] : ['warn', 'Add at least one effect']);
     }
     if (arr.some(function (f) { return (f.kind === 'rel_up' || f.kind === 'rel_down') && !(f.p && f.p.nation); }))
       v.push(['warn', 'A relations effect has no nation picked — it will do nothing']);
@@ -850,10 +1027,57 @@ export async function mountCardCreator(mount) {
     if (state.lim === 'nation') v.push(state.nation ? ['ok', 'Enters ' + esc(nationName(state.nation) || state.nation) + '’s deck only'] : ['warn', 'Pick a nation for a Specific-Nation card']);
     if (state.dormant === 'yes') v.push(['ok', '💤 Dormant — dealt to no deck until a “dormant card enters deck” effect activates it']);
     $('pValid').innerHTML = v.map(function (x) { return '<div class="vline ' + x[0] + '">' + x[1] + '</div>'; }).join('');
+    renderLint();
 
     // Save is blocked while any hard requirement is unmet (a name, and a nation when nation-limited).
     var blocked = !state.name.trim() || (state.lim === 'nation' && !state.nation);
     $('ccSave').disabled = blocked || saving;
+    $('ccSaveSeed').disabled = blocked || saving;
+  }
+
+  // Flatten every effect object out of any stored card `def` (fx / each copt option / each dside side, plus
+  // committee-bill pass/fail sub-effects) — the cross-card scan the lint checks read.
+  function defEffects(def) {
+    var out = [];
+    function walk(f) { if (!f) return; out.push(f); if (f.kind === 'bill' && f.p) { (f.p.pass || []).forEach(walk); (f.p.fail || []).forEach(walk); } }
+    if (def) {
+      (def.fx || []).forEach(walk);
+      (def.copt || []).forEach(function (o) { (o && o.fx || []).forEach(walk); });
+      if (def.dside) { ((def.dside.d && def.dside.d.fx) || []).forEach(walk); ((def.dside.r && def.dside.r.fx) || []).forEach(walk); }
+    }
+    return out;
+  }
+  // The compact lint strip above Save — cheap, NON-blocking validation. Four checks: referenced-card
+  // existence (reqCard + deck_add targets), unknown stats (retired POLICY_STATS), a dormant card nothing
+  // seeds, and a cost far from the suggestion.
+  function renderLint() {
+    var el = $('ccLint'); if (!el) return;
+    var warns = [];
+    var ids = {}; POOL.forEach(function (c) { ids[c.id] = true; });
+    var eff = activeEffects();
+    // 1) reqCard / deck_add target references a card id that doesn't exist.
+    var missing = false;
+    if (state.reqCard && !ids[state.reqCard]) missing = true;
+    if (state.allowCard && !ids[state.allowCard]) missing = true;
+    eff.forEach(function (f) { if (f.kind === 'deck_add' && f.p && f.p.card && !ids[f.p.card]) missing = true; });
+    if (missing) warns.push('Requires a card that doesn’t exist');
+    // 2) an effect references a stat no longer in POLICY_STATS (old cards reference retired stats).
+    var badStats = {};
+    eff.forEach(function (f) {
+      if (f.p && f.p.stat && POLICY_STATS.indexOf(f.p.stat) < 0) badStats[f.p.stat] = true;
+      if (f.p && f.p.np && f.p.np.stat && POLICY_STATS.indexOf(f.p.np.stat) < 0) badStats[f.p.np.stat] = true;
+    });
+    Object.keys(badStats).forEach(function (s) { warns.push('Effect references unknown stat: ' + s); });
+    // 3) dormant, but no OTHER card seeds it via a deck_add effect targeting this card's id.
+    if (state.dormant === 'yes') {
+      var seeded = POOL.some(function (c) { return c.id !== editingId && defEffects(c.def).some(function (f) { return f.kind === 'deck_add' && f.p && f.p.card === editingId; }); });
+      if (!seeded) warns.push('Dormant but nothing activates it');
+    }
+    // 4) the cost is far (>3) from the suggestion.
+    var sug = suggestedCost();
+    if (Math.abs((Number(state.cost) || 0) - sug) > 3) warns.push('Cost ' + (state.cost || 0) + ' is far from suggested ' + sug);
+    if (warns.length) { el.className = 'lint'; el.innerHTML = warns.map(function (w) { return '<div class="lintline">' + esc(w) + '</div>'; }).join(''); }
+    else { el.className = 'lint clean'; el.innerHTML = '<div class="lintline">no issues</div>'; }
   }
 
   /* ── live data: nations for the Limiter, existing cards for the chains + pool list ── */
@@ -910,83 +1134,86 @@ export async function mountCardCreator(mount) {
     });
   }
 
+  // "Start from…" dropdown — every pool card by name, so an author can clone one into a new card.
+  function fillDupSelect() {
+    var sel = $('fDup'); if (!sel) return;
+    sel.innerHTML = '<option value="">— blank card —</option>' + POOL.map(function (c) {
+      return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>';
+    }).join('');
+  }
+  $('fDup').onchange = function () { var id = this.value; this.value = ''; if (id) duplicateCard(id); };
+
   async function loadPool() {
     try {
       var res = await supabase.from('cards').select('id, definition').order('created_at', { ascending: false });
       POOL = (res.data || []).map(function (r) { return { id: r.id, name: (r.definition && r.definition.name) || 'Untitled card', def: r.definition || {} }; });
     } catch (e) { POOL = []; }
-    fillCardSelect('fReqCard', 'reqCard'); fillCardSelect('fAllowCard', 'allowCard'); renderPool();
+    fillCardSelect('fReqCard', 'reqCard'); fillCardSelect('fAllowCard', 'allowCard'); fillDupSelect(); renderPool();
   }
 
-  // The card definition to persist — ONLY the fields that matter for this card, so an inactive
-  // mechanic's data (or a nation on an All-Nations card) never rides along as phantom state.
-  // card_create reads `lim`/`nation`; Phase 3 reads `mech` + the matching effect field.
+  // The card definition to persist. The Effects reading switch (+ archetype) is UI over this SAME schema:
+  // reading serializes to mech+type+sides — one → generic oneoff (every effect 'both'); two → stance oneoff
+  // (effects carry their side); menu → choice (copt[]). We never emit `dside` anymore — a loaded Double
+  // Sided card was converted to two-readings and re-saves as oneoff+sides. Only the fields that matter for
+  // this card are written, so inactive-mechanic data never rides along as phantom state.
   function buildDefinition() {
     var clone = function (o) { return JSON.parse(JSON.stringify(o)); };
-    var d = { name: state.name, cost: state.cost, acts: state.acts, desc: state.desc, type: state.type, lim: state.lim,
-              mech: state.mech, persistV: state.persistV, dormant: state.dormant, reqCard: state.reqCard, allowCard: state.allowCard,
+    var mech = state.reading === 'menu' ? 'choice' : 'oneoff';
+    var type = state.reading === 'one' ? 'generic' : state.type;
+    var d = { name: state.name, cost: state.cost, acts: state.acts, desc: state.desc, type: type, lim: state.lim,
+              mech: mech, persistV: state.persistV, dormant: state.dormant, reqCard: state.reqCard, allowCard: state.allowCard,
               handler: state.handler, afterPlay: state.afterPlay };
     if (state.lim === 'nation') d.nation = state.nation;              // only meaningful when nation-limited
-    // Stance gates only when a stance card is explicitly Stance-gated; otherwise the card needs no stance.
-    if (state.type !== 'generic' && state.stanceReq === 'gated') { d.reqD = state.reqD; d.reqR = state.reqR; }
-    if (state.mech === 'choice') { d.copt = clone(state.copt); }
-    else if (state.mech === 'double') d.dside = clone(state.dside);
-    else d.fx = clone(state.fx);
+    // Stance gates only when a two-readings card is explicitly Stance-gated; otherwise the card needs no stance.
+    if (type !== 'generic' && state.stanceReq === 'gated') { d.reqD = state.reqD; d.reqR = state.reqR; }
+    if (state.reading === 'menu') d.copt = clone(state.copt);
+    else d.fx = clone(state.fx).map(function (f) { return { side: state.reading === 'one' ? 'both' : (f.side || 'both'), kind: f.kind, p: f.p }; });
     return d;
   }
 
-  /* ── save → card_create (new) or card_update (editing). Locked during the call (no double-shuffle). ── */
+  /* ── save → card_create (new) or card_update (editing). Locked during the call (no double-shuffle).
+     "Save & Seed All" saves, then runs the same seed-all-markets action (fills every nation's block). ── */
   var saving = false;
-  $('ccSave').onclick = async function () {
+  async function saveCard(seedAfter) {
     if (saving) return;
     var msg = $('ccMsg');
     if (!state.name.trim()) { msg.className = 'savemsg err'; msg.textContent = 'The card needs a name.'; return; }
     if (state.lim === 'nation' && !state.nation) { msg.className = 'savemsg err'; msg.textContent = 'Pick a nation for a Specific-Nation card.'; return; }
     saving = true; renderPreview();
-    var btn = $('ccSave'); btn.textContent = editingId ? 'Saving…' : 'Shuffling…'; msg.className = 'savemsg'; msg.textContent = '';
+    var btn = seedAfter ? $('ccSaveSeed') : $('ccSave');
+    var label = btn.textContent; btn.textContent = editingId ? 'Saving…' : 'Shuffling…'; msg.className = 'savemsg'; msg.textContent = '';
     try {
       var res = editingId
         ? await supabase.rpc('card_update', { p_card: editingId, p_definition: buildDefinition() })
         : await supabase.rpc('card_create', { p_definition: buildDefinition() });
       if (res.error) throw res.error;
-      msg.className = 'savemsg ok';
-      msg.textContent = editingId
+      var note = editingId
         ? 'Card updated.'
         : state.lim === 'nation'
           ? 'Shuffled into ' + (nationName(state.nation) || state.nation) + '’s deck.'
           : 'Shuffled into every nation’s deck.';
+      if (seedAfter) {
+        btn.textContent = 'Seeding…';
+        var sres = await supabase.rpc('seed_card_markets');
+        if (sres.error) throw sres.error;
+        var n = Number(sres.data) || 0;
+        note += n > 0 ? ' Drew ' + n + ' card' + (n === 1 ? '' : 's') + ' onto markets.' : ' Markets already full.';
+      }
+      msg.className = 'savemsg ok'; msg.textContent = note;
       // Refresh the pool list (name/meta may have changed). loadPool leaves `state`/`editingId` alone, so
       // after an edit the editor stays on this card; after a create it's still a fresh unsaved card.
       await loadPool();
     } catch (e) {
       msg.className = 'savemsg err'; msg.textContent = 'Save failed: ' + (e.message || e);
     } finally {
-      saving = false; updateSaveMode(); renderPreview();
+      saving = false; btn.textContent = label; updateSaveMode(); renderPreview();
     }
-  };
+  }
+  $('ccSave').onclick = function () { saveCard(false); };
+  $('ccSaveSeed').onclick = function () { saveCard(true); };
 
   // Reset to a blank card.
   $('ccNew').onclick = function () { newCard(); var msg = $('ccMsg'); msg.className = 'savemsg'; msg.textContent = ''; };
-
-  /* ── seed all markets → seed_card_markets (fills every nation's block up to target). ── */
-  var seeding = false;
-  $('ccSeed').onclick = async function () {
-    if (seeding) return;
-    seeding = true;
-    var btn = $('ccSeed'), msg = $('ccSeedMsg'), label = btn.textContent;
-    btn.disabled = true; btn.textContent = 'Seeding…'; msg.className = 'savemsg'; msg.textContent = '';
-    try {
-      var res = await supabase.rpc('seed_card_markets');
-      if (res.error) throw res.error;
-      var n = Number(res.data) || 0;
-      msg.className = 'savemsg ok';
-      msg.textContent = n > 0 ? 'Drew ' + n + ' card' + (n === 1 ? '' : 's') + ' onto markets.' : 'All markets already full.';
-    } catch (e) {
-      msg.className = 'savemsg err'; msg.textContent = 'Seed failed: ' + (e.message || e);
-    } finally {
-      seeding = false; btn.disabled = false; btn.textContent = label;
-    }
-  };
 
   // first paint — syncForm() reflects the fresh state into every control (the same path load/reset use).
   // NATIONS/POOL aren't loaded yet, so the preview reads them as empty (safe); loadNations/loadPool then
