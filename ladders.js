@@ -130,6 +130,10 @@ export function nationStockMarket(economy) {
 // re-shows it as a named line so the player can see where the boost came from.
 export const STOCK_FOUND_GROWTH = 8;
 
+// Interest Rate model — JS mirror of the SQL knobs (_nation_interest_rate, schema/225) for the
+// detail-page breakdown. The server value is authoritative; this only itemises what moves it.
+export const INTEREST_RATE = { neutral: 3, target: 2, slope: 0.5, min: 0, max: 25 };
+
 // The four live levers that set the Price Rating — the same values nation_stat_values feeds the
 // Government page. Corruption is inverted (100 − Corruption). Also the ONE source for the stat list.
 export const STOCK_LEVERS = [

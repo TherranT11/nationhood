@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Interest Rates · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/play.css">
+<style>
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+
+  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
+
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
+  .page{max-width:900px}
+  .back{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-decoration:none;margin-bottom:14px}
+  .back:hover{color:var(--ink)}
+  .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
+  .phead h1{font-weight:900;font-size:clamp(26px,4vw,36px);letter-spacing:-.025em;margin:6px 0 22px}
+
+  /* Interest-rate headline + sparkline. Value = server nation_stat_values['Interest Rates']. */
+  .bhero{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:14px}
+  .bhero__k{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:8px}
+  .bhero__v{font-size:34px;font-weight:900;letter-spacing:-.03em;color:var(--ink)}
+  .bhero__desc{color:var(--muted);font-size:13.5px;line-height:1.55;margin-top:10px;max-width:640px}
+  .bhero__chart{width:100%;height:56px;display:block;margin-top:12px}
+  .bhero__note{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft);margin-top:6px}
+
+  /* "What moves the rate" — Neutral + Inflation pressure + each policy line (mirrors the Growth page). */
+  .budhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}
+  .budhead__t{font-size:17px;font-weight:900;letter-spacing:-.01em;color:var(--ink)}
+  .budhead__u{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
+  .budlist{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px 14px}
+  .bud{padding:14px 0;border-top:1px solid var(--line)}
+  .bud:first-child{border-top:none}
+  .bud__row{display:flex;align-items:center;gap:11px}
+  .bud__ico{width:24px;height:24px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:800;line-height:1}
+  .bud__ico--up{background:var(--green)}
+  .bud__ico--down{background:var(--red)}
+  .bud__name{flex:1;min-width:0;font-size:15px;font-weight:700;color:var(--ink)}
+  .bud__sub{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.02em;text-transform:uppercase;color:var(--soft);font-weight:400;margin-top:2px}
+  .bud__val{font-family:'Space Mono',monospace;font-size:15px;font-weight:700;white-space:nowrap}
+  .bud__val--up{color:var(--green)} .bud__val--down{color:var(--red)}
+  .bud__bar{height:6px;border-radius:4px;background:var(--chip);overflow:hidden;margin:10px 0 0 35px}
+  .bud__bar span{display:block;height:100%;border-radius:4px;width:0}
+  .budfoot{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft);margin-top:10px;line-height:1.6}
+
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
+
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <div class="page">
+      <a class="back" href="/play/government/">&lsaquo; Government</a>
+      <div class="phead">
+        <span class="eye" id="gnation">The Nation</span>
+        <h1>Interest Rates</h1>
+      </div>
+
+      <!-- Headline = server nation_stat_values['Interest Rates'] (schema/225), the authoritative
+           clamped rate. We only READ it here — the breakdown below itemises the inputs. -->
+      <div class="bhero">
+        <div class="bhero__k">Interest Rates</div>
+        <div class="bhero__v" id="rateVal">--</div>
+        <svg class="bhero__chart" id="sparkline" viewBox="0 0 300 56" preserveAspectRatio="none" aria-hidden="true">
+          <line x1="0" y1="28" x2="300" y2="28" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="4 5" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <div class="bhero__note" id="sparkNote">Trend appears once the rate is recorded each tick.</div>
+      </div>
+
+      <div class="budhead"><span class="budhead__t">What moves the rate</span><span class="budhead__u">effect on Interest Rates</span></div>
+      <div class="budlist" id="budList"></div>
+      <div class="budfoot" id="budFoot"></div>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { esc, declaredValue } from '/util.js';
+  import { ideologyLabel } from '/archetypes.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+  import { nationStatContributions } from '/policies.js';
+  import { INTEREST_RATE } from '/ladders.js';
+
+  mountTopbar();   // shared top bar (Discord/Influence/Budget Balance/date/gear) into #topbar
+  mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
+
+  // The itemised inputs that move the rate (top → bottom): Neutral policy rate, Inflation pressure,
+  // then one line per contributing policy. Built once at load; the list just renders them.
+  var ROWS = [];
+  function fmt(v){ return (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%'; }
+
+  function render(){
+    var max = ROWS.reduce(function (m, r) { return Math.max(m, Math.abs(r.amount)); }, 0) || 1;
+    document.getElementById('budList').innerHTML = ROWS.length ? ROWS.map(function (it) {
+      var up = it.amount >= 0, dir = up ? 'up' : 'down', arrow = up ? '↑' : '↓';
+      var w = Math.max(4, Math.round(Math.abs(it.amount) / max * 100));
+      return '<div class="bud"><div class="bud__row">' +
+        '<span class="bud__ico bud__ico--' + dir + '">' + arrow + '</span>' +
+        '<span class="bud__name">' + esc(it.name) + (it.sub ? '<div class="bud__sub">' + esc(it.sub) + '</div>' : '') + '</span>' +
+        '<span class="bud__val bud__val--' + dir + '">' + fmt(it.amount) + '</span></div>' +
+        '<div class="bud__bar"><span style="width:' + w + '%;background:var(--' + (up ? 'green' : 'red') + ');opacity:.5"></span></div></div>';
+    }).join('') : '';
+  }
+
+  // Draw the rate trajectory into the hero SVG (oldest → newest). Under 2 points, keep the dashed
+  // placeholder + note. Same pattern as the Growth page's sparkline.
+  function drawSparkline(series){
+    var svg = document.getElementById('sparkline');
+    if (!svg || !series || series.length < 2) return;
+    document.getElementById('sparkNote').hidden = true;
+    var W = 300, H = 56, pad = 6, n = series.length;
+    var min = Math.min.apply(null, series), max = Math.max.apply(null, series), span = (max - min) || 1;
+    var pts = series.map(function (v, i){ return [ (i / (n - 1)) * W, H - pad - ((v - min) / span) * (H - 2 * pad) ]; });
+    var line = pts.map(function (p, i){ return (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join(' ');
+    var area = 'M' + pts[0][0].toFixed(1) + ' ' + H + ' ' + line.replace(/^M/, 'L') + ' L' + pts[n-1][0].toFixed(1) + ' ' + H + ' Z';
+    svg.innerHTML =
+      '<path d="' + area + '" fill="var(--indigo-soft, rgba(107,92,255,.14))" stroke="none"/>' +
+      '<path d="' + line + '" fill="none" stroke="var(--indigo, #6b5cff)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<circle cx="' + pts[n-1][0].toFixed(1) + '" cy="' + pts[n-1][1].toFixed(1) + '" r="2.6" fill="var(--indigo, #6b5cff)"/>';
+  }
+
+  render();
+  document.getElementById('budFoot').textContent = 'The final rate is clamped to ' + INTEREST_RATE.min + '–' + INTEREST_RATE.max + '%. These inputs sum to the rate before the ' + INTEREST_RATE.min + '–' + INTEREST_RATE.max + '% band.';
+
+  (async () => {
+    if (!isConfigured) return;
+    const user = await requireUser();
+    if (!user) return; // redirected to login
+    try {
+      const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
+      if (error || !party) { window.location.replace('/nation-select/'); return; }
+      // ministry_stats carries authored bases; a drifted (unmigrated) column falls back to core cols.
+      var nRes = await supabase.from('nations').select('name, flag, declarations, policies, gdp, ministry_stats').eq('id', party.nation_id).single();
+      if (nRes.error) nRes = await supabase.from('nations').select('name, flag, declarations, policies, gdp').eq('id', party.nation_id).single();
+      var nation = nRes.data || {};
+
+      // Eyebrow = the nation's formal state name if declared, else its plain name.
+      var nationName = nation.name || party.nation_id;
+      try {
+        const { data: slots } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed').eq('slug', 'formal_state_name').limit(1);
+        var formal = (slots && slots[0]) ? declaredValue(slots[0], nation.declarations) : '';
+        if (formal && formal !== '—') nationName = formal;
+      } catch (e) {}
+      document.getElementById('gnation').textContent = nationName;
+      document.getElementById('pname').textContent = party.name;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + (nation.name || party.nation_id);
+      if (nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
+      setTopbarActions(party.influence);
+
+      // Headline + Inflation from the one server source — nation_stat_values (schema/225). The rate is
+      // authoritative and clamped; we only READ it. Leave "--" when the RPC has no rate.
+      var inflation = null;
+      try {
+        const { data: sv } = await supabase.rpc('nation_stat_values', { p_nation: party.nation_id, p_stats: ['Interest Rates', 'Inflation'] });
+        if (sv && sv['Interest Rates'] != null) document.getElementById('rateVal').textContent = (Math.round(Number(sv['Interest Rates']) * 10) / 10).toFixed(1) + '%';
+        if (sv && sv['Inflation'] != null) inflation = Number(sv['Inflation']);
+      } catch (e) { /* leave the "--" placeholder */ }
+
+      // Bucket 1 — Neutral policy rate: always present, always positive (the resting rate).
+      ROWS = [{ name: 'Neutral policy rate', sub: 'resting rate', amount: INTEREST_RATE.neutral }];
+
+      // Bucket 2 — Inflation pressure: slope × (inflation − target). Above target tightens (+),
+      // below target eases (−), at target is neutral (0.0%). Falls back to the target (→ 0) when
+      // the RPC returned no inflation, so the line is never blank.
+      var inf = (inflation != null && isFinite(inflation)) ? inflation : INTEREST_RATE.target;
+      var infPressure = INTEREST_RATE.slope * (inf - INTEREST_RATE.target);
+      ROWS.push({
+        name: 'Inflation pressure',
+        sub: 'Inflation ' + (Math.round(inf * 10) / 10) + '% vs ' + INTEREST_RATE.target + '% target',
+        amount: infPressure
+      });
+
+      // Bucket 3 — each policy/card 'Interest Rates' contribution (one source: policies.js — same
+      // helper + fetch the Growth page uses). One row per contributing policy.
+      var pols = [];
+      try { const { data } = await supabase.from('policies').select('id, definition'); pols = data || []; } catch (e) {}
+      var contrib = nationStatContributions(pols, nation.policies, nation.gdp, 'Interest Rates');
+      contrib.items.forEach(function (c) { ROWS.push({ name: c.name, amount: c.amount }); });
+
+      render();
+
+      // Rate trend — the per-tick snapshot (schema/162, world-readable); oldest → newest. Draws once
+      // there are ≥2 points; otherwise the dashed placeholder + note stay.
+      try {
+        const { data: hist } = await supabase.from('nation_stat_history')
+          .select('tick, value').eq('nation_id', party.nation_id).eq('stat', 'Interest Rates').order('tick', { ascending: true });
+        drawSparkline((hist || []).map(function (r) { return Number(r.value); }).filter(isFinite));
+      } catch (e) { /* no history table yet → keep the placeholder */ }
+    } catch (e) { /* placeholders already shown; topbar still renders */ }
+  })();
+</script>
+</body>
+</html>
