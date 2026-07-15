@@ -6,3 +6,6 @@ supabase/schema_all.sql
 # Vite: installed deps and the build output (rebuilt by CI from source).
 node_modules/
 dist/
+
+# Claude Code scratch: agent worktrees and local session state. Transient, never committed.
+.claude/
