@@ -94,6 +94,15 @@ export function policyInForceEffects(def, optionIdx) {
   inForce.forEach(function (o) { ((o && o.effects) || []).forEach(function (e) { out.push(e); }); });
   return out;
 }
+// The cumulative in-force effects at the current option, aggregated to ONE signed entry per {t, unit} —
+// what the policy is ACTUALLY contributing now. A spectrum sums every level it has climbed (base → …),
+// so at Daycare's "Nationwide" its Growth is the total +7, not the top rung's +2. ONE source so the
+// Policies slate's standing-effects list agrees with the stat pages + the server (_nation_policy_stat),
+// which both read this cumulative total. (aggregateEffects is hoisted below.)
+export function policyInForceAggregated(def, optionIdx) {
+  return aggregateEffects(policyInForceEffects(def, optionIdx));
+}
+
 // ---- Policy prerequisites -------------------------------------------------------------------------
 // A policy can be gated behind other policies' in-force options. def.requires =
 //   { mode:'any'|'all', conds:[ {policy:<id>, opt:<optionIdx>} … ] }
