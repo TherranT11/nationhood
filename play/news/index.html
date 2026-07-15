@@ -70,6 +70,11 @@
   .cm .tempo__row{display:flex;gap:8px;flex-wrap:wrap}
   .cm .tcard{flex:1;min-width:148px;background:var(--field);border:1px solid var(--line);border-radius:12px;padding:9px 11px}
   .cm .tcard.you{border-color:var(--inf);box-shadow:0 0 0 1px var(--inf) inset}
+  .cm .tcard.onclock{border-color:var(--indigo);box-shadow:0 0 0 1px var(--indigo) inset}   /* top 2 — on the clock */
+  .cm .tcard.pinned{opacity:.5}                                                              /* idle 2 turns — stuck at the back */
+  .cm .tcard__tag{margin-left:auto;font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.1em;border-radius:5px;padding:1px 5px}
+  .cm .tcard__tag.up{color:var(--indigo);border:1px solid color-mix(in srgb,var(--indigo) 55%,transparent)}
+  .cm .tcard__tag.stuck{color:var(--soft);border:1px solid var(--line)}
   .cm .tcard__top{display:flex;align-items:center;gap:7px}
   .cm .tcard__pos{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft)}
   .cm .tcard__dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px}
@@ -306,10 +311,13 @@
     var order = parties.slice().sort(function (a, b) { return (Number(b.tempo) || 0) - (Number(a.tempo) || 0) || String(a.id).localeCompare(String(b.id)); });
     row.innerHTML = order.map(function (p, i) {
       var you = PARTY && p.id === PARTY.id, col = partyColor(p);
-      return '<div class="tcard' + (you ? ' you' : '') + '"><div class="tcard__top"><span class="tcard__pos">' + (i + 1) + '</span>' +
+      var pinned = (Number(p.tempo_miss) || 0) >= 2;          // idle 2 turns → stuck at the back
+      var onclock = i < 2 && !pinned;                         // top 2 are on the clock (expected to act)
+      var tag = onclock ? '<span class="tcard__tag up">UP</span>' : (pinned ? '<span class="tcard__tag stuck">STUCK</span>' : '');
+      return '<div class="tcard' + (you ? ' you' : '') + (onclock ? ' onclock' : '') + (pinned ? ' pinned' : '') + '"><div class="tcard__top"><span class="tcard__pos">' + (i + 1) + '</span>' +
         '<span class="tcard__dot" style="background:' + col + '"></span>' +
         '<span class="tcard__abbr" style="color:' + col + '">' + esc(p.abbreviation || p.name || '—') + '</span>' +
-        (you ? '<span class="tcard__you">YOU</span>' : '') + '</div>' +
+        (you ? '<span class="tcard__you">YOU</span>' : '') + tag + '</div>' +
         '<div class="tcard__ideo">' + esc(ideologyLabel(p)) + '</div>' +
         '<div class="tcard__seats">' + (Number(p.seats) || 0) + ' seats</div></div>';
     }).join('');
@@ -414,7 +422,8 @@
       // One party read powers the decision labels AND the Tempo Track (so it carries tempo + seats).
       // Resilient to drift: if `tempo` (schema/206) isn't deployed yet the column select errors, so fall
       // back to the tempo-less read — the decision labels must never break on a missing Tempo column.
-      var pq = await supabase.from('parties').select('id, name, abbreviation, archetype, color, seats, tempo').eq('nation_id', NATION_ID).order('name', { ascending: true }).order('id', { ascending: true });
+      var pq = await supabase.from('parties').select('id, name, abbreviation, archetype, color, seats, tempo, tempo_miss').eq('nation_id', NATION_ID).order('name', { ascending: true }).order('id', { ascending: true });
+      if (pq.error) pq = await supabase.from('parties').select('id, name, abbreviation, archetype, color, seats, tempo').eq('nation_id', NATION_ID).order('name', { ascending: true }).order('id', { ascending: true });
       if (pq.error) pq = await supabase.from('parties').select('id, name, abbreviation, archetype, color, seats').eq('nation_id', NATION_ID).order('name', { ascending: true }).order('id', { ascending: true });
       roster = pq.data || [];
     } catch (e) {}
