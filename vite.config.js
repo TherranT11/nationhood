@@ -12,7 +12,7 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
-const SKIP = new Set(['node_modules', 'dist', 'public', 'supabase', '.git', '.github']);
+const SKIP = new Set(['node_modules', 'dist', 'public', 'supabase', '.git', '.github', '.claude']);
 
 // Every *.html under the project root → a Rollup input, keyed by its path (so the
 // list is never hand-maintained as pages are added). Output keeps the directory

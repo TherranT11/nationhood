@@ -93,7 +93,6 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { nationStatContributions } from '/policies.js';
-  import { STOCK_FOUND_GROWTH } from '/ladders.js';
 
   mountTopbar();   // shared top bar (Discord/Influence/Budget Balance/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
@@ -151,8 +150,8 @@
       const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
       // ministry_stats carries the authored Growth base; a drifted (unmigrated) column falls back to core cols.
-      var nRes = await supabase.from('nations').select('name, flag, declarations, policies, gdp, ministry_stats').eq('id', party.nation_id).single();
-      if (nRes.error) nRes = await supabase.from('nations').select('name, flag, declarations, policies, gdp').eq('id', party.nation_id).single();
+      var nRes = await supabase.from('nations').select('name, flag, declarations, policies, gdp, economy, ministry_stats').eq('id', party.nation_id).single();
+      if (nRes.error) nRes = await supabase.from('nations').select('name, flag, declarations, policies, gdp, economy').eq('id', party.nation_id).single();
       var nation = nRes.data || {};
 
       // Eyebrow = the nation's formal state name if declared, else its plain name.
@@ -173,13 +172,17 @@
       var pols = [];
       try { const { data } = await supabase.from('policies').select('id, definition'); pols = data || []; } catch (e) {}
       var contrib = nationStatContributions(pols, nation.policies, nation.gdp, 'Growth');   // for the UP/DOWN breakdown below
-      // A founded stock exchange grants a one-time +8 Growth (baked into the base server-side). Re-show
-      // it here as a named line so the boost is visible — only the HOST founded one, so only the host
-      // has a stock_exchanges row keyed to it.
+      // The stock market's Growth = its corporations' performance (schema/228): the exchange's live
+      // market_growth, the cash-weighted average firm growth across every listed nation, refreshed each
+      // tick. Pooled — the nation reads its own exchange whether it HOSTS or is a MEMBER — and signed, so
+      // a booming market lifts Growth and a failing one drags it (it lands in the UP or DOWN list below).
       try {
-        const { data: ex } = await supabase.from('stock_exchanges').select('name, abbr').eq('host_nation', party.nation_id).limit(1);
-        if (ex && ex[0]) contrib.items.push({ name: ex[0].name + ' (' + ex[0].abbr + ')', amount: STOCK_FOUND_GROWTH });
-      } catch (e) { /* no exchange / table not deployed → no line */ }
+        const smId = nation.economy && nation.economy.stock_market && nation.economy.stock_market.exchange_id;
+        if (smId) {
+          const { data: ex } = await supabase.from('stock_exchanges').select('name, abbr, market_growth').eq('id', smId).limit(1);
+          if (ex && ex[0]) contrib.items.push({ name: ex[0].name + ' (' + ex[0].abbr + ')', amount: Number(ex[0].market_growth) || 0 });
+        }
+      } catch (e) { /* no exchange / column not deployed → no line */ }
       // Headline value from the one server source — nation_stat_values (schema/177): base + policy +
       // writable-stats delta. Leave the "--" placeholder when the RPC has no value for it.
       try {
