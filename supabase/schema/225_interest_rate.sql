@@ -10,8 +10,9 @@
 --   rate% = clamp(0, 25, NEUTRAL + SLOPE·(inflation − TARGET) + Σ policy 'Interest Rates')
 --
 -- KNOBS (tune freely): NEUTRAL 3%, inflation TARGET 2%, SLOPE 0.5 (rate move per point of inflation off
--- target). Inflation is economy.inflation (schema/91). Depends on: 217 (nation_stat_values), 47/152
--- (_nation_policy_stat, _to_num). Idempotent. Apply after 221.
+-- target). Inflation is economy.inflation (schema/91). Also surfaces Inflation itself in nation_stat_values
+-- (it was returning "--" — stored in economy.inflation but never resolved, like Public Debt). Depends on:
+-- 217 (nation_stat_values), 47/152 (_nation_policy_stat, _to_num). Idempotent. Apply after 221.
 -- ===========================================================================
 
 set check_function_bodies = off;
@@ -46,6 +47,8 @@ begin
       v := public._to_num(n.economy->>'debt');
     elsif s = 'Interest Rates' then
       v := public._nation_interest_rate(p_nation);
+    elsif s = 'Inflation' then
+      v := public._to_num(n.economy->>'inflation');   -- economy.inflation (like Public Debt → economy.debt); was showing "--"
     elsif public._to_num(n.ministry_stats->>s) is not null
        or public._to_num(n.stat_deltas->>s) is not null
        or coalesce(public._nation_policy_stat(p_nation, s), 0) <> 0
