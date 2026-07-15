@@ -79,6 +79,18 @@
   .rname{font-size:13px;font-weight:600}
   .rrole{margin-left:auto;font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
   .rrole.founder{color:var(--amber)}
+  .rjoin{font-family:'Space Mono',monospace;font-size:8px;color:var(--soft);letter-spacing:.05em;white-space:nowrap;min-width:88px;text-align:right}
+
+  /* governance strip (active orgs) — one card, 4 cells split by left borders */
+  .gov{display:grid;grid-template-columns:repeat(4,1fr);padding:0}
+  .govcell{padding:14px 20px;border-left:1px solid var(--line);min-width:0}
+  .govcell:first-child{border-left:none}
+  .govk{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--soft);margin-bottom:7px}
+  .govv{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+  .govsub{font-family:'Space Mono',monospace;font-size:8px;color:var(--soft);letter-spacing:.04em;margin-top:4px}
+  .youtag{font-family:'Space Mono',monospace;font-size:7.5px;font-weight:700;letter-spacing:.09em;color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 40%,transparent);border-radius:5px;padding:2px 5px}
+  .memhd{justify-content:space-between}   /* Members card header: label left, invite button right */
+  @media(max-width:640px){.gov{grid-template-columns:repeat(2,1fr)}.govcell:nth-child(odd){border-left:none}}
 
   /* laws of the assembly */
   .branch{border:1px solid var(--line2);border-radius:12px;background:var(--field);margin-bottom:12px;overflow:hidden}
@@ -160,6 +172,8 @@
 
     <div id="statusWrap"><div class="empty">Loading…</div></div>
 
+    <div id="govSlot"></div><!-- active view: governance strip + member list, above the Assembly Floor -->
+
     <div id="topSlot"></div><!-- active view: the Assembly Floor is moved here, above the laws -->
 
     <div class="layout" id="layout" style="display:none">
@@ -178,7 +192,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
-  import { esc, tickToDate } from '/util.js';
+  import { esc, tickToDate, declaredValue } from '/util.js';
   import { mountTopbar } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
@@ -232,6 +246,7 @@
   var ORG_ID = new URLSearchParams(location.search).get('id');
   var ME = null, CUR_TICK = 1, AM_FA = false, NATIONS = {}, FLAGS = {}, BUSY = false;
   var O = null, MEMBERS = [], INVITES = [], VOTES = [], MSGS = [], LAWS = [], LAWVOTES = [], APPS = [], APPVOTES = [];
+  var HQ_CAPITAL = null;   // host nation's declared capital (the 'capital_name' declaration), for Headquarters
 
   function natName(id) { return NATIONS[id] || id; }
   function flagOf(id) {
@@ -405,6 +420,56 @@
       '</div>';
   }
 
+  // The org's dues policy — one source: the charter's 'Dues' article (gdp | fixed | none) with the numeric
+  // O.dues rate ($bn/yr) where one is set. No dues are collected yet (the mechanic is deferred).
+  function duesPolicy() {
+    var pick = (O.charter_articles || {}).dues;
+    var rate = Number(O.dues) || 0;
+    if (pick === 'gdp') return 'Flat % of GDP';
+    if (pick === 'fixed') return rate > 0 ? '$' + rate + 'bn/yr' : 'Fixed sum';
+    if (pick === 'none') return 'None';
+    return rate > 0 ? '$' + rate + 'bn/yr' : 'None';   // no article on file — fall back to the numeric rate
+  }
+
+  // Governance strip (active orgs): Chairman (the host), Headquarters (host's declared capital), Dues
+  // (the charter policy) and Treasury — the last a placeholder, the dues/treasury mechanic is deferred.
+  function renderGovernance() {
+    var host = O.host_nation;
+    var chair = flagOf(host) + '<span>' + esc(natName(host)) + '</span>' +
+      (host === ME ? '<span class="youtag">YOU</span>' : '');
+    var hq = HQ_CAPITAL || natName(host);   // fall back to the host nation's name if no capital is declared
+    return '<div class="card gov">' +
+      '<div class="govcell"><div class="govk">Chairman</div><div class="govv">' + chair + '</div></div>' +
+      '<div class="govcell"><div class="govk">Headquarters</div><div class="govv">' + esc(hq) + '</div></div>' +
+      '<div class="govcell"><div class="govk">Dues</div><div class="govv">' + esc(duesPolicy()) + '</div></div>' +
+      '<div class="govcell"><div class="govk">Treasury</div><div class="govv">—</div>' +
+        '<div class="govsub">dues mechanic pending</div></div>' +
+    '</div>';
+  }
+
+  // Member list (active orgs): one row per seated member — founder/host first, then by name. Joined date
+  // from joined_tick (or —). The Invite button shows only for the host's FA minister; direct invites into
+  // an active org aren't a mechanic yet, so it's an honest no-op placeholder (growth is via applications).
+  function renderMembers() {
+    var canInvite = isHost() && AM_FA;
+    var invite = canInvite ? '<button class="lbtn" id="inviteBtn">+ Invite Nation</button>' : '';
+    var rows = MEMBERS.slice().sort(function (a, b) {
+      var af = (a.role === 'founder' || a.nation_id === O.host_nation) ? 0 : 1;
+      var bf = (b.role === 'founder' || b.nation_id === O.host_nation) ? 0 : 1;
+      return (af - bf) || natName(a.nation_id).localeCompare(natName(b.nation_id));
+    }).map(function (m) {
+      var founder = m.role === 'founder';
+      var role = founder ? 'Founder' : (m.role === 'observer' ? 'Observer' : 'Member');
+      var you = m.nation_id === ME ? '<span class="youtag">YOU</span>' : '';
+      var joined = m.joined_tick != null ? tickToDate(m.joined_tick) : '—';
+      return '<div class="rrow">' + flagOf(m.nation_id) + '<span class="rname">' + esc(natName(m.nation_id)) + '</span>' + you +
+        '<span class="rrole' + (founder ? ' founder' : '') + '">' + role + '</span>' +
+        '<span class="rjoin">' + esc(joined) + '</span></div>';
+    }).join('');
+    return '<div class="card"><div class="sect memhd"><span>Members — ' + MEMBERS.length + '</span>' + invite + '</div>' +
+      '<div class="roster">' + rows + '</div></div>';
+  }
+
   function renderChat() {
     var floor = document.getElementById('floorMembers');
     floor.textContent = MEMBERS.map(function (m) { return natName(m.nation_id); }).join(' · ');
@@ -555,15 +620,18 @@
     }; });
     document.querySelectorAll('[data-vote]').forEach(function (b) { b.onclick = function () { if (!b.disabled) voteLaw(b.dataset.s, b.dataset.l, b.dataset.vote === 'aye'); }; });
     var lo = document.getElementById('leaveOrgBtn'); if (lo) lo.onclick = leaveOrg;
+    // No direct-invite mechanic for an active org yet — an open org grows through membership applications
+    // below, a closed one by charter. Keep the button honest: it explains, it doesn't fabricate a flow.
+    var iv = document.getElementById('inviteBtn'); if (iv) iv.onclick = function () { alert('Direct invitations aren’t available yet — an open organization grows through the membership applications below.'); };
     var ap = document.getElementById('applyBtn'); if (ap) ap.onclick = applyMembership;
     document.querySelectorAll('[data-app]').forEach(function (b) { b.onclick = function () { if (!b.disabled) voteApp(b.dataset.app, b.dataset.c); }; });
   }
 
   async function load() {
-    var org = (await supabase.from('organizations').select('id, host_nation, name, emblem, org_type, status, founded_tick, charter_articles, cohesion, resource').eq('id', ORG_ID).maybeSingle()).data;
+    var org = (await supabase.from('organizations').select('id, host_nation, name, emblem, org_type, status, founded_tick, charter_articles, cohesion, resource, dues').eq('id', ORG_ID).maybeSingle()).data;
     if (!org) { document.getElementById('statusWrap').innerHTML = '<div class="empty">Organization not found.</div>'; return; }
     O = org;
-    MEMBERS = (await supabase.from('organization_members').select('nation_id, role').eq('org_id', ORG_ID)).data || [];
+    MEMBERS = (await supabase.from('organization_members').select('nation_id, role, joined_tick').eq('org_id', ORG_ID)).data || [];
     INVITES = (await supabase.from('organization_invitations').select('nation_id, status').eq('org_id', ORG_ID)).data || [];
     VOTES = (await supabase.from('organization_charter_votes').select('nation_id, article, option').eq('org_id', ORG_ID)).data || [];   // RLS: members only
     MSGS = (await supabase.from('organization_messages').select('nation_id, body, created_at').eq('org_id', ORG_ID).order('created_at', { ascending: true }).limit(200)).data || [];
@@ -572,18 +640,34 @@
     APPS = (await supabase.from('organization_applications').select('nation_id, status, created_tick').eq('org_id', ORG_ID)).data || [];   // public register
     APPVOTES = (await supabase.from('organization_application_votes').select('applicant_nation, voter_nation, choice').eq('org_id', ORG_ID)).data || [];   // RLS: members only
 
+    // Headquarters (active orgs only): the host nation's declared capital — one source, the 'capital_name'
+    // declaration resolved with the shared declaredValue helper. Non-critical: any failure leaves HQ_CAPITAL
+    // null and renderGovernance falls back to the host nation's name.
+    HQ_CAPITAL = null;
+    if (O.status === 'active') {
+      try {
+        var capSlot = (await supabase.from('declarations').select('slug, options, default_index, custom_allowed').eq('slug', 'capital_name').maybeSingle()).data;
+        var hostNat = (await supabase.from('nations').select('declarations').eq('id', O.host_nation).maybeSingle()).data;
+        var cap = capSlot && hostNat ? declaredValue(capSlot, hostNat.declarations) : null;
+        if (cap && cap !== '—') HQ_CAPITAL = cap;
+      } catch (e) {}
+    }
+
     document.title = (O.name || 'Organization') + ' · Nationhood';
     renderStatus();
     // Founding: convention + roster on the left, the Floor as a right sidebar. Active: the Floor moves
     // full-width above, and the left column becomes the laws + the agenda summary (mockup layout).
     var founding = O.status === 'founding';
     var layout = document.getElementById('layout'), chatBox = document.getElementById('chatBox');
+    var govSlot = document.getElementById('govSlot');
     if (founding) {
       layout.classList.remove('solo'); chatBox.classList.remove('top'); layout.appendChild(chatBox);
+      govSlot.innerHTML = '';   // the governance strip + member list are an active-org view only
       document.getElementById('leftcol').innerHTML = renderConvention() + renderRoster();
     } else {
       layout.classList.add('solo'); chatBox.classList.add('top'); document.getElementById('topSlot').appendChild(chatBox);
-      // Chat (full-width, above) → Membership Applications → Upcoming Agenda → the Laws ladder.
+      // Governance strip + member list sit above the Floor; then Chat → Applications → Agenda → the Laws ladder.
+      govSlot.innerHTML = renderGovernance() + renderMembers();
       document.getElementById('leftcol').innerHTML = renderApplications() + renderAgenda() + renderLaws();
     }
     layout.style.display = '';
