@@ -46,6 +46,8 @@
   .rung.next .rung__tag{color:var(--indigo)}
   .rung.floor .rung__tag{color:var(--amber,#e0920e)}
   .rung.locked .rung__tag{color:var(--soft)}
+  .rung__eff{font-family:'Space Mono',monospace;font-size:11px;color:var(--green);margin-top:3px;letter-spacing:.02em}
+  .rung.locked .rung__eff{color:var(--soft)}
   .rung__cost{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
 
   /* Footer actions. */
@@ -116,7 +118,7 @@
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { nationRegime, regimeLabel, REGIME_TYPE_LABEL } from '/ladders.js';
-  import { reformName } from '/reforms.js';
+  import { reformName, reformEffectText } from '/reforms.js';
   import { proposeReformAdvance, proposeReformRepeal } from '/proposals.js';
 
   mountTopbar();
@@ -197,7 +199,9 @@
         '<div class="rung ' + cls + '">' +
           '<div class="pip">' + pipInner + '</div>' +
           '<div class="rung__body"><div class="rung__name">' + esc(reformName(type, n) || ('Reform ' + n)) + '</div>' +
-            '<div class="rung__tag">' + tag + '</div></div>' +
+            '<div class="rung__tag">' + tag + '</div>' +
+            (reformEffectText(type, n) ? '<div class="rung__eff">' + esc(reformEffectText(type, n)) + '</div>' : '') +
+          '</div>' +
           (cls === 'done' ? '' : '<div class="rung__cost">1 AP</div>') +
         '</div>';
     }
