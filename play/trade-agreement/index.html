@@ -98,7 +98,11 @@
   .rail{position:sticky;top:16px}
   .deal{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
   .deal-h{padding:14px 16px;border-bottom:1px solid var(--line)}
-  .deal-h .dk{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .deal-h .dk{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);display:flex;align-items:center;gap:8px}
+  /* which side of the arrangement this nation is on: Buying (money out) or Selling (money in) */
+  .dside{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;border-radius:6px;padding:2px 8px}
+  .dside.buy{color:var(--indigo);background:var(--indigo-soft)}
+  .dside.sell{color:var(--green);background:var(--green-soft)}
   .deal-h .dt2{font-weight:900;font-size:16px;margin-top:4px;letter-spacing:-.01em}
   .deal-body{padding:4px 16px}
   .drow{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:12.5px}
@@ -229,7 +233,7 @@
       body += productionPanel(S.byId[S.nationId], true) + productionPanel(S.byId[t.partner]);
       body += '<div class="layout" style="margin-top:14px">' +
         '<div>' + editor(t, true) + '</div>' +
-        '<aside class="rail">' + dealCard(t, nameOf(t.partner), null) +
+        '<aside class="rail">' + dealCard(t, nameOf(t.partner), null, true) +
           '<div class="actrow"><button class="btn primary" id="proposeBtn">Propose to ' + esc(shortName(nameOf(t.partner))) + '</button>' +
           '<button class="btn" id="draftCancel">Clear</button></div></aside></div>';
     }
@@ -244,7 +248,7 @@
     var t = editable ? S.edit : { resource:a.resource, qty:a.qty_per_year, years:a.term_years, disc:a.discount_pct };
     var head = '<div class="grp-h">' + (buyer ? 'Your proposal to ' : 'Proposal from ') + esc(shortName(nameOf(otherNation(a)))) + ' ' + statusBadge(a) + '</div>';
     var left = editor(t, editable) + approvals(a) + actions(a, editable, t);
-    var right = '<aside class="rail">' + dealCard(t, nameOf(otherNation(a)), a.status === 'active' ? a.unit_price : null) + chatBox(a) + '</aside>';
+    var right = '<aside class="rail">' + dealCard(t, nameOf(otherNation(a)), a.status === 'active' ? a.unit_price : null, imBuyer(a)) + chatBox(a) + '</aside>';
     return '<div class="grp" id="detail">' + head + '<div class="layout"><div>' + left + '</div>' + right + '</div></div>';
   }
 
@@ -283,10 +287,14 @@
         '<div class="discsteps">' + discSteps + '</div></div>';
   }
 
-  function dealCard(t, partnerName, lockedUnit){
+  // `buying` = this nation is the buyer (money out, resource in — "from" the partner); false = seller
+  // (money in, resource out — "to" the partner). A proposal you draft is always a buy.
+  function dealCard(t, partnerName, lockedUnit, buying){
     var p = priceOf(t, lockedUnit), locked = lockedUnit != null;
-    return '<div class="deal"><div class="deal-h"><div class="dk">' + (locked ? 'Agreement in force' : 'Proposed agreement') + '</div>' +
-      '<div class="dt2">' + t.qty + ' ' + resLabel(t.resource) + '/yr from ' + esc(shortName(partnerName)) + '</div></div>' +
+    var side = buying ? '<span class="dside buy">Buying</span>' : '<span class="dside sell">Selling</span>';
+    var prep = buying ? 'from' : 'to';
+    return '<div class="deal"><div class="deal-h"><div class="dk">' + (locked ? 'Agreement in force' : 'Proposed agreement') + side + '</div>' +
+      '<div class="dt2">' + t.qty + ' ' + resLabel(t.resource) + '/yr ' + prep + ' ' + esc(shortName(partnerName)) + '</div></div>' +
       '<div class="deal-body">' +
         '<div class="drow"><span class="pk">World rate</span><span class="pv strike">$' + p.world.toFixed(1) + 'B / unit</span></div>' +
         '<div class="drow"><span class="pk">Discount</span><span class="pv disc">−' + t.disc + '%</span></div>' +
