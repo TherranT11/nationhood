@@ -117,10 +117,12 @@ function clampStockPrice(n) {
   return Math.max(STOCK_PRICE_MIN, Math.min(STOCK_PRICE_MAX, v));
 }
 
-// Whether a nation has a live market. Absent OR active:false → inactive (no rating yet).
+// A nation's stock-market membership: economy.stock_market = { exchange_id, role } (role 'host' |
+// 'member'), or absent when it lists nowhere. active = it belongs to some exchange (→ a Price Rating).
 export function nationStockMarket(economy) {
   const sm = economy && economy.stock_market;
-  return { active: !!(sm && sm.active === true) };
+  const id = sm && sm.exchange_id;
+  return { active: !!id, exchangeId: id || null, role: (sm && sm.role) || null };
 }
 
 // The four live levers that set the Price Rating — the same values nation_stat_values feeds the
