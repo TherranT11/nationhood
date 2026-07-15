@@ -20,29 +20,197 @@
     padding:48px 24px;text-align:center;color:var(--soft)}
   .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:6px}
   .empty span{font-size:12.5px}
+
+  /* Minister of Finance action container. */
+  .mact{margin-top:22px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+  .mact__hd{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:4px}
+  .mact__t{font-weight:900;font-size:17px;letter-spacing:-.01em}
+  .mact__sub{color:var(--muted);font-size:13px;margin:4px 0 14px;max-width:60ch}
+  .mact__row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .lead{position:relative;display:flex;flex-direction:column;gap:2px;text-align:left;background:var(--field);border:1px solid var(--line2);border-radius:12px;padding:13px 15px;cursor:pointer;min-width:230px}
+  .lead:hover{border-color:var(--indigo)}
+  .lead b{font-size:14.5px;font-weight:800}
+  .lead__desc{font-size:12px;color:var(--muted);line-height:1.45;max-width:34ch}
+  .lead__cost{position:absolute;top:11px;right:12px;font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.05em;color:var(--indigo);background:var(--indigo-soft);border-radius:6px;padding:2px 7px}
+  .mact__have{font-size:13.5px;color:var(--muted)}
+  .mact__have b{color:var(--ink)}
+
+  /* Modal (mirrors the app's .amodal pattern). */
+  .amodal{position:fixed;inset:0;z-index:80;background:rgba(15,15,20,.5);display:flex;align-items:center;justify-content:center;padding:20px}
+  .amodal[hidden]{display:none}
+  .amodal__panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;width:100%;max-width:460px;max-height:88vh;overflow:auto;box-shadow:0 30px 70px -30px rgba(0,0,0,.5)}
+  .amodal__hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 20px 13px;border-bottom:1px solid var(--line)}
+  .amodal__hd b{font-weight:900;font-size:17px;letter-spacing:-.02em}
+  .amodal__x{background:none;border:none;font-size:23px;line-height:1;color:var(--soft);cursor:pointer;padding:0 4px}
+  .amodal__x:hover{color:var(--ink)}
+  .sxm-body{padding:16px 20px}
+  .fnd-lbl{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin:0 0 6px}
+  .fnd-in{width:100%;background:var(--field);border:1px solid var(--line2);border-radius:9px;color:var(--ink);font-family:inherit;font-size:14px;padding:10px 12px;outline:none}
+  .fnd-in:focus{border-color:var(--indigo)}
+  .sxm-abbr{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft);margin:8px 0 14px}
+  .sxm-abbr b{color:var(--ink);letter-spacing:.06em}
+  .sxm-facts{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:8px}
+  .sxm-facts li{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:var(--ink)}
+  .sxm-facts li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--indigo);margin-top:6px;flex:none}
+  .sxm-facts li.bad{color:var(--red)} .sxm-facts li.bad::before{background:var(--red)}
+  .sxm-facts li.ok::before{background:var(--green)}
+  .sxm-join{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft);border-top:1px solid var(--line);padding-top:12px;margin-top:4px}
+  .sxm-note{font-size:12.5px;color:var(--red);margin-top:10px;min-height:15px}
+  .amodal__foot{display:flex;justify-content:flex-end;gap:8px;padding:13px 20px 18px;border-top:1px solid var(--line)}
+  .btn{font-family:'Space Mono',monospace;font-weight:700;font-size:12px;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--line);border-radius:10px;padding:10px 18px;background:var(--ink);color:var(--bg);cursor:pointer}
+  .btn[disabled]{background:var(--chip);color:var(--soft);border-color:var(--line);cursor:not-allowed}
+  .btn-ghost{font-family:'Space Mono',monospace;font-weight:700;font-size:12px;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--line);border-radius:10px;padding:10px 18px;background:var(--surface);color:var(--muted);cursor:pointer}
 </style>
 </head>
 <body>
 <div class="app">
-
   <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
 
   <main class="main">
+    <div class="topbar" id="topbar"></div>
     <div class="phead">
       <span class="eye">The Party</span>
       <h1>Actions</h1>
       <p>Everything your party can do this month, in one place.</p>
     </div>
-    <div class="empty"><b>Nothing here yet.</b><span>This section is coming soon.</span></div>
+    <div id="financeAction"></div><!-- Minister of Finance container (only when you hold Treasury) -->
+    <div class="empty" id="actEmpty"><b>Nothing here yet.</b><span>This section is coming soon.</span></div>
   </main>
-
 </div>
 
-  <script type="module">
-    import { requireUser } from '/supabase.js';
-    import { mountSidenav } from '/sidenav.js';
-    mountSidenav();            // left rail / bottom bar into #sidenav; active item from the URL
-    requireUser();             // gate the page behind login, like every other play page
-  </script>
+<!-- Found a Stock Exchange modal -->
+<div class="amodal" id="sxModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Stock Exchange</b><button class="amodal__x" id="sxmX" type="button" aria-label="Close">&times;</button></div>
+    <div class="sxm-body">
+      <div class="fnd-lbl">Found your own exchange</div>
+      <input class="fnd-in" id="sxmName" maxlength="60" placeholder="Name the exchange">
+      <div class="sxm-abbr">Lists as <b id="sxmAbbr">—</b></div>
+      <ul class="sxm-facts">
+        <li>+8 Growth on opening</li>
+        <li>Then −1% of GDP a year (<span id="sxmUpkeep">—</span>) in Budget Balance</li>
+        <li id="sxmRol">Requires Rule of Law ≥ 60</li>
+        <li>Costs 2 Action Points</li>
+      </ul>
+      <div class="sxm-join">Join an existing exchange — coming next</div>
+      <div class="sxm-note" id="sxmNote"></div>
+    </div>
+    <div class="amodal__foot">
+      <button class="btn-ghost" id="sxmCancel" type="button">Cancel</button>
+      <button class="btn" id="sxmFound" type="button">Found Exchange</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { esc } from '/util.js';
+  import { ideologyLabel } from '/archetypes.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+
+  mountTopbar();
+  mountSidenav();
+
+  // Ticker abbreviation = the name's word-initials, uppercased, up to 4 letters. ONE source (here).
+  function deriveAbbr(name) {
+    return (name || '').trim().split(/\s+/).filter(Boolean)
+      .map(function (w) { return w[0]; }).join('').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+  }
+
+  (async () => {
+    if (!isConfigured) return;
+    const user = await requireUser();
+    if (!user) return;
+    try {
+      const { data: party, error } = await supabase.from('parties').select('nation_id, name, archetype, influence').eq('user_id', user.id).single();
+      if (error || !party) { window.location.replace('/nation-select/'); return; }
+      const nRes = await supabase.from('nations').select('name, gdp, economy').eq('id', party.nation_id).single();
+      const nation = nRes.data || {};
+      document.getElementById('pname').textContent = party.name;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + (nation.name || party.nation_id);
+      setTopbarActions(party.influence);
+
+      // The stock-exchange action belongs to the Minister of Finance (Treasury). Others: nothing here.
+      let isTreasury = false;
+      try { const { data, error: e } = await supabase.rpc('is_treasury_minister'); if (!e) isTreasury = data === true; } catch (e) {}
+      if (!isTreasury) return;
+
+      const cur = (nation.economy && nation.economy.currency) || '$';
+      const gdp = Number(nation.gdp) || 0;
+      const upkeep = Math.round(gdp * 0.01 * 100) / 100;   // 1% of GDP, $bn
+      const sm = nation.economy && nation.economy.stock_market;
+      const already = !!(sm && sm.active === true);
+
+      // Rule of Law — same source as the Government page — for the founding gate.
+      let rol = null;
+      try {
+        const { data, error: e } = await supabase.rpc('nation_stat_values', { p_nation: party.nation_id, p_stats: ['Rule of Law'] });
+        if (!e && data && data['Rule of Law'] != null) rol = Math.round(Number(data['Rule of Law']));
+      } catch (e) {}
+
+      // Container.
+      const box = document.getElementById('financeAction');
+      document.getElementById('actEmpty').hidden = true;
+      if (already) {
+        box.innerHTML = '<section class="mact"><div class="mact__hd">Minister of Finance</div>' +
+          '<div class="mact__t">Stock Exchange</div>' +
+          '<div class="mact__sub">Your nation lists on <b>' + esc(sm.name || 'its exchange') + '</b> (' + esc(sm.abbr || '—') + '). ' +
+          'Track its Price Rating on the <a href="/play/stockmarket/">Stock Market</a> page.</div></section>';
+        return;
+      }
+      box.innerHTML = '<section class="mact"><div class="mact__hd">Minister of Finance</div>' +
+        '<div class="mact__t">Stock Exchange</div>' +
+        '<div class="mact__sub">Open a national stock market so your corporations can list.</div>' +
+        '<div class="mact__row"><button class="lead" id="sxOpen" type="button"><span class="lead__cost">2 AP</span>' +
+        '<b>Found / Join Stock Exchange</b><span class="lead__desc">Charter your own exchange — or (soon) join another nation’s.</span></button></div></section>';
+
+      // Modal wiring.
+      const modal = document.getElementById('sxModal');
+      const nameIn = document.getElementById('sxmName');
+      const abbrEl = document.getElementById('sxmAbbr');
+      const foundBtn = document.getElementById('sxmFound');
+      const note = document.getElementById('sxmNote');
+      const rolLi = document.getElementById('sxmRol');
+      const eligible = rol != null && rol >= 60;
+
+      document.getElementById('sxmUpkeep').textContent = cur + upkeep + 'bn';
+      rolLi.textContent = 'Requires Rule of Law ≥ 60' + (rol != null ? ' · yours is ' + rol : '');
+      rolLi.className = eligible ? 'ok' : 'bad';
+      if (!eligible) { foundBtn.disabled = true; note.textContent = 'Rule of Law must reach 60 before you can found an exchange.'; }
+
+      function syncAbbr() { const a = deriveAbbr(nameIn.value); abbrEl.textContent = a || '—'; }
+      function openModal() {
+        if (!nameIn.value) { nameIn.value = (nation.name ? nation.name + ' ' : '') + 'Stock Exchange'; }
+        syncAbbr();
+        modal.hidden = false; nameIn.focus();
+      }
+      function closeModal() { modal.hidden = true; }
+      document.getElementById('sxOpen').addEventListener('click', openModal);
+      document.getElementById('sxmX').addEventListener('click', closeModal);
+      document.getElementById('sxmCancel').addEventListener('click', closeModal);
+      modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
+      nameIn.addEventListener('input', syncAbbr);
+
+      let founding = false;   // double-fire lock — founding spends 2 AP + grants a stat
+      foundBtn.addEventListener('click', async function () {
+        if (founding || foundBtn.disabled) return;
+        const nm = nameIn.value.trim();
+        const ab = deriveAbbr(nm);
+        if (!nm) { note.textContent = 'Name the exchange.'; return; }
+        if (!ab) { note.textContent = 'That name has no letters for a ticker — add a word.'; return; }
+        founding = true; foundBtn.disabled = true; const prev = foundBtn.textContent; foundBtn.textContent = 'Founding…'; note.textContent = '';
+        try {
+          const { error: e } = await supabase.rpc('found_stock_exchange', { p_name: nm, p_abbr: ab });
+          if (e) throw e;
+          window.location.href = '/play/stockmarket/';   // show the new market + its rating
+        } catch (e2) {
+          note.textContent = (e2 && e2.message) || 'Could not found the exchange.';
+          founding = false; foundBtn.disabled = false; foundBtn.textContent = prev;
+        }
+      });
+    } catch (e) { /* leave the page in its default empty state */ }
+  })();
+</script>
 </body>
 </html>

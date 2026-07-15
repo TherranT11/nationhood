@@ -88,13 +88,12 @@
         </div>
       </div>
 
-      <!-- Empty state / entry point. The Found/Join exchange system is the next stage. -->
+      <!-- Empty state. Founding lives on the Actions page (Minister of Finance). -->
       <div class="sxempty" id="sxEmpty">
         <h2>No stock exchange</h2>
-        <p>Your corporations have nowhere to list. Found a national stock exchange to open a market and
-           start building a Price Rating.</p>
-        <button class="cta" id="sxFound" disabled>Found a Stock Exchange</button>
-        <span class="soon">Grants +8 Growth · costs 1 Action Point. Joining another nation’s exchange — coming next.</span>
+        <p>Your corporations have nowhere to list. The <b>Minister of Finance</b> can found a national
+           stock exchange from the <a href="/play/actions/">Actions</a> page to open a market.</p>
+        <span class="soon">Founding grants +8 Growth, then costs 1% of GDP a year in Budget Balance · 2 Action Points.</span>
       </div>
 
       <!-- Rating breakdown (active markets only) — how the four levers make the number. -->
@@ -121,7 +120,7 @@
     try {
       const { data: party, error } = await supabase.from('parties').select('nation_id, name, archetype, influence').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      var nRes = await supabase.from('nations').select('name, flag, declarations, economy, gdp').eq('id', party.nation_id).single();
+      var nRes = await supabase.from('nations').select('name, flag, declarations, economy').eq('id', party.nation_id).single();
       var nation = nRes.data || {};
 
       var nationName = nation.name || party.nation_id;
@@ -163,38 +162,8 @@
           document.getElementById('sxDesc').textContent = 'This market trades on a listed stock exchange. Its Price Rating is set by four live indicators — growth, prosperity, rule of law and (inversely) corruption.';
           renderBreakdown(b);
         }
-      } else {
-        // No market yet — only the Treasury (Ministry of Finance) minister may found one. Gate the
-        // button (server enforces this too), and show the standing −1%-of-GDP Budget Balance cost.
-        var foundBtn = document.getElementById('sxFound');
-        var note = document.querySelector('.soon');
-        var cur = (nation.economy && nation.economy.currency) || '$';
-        var upkeep = Math.round((Number(nation.gdp) || 0) * 0.01 * 100) / 100;   // 1% of GDP, $bn
-        var isTreasury = false;
-        try { const { data, error } = await supabase.rpc('is_treasury_minister'); if (!error) isTreasury = data === true; } catch (e) {}
-        if (foundBtn && !isTreasury) {
-          foundBtn.hidden = true;
-          if (note) note.textContent = 'Only the Minister of Finance can found a stock exchange.';
-        } else if (foundBtn) {
-          if (note) note.textContent = 'Grants +8 Growth, then costs 1% of GDP a year (' + cur + upkeep + 'bn) in Budget Balance · 1 Action Point.';
-          foundBtn.disabled = false;
-          var founding = false;   // double-fire lock — founding spends an Action Point + grants a stat
-          foundBtn.addEventListener('click', async function () {
-            if (founding) return;
-            if (!confirm('Found a national stock exchange?\n\n• +8 Growth now\n• −1% of GDP a year (' + cur + upkeep + 'bn) to your Budget Balance\n• Costs 1 Action Point')) return;
-            founding = true; foundBtn.disabled = true;
-            var prev = foundBtn.textContent; foundBtn.textContent = 'Founding…';
-            try {
-              const { error } = await supabase.rpc('found_stock_exchange');
-              if (error) throw error;
-              window.location.reload();   // market now active — re-render with the live rating
-            } catch (e2) {
-              alert((e2 && e2.message) || 'Could not found a stock exchange.');
-              founding = false; foundBtn.disabled = false; foundBtn.textContent = prev;
-            }
-          });
-        }
       }
+      // When inactive, the static empty state stands — founding is done on the Actions page.
     } catch (e) { /* placeholders already shown; topbar still renders */ }
 
     // The rating breakdown: each lever's live value, its weight, the points it adds, then the
