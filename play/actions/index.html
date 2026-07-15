@@ -10,8 +10,59 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/play.css">
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
-  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
+  .main{flex:1;padding:0;min-width:0}
+
+  /* ===== Streamlined Actions redesign — a scoped mockup palette over the existing ministry bars,
+     restyled into a uniform tile grid. Light is the base; dark overrides under html[data-theme="dark"].
+     Redefining the site tokens the .lead/.leadbar rules already read means those rules adopt the mockup
+     palette with no per-bar rewrite. Modals + topbar keep the site theme (they're outside .actroot). ===== */
+  .actroot{
+    --ac-bg:#eef1f6;
+    --surface:#ffffff;--line:#dde1ea;--line2:#d3d8e4;--ink:#181c26;--muted:#5b6478;--soft:#98a1b4;
+    --indigo:#5158d8;--indigo-soft:#e7e9fb;--chip:#eef1f7;--field:#f5f8fc;
+    --ac-orange:#c67f1f;--ac-green:#1a9e6a;--ac-red:#cf3f2b;
+    font-family:'IBM Plex Sans',sans-serif;color:var(--ink);background:var(--ac-bg);
+    min-height:100vh;padding:24px clamp(16px,3vw,30px) 90px}
+  html[data-theme="dark"] .actroot{
+    --ac-bg:#0f1116;
+    --surface:#14161d;--line:#232838;--line2:#2e3448;--ink:#e8ebf2;--muted:#8a93a8;--soft:#5c657b;
+    --indigo:#7c83f7;--indigo-soft:#241f45;--chip:#1b1e28;--field:#1a1d27;
+    --ac-orange:#f0a03c;--ac-green:#3ecf8e;--ac-red:#e5604c}
+  .actroot .amono,.actroot .fchip,.actroot .ac-ap{font-family:'JetBrains Mono',monospace}
+  /* header row: title + AP chip + ALL / READY filter */
+  .actroot .phead{margin-bottom:0}
+  .actroot .phead .eye{font-family:'JetBrains Mono',monospace;color:var(--indigo)}
+  .ac-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;margin-bottom:20px}
+  .ac-filters{display:flex;gap:8px;align-items:center}
+  .ac-ap{font-size:12px;font-weight:800;color:var(--ac-orange);border:1px solid color-mix(in srgb,var(--ac-orange) 40%,transparent);
+    background:color-mix(in srgb,var(--ac-orange) 8%,transparent);border-radius:8px;padding:6px 12px}
+  .fchip{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;padding:6px 13px;border-radius:8px;
+    cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--soft)}
+  .fchip.on{border-color:var(--indigo);color:var(--indigo)}
+  /* ministry sections become seamless (no panel box); slim header; the verbose sub is dropped */
+  .actroot .leadbar{background:none;border:none;border-radius:0;padding:0;margin:0 0 22px}
+  .actroot .leadbar .glance-hd{margin-bottom:10px;gap:9px;border-bottom:1px solid var(--line);padding-bottom:9px}
+  .actroot .leadbar .glance-hd > span{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;color:var(--indigo)}
+  .actroot .leadbar__sub{display:none}
+  .actroot .leadbar__grid{display:flex;flex-wrap:wrap;gap:10px;grid-template-columns:none}
+  /* every .lead in the page (ministry bars + the Finance stock-exchange one) → mockup tile */
+  .actroot .lead{width:210px;min-width:0;background:var(--surface);border:1.5px solid var(--line);border-radius:11px;padding:12px 14px}
+  .actroot .lead:not(:disabled):hover{border-color:var(--ac-orange);transform:none;box-shadow:none;background:color-mix(in srgb,var(--ac-orange) 6%,var(--surface))}
+  .actroot .lead:disabled{opacity:.45;background:var(--surface)}
+  .actroot .lead b{font-size:14px;margin-bottom:0;padding-right:46px}
+  .actroot .lead__lane{display:none}
+  .actroot .lead__desc{font-size:11px;color:var(--muted);margin-top:6px;min-height:30px}
+  .actroot .lead__cost{font-family:'JetBrains Mono',monospace;top:12px;right:13px;font-size:9px;color:var(--indigo);background:color-mix(in srgb,var(--indigo) 12%,transparent);border:1px solid color-mix(in srgb,var(--indigo) 33%,transparent);border-radius:6px;padding:1px 6px}
+  .actroot .lead__cost--soon{color:var(--soft);background:var(--chip);border-color:var(--line)}
+  /* the Finance action (.mact) becomes a seamless ministry group like the others */
+  .actroot .mact{background:none;border:none;border-radius:0;padding:0;margin:0 0 22px}
+  .actroot .mact__hd{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;color:var(--indigo);text-transform:uppercase;border-bottom:1px solid var(--line);padding-bottom:9px;margin-bottom:10px}
+  .actroot .mact__t,.actroot .mact__sub{display:none}
+  /* READY filter: hide unavailable (disabled) tiles */
+  .actroot.ready-only .lead:disabled{display:none}
+  .actroot .initiatives-panel{background:var(--surface);border:1px solid var(--line);border-radius:14px}
   .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
   .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
   .phead p{color:var(--muted);font-size:13px;margin-top:6px;max-width:78ch;line-height:1.55}
@@ -174,25 +225,34 @@
   <div id="sidenav"></div>
   <main class="main">
     <div class="topbar" id="topbar"></div>
-    <div class="phead">
-      <span class="eye">The Party</span>
-      <h1>Actions</h1>
-      <p>Everything your party can do this month, in one place.</p>
+    <div class="actroot" id="actroot">
+    <div class="ac-head">
+      <div class="phead">
+        <span class="eye">The Party</span>
+        <h1>Actions</h1>
+        <p>Everything your party can do this month — pick a tile and its flow opens.</p>
+      </div>
+      <div class="ac-filters">
+        <span class="ac-ap" id="acAp">⚡ — AP</span>
+        <div class="fchip on" id="fAll" role="button" tabindex="0">ALL</div>
+        <div class="fchip" id="fReady" role="button" tabindex="0">READY ONLY</div>
+      </div>
     </div>
-    <div id="financeAction"></div>
-    <!-- This Week's Action bars (moved from the Nation page): each renders only for the
-         party that holds the relevant portfolio; the PM bar for the head of government. -->
-    <div id="jointInbox"></div>
+    <!-- This Week's Action bars (moved from the Nation page): each renders only for the party that holds
+         the relevant portfolio. The Prime Minister bar is always the top container. -->
     <div id="pmbar"></div>
+    <div id="financeAction"></div>
+    <div id="jointInbox"></div>
     <div id="econdevbar"></div>
     <div id="foreignbar"></div>
     <div id="tradebar"></div>
     <div id="defencebar"></div>
-    <section class="panel">
+    <section class="panel initiatives-panel">
       <div class="glance-hd"><span>National Initiatives</span></div>
       <div id="homeInitiatives"><p class="empty">No active initiatives.</p></div>
     </section>
     <div class="empty" id="actEmpty"><b>Nothing here yet.</b><span>This section is coming soon.</span></div>
+    </div>
   </main>
 </div>
 
@@ -318,6 +378,19 @@
   mountTopbar();
   mountSidenav();
 
+  // ALL / READY filter — READY hides tiles that are disabled (on cooldown or unaffordable). One class on
+  // the root drives it via CSS; the actual gating (disabled state) is set by the existing action logic.
+  (function () {
+    var root = document.getElementById('actroot'), all = document.getElementById('fAll'), ready = document.getElementById('fReady');
+    function setFilter(readyOnly) {
+      root.classList.toggle('ready-only', readyOnly);
+      all.classList.toggle('on', !readyOnly);
+      ready.classList.toggle('on', readyOnly);
+    }
+    all.addEventListener('click', function () { setFilter(false); });
+    ready.addEventListener('click', function () { setFilter(true); });
+  })();
+
   // Ticker = the name's word-initials, uppercased, up to 4 letters. ONE source (must match the server's store).
   function deriveAbbr(name) {
     return (name || '').trim().split(/\s+/).filter(Boolean)
@@ -335,6 +408,7 @@
   function setActions(n) {
     partyActions = n;
     setTopbarActions(n);
+    var apChip = document.getElementById('acAp'); if (apChip) apChip.textContent = '⚡ ' + n + ' AP';
 
     // Every move costs 1 Action Point, so a button greys out the moment you're at 0 AP.
     actionBtns.forEach(function (b) { b.disabled = n < 1; });

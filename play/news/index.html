@@ -52,6 +52,9 @@
   .ev-tablecol{flex:2 1 440px;min-width:420px}
   .ev-feedcol{flex:1 1 300px;min-width:280px}
   .ev-panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  /* the feed panel is height-matched to the table panel (matchPanelHeights) so their bottoms align; the
+     feed then scrolls inside that height. It's a flex column so #evFeed fills the space below the tabs. */
+  .ev-feedcol .ev-panel{display:flex;flex-direction:column}
   .ev-panelhd{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
   .ev-tablegrid{display:flex;gap:16px;align-items:stretch;flex-wrap:wrap}
   .ev-colhd{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
@@ -88,8 +91,8 @@
   .ev-tabs{display:flex;gap:4px;margin-bottom:10px}
   .ev-tab{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;padding:6px 13px;cursor:pointer;color:var(--dim);border-radius:7px;font-weight:700}
   .ev-tab.on{background:var(--panel2);color:var(--text)}
-  /* the feed scrolls on its own so the page doesn't grow unbounded with history */
-  #evFeed{max-height:72vh;overflow-y:auto;padding-right:8px}
+  /* the feed fills the panel height (matched to the table) and scrolls inside it */
+  #evFeed{flex:1 1 auto;min-height:0;overflow-y:auto;padding-right:8px}
   #evFeed::-webkit-scrollbar{width:8px}
   #evFeed::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
   #evFeed::-webkit-scrollbar-track{background:transparent}
@@ -134,7 +137,9 @@
   .nmention{font-weight:700}
   .ev-err{color:var(--red);font-size:13px;padding:16px 2px}
 
-  @media(max-width:920px){.ev-tablecol{min-width:0;flex:1 1 100%}.ev-feedcol{flex:1 1 100%}.ev-divider{display:none}}
+  /* stacked: columns go full-width and the feed height-match is cleared (JS), so cap it here to keep scroll */
+  @media(max-width:920px){.ev-tablecol{min-width:0;flex:1 1 100%}.ev-feedcol{flex:1 1 100%}.ev-divider{display:none}
+    .ev-feedcol .ev-panel{height:auto !important}#evFeed{max-height:70vh}}
 </style>
 </head>
 <body>
@@ -395,6 +400,16 @@
       : '<div class="ev-empty">No further cards queued this turn.</div>';
   }
 
+  // Match the feed panel's height to the (dynamic) table panel so their bottoms align side-by-side; the
+  // feed scrolls inside it. Cleared to auto when the columns stack (the mobile CSS caps #evFeed instead).
+  function matchPanelHeights() {
+    var tablePanel = document.querySelector('.ev-tablecol .ev-panel');
+    var feedPanel = document.querySelector('.ev-feedcol .ev-panel');
+    if (!tablePanel || !feedPanel) return;
+    feedPanel.style.height = window.innerWidth > 920 ? tablePanel.offsetHeight + 'px' : '';
+  }
+  window.addEventListener('resize', matchPanelHeights);
+
   // ---- claims + decisions go through run() for the shared BUSY lock + reload ----------------------
   async function claim(cardId, action) {
     await run(function () { return supabase.rpc('claim_card', { p_deck_card: (action === 'pass' ? null : cardId), p_action: action }); });
@@ -478,6 +493,7 @@
     renderFeed();
     renderTempo(roster, mine);
     renderTable(cards.slice(0, 2), cards.slice(2, 4), { claims: claims, mine: mine, abbr: abbr });
+    requestAnimationFrame(matchPanelHeights);   // align the feed's bottom with the table after layout settles
   }
 
   (async () => {
