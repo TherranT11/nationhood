@@ -677,8 +677,7 @@
         </div>
         <div class="declsec">
           <h3 class="declsec__h">Policies</h3>
-          <p class="declsec__sub">The starting option for each policy. Players can propose changes later. A policy left at its default applies that default automatically.</p>
-          <div id="polFields" class="declgrid"><p class="empty">Loading policies…</p></div>
+          <p class="declsec__sub">A nation's in-force policy options are set on the <b>National Policies</b> tab — one policy at a time, saved on its own so it never touches this nation's other stats. Saving here leaves every policy exactly as it is.</p>
         </div>
         <div class="declsec">
           <h3 class="declsec__h">Relations</h3>
@@ -1261,7 +1260,6 @@
           await loadNations();
           await loadIdentityTags();
           loadDeclFields();
-          loadPolFields();
           renderModNations(modEditing ? (assignCache[modEditing.id] || []) : []);
           loadModifiers();
         } else if (session) {
@@ -1381,7 +1379,6 @@
       setVal('f-ceil-food', pc.food != null ? pc.food : 10);
       setVal('f-ceil-minerals', pc.minerals != null ? pc.minerals : 10);
       fillDeclFields(n);
-      fillPolFields(n);
       fillMinistryFields(n);
     }
     function startEdit(n) {
@@ -1398,7 +1395,6 @@
       editing = null;
       document.getElementById('addForm').reset();
       resetDeclFields();
-      resetPolFields();
       resetMinistryFields();
       loadRelFields(null);
       document.getElementById('f-regime-type').value = 'democracy';
@@ -1550,48 +1546,8 @@
       return out;
     }
 
-    // --- Per-nation policy starting option (same pattern as declarations) ----
-    var polNationDefs = [];   // [{id, definition}] for the form's policy dropdowns
-    async function loadPolFields() {
-      var box = document.getElementById('polFields');
-      if (!box) return;
-      try {
-        const { data, error } = await supabase.from('policies').select('id, definition').order('created_at');
-        if (error) throw error;
-        polNationDefs = data || [];
-        if (!polNationDefs.length) { box.innerHTML = '<p class="empty">No policies defined yet — add them in the Policies tab.</p>'; return; }
-        box.innerHTML = polNationDefs.map(function (row) {
-          var d = row.definition || {}, def = policyDefaultIdx(d);
-          var opts = policyOptions(d).map(function (o, i) {
-            return '<option value="' + i + '"' + (i === def ? ' selected' : '') + '>' + esc(o.name || ('Option ' + (i + 1))) + (i === def ? ' (default)' : '') + '</option>';
-          }).join('');
-          return '<div class="declrow" data-pid="' + esc(row.id) + '"><label>' + esc(d.name || 'Untitled policy') + '</label><select class="pol-sel">' + opts + '</select></div>';
-        }).join('');
-        if (editing) fillPolFields(editing);   // re-apply the loaded nation's saved options
-      } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load policies.</p>'; }
-    }
-    function fillPolFields(n) {
-      var vals = (n && n.policies) || {};
-      document.querySelectorAll('#polFields .declrow').forEach(function (row) {
-        var sel = row.querySelector('.pol-sel'), v = vals[row.dataset.pid];
-        sel.value = (v != null) ? String(v) : sel.querySelector('option[selected]') ? sel.querySelector('option[selected]').value : '0';
-      });
-    }
-    function resetPolFields() {
-      document.querySelectorAll('#polFields .declrow').forEach(function (row) {
-        var sel = row.querySelector('.pol-sel'), d = sel.querySelector('option[selected]');
-        sel.value = d ? d.value : '0';
-      });
-    }
-    // The form's policy choices as a jsonb map { policy_id: option_idx } — every
-    // policy currently shown is stored explicitly. Deleted policies drop out.
-    function collectNationPolicies() {
-      var out = {};
-      document.querySelectorAll('#polFields .declrow').forEach(function (row) {
-        out[row.dataset.pid] = parseInt(row.querySelector('.pol-sel').value, 10) || 0;
-      });
-      return out;
-    }
+    // Per-nation policy options are set on the National Policies tab (writes only the policies
+    // column, one policy at a time) — NOT in this form, so a nation edit never clobbers them.
 
     async function loadNations() {
       var box = document.getElementById('nationList');
@@ -1733,7 +1689,9 @@
         // clamps energy/food/minerals output to these (schema/113 _apply_production_ceilings).
         production_ceiling: { energy: numCeil('f-ceil-energy'), food: numCeil('f-ceil-food'), minerals: numCeil('f-ceil-minerals') },
         declarations: collectDeclarations(),
-        policies: collectNationPolicies(),
+        // Policies are NOT written here — a nation edit must never clobber its in-force policy
+        // options. They're set one-at-a-time on the National Policies tab (writes only the
+        // policies column). Omitting the key preserves nations.policies untouched on every save.
         ministry_stats: ms
       };
 
@@ -1800,7 +1758,7 @@
         addNote.textContent = (editing ? ('Saved changes to “' + name + '”.') : ('Added “' + name + '”. It’s now joinable on the nation-select screen.')) +
           (droppedCols.length ? ' NOT saved (column missing — apply the pending migrations): ' + droppedCols.join(', ') + '.' : '');
         addNote.className = droppedCols.length ? 'note error' : 'note ok';
-        if (editing) cancelEdit(); else { e.target.reset(); resetDeclFields(); resetPolFields(); resetMinistryFields(); }
+        if (editing) cancelEdit(); else { e.target.reset(); resetDeclFields(); resetMinistryFields(); }
         loadNations();
       } catch (e) { addNote.textContent = 'Couldn’t save the nation. Try again.'; addNote.className = 'note error'; }
       finally { btn.disabled = false; }
@@ -2188,7 +2146,7 @@
         document.querySelectorAll('.vtab').forEach(function (x) { x.classList.toggle('active', x === t); });
         document.querySelectorAll('.tabpane').forEach(function (p) { p.hidden = p.dataset.tab !== tab; });
         if (tab === 'modifiers') { renderModNations(modEditing ? (assignCache[modEditing.id] || []) : []); loadModifiers(); }
-        if (tab === 'nations') { loadDeclFields(); loadPolFields(); }
+        if (tab === 'nations') { loadDeclFields(); }
         if (tab === 'cities') loadCities();
         if (tab === 'declarations') loadDeclarations();
         if (tab === 'policies') loadPolicies();
