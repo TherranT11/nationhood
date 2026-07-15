@@ -1714,18 +1714,38 @@
         return { message: 'Too many missing columns — apply the pending migrations.' };
       }
 
+      // Deep value-equality (key-order-independent) so the change-diff below is reliable on jsonb columns.
+      function _sameVal(a, b) {
+        if (a === b) return true;
+        if (a == null || b == null || typeof a !== 'object' || typeof b !== 'object') return a === b;
+        var ka = Object.keys(a), kb = Object.keys(b);
+        if (ka.length !== kb.length) return false;
+        for (var i = 0; i < ka.length; i++) {
+          if (!Object.prototype.hasOwnProperty.call(b, ka[i]) || !_sameVal(a[ka[i]], b[ka[i]])) return false;
+        }
+        return true;
+      }
+
       btn.disabled = true;
       try {
         var error;
         if (editing) {
-          // Update keeps id + next_election_tick (the schedule) untouched — EXCEPT when this
-          // edit activates a nation that was never scheduled (e.g. dormant → active): start its
-          // calendar with a first election 1d6+1 ticks out, the same roll the insert path uses.
-          // An already-scheduled nation keeps its date.
-          if (!data.dormant && editing.next_election_tick == null) {
+          // Save ONLY the columns that actually changed. Editing one field must never write a stale
+          // snapshot of the OTHER columns back over their live values — that's how an unrelated stat,
+          // or the regime, got clobbered. Compare each built column to the loaded nation; drop the
+          // ones that are unchanged, so an untouched column (e.g. economy → regime) is never written.
+          var wasDormant = data.dormant;
+          Object.keys(data).forEach(function (k) {
+            if ((k in editing) && _sameVal(data[k], editing[k])) delete data[k];
+          });
+          // Update keeps id + next_election_tick (the schedule) untouched — EXCEPT when this edit
+          // activates a nation that was never scheduled (dormant → active): start its calendar with a
+          // first election 1d6+1 ticks out, the same roll the insert path uses.
+          if (!wasDormant && editing.next_election_tick == null) {
             data.next_election_tick = (await currentTick()) + 1 + Math.floor(Math.random() * 6);
           }
-          error = await writeNation(data, editing.id);
+          // Nothing changed on the row itself → skip the write (relations + one-party sync still run below).
+          if (Object.keys(data).length > 0) error = await writeNation(data, editing.id);
         } else {
           var id = slugify(name);
           if (!id) { addNote.textContent = 'Enter a valid nation name.'; addNote.className = 'note error'; return; }
