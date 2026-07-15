@@ -225,7 +225,8 @@
     var body = '<div class="partners">' + cards + '</div>';
     if (S.draft){
       var t = S.draft;
-      body += productionPanel(S.byId[t.partner]);   // show the selected partner's production before the terms
+      // Show what YOU produce, then the partner's, so both sides are visible before setting terms.
+      body += productionPanel(S.byId[S.nationId], true) + productionPanel(S.byId[t.partner]);
       body += '<div class="layout" style="margin-top:14px">' +
         '<div>' + editor(t, true) + '</div>' +
         '<aside class="rail">' + dealCard(t, nameOf(t.partner), null) +
@@ -247,16 +248,17 @@
     return '<div class="grp" id="detail">' + head + '<div class="layout"><div>' + left + '</div>' + right + '</div></div>';
   }
 
-  /* ---- the selected partner's production across the six tradeable resources (nation.production),
-         so you can see what they can supply long-term before proposing terms ---- */
-  function productionPanel(n){
+  /* ---- a nation's production across the six tradeable resources (nation.production), so both sides
+         are visible before proposing terms. `mine` = true renders it as "What you produce". ---- */
+  function productionPanel(n, mine){
     var prod = (n && n.production) || {};
     var cells = RES.map(function(r){
       var v = num(prod[r.k]);
       return '<div class="prodcell"><span class="rd" style="background:var(--' + r.k + ')"></span>' +
         '<span class="pv' + (v ? '' : ' zero') + '">' + v + '</span><span class="pl">' + r.label + '</span></div>';
     }).join('');
-    return '<div class="prodpanel"><div class="prodpanel-h">What ' + esc(shortName((n && n.name) || 'they')) + ' produces &middot; units per cycle</div>' +
+    var title = mine ? 'What you produce' : ('What ' + esc(shortName((n && n.name) || 'they')) + ' produces');
+    return '<div class="prodpanel"><div class="prodpanel-h">' + title + ' &middot; units per cycle</div>' +
       '<div class="prodgrid">' + cells + '</div></div>';
   }
 
