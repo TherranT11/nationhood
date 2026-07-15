@@ -31,3 +31,26 @@ export function reformName(type, n) {
   const a = REFORM_NAMES[type];
   return (a && n >= 1 && n <= 15) ? a[n - 1] : null;
 }
+
+// The standing stat effects a reform carries while enacted — the client mirror of _reform_effects
+// (schema/217). Per type, index n-1 holds reform n's effects as {t: stat, v: signed}; [] = no
+// mechanic authored yet. The SERVER stays authoritative (nation_stat_values already includes these);
+// this is only the display copy the reform track shows under each rung.
+export const REFORM_EFFECTS = {
+  democracy: [],
+  monarchy: [
+    [{ t: 'Bureaucracy', v: 6 }, { t: 'Rule of Law', v: 2 }],   // 1 · Great Charter
+    [{ t: 'Prosperity', v: 1 }, { t: 'Control', v: 2 }, { t: 'Revolt Risk', v: -2 }],   // 2 · Council of Notables
+  ],
+  autocracy: [],
+};
+export function reformEffects(type, n) {
+  const a = REFORM_EFFECTS[type];
+  return (a && n >= 1 && n <= 15 && a[n - 1]) ? a[n - 1] : [];
+}
+// "+8 Rule of Law · +4 Civil Liberties", or '' when the reform has no mechanic yet.
+export function reformEffectText(type, n) {
+  return reformEffects(type, n).map(function (e) {
+    return (e.v > 0 ? '+' : e.v < 0 ? '−' : '') + Math.abs(e.v) + ' ' + e.t;
+  }).join(' · ');
+}
