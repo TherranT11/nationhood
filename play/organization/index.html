@@ -432,13 +432,16 @@
     var agenda = LAWS.filter(function (l) { return l.status === 'proposed'; }).length;
     var branches = LAWS_CAT.map(function (br) {
       // Only the Resource sector's laws are live (schema/197). The rest are drafted but not yet wired to
-      // any effect — shown greyed with no controls until their pass lands.
-      var soon = !!br.soon;
+      // any effect — shown greyed with no controls until their pass lands. The Resource sector is ALSO
+      // greyed for an organization that governs no resource (its laws price/pool a resource it doesn't
+      // have — only a Resource-type org, e.g. OCEN → Energy, can enact them).
+      var noRes = br.id === 'res' && !(O && O.resource);
+      var soon = !!br.soon || noRes;
       var laws = br.laws.map(function (l) {
         var row = lawRow(br.id, l.id), st = row && row.status, action;
         var costTag = l.cost ? '<span class="lcost">' + l.cost + ' Cohesion</span>' : '';
         if (soon) {
-          action = '<span class="lnote">not yet in force</span>';
+          action = '<span class="lnote">' + (noRes ? 'this organization governs no resource' : 'not yet in force') + '</span>';
         } else if (st === 'enacted') {
           var pr = row && row.param && row.param.price;
           action = '<span class="enacted">✓ Enacted' + (l.id === 'pricing' && pr ? ' · $' + pr : '') + '</span>';
