@@ -26,28 +26,31 @@
   .ip-title{font-weight:800;font-size:26px;margin:2px 0 4px}
   .ip-sub{font-size:12.5px;color:var(--muted);margin-bottom:16px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:15px 17px}
-  .ip-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .ip-row{display:flex;gap:15px;flex-wrap:wrap;margin-bottom:14px}
   .ip-row2{display:flex;gap:14px;flex-wrap:wrap}
+  /* Row 1 (identity + stat cards) runs 25% larger than the base card — bigger padding, labels and figures. */
+  .ip-row .card{padding:19px 21px}
+  .ip-row .ip-micro{font-size:11px}
 
   /* identity */
-  .idcard{flex:2.2 1 280px;display:flex;align-items:center;gap:13px}
-  .id-logo{width:52px;height:52px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden;flex:none}
+  .idcard{flex:2.2 1 250px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;row-gap:12px}
+  .id-logo{width:78px;height:78px;border-radius:15px;background:var(--panel2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:36px;overflow:hidden;flex:none}
   .id-logo img{width:100%;height:100%;object-fit:cover}
-  .id-name{font-weight:800;font-size:17px;margin:2px 0}
-  .id-leader{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted)}
+  .id-name{font-weight:800;font-size:21px;margin:2px 0}
+  .id-leader{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--muted)}
   .id-leader b{color:var(--text);font-weight:700}
-  .id-edit{font-family:'JetBrains Mono',monospace;background:var(--panel2);border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:7px 12px;font-size:9.5px;font-weight:800;letter-spacing:.06em;cursor:pointer;flex:none}
+  .id-edit{font-family:'JetBrains Mono',monospace;background:var(--panel2);border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:9px 15px;font-size:12px;font-weight:800;letter-spacing:.06em;cursor:pointer;flex:none;margin-left:auto}
   .id-edit:hover{border-color:var(--accent);color:var(--accent)}
 
   /* stat cards */
-  .statcard{flex:1 1 160px}
-  .stat-big{font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:800}
-  .stat-big small{font-size:13px;color:var(--dim)}
-  .stat-trend{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700}
+  .statcard{flex:1 1 170px}
+  .stat-big{font-family:'JetBrains Mono',monospace;font-size:30px;font-weight:800}
+  .stat-big small{font-size:16px;color:var(--dim)}
+  .stat-trend{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700}
   .stat-trend.up{color:var(--green)} .stat-trend.down{color:var(--red)}
-  .stat-note{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--muted);margin-top:5px}
-  .hearts{font-size:22px;letter-spacing:4px;margin-top:6px}
-  .heart-svg{width:22px;height:22px;vertical-align:-3px}
+  .stat-note{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);margin-top:7px}
+  .hearts{font-size:28px;letter-spacing:5px;margin-top:8px}
+  .heart-svg{width:28px;height:28px;vertical-align:-4px}
 
   /* hemicycle */
   .hemicard{flex:1 1 360px}
@@ -121,7 +124,7 @@
         <div class="ip-row">
           <div class="card idcard">
             <div class="id-logo" id="idLogo">🏛</div>
-            <div style="flex:1;min-width:0">
+            <div style="flex:1 1 140px;min-width:140px">
               <div class="ip-micro" id="idEyebrow" style="color:var(--accent)">—</div>
               <div class="id-name" id="idName">—</div>
               <div class="id-leader" id="idLeader">LEADER —</div>
