@@ -537,11 +537,15 @@ function applyTransform() {
   orgMembers.forEach(function (m) { if (orgMemberSet[m.org_id]) orgMemberSet[m.org_id][m.nation_id] = 1; });
   var selectedOrg = null;
 
-  // A compact key for the chip: initials for a multi-word name, else the (truncated) name. The legend
-  // carries the full name, so this only needs to be recognisable at a glance.
+  // A compact key for the chip: initials for a multi-word name, else the (truncated) name. Connective
+  // words (of/the/and/…) are skipped so "Organization of Crude Exporting Nations" reads OCEN, not OOCEN.
+  // The legend carries the full name, so this only needs to be recognisable at a glance.
+  var ORG_STOPWORDS = { of:1, the:1, and:1, for:1, a:1, an:1, to:1, in:1, on:1 };
   function orgKey(o) {
     var n = String(o.name || '').trim(), words = n.split(/\s+/).filter(Boolean);
-    if (words.length >= 2) return words.map(function (w) { return w.charAt(0); }).join('').toUpperCase().slice(0, 5);
+    var big = words.filter(function (w) { return !ORG_STOPWORDS[w.toLowerCase()]; });
+    var initialsFrom = big.length >= 2 ? big : words;   // fall back to all words if stripping leaves <2
+    if (words.length >= 2) return initialsFrom.map(function (w) { return w.charAt(0); }).join('').toUpperCase().slice(0, 5);
     return n.toUpperCase().slice(0, 6);
   }
 
