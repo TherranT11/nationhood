@@ -11,38 +11,246 @@
 <link rel="stylesheet" href="/play.css">
 <style>
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
-  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
   .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
   .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
   .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
   .phead p{color:var(--muted);font-size:13px;margin-top:6px;max-width:78ch;line-height:1.55}
-  .empty{margin-top:22px;background:var(--surface);border:1px dashed var(--line2);border-radius:16px;
-    padding:48px 24px;text-align:center;color:var(--soft)}
+  .empty{margin-top:22px;background:var(--surface);border:1px dashed var(--line2);border-radius:16px;padding:48px 24px;text-align:center;color:var(--soft)}
   .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:6px}
   .empty span{font-size:12.5px}
+
+  .mact{margin-top:22px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+  .mact__hd{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:4px}
+  .mact__t{font-weight:900;font-size:17px;letter-spacing:-.01em}
+  .mact__sub{color:var(--muted);font-size:13px;margin:4px 0 14px;max-width:62ch}
+  .mact__sub b{color:var(--ink)}
+  .lead{position:relative;display:flex;flex-direction:column;gap:2px;text-align:left;background:var(--field);border:1px solid var(--line2);border-radius:12px;padding:13px 15px;cursor:pointer;min-width:230px}
+  .lead:hover{border-color:var(--indigo)}
+  .lead b{font-size:14.5px;font-weight:800}
+  .lead__desc{font-size:12px;color:var(--muted);line-height:1.45;max-width:34ch}
+  .lead__cost{position:absolute;top:11px;right:12px;font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.05em;color:var(--indigo);background:var(--indigo-soft);border-radius:6px;padding:2px 7px}
+  .mact__leave{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--line);border-radius:9px;padding:9px 15px;background:var(--surface);color:var(--red);cursor:pointer;margin-top:6px}
+  .mact__leave[disabled]{opacity:.6;cursor:not-allowed}
+
+  .amodal{position:fixed;inset:0;z-index:80;background:rgba(15,15,20,.5);display:flex;align-items:center;justify-content:center;padding:20px}
+  .amodal[hidden]{display:none}
+  .amodal__panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;width:100%;max-width:480px;max-height:90vh;overflow:auto;box-shadow:0 30px 70px -30px rgba(0,0,0,.5)}
+  .amodal__hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 20px 13px;border-bottom:1px solid var(--line)}
+  .amodal__hd b{font-weight:900;font-size:17px;letter-spacing:-.02em}
+  .amodal__x{background:none;border:none;font-size:23px;line-height:1;color:var(--soft);cursor:pointer;padding:0 4px}
+  .amodal__x:hover{color:var(--ink)}
+  .sxm-body{padding:16px 20px}
+  .fnd-lbl{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin:0 0 6px}
+  .fnd-in{width:100%;background:var(--field);border:1px solid var(--line2);border-radius:9px;color:var(--ink);font-family:inherit;font-size:14px;padding:10px 12px;outline:none}
+  .fnd-in:focus{border-color:var(--indigo)}
+  .sxm-abbr{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft);margin:8px 0 12px}
+  .sxm-abbr b{color:var(--ink);letter-spacing:.06em}
+  .sxm-facts{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:7px}
+  .sxm-facts li{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--ink)}
+  .sxm-facts li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--indigo);margin-top:5px;flex:none}
+  .sxm-facts li.bad{color:var(--red)} .sxm-facts li.bad::before{background:var(--red)}
+  .sxm-facts li.ok::before{background:var(--green)}
+  .btn{font-family:'Space Mono',monospace;font-weight:700;font-size:12px;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--line);border-radius:10px;padding:10px 18px;background:var(--ink);color:var(--bg);cursor:pointer}
+  .btn[disabled]{background:var(--chip);color:var(--soft);border-color:var(--line);cursor:not-allowed}
+  .sxm-or{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);border-top:1px solid var(--line);padding-top:14px;margin:16px 0 8px}
+  .exlist{display:flex;flex-direction:column;gap:7px;max-height:230px;overflow:auto}
+  .exrow{display:flex;align-items:center;gap:10px;background:var(--field);border:1px solid var(--line2);border-radius:10px;padding:10px 12px}
+  .exrow__main{flex:1;min-width:0}
+  .exrow__name{font-weight:700;font-size:13px}
+  .exrow__name span{color:var(--soft);font-family:'Space Mono',monospace;font-size:11px}
+  .exrow__meta{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;color:var(--soft);margin-top:2px}
+  .exrow__rel{font-family:'Space Mono',monospace;font-size:10px;font-weight:700}
+  .exrow__rel.ok{color:var(--green)} .exrow__rel.no{color:var(--red)}
+  .exjoin{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--line);border-radius:8px;padding:7px 12px;background:var(--ink);color:var(--bg);cursor:pointer}
+  .exjoin[disabled]{background:var(--chip);color:var(--soft);border-color:var(--line);cursor:not-allowed}
+  .exlist__empty{font-size:12.5px;color:var(--soft);font-style:italic;padding:4px 2px}
+  .sxm-note{font-size:12.5px;color:var(--red);margin-top:12px;min-height:15px}
 </style>
 </head>
 <body>
 <div class="app">
-
-  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
-
+  <div id="sidenav"></div>
   <main class="main">
+    <div class="topbar" id="topbar"></div>
     <div class="phead">
       <span class="eye">The Party</span>
       <h1>Actions</h1>
       <p>Everything your party can do this month, in one place.</p>
     </div>
-    <div class="empty"><b>Nothing here yet.</b><span>This section is coming soon.</span></div>
+    <div id="financeAction"></div>
+    <div class="empty" id="actEmpty"><b>Nothing here yet.</b><span>This section is coming soon.</span></div>
   </main>
-
 </div>
 
-  <script type="module">
-    import { requireUser } from '/supabase.js';
-    import { mountSidenav } from '/sidenav.js';
-    mountSidenav();            // left rail / bottom bar into #sidenav; active item from the URL
-    requireUser();             // gate the page behind login, like every other play page
-  </script>
+<!-- Found / Join a Stock Exchange modal (shown only when your nation lists nowhere) -->
+<div class="amodal" id="sxModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Stock Exchange</b><button class="amodal__x" id="sxmX" type="button" aria-label="Close">&times;</button></div>
+    <div class="sxm-body">
+      <div class="fnd-lbl">Found your own exchange</div>
+      <input class="fnd-in" id="sxmName" maxlength="60" placeholder="Name the exchange">
+      <div class="sxm-abbr">Lists as <b id="sxmAbbr">—</b></div>
+      <ul class="sxm-facts">
+        <li>+8 Growth on opening</li>
+        <li>Then −1% of GDP a year (<span id="sxmUpkeep">—</span>) in Budget Balance</li>
+        <li id="sxmRol">Requires Rule of Law ≥ 60</li>
+        <li>Costs 2 Action Points</li>
+      </ul>
+      <button class="btn" id="sxmFound" type="button">Found Exchange</button>
+      <div class="sxm-or">Or join an existing exchange · relations ≥ 7 with the host · 0.2% of GDP/yr · 2 AP</div>
+      <div class="exlist" id="sxmJoinList"><div class="exlist__empty">Loading…</div></div>
+      <div class="sxm-note" id="sxmNote"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { esc } from '/util.js';
+  import { ideologyLabel } from '/archetypes.js';
+  import { nationStockMarket } from '/ladders.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+
+  mountTopbar();
+  mountSidenav();
+
+  // Ticker = the name's word-initials, uppercased, up to 4 letters. ONE source (must match the server's store).
+  function deriveAbbr(name) {
+    return (name || '').trim().split(/\s+/).filter(Boolean)
+      .map(function (w) { return w[0]; }).join('').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+  }
+
+  (async () => {
+    if (!isConfigured) return;
+    const user = await requireUser();
+    if (!user) return;
+    try {
+      const { data: party, error } = await supabase.from('parties').select('nation_id, name, archetype, influence').eq('user_id', user.id).single();
+      if (error || !party) { window.location.replace('/nation-select/'); return; }
+      const nRes = await supabase.from('nations').select('name, gdp, economy').eq('id', party.nation_id).single();
+      const nation = nRes.data || {};
+      document.getElementById('pname').textContent = party.name;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + (nation.name || party.nation_id);
+      setTopbarActions(party.influence);
+
+      let isTreasury = false;
+      try { const { data, error: e } = await supabase.rpc('is_treasury_minister'); if (!e) isTreasury = data === true; } catch (e) {}
+      if (!isTreasury) return;   // the stock-exchange action belongs to the Minister of Finance
+
+      const cur = (nation.economy && nation.economy.currency) || '$';
+      const gdp = Number(nation.gdp) || 0;
+      const membership = nationStockMarket(nation.economy || {});
+      const box = document.getElementById('financeAction');
+      document.getElementById('actEmpty').hidden = true;
+
+      // --- Already listed: show the exchange + (members) a Leave button. ---
+      if (membership.active) {
+        let ex = null;
+        try { const { data } = await supabase.from('stock_exchanges').select('name, abbr, host_nation').eq('id', membership.exchangeId).maybeSingle(); ex = data; } catch (e) {}
+        let hostName = ex && ex.host_nation;
+        if (hostName && hostName !== party.nation_id) {
+          try { const { data } = await supabase.from('nations').select('name').eq('id', hostName).maybeSingle(); if (data) hostName = data.name; } catch (e) {}
+        }
+        const exName = (ex && ex.name) || 'its exchange';
+        const exAbbr = (ex && ex.abbr) || '—';
+        if (membership.role === 'host') {
+          box.innerHTML = '<section class="mact"><div class="mact__hd">Minister of Finance</div><div class="mact__t">Stock Exchange</div>' +
+            '<div class="mact__sub">You host <b>' + esc(exName) + '</b> (' + esc(exAbbr) + '). Track its Price Rating on the <a href="/play/stockmarket/">Stock Market</a> page.</div></section>';
+        } else {
+          box.innerHTML = '<section class="mact"><div class="mact__hd">Minister of Finance</div><div class="mact__t">Stock Exchange</div>' +
+            '<div class="mact__sub">Your corporations list on <b>' + esc(exName) + '</b> (' + esc(exAbbr) + ')' +
+            (hostName ? ', hosted by ' + esc(hostName) : '') + '. Costs 0.2% of GDP a year in Budget Balance.</div>' +
+            '<button class="mact__leave" id="sxLeave" type="button">Leave exchange · 1 AP</button></section>';
+          const lv = document.getElementById('sxLeave');
+          let leaving = false;
+          lv.addEventListener('click', async function () {
+            if (leaving) return;
+            if (!confirm('Leave ' + exName + '? Your corporations delist.')) return;
+            leaving = true; lv.disabled = true; const prev = lv.textContent; lv.textContent = 'Leaving…';
+            try { const { error: e } = await supabase.rpc('leave_stock_exchange'); if (e) throw e; window.location.reload(); }
+            catch (e2) { alert((e2 && e2.message) || 'Could not leave the exchange.'); leaving = false; lv.disabled = false; lv.textContent = prev; }
+          });
+        }
+        return;
+      }
+
+      // --- Not listed: the Found / Join entry + modal. ---
+      box.innerHTML = '<section class="mact"><div class="mact__hd">Minister of Finance</div><div class="mact__t">Stock Exchange</div>' +
+        '<div class="mact__sub">Open a national stock market so your corporations can list — or join another nation’s.</div>' +
+        '<button class="lead" id="sxOpen" type="button"><span class="lead__cost">2 AP</span><b>Found / Join Stock Exchange</b>' +
+        '<span class="lead__desc">Charter your own exchange, or list on a friendly nation’s.</span></button></section>';
+
+      const modal = document.getElementById('sxModal');
+      const nameIn = document.getElementById('sxmName');
+      const abbrEl = document.getElementById('sxmAbbr');
+      const foundBtn = document.getElementById('sxmFound');
+      const note = document.getElementById('sxmNote');
+      const rolLi = document.getElementById('sxmRol');
+
+      // Rule of Law (found gate) + the join list data.
+      let rol = null;
+      try { const { data, error: e } = await supabase.rpc('nation_stat_values', { p_nation: party.nation_id, p_stats: ['Rule of Law'] }); if (!e && data && data['Rule of Law'] != null) rol = Math.round(Number(data['Rule of Law'])); } catch (e) {}
+      const eligibleFound = rol != null && rol >= 60;
+      document.getElementById('sxmUpkeep').textContent = cur + (Math.round(gdp * 0.01 * 100) / 100) + 'bn';
+      rolLi.textContent = 'Requires Rule of Law ≥ 60' + (rol != null ? ' · yours is ' + rol : '');
+      rolLi.className = eligibleFound ? 'ok' : 'bad';
+      if (!eligibleFound) foundBtn.disabled = true;
+
+      // Join list: every OTHER nation's exchange, with our relations to its host (default 5, gate 7).
+      let joinRows = [];
+      try {
+        const [exRes, natRes, relRes] = await Promise.all([
+          supabase.from('stock_exchanges').select('id, host_nation, name, abbr'),
+          supabase.from('nations').select('id, name'),
+          supabase.from('nation_relations').select('nation_a, nation_b, value').or('nation_a.eq.' + party.nation_id + ',nation_b.eq.' + party.nation_id)
+        ]);
+        const nameById = {}; (natRes.data || []).forEach(function (n) { nameById[n.id] = n.name; });
+        const relByHost = {}; (relRes.data || []).forEach(function (r) { relByHost[r.nation_a === party.nation_id ? r.nation_b : r.nation_a] = r.value; });
+        joinRows = (exRes.data || []).filter(function (e) { return e.host_nation !== party.nation_id; })
+          .map(function (e) { return { id: e.id, name: e.name, abbr: e.abbr, host: nameById[e.host_nation] || e.host_nation, rel: relByHost[e.host_nation] != null ? relByHost[e.host_nation] : 5 }; });
+      } catch (e) {}
+      renderJoinList();
+
+      let busy = false;
+      function renderJoinList() {
+        const el = document.getElementById('sxmJoinList');
+        if (!joinRows.length) { el.innerHTML = '<div class="exlist__empty">No other nation has founded an exchange yet.</div>'; return; }
+        el.innerHTML = joinRows.map(function (e) {
+          const ok = e.rel >= 7;
+          return '<div class="exrow"><div class="exrow__main"><div class="exrow__name">' + esc(e.name) + ' <span>(' + esc(e.abbr) + ')</span></div>' +
+            '<div class="exrow__meta">HOSTED BY ' + esc(String(e.host).toUpperCase()) + '</div></div>' +
+            '<div class="exrow__rel ' + (ok ? 'ok' : 'no') + '">REL ' + e.rel + '</div>' +
+            '<button class="exjoin" data-ex="' + esc(e.id) + '"' + (ok ? '' : ' disabled') + '>Join</button></div>';
+        }).join('');
+        el.querySelectorAll('.exjoin').forEach(function (b) { b.addEventListener('click', function () { doJoin(b.dataset.ex); }); });
+      }
+      async function doJoin(exId) {
+        if (busy) return; busy = true; note.textContent = '';
+        document.querySelectorAll('.exjoin').forEach(function (x) { x.disabled = true; });
+        try { const { error: e } = await supabase.rpc('join_stock_exchange', { p_exchange: exId }); if (e) throw e; window.location.href = '/play/stockmarket/'; }
+        catch (e2) { note.textContent = (e2 && e2.message) || 'Could not join the exchange.'; busy = false; renderJoinList(); }
+      }
+
+      function syncAbbr() { abbrEl.textContent = deriveAbbr(nameIn.value) || '—'; }
+      function openModal() { if (!nameIn.value) nameIn.value = (nation.name ? nation.name + ' ' : '') + 'Stock Exchange'; syncAbbr(); modal.hidden = false; nameIn.focus(); }
+      function closeModal() { modal.hidden = true; }
+      document.getElementById('sxOpen').addEventListener('click', openModal);
+      document.getElementById('sxmX').addEventListener('click', closeModal);
+      modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
+      nameIn.addEventListener('input', syncAbbr);
+
+      foundBtn.addEventListener('click', async function () {
+        if (busy || foundBtn.disabled) return;
+        const nm = nameIn.value.trim(), ab = deriveAbbr(nm);
+        if (!nm) { note.textContent = 'Name the exchange.'; return; }
+        if (!ab) { note.textContent = 'That name has no letters for a ticker — add a word.'; return; }
+        busy = true; foundBtn.disabled = true; const prev = foundBtn.textContent; foundBtn.textContent = 'Founding…'; note.textContent = '';
+        try { const { error: e } = await supabase.rpc('found_stock_exchange', { p_name: nm, p_abbr: ab }); if (e) throw e; window.location.href = '/play/stockmarket/'; }
+        catch (e2) { note.textContent = (e2 && e2.message) || 'Could not found the exchange.'; busy = false; foundBtn.disabled = false; foundBtn.textContent = prev; }
+      });
+    } catch (e) { /* leave the page in its default empty state */ }
+  })();
+</script>
 </body>
 </html>
