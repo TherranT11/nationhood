@@ -42,8 +42,29 @@ returns numeric language sql stable security definer set search_path = public as
 $$;
 revoke all on function public._nation_stock_growth(text) from public, anon, authenticated;
 
+-- ONE source for an exchange's corporate-performance index: the cash-weighted average firm growth across
+-- every one of its listed nations' placed firms (bigger firms move it more). No firms / all-zero cash →
+-- the simple average; no firms at all → 0. The tick and the on-apply seed both call this, so the formula
+-- lives in exactly one place. Safe from the Growth↔climate recursion: _nation_stock_growth reads the
+-- STORED column, never this — this is only called to WRITE that column (tick + seed), never on a Growth read.
+create or replace function public._exchange_market_growth(p_exchange uuid)
+returns numeric language sql stable security definer set search_path = public as $$
+  select coalesce((
+    select round(coalesce(
+        sum(public._corp_growth(c.drift, c.debt, public._business_climate(c.nation_id), c.acumen) * greatest(c.cash, 0))
+          / nullif(sum(greatest(c.cash, 0)), 0),
+        avg(public._corp_growth(c.drift, c.debt, public._business_climate(c.nation_id), c.acumen))
+      ), 2)
+    from public.corporations c
+    join public.nations n on n.id = c.nation_id
+    where c.status = 'placed'
+      and (n.economy->'stock_market'->>'exchange_id') = p_exchange::text
+  ), 0);
+$$;
+revoke all on function public._exchange_market_growth(uuid) from public, anon, authenticated;
+
 -- The corporations tick — unchanged from schema/47 except the final step, which materializes each
--- exchange's market performance from the firm growth this tick just applied.
+-- exchange's market performance from its firms' current growth.
 create or replace function public._apply_corp_tick()
 returns void language plpgsql security definer set search_path = public as $$
 declare r record; v_clim numeric; v_growth numeric; v_newcash numeric;
@@ -76,37 +97,14 @@ begin
     end if;
   end loop;
 
-  -- Materialize each exchange's corporate performance: the cash-weighted average firm growth across ALL
-  -- its listed nations' surviving placed firms (climate snapshot = _corp_clim, so it matches the growth
-  -- firms just applied). _nation_stock_growth reads this stored value → national Growth tracks the market
-  -- with no live recursion. No firms → 0 (a market with nothing listed sends no signal).
-  update public.stock_exchanges se set market_growth = coalesce((
-    select round(coalesce(
-        sum(public._corp_growth(c.drift, c.debt, coalesce(cc.climate, 0), c.acumen) * greatest(c.cash, 0))
-          / nullif(sum(greatest(c.cash, 0)), 0),
-        avg(public._corp_growth(c.drift, c.debt, coalesce(cc.climate, 0), c.acumen))
-      ), 2)
-    from public.corporations c
-    join _corp_clim cc on cc.nation_id = c.nation_id
-    join public.nations n on n.id = c.nation_id
-    where c.status = 'placed'
-      and (n.economy->'stock_market'->>'exchange_id') = se.id::text
-  ), 0);
+  -- Materialize each exchange's corporate performance (one source: _exchange_market_growth).
+  -- _nation_stock_growth reads this stored value → national Growth tracks the market with no live
+  -- recursion. Runs after the fold/growth loops so it reflects the surviving firms' current standing.
+  update public.stock_exchanges se set market_growth = public._exchange_market_growth(se.id);
 end $$;
 revoke all on function public._apply_corp_tick() from public, anon, authenticated;
 
--- Seed the index now so the Growth term is live the moment this lands (don't wait a tick). Same
--- aggregation, computing climate directly (no _corp_clim outside the tick).
-update public.stock_exchanges se set market_growth = coalesce((
-  select round(coalesce(
-      sum(public._corp_growth(c.drift, c.debt, public._business_climate(c.nation_id), c.acumen) * greatest(c.cash, 0))
-        / nullif(sum(greatest(c.cash, 0)), 0),
-      avg(public._corp_growth(c.drift, c.debt, public._business_climate(c.nation_id), c.acumen))
-    ), 2)
-  from public.corporations c
-  join public.nations n on n.id = c.nation_id
-  where c.status = 'placed'
-    and (n.economy->'stock_market'->>'exchange_id') = se.id::text
-), 0);
+-- Seed the index now so the Growth term is live the moment this lands (don't wait a tick).
+update public.stock_exchanges se set market_growth = public._exchange_market_growth(se.id);
 
 notify pgrst, 'reload schema';
