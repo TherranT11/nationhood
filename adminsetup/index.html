@@ -1317,20 +1317,19 @@
     // The five ministry stats that were consolidated out of the "Starting X" fields — each maps to the
     // legacy stats/economy field the backend still reads. ONE source for both directions: the grid's
     // migration fallback (below) reads from here, and the nation save feeds these fields from here.
-    // KNOWN ISSUE (schema/221): Growth is now FULLY DERIVED (stock market + policies + reforms + deltas)
-    // and no longer reads an authored base, so this Growth input no longer moves the DISPLAYED Growth.
-    // It still writes stats.growth, which the un-rewired mirror readers (business climate, crises,
-    // malaise, thresholds) currently consume — so it's not inert yet. Once those readers are rewired to
-    // the derived value (the flagged 221 follow-up), remove the Growth row from this grid.
+    // Growth is FULLY DERIVED (schema/221–223): stock market + policies + reforms + deltas, no authored
+    // base, and every reader now uses the derived value — so there is no Growth mirror to author here.
     var CONSOLIDATED_STATS = [
       { m: 'Prosperity',   col: 'stats',   key: 'prosperity' },
-      { m: 'Growth',       col: 'stats',   key: 'growth' },
       { m: 'Rule of Law',  col: 'stats',   key: 'order' },
       { m: 'Unemployment', col: 'economy', key: 'unemployment' },
       { m: 'Tax Burden',   col: 'economy', key: 'tax' }
     ];
     function renderMinistryFields() {
-      document.getElementById('ministryFields').innerHTML = MINISTRY_STATS.map(function (s) {
+      // Growth stays in MINISTRY_STATS (the stat vocabulary policies/cards target) but is NOT authored
+      // here — it's fully derived (stock market + policies + reforms + deltas, schema/221–223), so it has
+      // no base to enter. Every other ministry stat still takes an authored base.
+      document.getElementById('ministryFields').innerHTML = MINISTRY_STATS.filter(function (s) { return s !== 'Growth'; }).map(function (s) {
         var r = STAT_RANGES[s], rng = r ? (' min="' + r.min + '" max="' + r.max + '"') : '';
         var hint = r ? ' <span class="hint">' + r.min + '–' + r.max + '</span>' : '';
         return '<div><label>' + esc(s) + hint + '</label><input type="number" step="any"' + rng + ' data-mstat="' + esc(s) + '"></div>';
