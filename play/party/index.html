@@ -84,6 +84,42 @@
   .st-plenum{display:flex;justify-content:flex-end;margin-top:9px}
   .st-plenum button{font-family:'JetBrains Mono',monospace;background:var(--panel);border:1px dashed var(--line);color:var(--dim);border-radius:8px;padding:7px 14px;font-size:9.5px;font-weight:800;letter-spacing:.06em;cursor:not-allowed}
 
+  /* ideology card (a stat card in row 1) */
+  .ideocard{display:flex;flex-direction:column}
+  .ideo-name{font-weight:800;font-size:18px;margin-top:4px;line-height:1.15}
+  .ideo-name.empty{color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:24px}
+  .ideo-btn{margin-top:auto;align-self:flex-start;font-family:'JetBrains Mono',monospace;background:var(--panel2);border:1px dashed var(--line);color:var(--muted);border-radius:8px;padding:8px 11px;font-weight:800;font-size:9.5px;letter-spacing:.07em;cursor:pointer}
+  .ideo-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* ideology modal (scoped palette) */
+  .imodal{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px}
+  .imodal[hidden]{display:none}
+  .imodal__panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;width:100%;max-width:660px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;color:var(--text)}
+  .imodal__accent{height:4px;background:var(--accent);flex:none}
+  .imodal__hd{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line)}
+  .imodal__hd b{font-weight:800;font-size:17px;display:block;margin-top:2px}
+  .imodal__x{background:none;border:none;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim);cursor:pointer}
+  .imodal__body{padding:12px 18px;overflow-y:auto}
+  .imodal__intro{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;color:var(--dim);margin-bottom:10px;line-height:1.7}
+  .ideo-row{border:1.5px solid var(--line);background:var(--panel2);border-radius:11px;padding:11px 13px;margin-bottom:9px;cursor:pointer}
+  .ideo-row.cur{opacity:.75}
+  .ideo-row__hd{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .ideo-tag{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:800;letter-spacing:.08em}
+  .ideo-quote{font-size:11.5px;color:var(--muted);font-style:italic;flex:1;min-width:120px}
+  .ideo-count{font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.05em;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:2px 8px;white-space:nowrap}
+  .ideo-conds{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px}
+  .ideo-cond{flex:1 1 220px}
+  .ideo-cond__k{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:800;letter-spacing:.1em}
+  .ideo-cond__k.pos{color:var(--green)} .ideo-cond__k.neg{color:var(--red)}
+  .ideo-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
+  .ideo-chip{font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:700;border-radius:5px;padding:2px 7px}
+  .ideo-chip.pos{color:var(--green);border:1px solid color-mix(in srgb,var(--green) 40%,transparent)}
+  .ideo-chip.neg{color:var(--red);border:1px solid color-mix(in srgb,var(--red) 40%,transparent)}
+  .imodal__foot{padding:12px 18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px;flex:none}
+  .imodal__note{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.05em}
+  .imodal__declare{font-family:'JetBrains Mono',monospace;border:none;border-radius:8px;padding:9px 20px;font-weight:800;font-size:11px;letter-spacing:.06em;cursor:pointer;color:#fff;background:var(--accent)}
+  .imodal__declare:disabled{background:var(--panel2);color:var(--dim);cursor:not-allowed}
+
   /* edit modal (scoped palette) */
   .emodal{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:20px}
   .emodal[hidden]{display:none}
@@ -152,6 +188,13 @@
             <div class="stat-big" style="margin-top:3px"><span id="reformVal">—</span><small>/15</small></div>
             <div class="stat-note" id="reformNote"></div>
           </div>
+
+          <div class="card statcard ideocard" id="ideoCard">
+            <div class="ip-micro">Ideology</div>
+            <div class="ideo-name empty" id="ideoName">—</div>
+            <div class="stat-note" id="ideoNote">Winds blow while in opposition</div>
+            <button class="ideo-btn" id="ideoBtn" type="button">Choose an ideology</button>
+          </div>
         </div>
 
         <!-- ROW 2: assembly + stance -->
@@ -169,6 +212,25 @@
             </div>
             <div class="st-ladder" id="stanceLadder"></div>
             <div class="st-detail" id="stanceDetail"></div>
+          </div>
+        </div>
+
+        <!-- Ideology modal (inside .ip-root so it inherits the scoped palette) -->
+        <div class="imodal" id="ideoModal" hidden>
+          <div class="imodal__panel">
+            <div class="imodal__accent"></div>
+            <div class="imodal__hd">
+              <div><div class="ip-micro" style="color:var(--accent)">The Party</div><b>Choose an Ideology</b></div>
+              <button class="imodal__x" id="ideoClose" type="button">&times; CLOSE</button>
+            </div>
+            <div class="imodal__body">
+              <div class="imodal__intro">Your ideology sets which national conditions feed — or bleed — your Party Approval while in opposition.</div>
+              <div id="ideoList"></div>
+            </div>
+            <div class="imodal__foot">
+              <span class="imodal__note" id="ideoErr">Declaring is public · winds blow for opposition parties only</span>
+              <button class="imodal__declare" id="ideoDeclare" type="button" disabled>Select an ideology</button>
+            </div>
           </div>
         </div>
 
@@ -197,7 +259,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
   import { esc, majority, tickToDate, TICK_PERIOD_MS } from '/util.js';
-  import { ideologyLabel, partyColor } from '/archetypes.js';
+  import { ideologyLabel, partyColor, ARCHETYPES, ideologyByName } from '/archetypes.js';
   import { nationRegime } from '/ladders.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
@@ -205,7 +267,7 @@
   mountTopbar();
   mountSidenav();
 
-  var PARTY = null, PCOLOR = 'var(--accent)', BUSY = false;
+  var PARTY = null, NATION = null, PCOLOR = 'var(--accent)', BUSY = false;
   var NEW_LOGO_FILE = null;
   var modal = document.getElementById('editModal'), errEl = document.getElementById('eErr');
 
@@ -352,6 +414,88 @@
     card.hidden = false;
   }
 
+  // ---- ideology (declare + approval-winds display) ----
+  // The Ideology card + modal: a party declares one of the 7 ideologies (archetypes.js), which
+  // sets parties.archetype and, while it sits in opposition, feeds/bleeds its Party Approval by
+  // the nation's live conditions each tick (server: schema/232-233). Colours/quotes/conditions
+  // are the JS display source; the mechanic reads the mirrored ideology_conditions table.
+  var IDEO_SEL = null, IDEO_COUNTS = { local: {}, world: {} };
+  var ideoModal = document.getElementById('ideoModal');
+
+  function renderIdeologyCard(party) {
+    var el = document.getElementById('ideoName'), ideo = ideologyByName(party.archetype);
+    if (ideo) { el.className = 'ideo-name'; el.style.color = ideo.color; el.textContent = ideo.name; }
+    else { el.className = 'ideo-name empty'; el.style.color = ''; el.textContent = '—'; }
+    document.getElementById('ideoBtn').textContent = party.archetype ? 'Change · 1 AP' : 'Choose an ideology';
+  }
+
+  function condChips(list, cls) {
+    return '<div class="ideo-chips">' + list.map(function (c) {
+      return '<span class="ideo-chip ' + cls + '">' + esc(c.stat) + ' ' + c.dir + '</span>';
+    }).join('') + '</div>';
+  }
+  function ideoRowHtml(ideo, nationName) {
+    var loc = IDEO_COUNTS.local[ideo.name] || 0, wld = IDEO_COUNTS.world[ideo.name] || 0;
+    var cur = PARTY && PARTY.archetype === ideo.name, sel = IDEO_SEL === ideo.name;
+    return '<div class="ideo-row' + (cur ? ' cur' : '') + '" data-name="' + esc(ideo.name) + '"' +
+        (sel ? ' style="border-color:' + ideo.color + ';background:color-mix(in srgb,' + ideo.color + ' 9%,transparent)"' : '') + '>' +
+      '<div class="ideo-row__hd">' +
+        '<span class="ideo-tag" style="color:' + ideo.color + '">' + esc(ideo.name.toUpperCase()) + (cur ? ' ✓' : '') + '</span>' +
+        '<span class="ideo-quote">' + esc(ideo.quote) + '</span>' +
+        '<span class="ideo-count">' + loc + ' IN ' + esc((nationName || 'NATION').toUpperCase()) + ' · ' + wld + ' WORLDWIDE</span>' +
+      '</div>' +
+      '<div class="ideo-conds">' +
+        '<div class="ideo-cond"><span class="ideo-cond__k pos">▲ BUMP WHEN</span>' + condChips(ideo.bump, 'pos') + '</div>' +
+        '<div class="ideo-cond"><span class="ideo-cond__k neg">▼ DROP WHEN</span>' + condChips(ideo.drop, 'neg') + '</div>' +
+      '</div></div>';
+  }
+  function renderIdeoList() {
+    document.getElementById('ideoList').innerHTML =
+      ARCHETYPES.map(function (i) { return ideoRowHtml(i, NATION && NATION.name); }).join('');
+    var btn = document.getElementById('ideoDeclare');
+    if (!IDEO_SEL) { btn.disabled = true; btn.textContent = 'Select an ideology'; }
+    else if (PARTY && PARTY.archetype === IDEO_SEL) { btn.disabled = true; btn.textContent = 'Already declared'; }
+    else { btn.disabled = false; btn.textContent = 'Declare ' + IDEO_SEL; }
+  }
+  function openIdeo() {
+    IDEO_SEL = null;
+    document.getElementById('ideoErr').textContent = 'Declaring is public · winds blow for opposition parties only';
+    renderIdeoList(); ideoModal.hidden = false;
+  }
+  function closeIdeo() { ideoModal.hidden = true; }
+  document.getElementById('ideoClose').onclick = closeIdeo;
+  ideoModal.addEventListener('click', function (e) { if (e.target === ideoModal) closeIdeo(); });
+  document.getElementById('ideoList').addEventListener('click', function (e) {
+    var row = e.target.closest('.ideo-row'); if (!row) return;
+    IDEO_SEL = (IDEO_SEL === row.dataset.name) ? null : row.dataset.name; renderIdeoList();
+  });
+  async function declareIdeo() {
+    if (BUSY || !IDEO_SEL) return;
+    BUSY = true; var btn = document.getElementById('ideoDeclare'); btn.disabled = true; btn.textContent = 'Declaring…';
+    try {
+      const { error } = await supabase.rpc('declare_ideology', { p_name: IDEO_SEL });
+      if (error) throw error;
+      window.location.reload();
+    } catch (e) {
+      BUSY = false; document.getElementById('ideoErr').textContent = (e && e.message) || 'Could not declare your ideology.';
+      renderIdeoList();
+    }
+  }
+  document.getElementById('ideoDeclare').onclick = declareIdeo;
+  document.getElementById('ideoBtn').onclick = openIdeo;
+
+  // Live tallies of who holds each ideology (local = this nation, world = everywhere).
+  async function loadIdeoCounts(nationId) {
+    try {
+      const { data } = await supabase.from('parties').select('archetype, nation_id').not('archetype', 'is', null);
+      (data || []).forEach(function (p) {
+        IDEO_COUNTS.world[p.archetype] = (IDEO_COUNTS.world[p.archetype] || 0) + 1;
+        if (p.nation_id === nationId) IDEO_COUNTS.local[p.archetype] = (IDEO_COUNTS.local[p.archetype] || 0) + 1;
+      });
+      if (!ideoModal.hidden) renderIdeoList();
+    } catch (e) { /* counts are best-effort */ }
+  }
+
   // ---- edit party ----
   function openEdit() {
     document.getElementById('eName').value = PARTY.name || '';
@@ -417,6 +561,11 @@
       if (error || !party) { window.location.replace('/nation-select/'); return; }
       PARTY = party; PCOLOR = partyColor(party);
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy').eq('id', party.nation_id).single();
+      NATION = nation;
+
+      // ideology card + declare modal counts
+      renderIdeologyCard(party);
+      loadIdeoCounts(party.nation_id);
 
       // shared chrome
       var pn = document.getElementById('pname'); if (pn) pn.textContent = party.name;

@@ -689,6 +689,11 @@ begin
   -- threshold rule prints slanted headlines. Late in the tick so it reads final values; cooldown-guarded.
   begin perform public._resolve_headline_thresholds(v_tick);
   exception when others then raise warning 'tick %: headline thresholds failed — %', v_tick, sqlerrm; end;
+  -- Ideology approval winds (schema/233): each OPPOSITION party's declared ideology nudges its
+  -- Party Popularity by the nation's live conditions (bump/drop stats vs. the neutral band). Runs
+  -- right before the snapshot so the trend captures it; governing/undeclared parties untouched.
+  begin perform public._apply_ideology_winds();
+  exception when others then raise warning 'tick %: ideology winds failed — %', v_tick, sqlerrm; end;
   -- Party popularity snapshot (schema/147): the FINAL step — record each surviving party's
   -- settled popularity for this tick, so the Nation dashboard can draw a real approval trend.
   -- After the purge, so parties deleted this tick aren't snapshotted. Isolated like every step.
