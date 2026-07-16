@@ -573,7 +573,7 @@
   var FDI_INCENTIVES = [
     { k: 'holiday',    label: 'Tax holiday',              sweet: true },
     { k: 'sez',        label: 'Special economic zone',    sweet: true },
-    { k: 'local_hire', label: 'Local-hire quota',         sweet: false },
+    { k: 'local_hire', label: 'Local-hire quota (+1 job)', sweet: false },
     { k: 'profit_cap', label: 'Profit-repatriation cap',  sweet: false },
   ];
   var FDI_SEL = { inc: {}, pool: [] };
@@ -611,8 +611,9 @@
     var box = document.getElementById('fdiSuitors');
     if (!FDI_SEL.pool.length){ box.innerHTML = '<div class="fdi-empty">No foreign firms are open to investing here right now.</div>'; return; }
     box.innerHTML = FDI_SEL.pool.map(function(s){
+      var jobs = (s.jobs != null) ? ' · ' + s.jobs + ' jobs' : '';
       return '<div class="fdi-suitor"><div class="fdi-main"><b>' + esc(s.name) + '</b>' +
-        '<span class="fdi-sub">' + esc(s.sector) + ' · ' + esc(s.home_name) + ' · Growth +' + s.growth + '</span></div>' +
+        '<span class="fdi-sub">' + esc(s.sector) + ' · ' + esc(s.home_name) + ' · Growth +' + s.growth + jobs + '</span></div>' +
         '<div class="fdi-r"><span class="fdi-tier t' + s.tier + '">TIER ' + s.tier + '</span>' +
         '<button class="tbtn" data-court="' + esc(s.corp_id) + '">Extend</button></div></div>';
     }).join('');

@@ -51,6 +51,7 @@
   .srow .sv{font-weight:700;font-size:13.5px;text-align:right;color:var(--ink)}
   .srow .sv small{font-family:'Space Mono',monospace;font-weight:700;font-size:10px;color:var(--soft);margin-left:5px}
   .srow .sv.good{color:var(--green)} .srow .sv.warn{color:var(--amber)} .srow .sv.bad{color:var(--red)}
+  .fdi-foot{margin-top:12px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--acc);font-weight:700}
   .rel{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:5px;margin-left:8px}
   .rel-dots{display:flex;gap:3px}
   .rdot{width:10px;height:10px;border-radius:50%;background:var(--chip,#F4F3EF);border:1px solid var(--line,#E7E5E0)}
@@ -107,7 +108,7 @@
     return '<div class="rel"><div class="rel-dots">' + dots + '</div><span class="rel-lbl ' + band + '">' + relLabel(v) + ' &middot; ' + v + '/10</span></div>';
   }
 
-  function render(nations, govByNation, leaderByParty, titleSlot, partyById, relMap){
+  function render(nations, govByNation, leaderByParty, titleSlot, partyById, relMap, plantByNation){
     if (!nations.length){ fail('No other nations have been founded yet.'); return; }
 
     var cards = nations.map(function(n, i){
@@ -160,6 +161,8 @@
       }).join('');
 
       var relVal = (relMap && relMap[n.id] != null) ? relMap[n.id] : 5;
+      var plants = (plantByNation && plantByNation[n.id]) || 0;
+      var fdiLine = plants ? '<div class="fdi-foot">▸ ' + plants + ' foreign ' + (plants === 1 ? 'plant' : 'plants') + '</div>' : '';
       // The whole card links into the Nation page's read-only view of that nation (map, stats,
       // cabinet, regime…) — see play/index.html's ?view=<id> foreign mode.
       return '<a class="wcard" href="/play/?view=' + encodeURIComponent(n.id) + '" style="--acc:' + acc + '">' +
@@ -173,7 +176,7 @@
           '<div class="who"><span class="ttl">' + esc(hogTitle) + '</span> &mdash; <b>' + hog + '</b>' + hogTag + '</div>' +
           '<span class="govtype">' + esc(govType) + '</span>' +
         '</div>' +
-        '<div class="wstats">' + statsHtml + '</div>' +
+        '<div class="wstats">' + statsHtml + '</div>' + fdiLine +
       '</a>';
     }).join('');
 
@@ -206,12 +209,19 @@
 
       // Active governments for those nations (most will have none yet), and the
       // leader of each formateur party for the Head of Government line. Batched.
-      var govByNation = {}, leaderByParty = {}, partyById = {};
+      var govByNation = {}, leaderByParty = {}, partyById = {}, plantByNation = {};
       const ids = nations.map(function(n){ return n.id; });
       if (ids.length) {
         const { data: govs } = await supabase.from('governments')
           .select('nation_id, type, formateur_party_id').in('nation_id', ids).eq('status', 'active');
         (govs || []).forEach(function(g){ govByNation[g.nation_id] = g; });
+
+        // Foreign-owned FDI plants sitting in each nation (public read) — the world's investment
+        // footprint at a glance. Only foreign-owned plants count (owner_nation_id set); state-owned
+        // ones aren't foreign investment.
+        const { data: plants } = await supabase.from('buildings')
+          .select('nation_id, owner_nation_id').eq('source', 'fdi').in('nation_id', ids).not('owner_nation_id', 'is', null);
+        (plants || []).forEach(function(b){ plantByNation[b.nation_id] = (plantByNation[b.nation_id] || 0) + 1; });
 
         const fpIds = (govs || []).map(function(g){ return g.formateur_party_id; }).filter(Boolean);
         if (fpIds.length) {
@@ -240,7 +250,7 @@
           .or('nation_a.eq.' + party.nation_id + ',nation_b.eq.' + party.nation_id);
         (rels || []).forEach(function (r) { relMap[r.nation_a === party.nation_id ? r.nation_b : r.nation_a] = r.value; });
       } catch (e) { relMap = {}; }
-      render(nations, govByNation, leaderByParty, titleSlot, partyById, relMap);
+      render(nations, govByNation, leaderByParty, titleSlot, partyById, relMap, plantByNation);
     } catch (e) {
       fail('Couldn’t load the world right now. Refresh to try again.');
     }
