@@ -138,6 +138,27 @@
 
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--bg);font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:13px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:90;max-width:90vw;text-align:center}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  /* Foreign Direct Investment (Minister of Finance) — deals list + court flow inside the FDI modal */
+  .fdi-row,.fdi-suitor{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid var(--line)}
+  .fdi-row:first-of-type,.fdi-suitor:first-of-type{border-top:none}
+  .fdi-main{min-width:0}.fdi-main b{font-size:13.5px}
+  .fdi-sub{display:block;font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-top:2px}
+  .fdi-r{display:flex;align-items:center;gap:8px;flex:none}
+  .fdi-b{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;padding:3px 8px;border-radius:6px;background:var(--line);color:var(--soft)}
+  .fdi-b.on{background:rgba(62,207,142,.16);color:#2c8c5a}
+  .fdi-b.warn{background:rgba(230,150,40,.16);color:#b5721a}
+  .fdi-empty{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft);padding:12px 0}
+  .fdi-tier{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.05em;padding:3px 8px;border-radius:6px;background:var(--line)}
+  .fdi-tier.t1{color:#a06a3c;background:rgba(160,106,60,.14)}.fdi-tier.t2{color:#3a6ea5;background:rgba(58,110,165,.14)}.fdi-tier.t3{color:#6b46c1;background:rgba(107,70,193,.14)}
+  .fdi-inc{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+  .fdi-inc-chip{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;border:1px solid var(--line2);background:var(--surface);border-radius:8px;padding:8px 11px;cursor:pointer;color:var(--muted)}
+  .fdi-inc-chip.on.sweet{border-color:#2c8c5a;color:#2c8c5a;background:rgba(62,207,142,.1)}
+  .fdi-inc-chip.on.prot{border-color:var(--red);color:var(--red);background:rgba(220,80,80,.08)}
+  .fdi-temp{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-left:auto}
+  .fdi-hex{width:100%;font-family:'Space Mono',monospace;font-size:11px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);border-radius:8px;padding:9px 11px;cursor:pointer}
+  .fdi-lbl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin:16px 0 9px}
+  .fdi-tbtn{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;border:1px solid var(--line2);background:var(--surface);color:var(--ink);border-radius:7px;padding:7px 10px;cursor:pointer}
+  .fdi-tbtn:hover:not(:disabled){border-color:var(--ac-orange)}.fdi-tbtn:disabled{opacity:.5;cursor:default}
 
   /* Modal internals for the moved action modals (the .amodal shell is already defined above). */
   .amodal__panel--wide{max-width:640px}
@@ -242,6 +263,7 @@
          the relevant portfolio. The Prime Minister bar is always the top container. -->
     <div id="pmbar"></div>
     <div id="financeAction"></div>
+    <div id="fdiAction"></div>
     <div id="jointInbox"></div>
     <div id="econdevbar"></div>
     <div id="foreignbar"></div>
@@ -280,6 +302,23 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Foreign Direct Investment modal (Minister of Finance): manage live deals + court a new suitor -->
+<div class="amodal" id="fdiModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Foreign Direct Investment</b><button class="amodal__x" id="fdiX" type="button" aria-label="Close">&times;</button></div>
+    <div class="sxm-body">
+      <div class="fdi-lbl" style="margin-top:0">On the books</div>
+      <div id="fdiDeals"><div class="fdi-empty">Loading…</div></div>
+      <div class="fdi-lbl">Court a new suitor · 3 AP</div>
+      <div class="fdi-inc" id="fdiInc"></div>
+      <div class="fdi-lbl">Plant site</div>
+      <select class="fdi-hex" id="fdiHex"></select>
+      <div class="fdi-lbl">Suitors</div>
+      <div id="fdiSuitors"><div class="fdi-empty">Loading suitors…</div></div>
+    </div>
+  </div>
+</div>
 
 <div class="amodal" id="buildBaseModal" hidden>
   <div class="amodal__panel">
@@ -1021,6 +1060,135 @@
     if (svc) { actionBtns.push(svc); svc.addEventListener('click', function () { if (!svc.disabled) openServiceEconomy(); }); }
   }
 
+  // ---- Foreign Direct Investment (Minister of Finance) -------------------------------------------
+  // The Court action + live-deal management, moved here from the Economy page so FDI lives only next
+  // to the Stock-Exchange action. Gated by the same Treasury check; fires the same RPCs.
+  var FDI_INCENTIVES = [
+    { k: 'holiday',    label: 'Tax holiday',               sweet: true },
+    { k: 'sez',        label: 'Special economic zone',     sweet: true },
+    { k: 'local_hire', label: 'Local-hire quota (+1 job)', sweet: false },
+    { k: 'profit_cap', label: 'Profit-repatriation cap',   sweet: false },
+  ];
+  var FDI = { nation: null, sel: { inc: {}, pool: [] }, deals: [], hexes: [], names: {} };
+
+  function fdiTemp() { return FDI_INCENTIVES.reduce(function (t, i) { return t + (FDI.sel.inc[i.k] ? (i.sweet ? 1 : -1) : 0); }, 0); }
+  function fdiNationName(id) { return FDI.names[id] || id; }
+
+  function renderFdiInc() {
+    document.getElementById('fdiInc').innerHTML = FDI_INCENTIVES.map(function (i) {
+      return '<button class="fdi-inc-chip' + (FDI.sel.inc[i.k] ? ' on' : '') + ' ' + (i.sweet ? 'sweet' : 'prot') + '" data-inc="' + i.k + '">' +
+        (i.sweet ? '▲ ' : '▼ ') + esc(i.label) + '</button>';
+    }).join('') + '<span class="fdi-temp">Package: <b>' + (fdiTemp() >= 0 ? '+' : '') + fdiTemp() + '</b></span>';
+    document.querySelectorAll('#fdiInc [data-inc]').forEach(function (b) { b.onclick = function () { FDI.sel.inc[b.dataset.inc] = !FDI.sel.inc[b.dataset.inc]; renderFdiInc(); }; });
+  }
+
+  function renderFdiSuitors() {
+    var box = document.getElementById('fdiSuitors');
+    if (!FDI.sel.pool.length) { box.innerHTML = '<div class="fdi-empty">No foreign firms are open to investing here right now.</div>'; return; }
+    box.innerHTML = FDI.sel.pool.map(function (s) {
+      var jobs = (s.jobs != null) ? ' · ' + s.jobs + ' jobs' : '';
+      return '<div class="fdi-suitor"><div class="fdi-main"><b>' + esc(s.name) + '</b>' +
+        '<span class="fdi-sub">' + esc(s.sector) + ' · ' + esc(s.home_name) + ' · Growth +' + s.growth + jobs + '</span></div>' +
+        '<div class="fdi-r"><span class="fdi-tier t' + s.tier + '">TIER ' + s.tier + '</span>' +
+        '<button class="fdi-tbtn" data-court="' + esc(s.corp_id) + '">Extend</button></div></div>';
+    }).join('');
+    document.querySelectorAll('#fdiSuitors [data-court]').forEach(function (b) { b.onclick = function () { fdiCourt(b.dataset.court); }; });
+  }
+
+  function renderFdiDeals() {
+    var mine = FDI.deals || [];
+    document.getElementById('fdiDeals').innerHTML = mine.map(function (d) {
+      var corp = (d.corporations && d.corporations.name) || 'A firm';
+      var iHost = d.host_nation_id === FDI.nation;
+      var g = iHost ? d.host_growth : d.owner_growth;
+      var threat = iHost && d.state === 'ACTIVE' && d.depart_tick != null;
+      var sub = (iHost ? 'Inbound · ' + fdiNationName(d.owner_nation_id) : 'Outbound · ' + fdiNationName(d.host_nation_id)) + ' · Growth +' + g;
+      var badge = threat ? '<span class="fdi-b warn">⚠ RELOCATING</span>'
+                         : '<span class="fdi-b' + (d.state === 'ACTIVE' ? ' on' : '') + '">' + esc(d.state) + '</span>';
+      var retainBtn = threat ? '<button class="fdi-tbtn" data-retain="' + esc(d.id) + '">Match Their Terms · 2 AP</button>' : '';
+      var natBtn = (iHost && d.state === 'ACTIVE' && !threat) ? '<button class="fdi-tbtn" data-nat="' + esc(d.id) + '">Nationalize</button>' : '';
+      return '<div class="fdi-row"><div class="fdi-main"><b>' + esc(corp) + '</b><span class="fdi-sub">' + esc(sub) + '</span></div><div class="fdi-r">' + badge + retainBtn + natBtn + '</div></div>';
+    }).join('') || '<div class="fdi-empty">No foreign investment on the books.</div>';
+    document.querySelectorAll('#fdiDeals [data-nat]').forEach(function (b) { b.onclick = function () { fdiNationalize(b.dataset.nat, b); }; });
+    document.querySelectorAll('#fdiDeals [data-retain]').forEach(function (b) { b.onclick = function () { fdiRetain(b.dataset.retain, b); }; });
+  }
+
+  async function fdiReloadDeals() {
+    try {
+      var res = await supabase.from('fdi_deals')
+        .select('id, state, corp_id, host_nation_id, owner_nation_id, host_growth, owner_growth, depart_tick, corporations(name)')
+        .or('host_nation_id.eq.' + FDI.nation + ',owner_nation_id.eq.' + FDI.nation).neq('state', 'ENDED');
+      FDI.deals = res.data || [];
+    } catch (e) { FDI.deals = []; }
+    renderFdiDeals();
+  }
+
+  async function openFdi() {
+    FDI.sel = { inc: {}, pool: [] };
+    document.getElementById('fdiModal').hidden = false;
+    document.getElementById('fdiHex').innerHTML = '<option value="">Auto — the largest site</option>' +
+      (FDI.hexes || []).map(function (h) {
+        return '<option value="' + h.q + ',' + h.r + '">' + esc(h.name || ('Hex ' + h.q + ',' + h.r)) + '</option>';
+      }).join('');
+    renderFdiInc();
+    fdiReloadDeals();   // fetch + render the deals on the books
+    document.getElementById('fdiSuitors').innerHTML = '<div class="fdi-empty">Loading suitors…</div>';
+    try {
+      var res = await supabase.rpc('fdi_suitor_pool', { p_nation: FDI.nation });
+      if (res.error) throw res.error;
+      FDI.sel.pool = res.data || [];
+    } catch (e) { FDI.sel.pool = []; }
+    renderFdiSuitors();
+  }
+
+  async function fdiCourt(corpId) {
+    var btns = document.querySelectorAll('#fdiSuitors [data-court]'); btns.forEach(function (b) { b.disabled = true; });  // 3 AP — no double-fire
+    var inc = FDI_INCENTIVES.filter(function (i) { return FDI.sel.inc[i.k]; }).map(function (i) { return i.k; });
+    var hx = (document.getElementById('fdiHex').value || '').split(',');
+    var hexQ = hx.length === 2 ? Number(hx[0]) : null, hexR = hx.length === 2 ? Number(hx[1]) : null;
+    var res = await supabase.rpc('court_foreign_investment', { p_corp: corpId, p_incentives: inc, p_hex_q: hexQ, p_hex_r: hexR });
+    if (res.error) { ping(res.error.message || 'Could not extend the invitation.'); btns.forEach(function (b) { b.disabled = false; }); return; }
+    document.getElementById('fdiModal').hidden = true;
+    ping('Invitation extended — the board decides within two ticks.');
+    fdiReloadDeals();
+  }
+
+  async function fdiNationalize(id, btn) {
+    if (!confirm('Nationalise this operation? Relations with the firm’s home nation will suffer.')) return;
+    btn.disabled = true;
+    var res = await supabase.rpc('nationalize_fdi_deal', { p_deal: id });
+    if (res.error) { ping(res.error.message || 'Could not nationalise.'); btn.disabled = false; return; }
+    ping('The operation has been nationalised.'); fdiReloadDeals();
+  }
+
+  async function fdiRetain(id, btn) {
+    btn.disabled = true;
+    var res = await supabase.rpc('retain_fdi_deal', { p_deal: id });
+    if (res.error) { ping(res.error.message || 'Could not match the terms.'); btn.disabled = false; return; }
+    ping('Terms matched — the plant stays.'); fdiReloadDeals();
+  }
+
+  // The FDI tile under Minister of Finance — always shown to the Treasury holder (independent of the
+  // stock-exchange membership branch). Loads plant-site hexes + nation names, then wires the modal.
+  async function renderFdiAction(party) {
+    var el = document.getElementById('fdiAction'); if (!el) return;
+    FDI.nation = party.nation_id;
+    el.innerHTML = '<section class="mact"><div class="mact__t">Foreign Direct Investment</div>' +
+      '<div class="mact__sub">Court a foreign corporation to build a plant on your soil — an engine of Growth and jobs while the deal holds.</div>' +
+      '<button class="lead" id="fdiOpen" type="button"><span class="lead__cost">3 AP</span><b>Foreign Direct Investment</b>' +
+      '<span class="lead__desc">Set an incentive package and invite a suitor — or manage the deals you already hold.</span></button></section>';
+    try {
+      var hxRes = await supabase.from('world_hexes').select('q, r, name, population').eq('nation_id', party.nation_id).eq('terrain', 'land').order('population', { ascending: false });
+      FDI.hexes = hxRes.data || [];
+    } catch (e) { FDI.hexes = []; }
+    try {
+      var natRes = await supabase.from('nations').select('id, name');
+      (natRes.data || []).forEach(function (n) { FDI.names[n.id] = n.name; });
+    } catch (e) {}
+    var ob = document.getElementById('fdiOpen'); if (ob) ob.addEventListener('click', openFdi);
+    var xb = document.getElementById('fdiX'); if (xb) xb.addEventListener('click', function () { document.getElementById('fdiModal').hidden = true; });
+  }
+
   // The Minister of Foreign Affairs container — shown only to the party holding Foreign Affairs. Its
   // Found Charter action opens the founding modal (charter a new international organization + invite).
   function renderForeignBar(isForeignMin) {
@@ -1348,7 +1516,8 @@
 
       let isTreasury = false;
       try { const { data, error: e } = await supabase.rpc('is_treasury_minister'); if (!e) isTreasury = data === true; } catch (e) {}
-      if (!isTreasury) return;   // the stock-exchange action belongs to the Minister of Finance
+      if (!isTreasury) return;   // the stock-exchange + FDI actions belong to the Minister of Finance
+      renderFdiAction(party);    // FDI tile — independent of the stock-exchange membership branch below
 
       const cur = (nation.economy && nation.economy.currency) || '$';
       const gdp = Number(nation.gdp) || 0;
