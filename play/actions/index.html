@@ -60,6 +60,10 @@
   .actroot .mact{background:none;border:none;border-radius:0;padding:0;margin:0 0 22px}
   .actroot .mact__hd{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;color:var(--indigo);text-transform:uppercase;border-bottom:1px solid var(--line);padding-bottom:9px;margin-bottom:10px}
   .actroot .mact__t,.actroot .mact__sub{display:none}
+  /* Minister of Finance: one shared header, the Stock-Exchange + FDI tiles side by side */
+  .mfin__hd{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;color:var(--indigo);text-transform:uppercase;border-bottom:1px solid var(--line);padding-bottom:9px;margin:22px 0 12px}
+  .mfin__row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+  .actroot .mfin__row .mact{margin:0}
   /* READY filter: hide unavailable (disabled) tiles */
   .actroot.ready-only .lead:disabled{display:none}
   .actroot .initiatives-panel{background:var(--surface);border:1px solid var(--line);border-radius:14px}
@@ -262,8 +266,8 @@
     <!-- This Week's Action bars (moved from the Nation page): each renders only for the party that holds
          the relevant portfolio. The Prime Minister bar is always the top container. -->
     <div id="pmbar"></div>
-    <div id="financeAction"></div>
-    <div id="fdiAction"></div>
+    <div class="mfin__hd" id="financeHd" hidden>Minister of Finance</div>
+    <div class="mfin__row"><div id="financeAction"></div><div id="fdiAction"></div></div>
     <div id="jointInbox"></div>
     <div id="econdevbar"></div>
     <div id="foreignbar"></div>
@@ -316,6 +320,17 @@
       <select class="fdi-hex" id="fdiHex"></select>
       <div class="fdi-lbl">Suitors</div>
       <div id="fdiSuitors"><div class="fdi-empty">Loading suitors…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Improve Relations modal (Minister of Foreign Affairs): +1 standing with a nation, cost scales -->
+<div class="amodal" id="improveRelModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Improve Relations</b><button class="amodal__x" id="irX" type="button" aria-label="Close">&times;</button></div>
+    <div class="sxm-body">
+      <div class="fdi-temp" id="irDip" style="margin:0 0 12px"></div>
+      <div id="irList"><div class="fdi-empty">Loading…</div></div>
     </div>
   </div>
 </div>
@@ -1189,6 +1204,57 @@
     var xb = document.getElementById('fdiX'); if (xb) xb.addEventListener('click', function () { document.getElementById('fdiModal').hidden = true; });
   }
 
+  // ---- Improve Relations (Minister of Foreign Affairs) -------------------------------------------
+  // Pick a nation and raise the standing +1; the Diplomacy cost = current standing + 2 (schema/255).
+  var IR = { nation: null, dip: 0, rels: {}, nations: [] };
+  wireModalClose(document.getElementById('improveRelModal'), 'irX');
+
+  function openImproveRel() {
+    if (acting || !feedCtx) return;
+    IR.nation = feedCtx.nationId;
+    document.getElementById('improveRelModal').hidden = false;
+    document.getElementById('irList').innerHTML = '<div class="fdi-empty">Loading…</div>';
+    loadImproveRel();
+  }
+  async function loadImproveRel() {
+    IR.nations = []; IR.dip = 0; IR.rels = {};
+    try {
+      var nr = await supabase.from('nations').select('id, name, on_hand').eq('dormant', false).order('name');
+      var all = nr.data || [];
+      IR.nations = all.filter(function (n) { return n.id !== IR.nation; });
+      var me = all.find(function (n) { return n.id === IR.nation; });
+      IR.dip = (me && me.on_hand && me.on_hand.diplomacy != null) ? Number(me.on_hand.diplomacy) || 0 : 0;
+    } catch (e) {}
+    try {
+      var rr = await supabase.from('nation_relations').select('nation_a, nation_b, value')
+        .or('nation_a.eq.' + IR.nation + ',nation_b.eq.' + IR.nation);
+      (rr.data || []).forEach(function (r) { IR.rels[r.nation_a === IR.nation ? r.nation_b : r.nation_a] = r.value; });
+    } catch (e) {}
+    renderImproveRel();
+  }
+  function renderImproveRel() {
+    document.getElementById('irDip').innerHTML = 'Diplomacy on hand: <b>' + Math.floor(IR.dip) + '</b>';
+    var box = document.getElementById('irList');
+    if (!IR.nations.length) { box.innerHTML = '<div class="fdi-empty">No other nations to reach.</div>'; return; }
+    box.innerHTML = IR.nations.map(function (n) {
+      var rel = IR.rels[n.id] != null ? IR.rels[n.id] : 5;
+      var cost = rel + 2;
+      var maxed = rel >= 10;
+      var afford = IR.dip >= cost;
+      var badge = '<span class="fdi-b' + (rel >= 8 ? ' on' : (rel <= 3 ? ' warn' : '')) + '">' + rel + '/10</span>';
+      var btn = maxed ? '<span class="fdi-sub">At maximum</span>'
+        : '<button class="fdi-tbtn" data-ir="' + esc(n.id) + '"' + (afford ? '' : ' disabled') + '>Improve · ' + cost + ' Dip</button>';
+      return '<div class="fdi-row"><div class="fdi-main"><b>' + esc(n.name) + '</b><span class="fdi-sub">Relations ' + rel + '/10</span></div><div class="fdi-r">' + badge + btn + '</div></div>';
+    }).join('');
+    document.querySelectorAll('#irList [data-ir]').forEach(function (b) { b.onclick = function () { doImproveRel(b.dataset.ir); }; });
+  }
+  function doImproveRel(id) {
+    performAction(function () { return supabase.rpc('improve_relations', { p_target: id }); }, function (d) {
+      loadImproveRel();   // refresh standings + Diplomacy on hand
+      return 'Relations improved' + (d && d.value != null ? ' — now ' + d.value + '/10.' : '.');
+    });
+  }
+
   // The Minister of Foreign Affairs container — shown only to the party holding Foreign Affairs. Its
   // Found Charter action opens the founding modal (charter a new international organization + invite).
   function renderForeignBar(isForeignMin) {
@@ -1200,10 +1266,13 @@
       '<div class="leadbar__grid">' +
         '<button class="lead" type="button" id="foreign-charter" data-cost="2"><b>Found Intl. Org</b><span class="lead__lane">Intl. Organizations</span><span class="lead__desc">Charter a new organization and invite nations — 5 Diplomacy · 1 AP.</span></button>' +
         '<button class="lead" type="button" id="foreign-outreach" data-cost="2"><b>Diplomatic Outreach</b><span class="lead__lane">Intl. Organizations</span><span class="lead__desc">Bank Diplomacy equal to your nation’s Diplomacy production — 2 AP · 12-tick cooldown.</span></button>' +
+        '<button class="lead" type="button" id="foreign-improve-rel"><b>Improve Relations</b><span class="lead__lane">Diplomacy</span><span class="lead__desc">Raise a nation’s standing +1 — costs (current standing + 2) Diplomacy · 1 AP.</span></button>' +
       '</div></section>';
     el.querySelectorAll('.lead').forEach(stampCost);
     var fb = document.getElementById('foreign-charter');
     if (fb) { actionBtns.push(fb); fb.addEventListener('click', function () { if (!fb.disabled) openFoundCharter(); }); }
+    var irb = document.getElementById('foreign-improve-rel');
+    if (irb) { actionBtns.push(irb); irb.addEventListener('click', function () { if (!irb.disabled) openImproveRel(); }); }
     // Diplomatic Outreach: 2 AP, 12-tick nation cooldown. Fires via performAction (Influence budget +
     // feed refresh); the returned `until` greys it out at once, like Produce.
     diploBtn = document.getElementById('foreign-outreach');
@@ -1517,6 +1586,7 @@
       let isTreasury = false;
       try { const { data, error: e } = await supabase.rpc('is_treasury_minister'); if (!e) isTreasury = data === true; } catch (e) {}
       if (!isTreasury) return;   // the stock-exchange + FDI actions belong to the Minister of Finance
+      document.getElementById('financeHd').hidden = false;   // one shared "Minister of Finance" header
       renderFdiAction(party);    // FDI tile — independent of the stock-exchange membership branch below
 
       const cur = (nation.economy && nation.economy.currency) || '$';
@@ -1536,10 +1606,10 @@
         const exName = (ex && ex.name) || 'its exchange';
         const exAbbr = (ex && ex.abbr) || '—';
         if (membership.role === 'host') {
-          box.innerHTML = '<section class="mact"><div class="mact__hd">Minister of Finance</div><div class="mact__t">Stock Exchange</div>' +
+          box.innerHTML = '<section class="mact"><div class="mact__t">Stock Exchange</div>' +
             '<div class="mact__sub">You host <b>' + esc(exName) + '</b> (' + esc(exAbbr) + '). Track its Price Rating on the <a href="/play/stockmarket/">Stock Market</a> page.</div></section>';
         } else {
-          box.innerHTML = '<section class="mact"><div class="mact__hd">Minister of Finance</div><div class="mact__t">Stock Exchange</div>' +
+          box.innerHTML = '<section class="mact"><div class="mact__t">Stock Exchange</div>' +
             '<div class="mact__sub">Your corporations list on <b>' + esc(exName) + '</b> (' + esc(exAbbr) + ')' +
             (hostName ? ', hosted by ' + esc(hostName) : '') + '. Costs 0.2% of GDP a year in Budget Balance.</div>' +
             '<button class="mact__leave" id="sxLeave" type="button">Leave exchange · 1 AP</button></section>';
@@ -1557,7 +1627,7 @@
       }
 
       // --- Not listed: the Found / Join entry + modal. ---
-      box.innerHTML = '<section class="mact"><div class="mact__hd">Minister of Finance</div><div class="mact__t">Stock Exchange</div>' +
+      box.innerHTML = '<section class="mact"><div class="mact__t">Stock Exchange</div>' +
         '<div class="mact__sub">Open a national stock market so your corporations can list — or join another nation’s.</div>' +
         '<button class="lead" id="sxOpen" type="button"><span class="lead__cost">2 AP</span><b>Found / Join Stock Exchange</b>' +
         '<span class="lead__desc">Charter your own exchange, or list on a friendly nation’s.</span></button></section>';
