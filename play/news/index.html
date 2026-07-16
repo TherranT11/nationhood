@@ -334,11 +334,18 @@
   window.addEventListener('nh-theme', function () { renderFeed(); });
 
   // ---- tempo strip + the card table ---------------------------------------------------------------
+  // One tempo order for the whole page: highest tempo first, lexical id breaks ties. This matches the
+  // server's `order by tempo desc, id` and the claim_card turn gate (schema/238) — plain lexical `<`
+  // tracks Postgres uuid byte order, so the client's turn-holder agrees with the backend's.
+  function byTempo(a, b) {
+    return (Number(b.tempo) || 0) - (Number(a.tempo) || 0)
+      || (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0);
+  }
   // Claim order = real Tempo standing (schema/206), highest first; id breaks ties. The pass button rides
   // in the strip (one party may pass per turn; it jumps first next turn).
   function renderTempo(parties, mine, myTurn) {
     var row = document.getElementById('evTempo');
-    var order = parties.slice().sort(function (a, b) { return (Number(b.tempo) || 0) - (Number(a.tempo) || 0) || String(a.id).localeCompare(String(b.id)); });
+    var order = parties.slice().sort(byTempo);
     function chip(p, i) {
       var you = PARTY && p.id === PARTY.id, col = partyColor(p);
       return '<div class="ev-tchip' + (you ? ' you' : '') + '" title="' + esc(p.name || '') + '">' +
@@ -351,8 +358,9 @@
     var rest = order.slice(2).map(function (p, i) { return chip(p, i + 2); }).join('');
     var activeGroup = active ? '<div class="ev-active"><span class="ev-active-lbl">Active turn</span><div class="ev-active-chips">' + active + '</div></div>' : '';
     var passOn = mine && mine.action === 'pass';
-    // Passing is an action too — only the party holding the floor may take it (schema/238 gate).
-    var passOff = BUSY || !myTurn || (mine && !passOn);
+    // Passing is an action too — only the party holding the floor may take it (schema/238 gate). A party
+    // that has already acted is never the floor-holder, so !myTurn alone covers the "already claimed" case.
+    var passOff = BUSY || !myTurn;
     var pass = '<button class="ev-pass js-claim' + (passOn ? ' on' : '') + '" data-card="" data-action="pass"' + (passOff ? ' disabled' : '') + '>🕊 PASS → FIRST NEXT TURN</button>';
     row.innerHTML = '<span class="ev-micro" style="margin-right:2px">Tempo</span>' + (activeGroup || '<span class="ev-micro">no parties yet</span>') + rest + pass;
   }
@@ -506,9 +514,7 @@
     // that hasn't acted this tick — ties broken by lowest id. A party has "acted" once it holds any claim
     // (an event/ap/both claim or a pass). That party is the only one whose claim buttons are live.
     var acted = {}; claims.forEach(function (x) { acted[x.party_id] = true; });
-    var waiting = roster.slice().filter(function (p) { return !acted[p.id]; })
-      .sort(function (a, b) { return (Number(b.tempo) || 0) - (Number(a.tempo) || 0) || String(a.id).localeCompare(String(b.id)); });
-    var turnHolder = waiting[0] || null;
+    var turnHolder = roster.slice().filter(function (p) { return !acted[p.id]; }).sort(byTempo)[0] || null;
     var myTurn = !!(turnHolder && PARTY && turnHolder.id === PARTY.id);
     var turnName = turnHolder ? (turnHolder.abbreviation || turnHolder.name || '—') : '';
 
