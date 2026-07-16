@@ -50,12 +50,16 @@
   .stat-trend.up{color:var(--green)} .stat-trend.down{color:var(--red)}
   .stat-note{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);margin-top:7px}
   .ac-hd{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-top:11px}
-  .appr-changes{margin-top:5px;max-height:104px;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
-  .ac-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10.5px;padding:1px 0}
+  .appr-changes{margin-top:5px;max-height:168px;overflow-y:auto;display:flex;flex-direction:column;gap:5px}
+  .ac-entry{padding:1px 0}
+  .ac-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10.5px}
   .ac-when{color:var(--muted);letter-spacing:.04em}
   .ac-delta{font-weight:700;white-space:nowrap}
   .ac-delta.up{color:var(--green)} .ac-delta.down{color:var(--red)}
+  .ac-why{font-family:'JetBrains Mono',monospace;font-size:9px;line-height:1.35;letter-spacing:.02em;color:var(--muted)}
+  .ac-why.ac-wind{font-style:italic;color:var(--dim)}
   .ac-none{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--dim);margin-top:4px}
+  .apprcard{flex:1 1 300px}
   .hearts{font-size:28px;letter-spacing:5px;margin-top:8px}
   .heart-svg{width:28px;height:28px;vertical-align:-4px}
 
@@ -220,7 +224,7 @@
         <div class="ip-title" id="ipTitle">Your Party &amp; Government</div>
         <div class="ip-sub">Your party, the assembly behind it, and the state of the government it leads.</div>
 
-        <!-- ROW 1: identity + approval + coalition health + reform -->
+        <!-- ROW 1: identity + coalition health + reform -->
         <div class="ip-row">
           <div class="card idcard">
             <div class="id-logo" id="idLogo">🏛</div>
@@ -230,17 +234,6 @@
               <div class="id-leader" id="idLeader">LEADER —</div>
             </div>
             <button class="id-edit" id="editBtn" type="button" hidden>EDIT · 1 AP</button>
-          </div>
-
-          <div class="card statcard">
-            <div class="ip-micro">Party Approval</div>
-            <div style="display:flex;align-items:baseline;gap:8px;margin-top:3px">
-              <span class="stat-big" id="apprVal">—</span>
-              <span class="stat-trend" id="apprTrend" hidden></span>
-            </div>
-            <svg id="apprSpark" width="100%" height="30" viewBox="0 0 300 30" preserveAspectRatio="none" style="margin-top:4px" aria-hidden="true"></svg>
-            <div class="ac-hd">Recent changes</div>
-            <div class="appr-changes" id="apprChanges"></div>
           </div>
 
           <div class="card statcard" id="healthCard" hidden>
@@ -257,9 +250,19 @@
 
         </div>
 
-        <!-- Ideology: live approval-winds breakdown (its own full-width row) -->
+        <!-- ROW 2: ideology (live approval-winds breakdown) + party approval with recent changes -->
         <div class="ip-row">
           <div class="card ideocard" id="ideoCard"></div>
+          <div class="card statcard apprcard">
+            <div class="ip-micro">Party Approval</div>
+            <div style="display:flex;align-items:baseline;gap:8px;margin-top:3px">
+              <span class="stat-big" id="apprVal">—</span>
+              <span class="stat-trend" id="apprTrend" hidden></span>
+            </div>
+            <svg id="apprSpark" width="100%" height="30" viewBox="0 0 300 30" preserveAspectRatio="none" style="margin-top:4px" aria-hidden="true"></svg>
+            <div class="ac-hd">Recent changes</div>
+            <div class="appr-changes" id="apprChanges"></div>
+          </div>
         </div>
 
         <!-- ROW 2: assembly + stance -->
@@ -377,9 +380,17 @@
   }
 
   // ---- approval + sparkline ----
-  // hist = party_popularity_history rows [{tick, popularity}] ascending. One source for the value,
-  // the trend arrow, the sparkline, and the per-tick "recent changes" list.
-  function renderApproval(party, hist) {
+  // Condense a month's event bodies into one short "why" line (the first cause + a "+N more" tail).
+  function apprReason(list) {
+    var first = String(list[0] || '').replace(/\s+/g, ' ').trim();
+    if (first.length > 54) first = first.slice(0, 53).replace(/\s+\S*$/, '').trim() + '…';
+    return list.length > 1 ? first + ' · +' + (list.length - 1) + ' more' : first;
+  }
+  // hist = party_popularity_history rows [{tick, popularity}] ascending; reasons = { 'Month, YYYY': [body…] }
+  // keyed by game_date (== tickToDate, schema/40). One source for the value, trend, sparkline, and the
+  // per-tick "recent changes" list — each change annotated with why (the events from its month).
+  function renderApproval(party, hist, reasons) {
+    reasons = reasons || {};
     var rows = (hist || []).filter(function (r) { return isFinite(Number(r.popularity)); });
     var series = rows.map(function (r) { return Number(r.popularity); });
     var raw = Number(party.popularity) || 0, appr = Math.min(100, raw);
@@ -395,12 +406,16 @@
     for (var i = rows.length - 1; i > 0 && changes.length < 8; i--) {
       var dv = Math.round((series[i] - series[i - 1]) * 10) / 10;
       if (dv === 0) continue;
-      changes.push({ date: tickToDate(rows[i].tick), delta: dv });
+      var date = tickToDate(rows[i].tick);
+      changes.push({ date: date, delta: dv, why: reasons[date] || [] });
     }
     document.getElementById('apprChanges').innerHTML = changes.length
       ? changes.map(function (c) {
-          return '<div class="ac-row"><span class="ac-when">' + esc(c.date) + '</span>' +
-            '<span class="ac-delta ' + (c.delta > 0 ? 'up' : 'down') + '">' + (c.delta > 0 ? '▲ +' : '▼ −') + Math.abs(c.delta).toFixed(1) + '</span></div>';
+          var why = c.why.length
+            ? '<div class="ac-why" title="' + esc(c.why.join(' · ')) + '">' + esc(apprReason(c.why)) + '</div>'
+            : '<div class="ac-why ac-wind">Approval winds — national conditions</div>';
+          return '<div class="ac-entry"><div class="ac-row"><span class="ac-when">' + esc(c.date) + '</span>' +
+            '<span class="ac-delta ' + (c.delta > 0 ? 'up' : 'down') + '">' + (c.delta > 0 ? '▲ +' : '▼ −') + Math.abs(c.delta).toFixed(1) + '</span></div>' + why + '</div>';
         }).join('')
       : '<div class="ac-none">No changes recorded yet.</div>';
   }
@@ -928,7 +943,22 @@
         const { data: pph } = await supabase.from('party_popularity_history').select('tick, popularity').eq('party_id', party.id).order('tick', { ascending: true });
         hist = pph || [];
       } catch (e) {}
-      renderApproval(party, hist);
+      // WHY each change happened: the events feed is the one source that narrates popularity causes. A
+      // cause for THIS party is its own narrated action (party_id = us) or a nation-wide popularity hit
+      // (party_id null, body mentions popularity). Bucket by game_date (== tickToDate) so each change
+      // row picks up the events from its own month. Continuous ideology winds write no event by design.
+      var reasons = {};
+      try {
+        // Recent nation events (cap 300) cover the ~8 months the change list shows; a busier nation
+        // that overruns the cap just falls the oldest rows back to the "Approval winds" default.
+        const { data: pev } = await supabase.from('events').select('body, game_date, party_id')
+          .eq('nation_id', party.nation_id).order('created_at', { ascending: false }).limit(300);
+        (pev || []).forEach(function (e) {
+          var mine = e.party_id === party.id, natPop = e.party_id == null && /popularit/i.test(e.body || '');
+          if (mine || natPop) (reasons[e.game_date] = reasons[e.game_date] || []).push(e.body);
+        });
+      } catch (e) {}
+      renderApproval(party, hist, reasons);
 
       // the assembly: every party's seats (+ the fields the Other Parties cards need)
       var roster = [];
