@@ -24,11 +24,11 @@ alter table public.parties add column if not exists white_papers_left int not nu
 
 create or replace function public.white_paper(p_policy uuid, p_stat text, p_dir int)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_party public.parties%rowtype; v_regime text; v_stat text; v_i int;
+declare v_party public.parties%rowtype; v_stat text; v_i int;
 begin
   v_party := public._lock_party();
-  select coalesce(n.economy->>'regime_type', '') into v_regime from public.nations n where n.id = v_party.nation_id;
-  if v_regime <> 'autocracy' then raise exception 'The White Paper is a Technocrat move, available only under an autocracy.'; end if;
+  if public._regime_type((select economy from public.nations where id = v_party.nation_id)) is distinct from 'autocracy' then
+    raise exception 'The White Paper is a Technocrat move, available only under an autocracy.'; end if;
   if coalesce(v_party.stance, 3) <> 4 then raise exception 'Only a Technocrat (Ref1) can publish a White Paper.'; end if;
   if coalesce(v_party.white_papers_left, 0) < 1 then raise exception 'You have no White Papers left.'; end if;
   if p_dir not in (-1, 1) then raise exception 'Pick increase or decrease.'; end if;

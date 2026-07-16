@@ -151,11 +151,11 @@ revoke all on function public._apply_loyalty(public.proposals, boolean) from pub
 -- with the effects above. Autocracy + Hardliner (stance 2) gated; one live loyalty bill per party.
 create or replace function public.loyalty_vote()
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_party public.parties%rowtype; v_regime text; v_tick int; v_pid uuid; v_res text;
+declare v_party public.parties%rowtype; v_tick int; v_pid uuid; v_res text;
 begin
   v_party := public._lock_party();
-  select coalesce(n.economy->>'regime_type', '') into v_regime from public.nations n where n.id = v_party.nation_id;
-  if v_regime <> 'autocracy' then raise exception 'The Loyalty Vote is a Hardliner move, available only under an autocracy.'; end if;
+  if public._regime_type((select economy from public.nations where id = v_party.nation_id)) is distinct from 'autocracy' then
+    raise exception 'The Loyalty Vote is a Hardliner move, available only under an autocracy.'; end if;
   if coalesce(v_party.stance, 3) <> 2 then raise exception 'Only a Hardliner (A1) can call a Loyalty Vote.'; end if;
   if exists (select 1 from public.proposals where party_id = v_party.id and kind = 'loyalty' and status = 'voting') then
     raise exception 'Your Loyalty Vote is already on the floor.'; end if;

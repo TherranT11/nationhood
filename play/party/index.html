@@ -468,7 +468,7 @@
     },
     autocracy: {
       specA: '#9159c9', specB: 'var(--green,#16915a)', poleL: '👁 Autocratic', poleR: 'Reform 📈',
-      plenum: 'Party Plenum · coming soon', cur: 3, moves: true,
+      plenum: 'Party Plenum · coming soon', cur: 3,
       notches: [
         { id: 'A3', ic: '👁', short: 'Vozhd' }, { id: 'A2', ic: '🕶', short: 'Securocrat' },
         { id: 'A1', ic: '🧱', short: 'Hardliner', creed: '“The Party does not bend.”',
@@ -516,8 +516,7 @@
     }
     var footer;
     if (auto) {
-      var ap = Number(party && party.action_points) || 0;
-      var canH = cur > 2 && ap >= 5, canR = cur < 4 && ap >= 5;
+      var canH = cur > 2 && apNow >= 5, canR = cur < 4 && apNow >= 5;
       footer = '<div class="st-moves">' +
         '<button type="button" class="st-move" id="stMoveH"' + (canH ? '' : ' disabled') + '>◀ Move Hardline · 5 AP</button>' +
         '<button type="button" class="st-move" id="stMoveR"' + (canR ? '' : ' disabled') + '>Move Reform · 5 AP ▶</button>' +

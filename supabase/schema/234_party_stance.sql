@@ -26,11 +26,11 @@ alter table public.parties add column if not exists stance int not null default 
 -- move back, so a failed/blocked move never spends AP).
 create or replace function public.move_stance(p_dir text)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_party public.parties%rowtype; v_regime text; v_cur int; v_target int; v_name text; v_i int;
+declare v_party public.parties%rowtype; v_cur int; v_target int; v_name text; v_i int;
 begin
   v_party := public._lock_party();
-  select coalesce(n.economy->>'regime_type', '') into v_regime from public.nations n where n.id = v_party.nation_id;
-  if v_regime <> 'autocracy' then raise exception 'Party stance moves are only available under an autocracy.'; end if;
+  if public._regime_type((select economy from public.nations where id = v_party.nation_id)) is distinct from 'autocracy' then
+    raise exception 'Party stance moves are only available under an autocracy.'; end if;
 
   v_cur := coalesce(v_party.stance, 3);
   v_target := case when p_dir = 'reform' then v_cur + 1 when p_dir = 'hardline' then v_cur - 1 else null end;
