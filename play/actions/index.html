@@ -159,6 +159,8 @@
   .fdi-inc-chip.on.sweet{border-color:#2c8c5a;color:#2c8c5a;background:rgba(62,207,142,.1)}
   .fdi-inc-chip.on.prot{border-color:var(--red);color:var(--red);background:rgba(220,80,80,.08)}
   .fdi-temp{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-left:auto}
+  .fdi-reneg-hd{flex-basis:100%;font-size:11.5px;line-height:1.45;color:var(--muted);background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+  .fdi-reneg-act{flex-basis:100%;display:flex;gap:8px;margin-top:2px}
   .fdi-flag{display:inline-block;width:15px;height:10px;object-fit:cover;border-radius:2px;border:1px solid var(--line);vertical-align:middle;margin-right:3px}
   .fdi-hex{width:100%;font-family:'Space Mono',monospace;font-size:11px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);border-radius:8px;padding:9px 11px;cursor:pointer}
   .fdi-lbl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin:16px 0 9px}
@@ -1096,11 +1098,50 @@
   function fdiNat(id, name) { return fdiFlag(id) + '<span style="color:' + fdiColor(id) + ';font-weight:700">' + esc(name || fdiNationName(id)) + '</span>'; }
 
   function renderFdiInc() {
-    document.getElementById('fdiInc').innerHTML = FDI_INCENTIVES.map(function (i) {
+    var reneg = FDI.renegDeal ? (FDI.deals || []).find(function (d) { return d.id === FDI.renegDeal; }) : null;
+    var banner = reneg
+      ? '<div class="fdi-reneg-hd">Renegotiating <b>' + esc((reneg.corporations && reneg.corporations.name) || 'the deal') +
+        '</b> — reshape the package. Claw back below what the firm needs and it walks.</div>'
+      : '';
+    var confirm = reneg
+      ? '<div class="fdi-reneg-act"><button class="fdi-tbtn" id="fdiRenegGo">Renegotiate · 1 AP</button>' +
+        '<button class="fdi-tbtn" id="fdiRenegCancel">Cancel</button></div>'
+      : '';
+    document.getElementById('fdiInc').innerHTML = banner + FDI_INCENTIVES.map(function (i) {
       return '<button class="fdi-inc-chip' + (FDI.sel.inc[i.k] ? ' on' : '') + ' ' + (i.sweet ? 'sweet' : 'prot') + '" data-inc="' + i.k + '">' +
         (i.sweet ? '▲ ' : '▼ ') + esc(i.label) + '</button>';
-    }).join('') + '<span class="fdi-temp">Package: <b>' + (fdiTemp() >= 0 ? '+' : '') + fdiTemp() + '</b></span>';
+    }).join('') + '<span class="fdi-temp">Package: <b>' + (fdiTemp() >= 0 ? '+' : '') + fdiTemp() + '</b></span>' + confirm;
     document.querySelectorAll('#fdiInc [data-inc]').forEach(function (b) { b.onclick = function () { FDI.sel.inc[b.dataset.inc] = !FDI.sel.inc[b.dataset.inc]; renderFdiInc(); }; });
+    var go = document.getElementById('fdiRenegGo'); if (go) go.onclick = fdiConfirmReneg;
+    var cx = document.getElementById('fdiRenegCancel'); if (cx) cx.onclick = fdiCancelReneg;
+  }
+
+  // Renegotiate an ACTIVE deal: pre-fill the shared incentive picker with the deal's current package and
+  // enter reneg mode, so Confirm calls renegotiate_fdi_deal instead of courting a new suitor.
+  function fdiStartReneg(id) {
+    var d = (FDI.deals || []).find(function (x) { return x.id === id; }); if (!d) return;
+    FDI.renegDeal = id;
+    FDI.sel.inc = {};
+    (d.incentives || []).forEach(function (k) { FDI.sel.inc[k] = true; });
+    renderFdiInc();
+    var el = document.getElementById('fdiInc'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+  }
+  function fdiCancelReneg() { FDI.renegDeal = null; FDI.sel.inc = {}; renderFdiInc(); }
+  async function fdiConfirmReneg() {
+    var deal = (FDI.deals || []).find(function (x) { return x.id === FDI.renegDeal; }); if (!deal) return;
+    var go = document.getElementById('fdiRenegGo'); if (go) go.disabled = true;   // 1 AP — no double-fire
+    // The picker only exposes four incentive keys; preserve any others already on the deal (e.g. grant).
+    var known = {}; FDI_INCENTIVES.forEach(function (i) { known[i.k] = true; });
+    var inc = FDI_INCENTIVES.filter(function (i) { return FDI.sel.inc[i.k]; }).map(function (i) { return i.k; })
+      .concat((deal.incentives || []).filter(function (k) { return !known[k]; }));
+    try {
+      var res = await supabase.rpc('renegotiate_fdi_deal', { p_deal: FDI.renegDeal, p_incentives: inc });
+      if (res.error) { ping(res.error.message || 'Could not renegotiate.'); if (go) go.disabled = false; return; }
+      ping((res.data && res.data.departed) ? 'The firm walked away — it wouldn’t accept the clawed-back terms.' : 'Terms renegotiated.');
+      FDI.renegDeal = null; FDI.sel.inc = {};
+      fdiReloadDeals();   // re-render deals (and clears the picker via renderFdiInc below)
+      renderFdiInc();
+    } catch (e) { ping('Could not renegotiate. Try again.'); if (go) go.disabled = false; }
   }
 
   function renderFdiSuitors() {
@@ -1127,17 +1168,20 @@
       var badge = threat ? '<span class="fdi-b warn">⚠ RELOCATING</span>'
                          : '<span class="fdi-b' + (d.state === 'ACTIVE' ? ' on' : '') + '">' + esc(d.state) + '</span>';
       var retainBtn = threat ? '<button class="fdi-tbtn" data-retain="' + esc(d.id) + '">Match Their Terms · 2 AP</button>' : '';
-      var natBtn = (iHost && d.state === 'ACTIVE' && !threat) ? '<button class="fdi-tbtn" data-nat="' + esc(d.id) + '">Nationalize</button>' : '';
-      return '<div class="fdi-row"><div class="fdi-main"><b>' + esc(corp) + '</b><span class="fdi-sub">' + sub + '</span></div><div class="fdi-r">' + badge + retainBtn + natBtn + '</div></div>';
+      var canManage = iHost && d.state === 'ACTIVE' && !threat;
+      var renegBtn = canManage ? '<button class="fdi-tbtn" data-reneg="' + esc(d.id) + '">Renegotiate · 1 AP</button>' : '';
+      var natBtn = canManage ? '<button class="fdi-tbtn" data-nat="' + esc(d.id) + '">Nationalize</button>' : '';
+      return '<div class="fdi-row"><div class="fdi-main"><b>' + esc(corp) + '</b><span class="fdi-sub">' + sub + '</span></div><div class="fdi-r">' + badge + retainBtn + renegBtn + natBtn + '</div></div>';
     }).join('') || '<div class="fdi-empty">No foreign investment on the books.</div>';
     document.querySelectorAll('#fdiDeals [data-nat]').forEach(function (b) { b.onclick = function () { fdiNationalize(b.dataset.nat, b); }; });
     document.querySelectorAll('#fdiDeals [data-retain]').forEach(function (b) { b.onclick = function () { fdiRetain(b.dataset.retain, b); }; });
+    document.querySelectorAll('#fdiDeals [data-reneg]').forEach(function (b) { b.onclick = function () { fdiStartReneg(b.dataset.reneg); }; });
   }
 
   async function fdiReloadDeals() {
     try {
       var res = await supabase.from('fdi_deals')
-        .select('id, state, corp_id, host_nation_id, owner_nation_id, host_growth, owner_growth, depart_tick, corporations(name)')
+        .select('id, state, corp_id, host_nation_id, owner_nation_id, host_growth, owner_growth, depart_tick, incentives, temperature, corporations(name)')
         .or('host_nation_id.eq.' + FDI.nation + ',owner_nation_id.eq.' + FDI.nation).neq('state', 'ENDED');
       FDI.deals = res.data || [];
     } catch (e) { FDI.deals = []; }
@@ -1146,6 +1190,7 @@
 
   async function openFdi() {
     FDI.sel = { inc: {}, pool: [] };
+    FDI.renegDeal = null;   // start in court mode, not renegotiation
     document.getElementById('fdiModal').hidden = false;
     document.getElementById('fdiHex').innerHTML = '<option value="">Auto — the largest site</option>' +
       (FDI.hexes || []).map(function (h) {
