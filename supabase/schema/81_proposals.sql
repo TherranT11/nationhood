@@ -255,6 +255,8 @@ begin
       perform public._apply_reform(v_p.nation_id, v_p.payload->>'dir');              -- writer lives in schema/167
     elsif v_p.kind = 'card_bill' then
       perform public._apply_bill_effects(v_p.nation_id, v_p.party_id, v_p.payload->'pass');   -- card-authored "if passed" effects (schema/183)
+    elsif v_p.kind = 'loyalty' then
+      perform public._apply_loyalty(v_p, true);    -- Hardliner loyalty bill passed (schema/236)
     end if;
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_p.nation_id, v_p.party_id, 'declaration',
@@ -266,6 +268,8 @@ begin
     update public.proposals set status = 'failed', resolved_tick = (select current_tick from public.game_state where id) where id = p_proposal;
     if v_p.kind = 'card_bill' then
       perform public._apply_bill_effects(v_p.nation_id, v_p.party_id, v_p.payload->'fail');    -- card-authored "if not passed" effects (schema/183)
+    elsif v_p.kind = 'loyalty' then
+      perform public._apply_loyalty(v_p, false);    -- Hardliner loyalty bill failed (schema/236)
     end if;
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_p.nation_id, v_p.party_id, 'declaration',

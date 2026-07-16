@@ -26,7 +26,7 @@
   .ip-title{font-weight:800;font-size:26px;margin:2px 0 4px}
   .ip-sub{font-size:12.5px;color:var(--muted);margin-bottom:16px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:15px 17px}
-  .ip-row{display:flex;gap:15px;flex-wrap:wrap;margin-bottom:14px}
+  .ip-row{display:flex;gap:15px;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px}
   .ip-row2{display:flex;gap:14px;flex-wrap:wrap}
   /* Row 1 (identity + stat cards) runs 25% larger than the base card — bigger padding, labels and figures. */
   .ip-row .card{padding:19px 21px}
@@ -49,6 +49,13 @@
   .stat-trend{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700}
   .stat-trend.up{color:var(--green)} .stat-trend.down{color:var(--red)}
   .stat-note{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);margin-top:7px}
+  .ac-hd{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-top:11px}
+  .appr-changes{margin-top:5px;max-height:104px;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
+  .ac-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10.5px;padding:1px 0}
+  .ac-when{color:var(--muted);letter-spacing:.04em}
+  .ac-delta{font-weight:700;white-space:nowrap}
+  .ac-delta.up{color:var(--green)} .ac-delta.down{color:var(--red)}
+  .ac-none{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--dim);margin-top:4px}
   .hearts{font-size:28px;letter-spacing:5px;margin-top:8px}
   .heart-svg{width:28px;height:28px;vertical-align:-4px}
 
@@ -83,6 +90,16 @@
   .st-pass b{color:var(--text)}
   .st-plenum{display:flex;justify-content:flex-end;margin-top:9px}
   .st-plenum button{font-family:'JetBrains Mono',monospace;background:var(--panel);border:1px dashed var(--line);color:var(--dim);border-radius:8px;padding:7px 14px;font-size:9.5px;font-weight:800;letter-spacing:.06em;cursor:not-allowed}
+  .st-moves{display:flex;justify-content:space-between;gap:10px;margin-top:10px}
+  .st-move{font-family:'JetBrains Mono',monospace;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 13px;font-size:9.5px;font-weight:800;letter-spacing:.05em;cursor:pointer}
+  .st-move:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+  .st-move:disabled{opacity:.45;cursor:not-allowed}
+  .st-moveerr{color:var(--red);font-size:11px;margin-top:7px;min-height:14px;text-align:center}
+  .st-act{margin-top:9px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .st-actbtn{font-family:'JetBrains Mono',monospace;background:var(--accent);border:none;color:#fff;border-radius:8px;padding:8px 14px;font-size:10px;font-weight:800;letter-spacing:.05em;cursor:pointer}
+  .st-actbtn:hover:not(:disabled){filter:brightness(1.08)}
+  .st-actbtn:disabled{opacity:.5;cursor:not-allowed}
+  .st-acterr{color:var(--red);font-size:11px}
 
   /* ideology card — live approval-winds breakdown (its own full-width row) */
   .ideocard{display:flex;flex-direction:column;flex:1 1 auto}
@@ -156,6 +173,17 @@
   .imodal__declare{font-family:'JetBrains Mono',monospace;border:none;border-radius:8px;padding:9px 20px;font-weight:800;font-size:11px;letter-spacing:.06em;cursor:pointer;color:#fff;background:var(--accent)}
   .imodal__declare:disabled{background:var(--panel2);color:var(--dim);cursor:not-allowed}
 
+  /* white paper modal fields (reuses .imodal chrome) */
+  .wp-lbl{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:12px 0 6px}
+  .wp-select{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px 11px;color:var(--text);font-family:inherit;font-size:13.5px}
+  .wp-chips{display:flex;gap:6px;flex-wrap:wrap;min-height:20px}
+  .wp-chip{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;background:var(--panel2);border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:5px 10px;cursor:pointer}
+  .wp-chip.on{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
+  .wp-none{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim)}
+  .wp-dirs{display:flex;gap:8px}
+  .wp-dir{flex:1;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:800;background:var(--panel2);border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:9px;cursor:pointer}
+  .wp-dir.on{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
+
   /* edit modal (scoped palette) */
   .emodal{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:20px}
   .emodal[hidden]{display:none}
@@ -211,6 +239,8 @@
               <span class="stat-trend" id="apprTrend" hidden></span>
             </div>
             <svg id="apprSpark" width="100%" height="30" viewBox="0 0 300 30" preserveAspectRatio="none" style="margin-top:4px" aria-hidden="true"></svg>
+            <div class="ac-hd">Recent changes</div>
+            <div class="appr-changes" id="apprChanges"></div>
           </div>
 
           <div class="card statcard" id="healthCard" hidden>
@@ -254,6 +284,30 @@
         <div class="op-section" id="otherSection" hidden>
           <div class="op-hd">Other Parties</div>
           <div class="op-list" id="otherParties"></div>
+        </div>
+
+        <!-- White Paper modal (Technocrat active) -->
+        <div class="imodal" id="wpModal" hidden>
+          <div class="imodal__panel">
+            <div class="imodal__accent"></div>
+            <div class="imodal__hd">
+              <div><div class="ip-micro" style="color:var(--accent)">Technocrat</div><b>Publish a White Paper</b></div>
+              <button class="imodal__x" id="wpClose" type="button">&times; CLOSE</button>
+            </div>
+            <div class="imodal__body">
+              <div class="imodal__intro">Pick a policy, pick one stat it affects, and shift the nation’s value of that stat by ±2. Two uses total.</div>
+              <label class="wp-lbl">Policy</label>
+              <select class="wp-select" id="wpPolicy"></select>
+              <label class="wp-lbl">Stat to shift</label>
+              <div class="wp-chips" id="wpStats"></div>
+              <label class="wp-lbl">Direction</label>
+              <div class="wp-dirs"><button type="button" class="wp-dir" id="wpInc">Increase +2</button><button type="button" class="wp-dir" id="wpDec">Decrease −2</button></div>
+            </div>
+            <div class="imodal__foot">
+              <span class="imodal__note" id="wpErr">2 Action Points · 2 uses total</span>
+              <button class="imodal__declare" id="wpPublish" type="button" disabled>Publish · 2 AP</button>
+            </div>
+          </div>
         </div>
 
         <!-- Ideology modal (inside .ip-root so it inherits the scoped palette) -->
@@ -302,6 +356,7 @@
   import { esc, majority, tickToDate, TICK_PERIOD_MS } from '/util.js';
   import { ideologyLabel, partyColor, ARCHETYPES, ideologyByName } from '/archetypes.js';
   import { nationRegime } from '/ladders.js';
+  import { fetchPolicies } from '/proposals.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
 
@@ -322,16 +377,32 @@
   }
 
   // ---- approval + sparkline ----
-  function renderApproval(party, series, prevPop) {
+  // hist = party_popularity_history rows [{tick, popularity}] ascending. One source for the value,
+  // the trend arrow, the sparkline, and the per-tick "recent changes" list.
+  function renderApproval(party, hist) {
+    var rows = (hist || []).filter(function (r) { return isFinite(Number(r.popularity)); });
+    var series = rows.map(function (r) { return Number(r.popularity); });
     var raw = Number(party.popularity) || 0, appr = Math.min(100, raw);
     document.getElementById('apprVal').textContent = (Math.round(appr * 10) / 10) + '%';
-    if (prevPop != null) {
-      var d = Math.round((raw - Number(prevPop)) * 10) / 10;
-      var t = document.getElementById('apprTrend');
-      if (d > 0) { t.className = 'stat-trend up'; t.textContent = '▲ ' + d.toFixed(1); t.hidden = false; }
-      else if (d < 0) { t.className = 'stat-trend down'; t.textContent = '▼ ' + Math.abs(d).toFixed(1); t.hidden = false; }
+    if (series.length >= 2) {
+      var d0 = Math.round((raw - series[series.length - 2]) * 10) / 10, t = document.getElementById('apprTrend');
+      if (d0 > 0) { t.className = 'stat-trend up'; t.textContent = '▲ ' + d0.toFixed(1); t.hidden = false; }
+      else if (d0 < 0) { t.className = 'stat-trend down'; t.textContent = '▼ ' + Math.abs(d0).toFixed(1); t.hidden = false; }
     }
     drawSparkline(series);
+    // every tick-over-tick movement, newest first (net change per tick, from any source)
+    var changes = [];
+    for (var i = rows.length - 1; i > 0 && changes.length < 8; i--) {
+      var dv = Math.round((series[i] - series[i - 1]) * 10) / 10;
+      if (dv === 0) continue;
+      changes.push({ date: tickToDate(rows[i].tick), delta: dv });
+    }
+    document.getElementById('apprChanges').innerHTML = changes.length
+      ? changes.map(function (c) {
+          return '<div class="ac-row"><span class="ac-when">' + esc(c.date) + '</span>' +
+            '<span class="ac-delta ' + (c.delta > 0 ? 'up' : 'down') + '">' + (c.delta > 0 ? '▲ +' : '▼ −') + Math.abs(c.delta).toFixed(1) + '</span></div>';
+        }).join('')
+      : '<div class="ac-none">No changes recorded yet.</div>';
   }
   function drawSparkline(s) {
     var svg = document.getElementById('apprSpark');
@@ -405,7 +476,9 @@
     document.getElementById('hemiCard').hidden = false;
   }
 
-  // ---- Stance: read-only ladder per regime type (the shift mechanic — Congress/Plenum — is not built yet) ----
+  // ---- Stance: the faction position on the regime ladder. Autocracy parties can move one rung
+  // (5 AP) between Hardliner (A1) · Apparatchik (N) · Technocrat (Ref1); the outer rungs stay locked.
+  // Democracy keeps the read-only "Party Congress · coming soon" ladder for now (schema/234). ----
   var STANCE_TRACKS = {
     democracy: {
       specA: '#3f7fbf', specB: 'var(--red)', poleL: '🏛 Democratic', poleR: 'Revolutionary ✊',
@@ -422,37 +495,160 @@
       specA: '#9159c9', specB: 'var(--green,#16915a)', poleL: '👁 Autocratic', poleR: 'Reform 📈',
       plenum: 'Party Plenum · coming soon', cur: 3,
       notches: [
-        { id: 'A3', ic: '👁', short: 'Vozhd' }, { id: 'A2', ic: '🕶', short: 'Securocrat' }, { id: 'A1', ic: '🧱', short: 'Hardliner' },
+        { id: 'A3', ic: '👁', short: 'Vozhd' }, { id: 'A2', ic: '🕶', short: 'Securocrat' },
+        { id: 'A1', ic: '🧱', short: 'Hardliner', creed: '“The Party does not bend.”',
+          active: { n: 'Loyalty Vote', ap: '1 AP', act: 'loyalty', d: 'Table a loyalty bill on the floor. If it passes, your party gains +3 Popularity and the Head of Government +2; every party that votes no loses 2 Popularity and 3 Action Points. If it fails, you lose 5 Popularity and all your Action Points.' } },
         { id: 'N', ic: '🏵', short: 'Apparatchik', creed: '“I serve the Party.” (Which faction? “The Party.”)',
           tools: [{ n: 'Congress Basics', d: 'Vote, hold ministries, and keep your head down — quiet competence earns a little standing each uneventful tick.' }],
           passive: '<b>Purge-resistant.</b> Hardliners don’t fear you and reformists don’t hate you. But you’re succession-invisible: when the Leader dies, apparatchiks are never on the shortlist. A corridor, not a home.' },
-        { id: 'Ref1', ic: '📈', short: 'Technocrat' }, { id: 'Ref2', ic: '📰', short: 'Glasnostik' }, { id: 'Ref3', ic: '🕊', short: 'Transitioner' }
+        { id: 'Ref1', ic: '📈', short: 'Technocrat', creed: '“The numbers do not care about the anthem.”',
+          active: { n: 'White Paper', ap: '2 AP', act: 'whitepaper', d: 'Rewrite a policy — shift one of its stats by ±2. Two uses.' },
+          passive: '<b>Reformer.</b> +1% Popularity every time a Reform is enacted.' },
+        { id: 'Ref2', ic: '📰', short: 'Glasnostik' }, { id: 'Ref3', ic: '🕊', short: 'Transitioner' }
       ]
     }
   };
-  function renderStance(regime) {
+  function renderStance(regime, party) {
     var track = regime && STANCE_TRACKS[regime.type];
     var card = document.getElementById('stanceCard');
     if (!track) { card.hidden = true; return; }   // monarchy / unset has no ladder
-    document.getElementById('stanceHd').textContent = regime.type === 'autocracy' ? 'Faction Stance — moves at a Party Plenum' : 'Party Stance — moves at a Party Congress';
+    var auto = regime.type === 'autocracy';
+    // current rung: stored stance (clamped to the reachable [2,4]) for autocracy, else the fixed centre
+    var cur = auto ? Math.max(2, Math.min(4, Number(party && party.stance) || 3)) : track.cur;
+    document.getElementById('stanceHd').textContent = auto ? 'Faction Stance — moves at a Party Plenum' : 'Party Stance — moves at a Party Congress';
     document.getElementById('stancePoleL').textContent = track.poleL;
     document.getElementById('stancePoleR').textContent = track.poleR;
     var line = document.getElementById('stanceLadder');
     line.innerHTML = '<div class="st-line" style="background:linear-gradient(90deg,' + track.specA + ',#5a5a8a 45%,' + track.specB + ')"></div>' +
       track.notches.map(function (n, i) {
-        var x = i / (track.notches.length - 1) * 100, you = i === track.cur;
+        var x = i / (track.notches.length - 1) * 100, you = i === cur;
         return '<div class="st-node" style="left:' + x + '%">' +
           '<div class="st-pip' + (you ? ' you' : ' locked') + '">' + n.ic + '</div>' +
           '<div class="st-lab' + (you ? ' you' : '') + '">' + (n.id !== 'N' ? n.id + ' ' : '') + n.short + (you ? '' : ' 🔒') + '</div>' +
           (you ? '<div class="st-here">● YOU ARE HERE</div>' : '') + '</div>';
       }).join('');
-    var d = track.notches[track.cur], t = d.tools[0];
+    var d = track.notches[cur], t = d.tools && d.tools[0];
+    var abilityHtml = d.active
+      ? '<div class="st-toolkit"><span class="st-tk">ACTIVE' + (d.active.ap ? ' · ' + d.active.ap : '') + ' · </span><b>' + d.active.n + '</b> — ' + d.active.d + '</div>'
+      : (t ? '<div class="st-toolkit"><span class="st-tk">TOOLKIT · </span><b>' + t.n + '</b> — ' + t.d + '</div>' : '');
+    // the current rung's active ability, as a button
+    var apNow = Number(party && party.action_points) || 0, actHtml = '';
+    if (d.active && d.active.act === 'loyalty') {
+      actHtml = '<div class="st-act"><button type="button" class="st-actbtn" id="stActLoyalty"' + (apNow >= 1 ? '' : ' disabled') + '>Call Loyalty Vote · 1 AP</button><span class="st-acterr" id="stActErr"></span></div>';
+    } else if (d.active && d.active.act === 'whitepaper') {
+      var wl = Number(party && party.white_papers_left); if (!isFinite(wl)) wl = 2;
+      actHtml = '<div class="st-act"><button type="button" class="st-actbtn" id="stActWP"' + (apNow >= 2 && wl > 0 ? '' : ' disabled') + '>White Paper · 2 AP · ' + wl + ' left</button><span class="st-acterr" id="stActErr"></span></div>';
+    }
+    var footer;
+    if (auto) {
+      var canH = cur > 2 && apNow >= 5, canR = cur < 4 && apNow >= 5;
+      footer = '<div class="st-moves">' +
+        '<button type="button" class="st-move" id="stMoveH"' + (canH ? '' : ' disabled') + '>◀ Move Hardline · 5 AP</button>' +
+        '<button type="button" class="st-move" id="stMoveR"' + (canR ? '' : ' disabled') + '>Move Reform · 5 AP ▶</button>' +
+      '</div><div class="st-moveerr" id="stMoveErr"></div>';
+    } else {
+      footer = '<div class="st-plenum"><button type="button" disabled>' + track.plenum.toUpperCase() + '</button></div>';
+    }
     document.getElementById('stanceDetail').innerHTML =
-      '<div class="st-dh"><span style="font-size:15px">' + d.ic + '</span><span class="st-dnm">' + d.short + '</span><span class="st-creed">' + d.creed + '</span></div>' +
-      '<div class="st-toolkit"><span class="st-tk">TOOLKIT · </span><b>' + t.n + '</b> — ' + t.d + '</div>' +
-      '<div class="st-pass">' + d.passive + '</div>' +
-      '<div class="st-plenum"><button type="button" disabled>' + track.plenum.toUpperCase() + '</button></div>';
+      '<div class="st-dh"><span style="font-size:15px">' + d.ic + '</span><span class="st-dnm">' + d.short + '</span><span class="st-creed">' + (d.creed || '') + '</span></div>' +
+      abilityHtml + actHtml + (d.passive ? '<div class="st-pass">' + d.passive + '</div>' : '') + footer;
+    if (auto) {
+      var bh = document.getElementById('stMoveH'), br = document.getElementById('stMoveR');
+      if (bh) bh.onclick = function () { moveStance('hardline'); };
+      if (br) br.onclick = function () { moveStance('reform'); };
+      var la = document.getElementById('stActLoyalty');
+      if (la) la.onclick = loyaltyVote;
+      var wa = document.getElementById('stActWP');
+      if (wa) wa.onclick = openWhitePaper;
+    }
     card.hidden = false;
+  }
+  async function loyaltyVote() {
+    if (BUSY) return;
+    BUSY = true;
+    var btn = document.getElementById('stActLoyalty'), err = document.getElementById('stActErr');
+    if (btn) { btn.disabled = true; btn.textContent = 'Tabling…'; }
+    if (err) err.textContent = '';
+    try {
+      const { error } = await supabase.rpc('loyalty_vote');
+      if (error) throw error;
+      window.location.reload();
+    } catch (e) {
+      BUSY = false;
+      if (btn) btn.disabled = false;
+      if (err) err.textContent = (e && e.message) || 'Could not table the Loyalty Vote.';
+    }
+  }
+
+  // ---- White Paper (Technocrat active): shift one of a policy's stats by ±2 (schema/237) ----
+  var WP_POLICIES = null, WP_SEL = { policy: null, stat: null, dir: null };
+  var wpModal = document.getElementById('wpModal');
+  var WP_EXCLUDE = { 'Budget Balance': 1, 'Tax Burden': 1 };
+  function wpPolicyStats(def) {
+    var opts = (def && def[def.type || 'spectrum']) || [], set = {};
+    opts.forEach(function (o) { (o && o.effects || []).forEach(function (e) { if (e && e.t && !WP_EXCLUDE[e.t]) set[e.t] = 1; }); });
+    return Object.keys(set);
+  }
+  function wpRenderStats() {
+    var pol = (WP_POLICIES || []).filter(function (p) { return p.id === WP_SEL.policy; })[0];
+    var stats = pol ? wpPolicyStats(pol.definition) : [];
+    if (WP_SEL.stat && stats.indexOf(WP_SEL.stat) < 0) WP_SEL.stat = null;
+    document.getElementById('wpStats').innerHTML = stats.length
+      ? stats.map(function (s) { return '<button type="button" class="wp-chip' + (WP_SEL.stat === s ? ' on' : '') + '" data-s="' + esc(s) + '">' + esc(s) + '</button>'; }).join('')
+      : '<span class="wp-none">This policy has no shiftable stats.</span>';
+    document.getElementById('wpInc').classList.toggle('on', WP_SEL.dir === 1);
+    document.getElementById('wpDec').classList.toggle('on', WP_SEL.dir === -1);
+    var ok = WP_SEL.policy && WP_SEL.stat && WP_SEL.dir;
+    document.getElementById('wpPublish').disabled = !ok;
+  }
+  async function openWhitePaper() {
+    WP_SEL = { policy: null, stat: null, dir: null };
+    document.getElementById('wpErr').textContent = '2 Action Points · pick a policy, a stat, and a direction';
+    if (!WP_POLICIES) { try { WP_POLICIES = await fetchPolicies() || []; } catch (e) { WP_POLICIES = []; } }
+    var sel = document.getElementById('wpPolicy');
+    sel.innerHTML = '<option value="">Select a policy…</option>' +
+      WP_POLICIES.map(function (p) { return '<option value="' + p.id + '">' + esc((p.definition && p.definition.name) || 'Policy') + '</option>'; }).join('');
+    document.getElementById('wpStats').innerHTML = '';
+    wpRenderStats();
+    wpModal.hidden = false;
+  }
+  function closeWP() { wpModal.hidden = true; }
+  document.getElementById('wpClose').onclick = closeWP;
+  wpModal.addEventListener('click', function (e) { if (e.target === wpModal) closeWP(); });
+  document.getElementById('wpPolicy').addEventListener('change', function (e) { WP_SEL.policy = e.target.value || null; WP_SEL.stat = null; wpRenderStats(); });
+  document.getElementById('wpStats').addEventListener('click', function (e) { var b = e.target.closest('.wp-chip'); if (!b) return; WP_SEL.stat = b.dataset.s; wpRenderStats(); });
+  document.getElementById('wpInc').onclick = function () { WP_SEL.dir = 1; wpRenderStats(); };
+  document.getElementById('wpDec').onclick = function () { WP_SEL.dir = -1; wpRenderStats(); };
+  async function publishWP() {
+    if (BUSY || !(WP_SEL.policy && WP_SEL.stat && WP_SEL.dir)) return;
+    BUSY = true;
+    var btn = document.getElementById('wpPublish'); btn.disabled = true; btn.textContent = 'Publishing…';
+    try {
+      const { error } = await supabase.rpc('white_paper', { p_policy: WP_SEL.policy, p_stat: WP_SEL.stat, p_dir: WP_SEL.dir });
+      if (error) throw error;
+      window.location.reload();
+    } catch (e) {
+      BUSY = false; btn.disabled = false; btn.textContent = 'Publish · 2 AP';
+      document.getElementById('wpErr').textContent = (e && e.message) || 'Could not publish the White Paper.';
+    }
+  }
+  document.getElementById('wpPublish').onclick = publishWP;
+
+  async function moveStance(dir) {
+    if (BUSY) return;
+    BUSY = true;
+    var btn = document.getElementById(dir === 'hardline' ? 'stMoveH' : 'stMoveR'), err = document.getElementById('stMoveErr');
+    if (btn) { btn.disabled = true; btn.textContent = 'Moving…'; }
+    if (err) err.textContent = '';
+    try {
+      const { error } = await supabase.rpc('move_stance', { p_dir: dir });
+      if (error) throw error;
+      window.location.reload();
+    } catch (e) {
+      BUSY = false;
+      if (btn) btn.disabled = false;
+      if (err) err.textContent = (e && e.message) || 'Could not move your stance.';
+    }
   }
 
   // ---- ideology (declare + approval-winds display) ----
@@ -696,7 +892,7 @@
     if (!user) return;
     try {
       const { data: party, error } = await supabase.from('parties')
-        .select('id, name, abbreviation, archetype, color, logo_url, influence, popularity, seats, in_government, created_at, nation_id')
+        .select('id, name, abbreviation, archetype, color, logo_url, influence, popularity, seats, in_government, created_at, nation_id, stance, action_points, white_papers_left')
         .eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
       PARTY = party; PCOLOR = partyColor(party);
@@ -726,14 +922,13 @@
       renderIdentity(party, leaderName, leaderAge, foundedLabel(party.created_at, curTick));
       var eb = document.getElementById('editBtn'); eb.hidden = false; eb.onclick = openEdit;
 
-      // approval history → sparkline + trend
-      var series = [], prevPop = null;
+      // approval history → value, trend, sparkline, and the per-tick "recent changes" list
+      var hist = [];
       try {
         const { data: pph } = await supabase.from('party_popularity_history').select('tick, popularity').eq('party_id', party.id).order('tick', { ascending: true });
-        series = (pph || []).map(function (r) { return Number(r.popularity); }).filter(isFinite);
-        if (series.length >= 2) prevPop = series[series.length - 2];
+        hist = pph || [];
       } catch (e) {}
-      renderApproval(party, series, prevPop);
+      renderApproval(party, hist);
 
       // the assembly: every party's seats (+ the fields the Other Parties cards need)
       var roster = [];
@@ -772,7 +967,7 @@
       // reform + stance from the regime
       var regime = nationRegime(nation && nation.economy);
       renderReform(regime);
-      try { renderStance(regime); } catch (e) {}
+      try { renderStance(regime, party); } catch (e) {}
     } catch (e) { /* chrome still renders */ }
   })();
 </script>

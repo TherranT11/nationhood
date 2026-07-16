@@ -104,6 +104,14 @@ begin
     end if;
   end if;
 
+  -- Reformer stance (schema/234): every party sitting at the Technocrat rung (stance index 4) earns
+  -- +1% Party Popularity whenever a reform is ENACTED (advance only) in its nation. Ceiling retired.
+  if p_dir = 'advance' then
+    update public.parties p
+       set popularity = public._clamp_pop(p.popularity + 1)
+     where p.nation_id = p_nation and p.stance = 4;
+  end if;
+
   -- Digestion lock: the chamber can't take up another reform for a few ticks.
   update public.nations
      set economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{reform_lock_tick}',
