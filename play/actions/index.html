@@ -159,6 +159,7 @@
   .fdi-inc-chip.on.sweet{border-color:#2c8c5a;color:#2c8c5a;background:rgba(62,207,142,.1)}
   .fdi-inc-chip.on.prot{border-color:var(--red);color:var(--red);background:rgba(220,80,80,.08)}
   .fdi-temp{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-left:auto}
+  .fdi-flag{display:inline-block;width:15px;height:10px;object-fit:cover;border-radius:2px;border:1px solid var(--line);vertical-align:middle;margin-right:3px}
   .fdi-hex{width:100%;font-family:'Space Mono',monospace;font-size:11px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);border-radius:8px;padding:9px 11px;cursor:pointer}
   .fdi-lbl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin:16px 0 9px}
   .fdi-tbtn{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;border:1px solid var(--line2);background:var(--surface);color:var(--ink);border-radius:7px;padding:7px 10px;cursor:pointer}
@@ -1084,10 +1085,15 @@
     { k: 'local_hire', label: 'Local-hire quota (+1 job)', sweet: false },
     { k: 'profit_cap', label: 'Profit-repatriation cap',   sweet: false },
   ];
-  var FDI = { nation: null, sel: { inc: {}, pool: [] }, deals: [], hexes: [], names: {} };
+  var FDI = { nation: null, sel: { inc: {}, pool: [] }, deals: [], hexes: [], names: {}, flags: {} };
+  var FDI_ACCENTS = ['var(--red)', 'var(--indigo)', 'var(--amber)', 'var(--green)', 'var(--ac-orange)'];
 
   function fdiTemp() { return FDI_INCENTIVES.reduce(function (t, i) { return t + (FDI.sel.inc[i.k] ? (i.sweet ? 1 : -1) : 0); }, 0); }
   function fdiNationName(id) { return FDI.names[id] || id; }
+  // A stable accent per nation id (same nation → same colour across the list), for the home-country name.
+  function fdiColor(id) { var h = 0, s = id || ''; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return FDI_ACCENTS[h % FDI_ACCENTS.length]; }
+  function fdiFlag(id) { return FDI.flags[id] ? '<img class="fdi-flag" src="' + esc(FDI.flags[id]) + '" alt=""> ' : ''; }
+  function fdiNat(id, name) { return fdiFlag(id) + '<span style="color:' + fdiColor(id) + ';font-weight:700">' + esc(name || fdiNationName(id)) + '</span>'; }
 
   function renderFdiInc() {
     document.getElementById('fdiInc').innerHTML = FDI_INCENTIVES.map(function (i) {
@@ -1103,7 +1109,7 @@
     box.innerHTML = FDI.sel.pool.map(function (s) {
       var jobs = (s.jobs != null) ? ' · ' + s.jobs + ' jobs' : '';
       return '<div class="fdi-suitor"><div class="fdi-main"><b>' + esc(s.name) + '</b>' +
-        '<span class="fdi-sub">' + esc(s.sector) + ' · ' + esc(s.home_name) + ' · Growth +' + s.growth + jobs + '</span></div>' +
+        '<span class="fdi-sub">' + fdiNat(s.home_nation, s.home_name) + ' · ' + esc(s.sector) + ' · Growth +' + s.growth + jobs + '</span></div>' +
         '<div class="fdi-r"><span class="fdi-tier t' + s.tier + '">TIER ' + s.tier + '</span>' +
         '<button class="fdi-tbtn" data-court="' + esc(s.corp_id) + '">Extend</button></div></div>';
     }).join('');
@@ -1117,12 +1123,12 @@
       var iHost = d.host_nation_id === FDI.nation;
       var g = iHost ? d.host_growth : d.owner_growth;
       var threat = iHost && d.state === 'ACTIVE' && d.depart_tick != null;
-      var sub = (iHost ? 'Inbound · ' + fdiNationName(d.owner_nation_id) : 'Outbound · ' + fdiNationName(d.host_nation_id)) + ' · Growth +' + g;
+      var sub = (iHost ? 'Inbound · ' + fdiNat(d.owner_nation_id) : 'Outbound · ' + fdiNat(d.host_nation_id)) + ' · Growth +' + g;
       var badge = threat ? '<span class="fdi-b warn">⚠ RELOCATING</span>'
                          : '<span class="fdi-b' + (d.state === 'ACTIVE' ? ' on' : '') + '">' + esc(d.state) + '</span>';
       var retainBtn = threat ? '<button class="fdi-tbtn" data-retain="' + esc(d.id) + '">Match Their Terms · 2 AP</button>' : '';
       var natBtn = (iHost && d.state === 'ACTIVE' && !threat) ? '<button class="fdi-tbtn" data-nat="' + esc(d.id) + '">Nationalize</button>' : '';
-      return '<div class="fdi-row"><div class="fdi-main"><b>' + esc(corp) + '</b><span class="fdi-sub">' + esc(sub) + '</span></div><div class="fdi-r">' + badge + retainBtn + natBtn + '</div></div>';
+      return '<div class="fdi-row"><div class="fdi-main"><b>' + esc(corp) + '</b><span class="fdi-sub">' + sub + '</span></div><div class="fdi-r">' + badge + retainBtn + natBtn + '</div></div>';
     }).join('') || '<div class="fdi-empty">No foreign investment on the books.</div>';
     document.querySelectorAll('#fdiDeals [data-nat]').forEach(function (b) { b.onclick = function () { fdiNationalize(b.dataset.nat, b); }; });
     document.querySelectorAll('#fdiDeals [data-retain]').forEach(function (b) { b.onclick = function () { fdiRetain(b.dataset.retain, b); }; });
@@ -1197,8 +1203,8 @@
       FDI.hexes = hxRes.data || [];
     } catch (e) { FDI.hexes = []; }
     try {
-      var natRes = await supabase.from('nations').select('id, name');
-      (natRes.data || []).forEach(function (n) { FDI.names[n.id] = n.name; });
+      var natRes = await supabase.from('nations').select('id, name, flag');
+      (natRes.data || []).forEach(function (n) { FDI.names[n.id] = n.name; FDI.flags[n.id] = n.flag; });
     } catch (e) {}
     var ob = document.getElementById('fdiOpen'); if (ob) ob.addEventListener('click', openFdi);
     var xb = document.getElementById('fdiX'); if (xb) xb.addEventListener('click', function () { document.getElementById('fdiModal').hidden = true; });
