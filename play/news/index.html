@@ -116,7 +116,10 @@
   .ev-guide-item>div{margin-top:3px}
   @media(max-width:720px){.ev-guide-row{grid-template-columns:repeat(2,1fr)}}
 
-  /* government decisions banner */
+  /* arms-request + government decisions banners (share the deccard look) */
+  .ev-arms{margin-bottom:16px}
+  .decopt.armsok{border-color:var(--green);color:var(--green)}
+  .decopt.armsno{border-color:var(--red);color:var(--red)}
   .ev-decisions{margin-bottom:16px}
   .deccard{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:12px;padding:14px 16px;margin-bottom:10px}
   .deccard.mine{border-left-color:var(--orange)}
@@ -163,6 +166,12 @@
             <div class="ev-micro" id="evMicro" style="margin-top:3px">Loading…</div>
           </div>
           <div class="ev-tempo" id="evTempo"></div>
+        </div>
+
+        <!-- Arms import requests (Licensed Global Sales, T2): the seller's Minister of Trade approves/denies. -->
+        <div class="ev-arms">
+          <div class="ev-micro" id="evArmsLabel" style="display:none;margin-bottom:8px">Arms Trade · a nation asks to buy your Military</div>
+          <div id="evArms"></div>
         </div>
 
         <!-- Government decisions (a played Choice card demands a call) — the first thing shown when pending. -->
@@ -239,6 +248,32 @@
   var EVENTS = [], WORLD = [], FEED_TAB = 'nation';   // the two feeds + which tab is showing
   // Party micro-actions stay off the World feed — it's for nation-scale news.
   var LOCAL_KINDS = { rally:1, fundraise:1, attack:1, adblitz:1, recruit:1, party:1 };
+
+  // ---- Arms import requests (Licensed Global Sales) -----------------------------------------------
+  // Incoming (this nation is the seller) → the Minister of Trade approves/denies; others see it's pending.
+  // Outgoing (this nation is the buyer) → a read-only "awaiting their decision" note.
+  function renderArms(reqs, isTradeMin) {
+    var wrap = document.getElementById('evArms'), label = document.getElementById('evArmsLabel');
+    if (!reqs.length) { label.style.display = 'none'; wrap.innerHTML = ''; return; }
+    label.style.display = '';
+    wrap.innerHTML = reqs.map(function (r) {
+      var incoming = r.seller_nation === NATION_ID;
+      if (incoming) {
+        var acts = isTradeMin
+          ? '<div class="decopts"><button class="decopt armsok" data-arms="' + r.id + '" data-ok="1">Approve · sell ' + r.qty + '</button>' +
+              '<button class="decopt armsno" data-arms="' + r.id + '" data-ok="0">Deny</button></div>'
+          : '<div class="decwho">Awaiting your Minister of Trade</div>';
+        return '<div class="deccard mine"><div class="dechd">' + nationTag(r.buyer_nation) + ' requests to buy ' + r.qty + ' Military</div>' + acts + '</div>';
+      }
+      return '<div class="deccard"><div class="decdesc">Awaiting ' + nationTag(r.seller_nation) + '’s decision on your request for ' + r.qty + ' Military.</div></div>';
+    }).join('');
+    wrap.querySelectorAll('[data-arms]').forEach(function (b) {
+      b.onclick = function () { decideArms(b.dataset.arms, b.dataset.ok === '1'); };
+    });
+  }
+  async function decideArms(id, approve) {
+    await run(function () { return supabase.rpc('decide_arms_import', { p_request: id, p_approve: approve }); });
+  }
 
   // ---- Government decisions (from played Choice cards) ---------------------------------------------
   function partyLabel(id) { var p = (window.__roster || []).find(function (x) { return x.id === id; }); return p ? (p.abbreviation || p.name) : 'a party'; }
@@ -510,6 +545,18 @@
       decisions = q.data || [];
     } catch (e) {}
 
+    // Pending arms requests on either side of this nation. Only ask is_trade_minister when there's an
+    // INCOMING one to act on (the RPC is otherwise irrelevant). Non-fatal if the flow isn't deployed.
+    var arms = [], isTradeMin = false;
+    try {
+      var aq = await supabase.from('arms_import_requests').select('id, seller_nation, buyer_nation, qty, status')
+        .or('seller_nation.eq.' + NATION_ID + ',buyer_nation.eq.' + NATION_ID).eq('status', 'pending').order('created_at', { ascending: true });
+      arms = aq.data || [];
+      if (arms.some(function (r) { return r.seller_nation === NATION_ID; })) {
+        var tm = await supabase.rpc('is_trade_minister'); isTradeMin = !!(tm && tm.data);
+      }
+    } catch (e) {}
+
     // Turn order (mirror of claim_card's gate, schema/238): the floor belongs to the highest-tempo party
     // that hasn't acted this tick — ties broken by lowest id. A party has "acted" once it holds any claim
     // (an event/ap/both claim or a pass). That party is the only one whose claim buttons are live.
@@ -520,6 +567,7 @@
 
     EVENTS = events; WORLD = world;
     setMicro(turnHolder, myTurn);
+    renderArms(arms, isTradeMin);
     renderDecisions(decisions);
     renderFeed();
     renderTempo(roster, mine, myTurn);
