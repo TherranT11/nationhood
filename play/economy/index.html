@@ -176,6 +176,7 @@
   .fdi-r{display:flex;align-items:center;gap:8px;flex:none}
   .fdi-b{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;padding:3px 8px;border-radius:6px;background:var(--line);color:var(--soft)}
   .fdi-b.on{background:rgba(62,207,142,.16);color:#2c8c5a}
+  .fdi-b.warn{background:rgba(230,150,40,.16);color:#b5721a}
   .fdi-empty{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft);padding:12px 0}
   .fdi-tier{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.05em;padding:3px 8px;border-radius:6px;background:var(--line)}
   .fdi-tier.t1{color:#a06a3c;background:rgba(160,106,60,.14)}.fdi-tier.t2{color:#3a6ea5;background:rgba(58,110,165,.14)}.fdi-tier.t3{color:#6b46c1;background:rgba(107,70,193,.14)}
@@ -584,10 +585,13 @@
       var corp = (d.corporations && d.corporations.name) || 'A firm';
       var iHost = d.host_nation_id === STATE.nation.id;
       var g = iHost ? d.host_growth : d.owner_growth;
+      var threat = iHost && d.state === 'ACTIVE' && d.depart_tick != null;
       var sub = (iHost ? 'Inbound · ' + nationName(d.owner_nation_id) : 'Outbound · ' + nationName(d.host_nation_id)) + ' · Growth +' + g;
-      var badge = '<span class="fdi-b' + (d.state === 'ACTIVE' ? ' on' : '') + '">' + esc(d.state) + '</span>';
-      var natBtn = (iHost && d.state === 'ACTIVE' && STATE.isFinMin) ? '<button class="tbtn" data-nat="' + esc(d.id) + '">Nationalize</button>' : '';
-      return '<div class="fdi-row"><div class="fdi-main"><b>' + esc(corp) + '</b><span class="fdi-sub">' + esc(sub) + '</span></div><div class="fdi-r">' + badge + natBtn + '</div></div>';
+      var badge = threat ? '<span class="fdi-b warn">⚠ RELOCATING</span>'
+                         : '<span class="fdi-b' + (d.state === 'ACTIVE' ? ' on' : '') + '">' + esc(d.state) + '</span>';
+      var retainBtn = (threat && STATE.isFinMin) ? '<button class="tbtn" data-retain="' + esc(d.id) + '">Match Their Terms · 2 AP</button>' : '';
+      var natBtn = (iHost && d.state === 'ACTIVE' && !threat && STATE.isFinMin) ? '<button class="tbtn" data-nat="' + esc(d.id) + '">Nationalize</button>' : '';
+      return '<div class="fdi-row"><div class="fdi-main"><b>' + esc(corp) + '</b><span class="fdi-sub">' + esc(sub) + '</span></div><div class="fdi-r">' + badge + retainBtn + natBtn + '</div></div>';
     }).join('') || '<div class="fdi-empty">No foreign investment on the books.</div>';
     var courtBtn = STATE.isFinMin ? '<button class="actbtn" id="courtBtn">Court Foreign Investment · 3 AP</button>' : '';
     var gate = STATE.isFinMin ? '' : '<p class="note">Courting foreign investment is the Minister of Finance’s.</p>';
@@ -649,6 +653,12 @@
     if (error){ ping('<b class="red">' + esc(error.message) + '</b>'); btn.disabled = false; return; }
     ping('The operation has been <b class="green">nationalised</b>.'); await reload();
   }
+  async function retainFdi(id, btn){
+    btn.disabled = true;
+    var { error } = await supabase.rpc('retain_fdi_deal', { p_deal: id });
+    if (error){ ping('<b class="red">' + esc(error.message) + '</b>'); btn.disabled = false; return; }
+    ping('Terms matched — <b class="green">the plant stays</b>.'); await reload();
+  }
 
   function render(){
     var n = STATE.nation;
@@ -677,6 +687,7 @@
     var sb = document.getElementById('sanctionsBtn'); if (sb) sb.onclick = openSanctions;
     var cb = document.getElementById('courtBtn'); if (cb) cb.onclick = openCourt;
     document.querySelectorAll('[data-nat]').forEach(function(b){ b.onclick = function(){ nationalize(b.dataset.nat, b); }; });
+    document.querySelectorAll('[data-retain]').forEach(function(b){ b.onclick = function(){ retainFdi(b.dataset.retain, b); }; });
   }
 
   var toast = document.getElementById('toast'), tt;
@@ -704,7 +715,7 @@
         .eq('buyer_nation', STATE.nation.id).eq('status', 'active');
       if (ag) STATE.agreements = ag;
       var { data: fdi } = await supabase.from('fdi_deals')
-        .select('id, state, corp_id, host_nation_id, owner_nation_id, host_growth, owner_growth, corporations(name)')
+        .select('id, state, corp_id, host_nation_id, owner_nation_id, host_growth, owner_growth, depart_tick, corporations(name)')
         .or('host_nation_id.eq.' + STATE.nation.id + ',owner_nation_id.eq.' + STATE.nation.id).neq('state', 'ENDED');
       if (fdi) STATE.fdi = fdi;
       var ec = STATE.nation.economy || {};
@@ -894,7 +905,7 @@
       const { data: tradeMin } = await supabase.rpc('is_trade_minister');   // does my party hold Trade?
       const { data: finMin } = await supabase.rpc('is_finance_minister');   // Treasury → can court FDI
       const { data: fdi } = await supabase.from('fdi_deals')
-        .select('id, state, corp_id, host_nation_id, owner_nation_id, host_growth, owner_growth, corporations(name)')
+        .select('id, state, corp_id, host_nation_id, owner_nation_id, host_growth, owner_growth, depart_tick, corporations(name)')
         .or('host_nation_id.eq.' + party.nation_id + ',owner_nation_id.eq.' + party.nation_id).neq('state', 'ENDED');
       const { data: hexes } = await supabase.from('world_hexes').select('q, r, name, population')
         .eq('nation_id', party.nation_id).eq('terrain', 'land').order('population', { ascending: false }).limit(60);
