@@ -26,7 +26,7 @@
   .ip-title{font-weight:800;font-size:26px;margin:2px 0 4px}
   .ip-sub{font-size:12.5px;color:var(--muted);margin-bottom:16px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:15px 17px}
-  .ip-row{display:flex;gap:15px;flex-wrap:wrap;margin-bottom:14px}
+  .ip-row{display:flex;gap:15px;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px}
   .ip-row2{display:flex;gap:14px;flex-wrap:wrap}
   /* Row 1 (identity + stat cards) runs 25% larger than the base card — bigger padding, labels and figures. */
   .ip-row .card{padding:19px 21px}
@@ -49,6 +49,13 @@
   .stat-trend{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700}
   .stat-trend.up{color:var(--green)} .stat-trend.down{color:var(--red)}
   .stat-note{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);margin-top:7px}
+  .ac-hd{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-top:11px}
+  .appr-changes{margin-top:5px;max-height:104px;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
+  .ac-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10.5px;padding:1px 0}
+  .ac-when{color:var(--muted);letter-spacing:.04em}
+  .ac-delta{font-weight:700;white-space:nowrap}
+  .ac-delta.up{color:var(--green)} .ac-delta.down{color:var(--red)}
+  .ac-none{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--dim);margin-top:4px}
   .hearts{font-size:28px;letter-spacing:5px;margin-top:8px}
   .heart-svg{width:28px;height:28px;vertical-align:-4px}
 
@@ -232,6 +239,8 @@
               <span class="stat-trend" id="apprTrend" hidden></span>
             </div>
             <svg id="apprSpark" width="100%" height="30" viewBox="0 0 300 30" preserveAspectRatio="none" style="margin-top:4px" aria-hidden="true"></svg>
+            <div class="ac-hd">Recent changes</div>
+            <div class="appr-changes" id="apprChanges"></div>
           </div>
 
           <div class="card statcard" id="healthCard" hidden>
@@ -368,16 +377,32 @@
   }
 
   // ---- approval + sparkline ----
-  function renderApproval(party, series, prevPop) {
+  // hist = party_popularity_history rows [{tick, popularity}] ascending. One source for the value,
+  // the trend arrow, the sparkline, and the per-tick "recent changes" list.
+  function renderApproval(party, hist) {
+    var rows = (hist || []).filter(function (r) { return isFinite(Number(r.popularity)); });
+    var series = rows.map(function (r) { return Number(r.popularity); });
     var raw = Number(party.popularity) || 0, appr = Math.min(100, raw);
     document.getElementById('apprVal').textContent = (Math.round(appr * 10) / 10) + '%';
-    if (prevPop != null) {
-      var d = Math.round((raw - Number(prevPop)) * 10) / 10;
-      var t = document.getElementById('apprTrend');
-      if (d > 0) { t.className = 'stat-trend up'; t.textContent = '▲ ' + d.toFixed(1); t.hidden = false; }
-      else if (d < 0) { t.className = 'stat-trend down'; t.textContent = '▼ ' + Math.abs(d).toFixed(1); t.hidden = false; }
+    if (series.length >= 2) {
+      var d0 = Math.round((raw - series[series.length - 2]) * 10) / 10, t = document.getElementById('apprTrend');
+      if (d0 > 0) { t.className = 'stat-trend up'; t.textContent = '▲ ' + d0.toFixed(1); t.hidden = false; }
+      else if (d0 < 0) { t.className = 'stat-trend down'; t.textContent = '▼ ' + Math.abs(d0).toFixed(1); t.hidden = false; }
     }
     drawSparkline(series);
+    // every tick-over-tick movement, newest first (net change per tick, from any source)
+    var changes = [];
+    for (var i = rows.length - 1; i > 0 && changes.length < 8; i--) {
+      var dv = Math.round((series[i] - series[i - 1]) * 10) / 10;
+      if (dv === 0) continue;
+      changes.push({ date: tickToDate(rows[i].tick), delta: dv });
+    }
+    document.getElementById('apprChanges').innerHTML = changes.length
+      ? changes.map(function (c) {
+          return '<div class="ac-row"><span class="ac-when">' + esc(c.date) + '</span>' +
+            '<span class="ac-delta ' + (c.delta > 0 ? 'up' : 'down') + '">' + (c.delta > 0 ? '▲ +' : '▼ −') + Math.abs(c.delta).toFixed(1) + '</span></div>';
+        }).join('')
+      : '<div class="ac-none">No changes recorded yet.</div>';
   }
   function drawSparkline(s) {
     var svg = document.getElementById('apprSpark');
@@ -897,14 +922,13 @@
       renderIdentity(party, leaderName, leaderAge, foundedLabel(party.created_at, curTick));
       var eb = document.getElementById('editBtn'); eb.hidden = false; eb.onclick = openEdit;
 
-      // approval history → sparkline + trend
-      var series = [], prevPop = null;
+      // approval history → value, trend, sparkline, and the per-tick "recent changes" list
+      var hist = [];
       try {
         const { data: pph } = await supabase.from('party_popularity_history').select('tick, popularity').eq('party_id', party.id).order('tick', { ascending: true });
-        series = (pph || []).map(function (r) { return Number(r.popularity); }).filter(isFinite);
-        if (series.length >= 2) prevPop = series[series.length - 2];
+        hist = pph || [];
       } catch (e) {}
-      renderApproval(party, series, prevPop);
+      renderApproval(party, hist);
 
       // the assembly: every party's seats (+ the fields the Other Parties cards need)
       var roster = [];
