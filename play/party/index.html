@@ -88,6 +88,11 @@
   .st-move:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
   .st-move:disabled{opacity:.45;cursor:not-allowed}
   .st-moveerr{color:var(--red);font-size:11px;margin-top:7px;min-height:14px;text-align:center}
+  .st-act{margin-top:9px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .st-actbtn{font-family:'JetBrains Mono',monospace;background:var(--accent);border:none;color:#fff;border-radius:8px;padding:8px 14px;font-size:10px;font-weight:800;letter-spacing:.05em;cursor:pointer}
+  .st-actbtn:hover:not(:disabled){filter:brightness(1.08)}
+  .st-actbtn:disabled{opacity:.5;cursor:not-allowed}
+  .st-acterr{color:var(--red);font-size:11px}
 
   /* ideology card — live approval-winds breakdown (its own full-width row) */
   .ideocard{display:flex;flex-direction:column;flex:1 1 auto}
@@ -431,7 +436,7 @@
       notches: [
         { id: 'A3', ic: '👁', short: 'Vozhd' }, { id: 'A2', ic: '🕶', short: 'Securocrat' },
         { id: 'A1', ic: '🧱', short: 'Hardliner', creed: '“The Party does not bend.”',
-          active: { n: 'Loyalty Vote', d: 'Table a loyalty bill on the floor. If it passes, your party gains +3 Popularity and the Head of Government +2; every party that votes no loses 2 Popularity and 3 Action Points. If it fails, you lose 5 Popularity and all your Action Points.' } },
+          active: { n: 'Loyalty Vote', ap: '1 AP', act: 'loyalty', d: 'Table a loyalty bill on the floor. If it passes, your party gains +3 Popularity and the Head of Government +2; every party that votes no loses 2 Popularity and 3 Action Points. If it fails, you lose 5 Popularity and all your Action Points.' } },
         { id: 'N', ic: '🏵', short: 'Apparatchik', creed: '“I serve the Party.” (Which faction? “The Party.”)',
           tools: [{ n: 'Congress Basics', d: 'Vote, hold ministries, and keep your head down — quiet competence earns a little standing each uneventful tick.' }],
           passive: '<b>Purge-resistant.</b> Hardliners don’t fear you and reformists don’t hate you. But you’re succession-invisible: when the Leader dies, apparatchiks are never on the shortlist. A corridor, not a home.' },
@@ -465,6 +470,11 @@
     var abilityHtml = d.active
       ? '<div class="st-toolkit"><span class="st-tk">ACTIVE' + (d.active.ap ? ' · ' + d.active.ap : '') + ' · </span><b>' + d.active.n + '</b> — ' + d.active.d + '</div>'
       : (t ? '<div class="st-toolkit"><span class="st-tk">TOOLKIT · </span><b>' + t.n + '</b> — ' + t.d + '</div>' : '');
+    // the current rung's active ability, as a button (only 'loyalty' is wired so far)
+    var apNow = Number(party && party.action_points) || 0;
+    var actHtml = (d.active && d.active.act === 'loyalty')
+      ? '<div class="st-act"><button type="button" class="st-actbtn" id="stActLoyalty"' + (apNow >= 1 ? '' : ' disabled') + '>Call Loyalty Vote · 1 AP</button><span class="st-acterr" id="stActErr"></span></div>'
+      : '';
     var footer;
     if (auto) {
       var ap = Number(party && party.action_points) || 0;
@@ -478,13 +488,31 @@
     }
     document.getElementById('stanceDetail').innerHTML =
       '<div class="st-dh"><span style="font-size:15px">' + d.ic + '</span><span class="st-dnm">' + d.short + '</span><span class="st-creed">' + (d.creed || '') + '</span></div>' +
-      abilityHtml + (d.passive ? '<div class="st-pass">' + d.passive + '</div>' : '') + footer;
+      abilityHtml + actHtml + (d.passive ? '<div class="st-pass">' + d.passive + '</div>' : '') + footer;
     if (auto) {
       var bh = document.getElementById('stMoveH'), br = document.getElementById('stMoveR');
       if (bh) bh.onclick = function () { moveStance('hardline'); };
       if (br) br.onclick = function () { moveStance('reform'); };
+      var la = document.getElementById('stActLoyalty');
+      if (la) la.onclick = loyaltyVote;
     }
     card.hidden = false;
+  }
+  async function loyaltyVote() {
+    if (BUSY) return;
+    BUSY = true;
+    var btn = document.getElementById('stActLoyalty'), err = document.getElementById('stActErr');
+    if (btn) { btn.disabled = true; btn.textContent = 'Tabling…'; }
+    if (err) err.textContent = '';
+    try {
+      const { error } = await supabase.rpc('loyalty_vote');
+      if (error) throw error;
+      window.location.reload();
+    } catch (e) {
+      BUSY = false;
+      if (btn) btn.disabled = false;
+      if (err) err.textContent = (e && e.message) || 'Could not table the Loyalty Vote.';
+    }
   }
   async function moveStance(dir) {
     if (BUSY) return;
