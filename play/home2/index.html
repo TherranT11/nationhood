@@ -245,7 +245,7 @@
 import { supabase, isConfigured, requireUser, selectAll } from '/supabase.js';
 import { esc, declaredValue, fmtGdp, fmtPop, loadHogTitleSlot, tickToDate, msUntilNextTick, fmtCountdown } from '/util.js';
 import { axialToPix, nationColors } from '/hexmap.js';
-import { regimeText, nationRegime, statName, statLabel, statBand, crimeLabel, crimeBand, crimeValue } from '/ladders.js';
+import { regimeText, nationRegime, statLabel, statBand, crimeLabel, crimeBand } from '/ladders.js';
 import { mountSidenav } from '/sidenav.js';
 
 mountSidenav();  // shared left rail (desktop) / bottom bar (mobile) into #sidenav
@@ -692,7 +692,6 @@ function applyTransform() {
   function relBand(v) { return v <= 3 ? 'bad' : v <= 7 ? 'warn' : 'good'; }
   function relLabel(v) { return v <= 3 ? 'Antagonistic' : v <= 7 ? 'Neutral' : 'Friendly'; }
   var REL_VAR = { bad: 'red', warn: 'orange', good: 'green' };
-  var STATS = ['prosperity', 'growth', 'welfare', 'order', 'image'];   // 'order' is shown as its inverse, Crime
 
   function closeNation() { natPanel.classList.remove('show'); natPanel.innerHTML = ''; natPanel.dataset.nid = ''; }
 
@@ -718,24 +717,27 @@ function applyTransform() {
       : (function () { var v = (relMap[nid] != null) ? relMap[nid] : 5, b = relBand(v);
           return '<span class="chip" style="color:var(--' + REL_VAR[b] + ')">' + relLabel(v).toUpperCase() + ' · ' + v + '/10</span>'; })();
 
-    var st = n.stats || {};
-    // One renderer for a stat's value span — reused by the initial paint and the async Growth patch below.
-    function statSpan(k, num, idAttr) {
-      var crime = k === 'order';
-      if (isNaN(num)) return '<span class="sv"' + idAttr + '>—</span>';
-      var band = crime ? crimeBand(num) : statBand(k, num);
-      var word = crime ? crimeLabel(num) : statLabel(k, num);
-      var shown = crime ? crimeValue(num) : num;
-      return '<span class="sv ' + band + '"' + idAttr + '>' + esc(word || '—') + ' <small>' + shown + '</small></span>';
+    // The popup's glance stats — ALL read from nation_stat_values (the one source the Government/Nation
+    // pages use), never the raw stats.* mirror, so the numbers match everywhere. Painted as placeholders
+    // now and filled by the single RPC below. Crime is its OWN stat here (not 101−Rule of Law, which was
+    // the old collision); Rule of Law is shown separately. Welfare / Global Image were dropped — they are
+    // no longer stats in the taxonomy (schema/177 would return "—" for them anyway).
+    var NP_STATS = [
+      { rpc: 'Prosperity',  label: 'Prosperity',  band: function (v) { return statBand('prosperity', v); }, word: function (v) { return statLabel('prosperity', v); } },
+      { rpc: 'Growth',      label: 'Growth',      band: function (v) { return statBand('growth', v); },     word: function (v) { return statLabel('growth', v); } },
+      // Crime is low-good; crimeValue is its own inverse (101−x), so crimeBand/crimeLabel(101−v) score the
+      // real Crime value directly and reuse ladders.js's crime words (one source).
+      { rpc: 'Crime',       label: 'Crime',       band: function (v) { return crimeBand(101 - v); },        word: function (v) { return crimeLabel(101 - v); } },
+      { rpc: 'Rule of Law', label: 'Rule of Law', band: function (v) { return statBand('order', v); },      word: function (v) { return statLabel('order', v); } },
+      { rpc: 'Health',      label: 'Health',      band: function (v) { return statBand('health', v); },     word: function () { return null; } },
+    ];
+    function npCell(s, v, idAttr) {
+      if (!isFinite(v)) return '<span class="sv"' + idAttr + '>—</span>';
+      var w = s.word(v);
+      return '<span class="sv ' + s.band(v) + '"' + idAttr + '>' + (w ? esc(w) + ' ' : '') + '<small>' + (Math.round(v * 10) / 10) + '</small></span>';
     }
-    var statsHtml = STATS.map(function (k) {
-      var crime = k === 'order', name = crime ? 'Crime' : statName(k);
-      // Growth is fully DERIVED (schema/221) — the raw stats.growth mirror is stale. Paint a placeholder
-      // now and fill it from nation_stat_values (the ONE source the Government/Nation pages read), so the
-      // number matches everywhere. The other four stats keep their authored mirror base.
-      if (k === 'growth') return '<div class="np-srow"><span class="sk">' + esc(name) + '</span><span class="sv" id="npGrowth">…</span></div>';
-      var raw = st[k], num = (raw != null && raw !== '') ? Number(raw) : NaN;
-      return '<div class="np-srow"><span class="sk">' + esc(name) + '</span>' + statSpan(k, num, '') + '</div>';
+    var statsHtml = NP_STATS.map(function (s, i) {
+      return '<div class="np-srow"><span class="sk">' + esc(s.label) + '</span><span class="sv" id="np-s-' + i + '">…</span></div>';
     }).join('');
 
     var flagHtml = n.flag ? '<img class="np-flag" src="' + esc(n.flag) + '" alt="">' : '<div class="np-flag" style="background:' + accent + '"></div>';
@@ -760,17 +762,17 @@ function applyTransform() {
     natPanel.dataset.nid = nid;
     document.getElementById('npClose').onclick = closeNation;
 
-    // Fill in the DERIVED Growth (one source: nation_stat_values RPC, schema/177 — same as the
+    // Fill every glance stat from the ONE source (nation_stat_values RPC, schema/177 — same as the
     // Government/Nation pages). Guarded against a race where another nation was opened before this
-    // resolves. On any failure we show "—", never the stale raw mirror — the mismatch is the bug.
-    function paintGrowth(v) {
+    // resolves; a stat with no value shows "—", never a stale raw mirror.
+    function paintStat(i, s, v) {
       if (natPanel.dataset.nid !== nid) return;
-      var el = document.getElementById('npGrowth'); if (!el) return;
-      el.outerHTML = statSpan('growth', v, ' id="npGrowth"');
+      var el = document.getElementById('np-s-' + i); if (!el) return;
+      el.outerHTML = npCell(s, v, ' id="np-s-' + i + '"');
     }
-    supabase.rpc('nation_stat_values', { p_nation: nid, p_stats: ['Growth'] })
-      .then(function (r) { paintGrowth((r && r.data && r.data.Growth != null) ? Number(r.data.Growth) : NaN); })
-      .catch(function () { paintGrowth(NaN); });
+    supabase.rpc('nation_stat_values', { p_nation: nid, p_stats: NP_STATS.map(function (s) { return s.rpc; }) })
+      .then(function (r) { var d = (r && r.data) || {}; NP_STATS.forEach(function (s, i) { paintStat(i, s, d[s.rpc] != null ? Number(d[s.rpc]) : NaN); }); })
+      .catch(function () { NP_STATS.forEach(function (s, i) { paintStat(i, s, NaN); }); });
   }
 
   // Open the snapshot for a tapped/clicked map element: a nation hex opens, empty land/sea closes,
