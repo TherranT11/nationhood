@@ -1,24 +1,26 @@
 -- ===========================================================================
--- 260 · Election equal-split fallback — the legislature must always be filled.
+-- 260 · Election seating — a nation must always have a filled legislature + a government.
 --
--- Seats are allocated by popularity weight. A brand-new party sits at 0% (schema/20),
--- so its weight is 0 → the whole chamber goes unallocated → the winner governs with
--- ZERO seats and can't legislate (proposals need >= 1 seat). Same failure whenever
--- every eligible party weights to 0 (a fresh field all at 0%, or below-threshold
--- parties waived in at 0).
+-- resolve_election (schema/60) allocates seats by popularity weight, gated by
+-- nations.electoral_threshold. Two ways it could leave a nation ungoverned:
 --
--- Fix (equal-split fallback): when no eligible party carries any popularity weight,
--- divide the chamber EQUALLY among the active eligible parties, so the legislature is
--- filled and the winner can actually govern. Normal elections are untouched — the
--- fallback only fires when the total popularity weight is 0.
+--   (a) Threshold too high: no party clears electoral_threshold → nobody is eligible →
+--       no seats → no formateur → early return, no government.
+--   (b) Zero weight: a brand-new party sits at 0% (schema/20), so its weight is 0. When
+--       every eligible party weights to 0, the chamber goes unallocated → the winner
+--       governs with ZERO seats and can't legislate (proposals need >= 1 seat).
 --
--- Also hardens the threshold waiver from 259: seat weight is now floored at 0
--- (greatest(popularity, 0)), so when the waiver drops the threshold to the popularity
--- floor (-25), negative-popularity parties can't contribute negative weight — the
--- seat math keeps treating <0 as 0 (per the _pop_min invariant, schema/40).
+-- This redefine (body from schema/60, the only prior definition) fixes both:
+--   1. THRESHOLD WAIVER — if no ACTIVE party clears the threshold, waive it for this
+--      election (drop to the popularity floor) so the largest party still seats.
+--   2. EQUAL-SPLIT FALLBACK — if no eligible party carries any popularity weight, divide
+--      the chamber EQUALLY among the active parties so the legislature is filled and the
+--      winner can govern. Normal weighted elections are untouched (fires only when the
+--      total weight is 0).
+--   3. WEIGHT FLOORED AT 0 — greatest(popularity, 0), so a party waived in below 0 can't
+--      contribute negative weight; the seat math keeps treating <0 as 0 (_pop_min, schema/40).
 --
--- Supersedes 259. Full authoritative redefine of resolve_election (body from schema/60
--- + the 259 waiver block + these two changes). Depends on: 60, 40 (_pop_min). Idempotent.
+-- Depends on: 60 (resolve_election), 40 (_pop_min). Apply after 60. Idempotent.
 -- ===========================================================================
 
 create or replace function public.resolve_election(p_nation text, p_reason text default null)
