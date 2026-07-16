@@ -114,11 +114,9 @@
   // ── SAMPLE SCAFFOLD DATA ─────────────────────────────────────────────────
   // Placeholder content demonstrating the layout. Replaced by real inter-nation
   // negotiations when the backend lands. See the header comment.
-  var SPEAKERS = [
-    { name: 'Head of Government', role: 'HEAD OF GOVERNMENT' },
-    { name: 'Minister of Trade',  role: 'MINISTER OF TRADE' },
-    { name: 'Foreign Minister',   role: 'FOREIGN MINISTER' },
-  ];
+  // Who may speak in a negotiation channel — the head of government and the two
+  // diplomacy ministries. One label each (no separate role, so nothing renders twice).
+  var SPEAKERS = ['Head of Government', 'Minister of Trade', 'Foreign Minister'];
   var SCOLOR = { AGREED: 'var(--green)', REJECTED: 'var(--red)', PROPOSED: 'var(--amber)' };
   var SGLYPH = { AGREED: '✓', REJECTED: '✕', PROPOSED: '◌' };
 
@@ -128,13 +126,13 @@
       status: 'ONGOING', sColor: 'var(--green)', dur: '3 MONTHS',
       flag: ['#c9302a', '#c9302a', '#d8b13c'],
       chat: [
-        { who: 'ENVOY VOLKOV', role: 'SEVERIA', t: 'OCT 12',
+        { who: 'Envoy Volkov', sub: 'Severia', t: 'Oct 12',
           text: 'The preferential rate stands at ×0.9 — but the Politburo asks food in return. One Food per year, treaty term.' },
-        { who: 'FOREIGN MINISTER', role: 'FOREIGN MINISTER', you: true, t: 'OCT 12',
+        { who: 'Foreign Minister', you: true, t: 'Oct 12',
           text: 'One Food strains a nine-million-person harvest. We can offer 1 Food every second year.' },
-        { who: 'ENVOY VOLKOV', role: 'SEVERIA', t: 'OCT 20',
+        { who: 'Envoy Volkov', sub: 'Severia', t: 'Oct 20',
           text: 'Every second year is acceptable if the basing clause returns to the table.' },
-        { who: 'HEAD OF GOVERNMENT', role: 'HEAD OF GOVERNMENT', you: true, t: 'OCT 26',
+        { who: 'Head of Government', you: true, t: 'Oct 26',
           text: 'Basing is not returning to the table. The rate and the food — that is the agreement.' },
       ],
       terms: [
@@ -187,7 +185,7 @@
   function bubble(m) {
     return '<div class="bubble' + (m.you ? ' you' : '') + '">' +
         '<div class="bubble__who" style="color:' + (m.you ? 'var(--indigo)' : 'var(--muted)') + '">' + esc(m.who) +
-          '<span class="meta"> · ' + esc(m.role) + ' · ' + esc(m.t) + '</span></div>' +
+          '<span class="meta">' + (m.sub ? ' · ' + esc(m.sub) : '') + ' · ' + esc(m.t) + '</span></div>' +
         '<div class="bubble__t">' + esc(m.text) + '</div>' +
       '</div>';
   }
@@ -213,13 +211,13 @@
       ? c.chat.map(bubble).join('')
       : '<div class="empty-chat">SEVEN MONTHS OF SILENCE</div>';
     var speakerOpts = SPEAKERS.map(function (s, i) {
-      return '<option value="' + i + '"' + (i === state.spk ? ' selected' : '') + '>' + esc(s.name + ' — ' + s.role) + '</option>';
+      return '<option value="' + i + '"' + (i === state.spk ? ' selected' : '') + '>' + esc(s) + '</option>';
     }).join('');
     var composer =
       '<div class="composer"><div class="micro">Speak as — head of govt · trade · foreign</div>' +
         '<div class="composer__row">' +
           '<select class="spk" id="spk">' + speakerOpts + '</select>' +
-          '<input id="msg" placeholder="Speak as ' + esc(SPEAKERS[state.spk].name) + '…">' +
+          '<input id="msg" placeholder="Speak as ' + esc(SPEAKERS[state.spk]) + '…">' +
           '<button class="sendbtn">SEND</button>' +
         '</div></div>';
 
@@ -255,7 +253,7 @@
       if (spk) spk.addEventListener('change', function (e) {
         state.spk = +e.target.value;
         var msg = content.querySelector('#msg');
-        if (msg) msg.placeholder = 'Speak as ' + SPEAKERS[state.spk].name + '…';
+        if (msg) msg.placeholder = 'Speak as ' + SPEAKERS[state.spk] + '…';
       });
     } else {
       content.querySelectorAll('[data-open]').forEach(function (el) {
