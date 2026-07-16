@@ -66,6 +66,8 @@
     border-radius:14px;overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.14);transition:transform .15s}
   .gamecard:hover{transform:translateY(-5px)}
   .gamecard.up{border:1px dashed var(--line);opacity:.95}
+  .gamecard.claimed{opacity:.5;filter:grayscale(.75)}
+  .gamecard.claimed:hover{transform:none}
   .gc-band{height:5px}
   .gc-body{padding:11px 13px 13px}
   .gc-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -86,6 +88,9 @@
   .gc-hold{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.1em;color:var(--dim);
     border:1px dashed var(--line);border-radius:7px;padding:9px 4px;text-align:center}
   .gc-others{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--dim);margin-top:7px;letter-spacing:.04em}
+  .gc-claimed{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.1em;color:#2c8c5a;font-weight:800;
+    border:1px solid rgba(44,140,90,.4);border-radius:7px;padding:9px 4px;text-align:center}
+  .gc-waiting{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--dim);margin-top:7px;letter-spacing:.04em;text-align:center}
 
   /* feed */
   .ev-tabs{display:flex;gap:4px;margin-bottom:10px}
@@ -331,7 +336,7 @@
   // ---- tempo strip + the card table ---------------------------------------------------------------
   // Claim order = real Tempo standing (schema/206), highest first; id breaks ties. The pass button rides
   // in the strip (one party may pass per turn; it jumps first next turn).
-  function renderTempo(parties, mine) {
+  function renderTempo(parties, mine, myTurn) {
     var row = document.getElementById('evTempo');
     var order = parties.slice().sort(function (a, b) { return (Number(b.tempo) || 0) - (Number(a.tempo) || 0) || String(a.id).localeCompare(String(b.id)); });
     function chip(p, i) {
@@ -346,7 +351,9 @@
     var rest = order.slice(2).map(function (p, i) { return chip(p, i + 2); }).join('');
     var activeGroup = active ? '<div class="ev-active"><span class="ev-active-lbl">Active turn</span><div class="ev-active-chips">' + active + '</div></div>' : '';
     var passOn = mine && mine.action === 'pass';
-    var pass = '<button class="ev-pass js-claim' + (passOn ? ' on' : '') + '" data-card="" data-action="pass"' + (BUSY ? ' disabled' : '') + '>🕊 PASS → FIRST NEXT TURN</button>';
+    // Passing is an action too — only the party holding the floor may take it (schema/238 gate).
+    var passOff = BUSY || !myTurn || (mine && !passOn);
+    var pass = '<button class="ev-pass js-claim' + (passOn ? ' on' : '') + '" data-card="" data-action="pass"' + (passOff ? ' disabled' : '') + '>🕊 PASS → FIRST NEXT TURN</button>';
     row.innerHTML = '<span class="ev-micro" style="margin-right:2px">Tempo</span>' + (activeGroup || '<span class="ev-micro">no parties yet</span>') + rest + pass;
   }
 
@@ -367,18 +374,23 @@
   // One game card. `upcoming` swaps the claim row for a hold banner (claims open at the next tick).
   function gcCard(c, ctx) {
     var def = c.definition || {}, k = cardKind(def), ap = cardAP(def), col = cardColor(def), upcoming = ctx.upcoming;
-    var mine = ctx.mine, claims = ctx.claims || [], abbr = ctx.abbr || {};
+    var claims = ctx.claims || [], abbr = ctx.abbr || {};
+    var myTurn = !!ctx.myTurn, turnName = ctx.turnName || '';
+    // A card is consumed the instant it's claimed — one claim takes the whole card (schema/238). It greys
+    // out and its buttons lock until the tick replaces it. Buttons are live only on the viewer's turn.
+    var claimer = claims.find(function (x) { return String(x.deck_card_id) === String(c.id); }) || null;
+    var consumed = !!claimer;
     function cbtn(action, label) {
-      var on = mine && mine.action === action && String(mine.deck_card_id) === String(c.id);
-      return '<button class="claimbtn js-claim' + (on ? ' on' : '') + '" data-card="' + esc(c.id) + '" data-action="' + action + '"' + (BUSY ? ' disabled' : '') + '>' + label + '</button>';
+      var disabled = BUSY || consumed || !myTurn;
+      return '<button class="claimbtn js-claim" data-card="' + esc(c.id) + '" data-action="' + action + '"' + (disabled ? ' disabled' : '') + '>' + label + '</button>';
     }
-    var others = claims.filter(function (x) { return String(x.deck_card_id) === String(c.id) && (!mine || x.party_id !== mine.party_id); })
-      .map(function (x) { return esc(abbr[x.party_id] || '?') + '·' + String(x.action).toUpperCase(); });
     var foot = upcoming
       ? '<div class="gc-hold">⏳ IN PLAY NEXT TURN — CLAIMS OPEN AT TICK</div>'
-      : '<div class="gc-claims">' + cbtn('event', '★ EVENT<br>−5 TEMPO') + cbtn('ap', '⚡ AP ×' + ap + '<br>−3 TEMPO') + cbtn('both', '🔥 BOTH<br>→ LAST') + '</div>' +
-        (others.length ? '<div class="gc-others">also claimed: ' + others.join(' · ') + '</div>' : '');
-    return '<div class="gamecard' + (upcoming ? ' up' : '') + '">' +
+      : consumed
+        ? '<div class="gc-claimed">✔ CLAIMED · ' + esc(abbr[claimer.party_id] || '?') + ' · ' + String(claimer.action).toUpperCase() + '</div>'
+        : '<div class="gc-claims">' + cbtn('event', '★ EVENT<br>−5 TEMPO') + cbtn('ap', '⚡ AP ×' + ap + '<br>−3 TEMPO') + cbtn('both', '🔥 BOTH<br>→ LAST') + '</div>' +
+          (myTurn ? '' : '<div class="gc-waiting">⏳ waiting on ' + esc(turnName || 'a higher-tempo party') + '…</div>');
+    return '<div class="gamecard' + (upcoming ? ' up' : '') + (consumed ? ' claimed' : '') + '">' +
       '<div class="gc-band" style="background:' + col + '"></div>' +
       '<div class="gc-body">' +
         '<div class="gc-top"><span class="gc-tag" style="color:' + col + ';border:1px solid ' + col + '55">' +
@@ -393,7 +405,7 @@
 
   function renderTable(active, upcoming, ctx) {
     document.getElementById('evOnTable').innerHTML = active.length
-      ? active.map(function (c) { return gcCard(c, { claims: ctx.claims, mine: ctx.mine, abbr: ctx.abbr }); }).join('')
+      ? active.map(function (c) { return gcCard(c, { claims: ctx.claims, abbr: ctx.abbr, myTurn: ctx.myTurn, turnName: ctx.turnName }); }).join('')
       : '<div class="ev-empty">The market is empty this turn — no cards on the table.</div>';
     document.getElementById('evNextTurn').innerHTML = upcoming.length
       ? upcoming.map(function (c) { return gcCard(c, { upcoming: true }); }).join('')
@@ -432,8 +444,11 @@
   }
   function setDisabled(on) { document.querySelectorAll('.js-claim, .decopt').forEach(function (b) { b.disabled = on; }); }
 
-  function setMicro() {
-    document.getElementById('evMicro').textContent = esc(NATION_NAME) + ' · ' + esc(tickToDate(CUR_TICK)) + ' · claim resolves at next tick';
+  function setMicro(turnHolder, myTurn) {
+    var turn = myTurn ? 'your turn — claim a card'
+      : turnHolder ? 'waiting on ' + (turnHolder.abbreviation || turnHolder.name || 'a party')
+      : 'no parties on the clock';
+    document.getElementById('evMicro').textContent = esc(NATION_NAME) + ' · ' + esc(tickToDate(CUR_TICK)) + ' · claims resolve at once · ' + esc(turn);
   }
 
   async function loadAll() {
@@ -487,12 +502,22 @@
       decisions = q.data || [];
     } catch (e) {}
 
+    // Turn order (mirror of claim_card's gate, schema/238): the floor belongs to the highest-tempo party
+    // that hasn't acted this tick — ties broken by lowest id. A party has "acted" once it holds any claim
+    // (an event/ap/both claim or a pass). That party is the only one whose claim buttons are live.
+    var acted = {}; claims.forEach(function (x) { acted[x.party_id] = true; });
+    var waiting = roster.slice().filter(function (p) { return !acted[p.id]; })
+      .sort(function (a, b) { return (Number(b.tempo) || 0) - (Number(a.tempo) || 0) || String(a.id).localeCompare(String(b.id)); });
+    var turnHolder = waiting[0] || null;
+    var myTurn = !!(turnHolder && PARTY && turnHolder.id === PARTY.id);
+    var turnName = turnHolder ? (turnHolder.abbreviation || turnHolder.name || '—') : '';
+
     EVENTS = events; WORLD = world;
-    setMicro();
+    setMicro(turnHolder, myTurn);
     renderDecisions(decisions);
     renderFeed();
-    renderTempo(roster, mine);
-    renderTable(cards.slice(0, 2), cards.slice(2, 4), { claims: claims, mine: mine, abbr: abbr });
+    renderTempo(roster, mine, myTurn);
+    renderTable(cards.slice(0, 2), cards.slice(2, 4), { claims: claims, abbr: abbr, myTurn: myTurn, turnName: turnName });
     requestAnimationFrame(matchPanelHeights);   // align the feed's bottom with the table after layout settles
   }
 
