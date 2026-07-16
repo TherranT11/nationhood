@@ -694,7 +694,7 @@ function applyTransform() {
   var REL_VAR = { bad: 'red', warn: 'orange', good: 'green' };
   var STATS = ['prosperity', 'growth', 'welfare', 'order', 'image'];   // 'order' is shown as its inverse, Crime
 
-  function closeNation() { natPanel.classList.remove('show'); natPanel.innerHTML = ''; }
+  function closeNation() { natPanel.classList.remove('show'); natPanel.innerHTML = ''; natPanel.dataset.nid = ''; }
 
   function openNation(nid) {
     var n = natById[nid]; if (!n) return;
@@ -719,14 +719,23 @@ function applyTransform() {
           return '<span class="chip" style="color:var(--' + REL_VAR[b] + ')">' + relLabel(v).toUpperCase() + ' · ' + v + '/10</span>'; })();
 
     var st = n.stats || {};
-    var statsHtml = STATS.map(function (k) {
-      var raw = st[k], num = (raw != null && raw !== '') ? Number(raw) : NaN;
-      var crime = k === 'order', name = crime ? 'Crime' : statName(k);
-      if (isNaN(num)) return '<div class="np-srow"><span class="sk">' + esc(name) + '</span><span class="sv">—</span></div>';
+    // One renderer for a stat's value span — reused by the initial paint and the async Growth patch below.
+    function statSpan(k, num, idAttr) {
+      var crime = k === 'order';
+      if (isNaN(num)) return '<span class="sv"' + idAttr + '>—</span>';
       var band = crime ? crimeBand(num) : statBand(k, num);
       var word = crime ? crimeLabel(num) : statLabel(k, num);
       var shown = crime ? crimeValue(num) : num;
-      return '<div class="np-srow"><span class="sk">' + esc(name) + '</span><span class="sv ' + band + '">' + esc(word || '—') + ' <small>' + shown + '</small></span></div>';
+      return '<span class="sv ' + band + '"' + idAttr + '>' + esc(word || '—') + ' <small>' + shown + '</small></span>';
+    }
+    var statsHtml = STATS.map(function (k) {
+      var crime = k === 'order', name = crime ? 'Crime' : statName(k);
+      // Growth is fully DERIVED (schema/221) — the raw stats.growth mirror is stale. Paint a placeholder
+      // now and fill it from nation_stat_values (the ONE source the Government/Nation pages read), so the
+      // number matches everywhere. The other four stats keep their authored mirror base.
+      if (k === 'growth') return '<div class="np-srow"><span class="sk">' + esc(name) + '</span><span class="sv" id="npGrowth">…</span></div>';
+      var raw = st[k], num = (raw != null && raw !== '') ? Number(raw) : NaN;
+      return '<div class="np-srow"><span class="sk">' + esc(name) + '</span>' + statSpan(k, num, '') + '</div>';
     }).join('');
 
     var flagHtml = n.flag ? '<img class="np-flag" src="' + esc(n.flag) + '" alt="">' : '<div class="np-flag" style="background:' + accent + '"></div>';
@@ -748,7 +757,21 @@ function applyTransform() {
       '</div>';
     natPanel.classList.add('show');
     natPanel.scrollTop = 0;
+    natPanel.dataset.nid = nid;
     document.getElementById('npClose').onclick = closeNation;
+
+    // Fill in the DERIVED Growth (one source: nation_stat_values RPC, schema/177 — same as the
+    // Government/Nation pages). Guarded against a race where another nation was opened before this
+    // resolves; falls back to the raw mirror only if the RPC is unavailable.
+    var fbGrowth = (st.growth != null && st.growth !== '') ? Number(st.growth) : NaN;
+    function paintGrowth(v) {
+      if (natPanel.dataset.nid !== nid) return;
+      var el = document.getElementById('npGrowth'); if (!el) return;
+      el.outerHTML = statSpan('growth', v, ' id="npGrowth"');
+    }
+    supabase.rpc('nation_stat_values', { p_nation: nid, p_stats: ['Growth'] })
+      .then(function (r) { paintGrowth((r && r.data && r.data.Growth != null) ? Number(r.data.Growth) : fbGrowth); })
+      .catch(function () { paintGrowth(fbGrowth); });
   }
 
   // Open the snapshot for a tapped/clicked map element: a nation hex opens, empty land/sea closes,
