@@ -1,22 +1,24 @@
 -- ===========================================================================
--- 259 · Election threshold waiver — a nation must always have a government.
+-- 260 · Election equal-split fallback — the legislature must always be filled.
 --
--- Problem: nations.electoral_threshold sets a minimum popularity a party must clear
--- to win seats. If NO party clears it (e.g. a fractured field under a 10% threshold),
--- the eligibility set is empty → no seats are allocated → v_formateur_id is null →
--- resolve_election returns early and the nation goes ungoverned.
+-- Seats are allocated by popularity weight. A brand-new party sits at 0% (schema/20),
+-- so its weight is 0 → the whole chamber goes unallocated → the winner governs with
+-- ZERO seats and can't legislate (proposals need >= 1 seat). Same failure whenever
+-- every eligible party weights to 0 (a fresh field all at 0%, or below-threshold
+-- parties waived in at 0).
 --
--- Fix: before seat allocation, if no ACTIVE party clears the threshold, waive it for
--- THIS election (drop it to the popularity floor so every active party is eligible).
--- The largest party by popularity then seats as normal. No per-nation fiddling — the
--- threshold still bites whenever at least one party clears it; it only steps aside when
--- it would otherwise seat nobody.
+-- Fix (equal-split fallback): when no eligible party carries any popularity weight,
+-- divide the chamber EQUALLY among the active eligible parties, so the legislature is
+-- filled and the winner can actually govern. Normal elections are untouched — the
+-- fallback only fires when the total popularity weight is 0.
 --
--- ⚠ SUPERSEDED BY 260 (adds the equal-split fallback + floors seat weight at 0).
+-- Also hardens the threshold waiver from 259: seat weight is now floored at 0
+-- (greatest(popularity, 0)), so when the waiver drops the threshold to the popularity
+-- floor (-25), negative-popularity parties can't contribute negative weight — the
+-- seat math keeps treating <0 as 0 (per the _pop_min invariant, schema/40).
 --
--- Redefine of resolve_election (body verbatim from schema/60) with the one waiver block
--- added between the incumbents snapshot and the SEAT ALLOCATION step.
--- Depends on: 60 (resolve_election), 40 (_pop_min). Apply after 60. Idempotent.
+-- Supersedes 259. Full authoritative redefine of resolve_election (body from schema/60
+-- + the 259 waiver block + these two changes). Depends on: 60, 40 (_pop_min). Idempotent.
 -- ===========================================================================
 
 create or replace function public.resolve_election(p_nation text, p_reason text default null)
@@ -58,17 +60,27 @@ begin
   -- ---- SEAT ALLOCATION ----------------------------------------------------
   -- Reset, then allocate to parties at/above the threshold by popularity × a
   -- ±15% jitter. Largest-remainder fills exactly the legislature, so seats
-  -- always sum to v_seats.
+  -- always sum to v_seats. Seat weight is floored at 0 so a waived-in negative
+  -- party can't skew the split. When no eligible party carries any weight (a fresh
+  -- field all at 0%), fall back to an EQUAL split so the chamber is still filled.
   update public.parties set seats = 0 where nation_id = p_nation;
   with elig as materialized (   -- materialized so each party's random() jitter is computed once
     select id,
-      popularity::numeric * (0.85 + random() * 0.30) as w   -- Government Confidence retired: no incumbency seat modifier
+      greatest(popularity, 0)::numeric * (0.85 + random() * 0.30) as w   -- Government Confidence retired: no incumbency seat modifier; weight floored at 0
     from public.parties
     where nation_id = p_nation and popularity >= v_threshold
       and last_active_at >= now() - interval '7 days'   -- inactive parties sit out the election (mirrors INACTIVE_DAYS, util.js)
   ),
-  tot as (select nullif(sum(w), 0) as tw from elig),
-  ex as (select e.id, (e.w / t.tw) * v_seats as exact from elig e, tot t where t.tw is not null),
+  tot as (select sum(w) as sw, count(*)::numeric as n from elig),
+  -- Equal-split fallback: no eligible party carries popularity weight → every eligible
+  -- party gets an equal share (weight 1, total = the count) so the legislature fills.
+  wt as (
+    select e.id,
+           case when coalesce(t.sw, 0) <= 0 then 1.0 else e.w  end as w,
+           case when coalesce(t.sw, 0) <= 0 then t.n  else t.sw end as tw
+      from elig e cross join tot t
+  ),
+  ex as (select id, (w / tw) * v_seats as exact from wt where tw > 0),
   b as (
     select id, floor(exact)::int as bs,
            row_number() over (order by (exact - floor(exact)) desc, random()) as rk
