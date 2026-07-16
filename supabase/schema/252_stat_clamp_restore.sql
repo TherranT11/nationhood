@@ -47,9 +47,6 @@ revoke all on function public._nation_live_stat(text, text) from public, anon, a
 -- _nation_stock_growth is dead again (229 dropped it; 251 wrongly resurrected it). Nothing calls it now.
 drop function if exists public._nation_stock_growth(text);
 
+-- This is the AUTHORITATIVE _nation_live_stat body. Any future redefine (e.g. re-adding the FDI Growth
+-- term) must build on THIS — Growth base 0, clamped [0,100], no _nation_stock_growth — not on 221/243/249.
 notify pgrst, 'reload schema';
-
--- Confirmation — every value should sit in [0, 100].
-select public.nation_stat_values(
-  (select id from public.nations where not coalesce(dormant, false) limit 1),
-  array['Growth','Crime','Prosperity','Rule of Law','Social Integration','Poverty']) as stats_sample;

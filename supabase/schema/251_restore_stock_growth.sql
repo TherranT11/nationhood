@@ -24,9 +24,7 @@ returns numeric language sql stable security definer set search_path = public as
 $$;
 revoke all on function public._nation_stock_growth(text) from public, anon, authenticated;
 
-notify pgrst, 'reload schema';
+-- NOTE: superseded by 252 — that migration drops this function again (229 had removed it)
+-- and rebuilds _nation_live_stat correctly. This file is kept as forward-only incident history.
 
--- Confirmation — returns a row of real stat values if the fix worked.
-select public.nation_stat_values(
-  (select id from public.nations where not coalesce(dormant, false) limit 1),
-  array['Growth','Crime','Budget Balance','Prosperity','Rule of Law']) as stats_sample;
+notify pgrst, 'reload schema';
