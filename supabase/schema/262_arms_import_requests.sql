@@ -16,6 +16,9 @@
 -- (_begin_action, _lock_party, events), 261 (_nation_arms_export_tier). Apply after 261. Idempotent.
 -- ===========================================================================
 
+-- The live UI reads id/seller_nation/buyer_nation/qty/status; requested_by/decided_by + the tick stamps
+-- are provenance (who filed / who decided, and when) — accountability for the arms trade, matching the
+-- election_results / coalition_health_log house style. Not surfaced yet; a future arms-trade history reads them.
 create table if not exists public.arms_import_requests (
   id            uuid primary key default gen_random_uuid(),
   seller_nation text not null references public.nations (id) on delete cascade,
