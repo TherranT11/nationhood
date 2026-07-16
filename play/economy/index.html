@@ -610,7 +610,7 @@
         '<div class="fdi-r"><span class="fdi-tier t' + s.tier + '">TIER ' + s.tier + '</span>' +
         '<button class="tbtn" data-court="' + esc(s.corp_id) + '">Extend</button></div></div>';
     }).join('');
-    document.querySelectorAll('[data-court]').forEach(function(b){ b.onclick = function(){ court(b.dataset.court, b); }; });
+    document.querySelectorAll('[data-court]').forEach(function(b){ b.onclick = function(){ court(b.dataset.court); }; });
   }
   async function openCourt(){
     FDI_SEL = { inc: {}, pool: [] };
@@ -624,11 +624,12 @@
     } catch (e){ FDI_SEL.pool = []; }
     renderSuitors();
   }
-  async function court(corpId, btn){
-    btn.disabled = true;
+  async function court(corpId){
+    // lock EVERY suitor's Extend, not just the one clicked — courting costs 3 AP, no double-fire.
+    var btns = document.querySelectorAll('[data-court]'); btns.forEach(function(b){ b.disabled = true; });
     var inc = FDI_INCENTIVES.filter(function(i){ return FDI_SEL.inc[i.k]; }).map(function(i){ return i.k; });
     var { error } = await supabase.rpc('court_foreign_investment', { p_corp: corpId, p_incentives: inc, p_hex_q: null, p_hex_r: null });
-    if (error){ ping('<b class="red">' + esc(error.message) + '</b>'); btn.disabled = false; return; }
+    if (error){ ping('<b class="red">' + esc(error.message) + '</b>'); btns.forEach(function(b){ b.disabled = false; }); return; }
     document.getElementById('fdiOverlay').classList.remove('show');
     ping('Invitation extended — <b class="green">the board decides within two ticks</b>.'); await reload();
   }

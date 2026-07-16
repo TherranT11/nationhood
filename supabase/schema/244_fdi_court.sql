@@ -60,19 +60,17 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 grant execute on function public.is_finance_minister() to authenticated;
 
--- The suitor pool for a host: foreign 'placed' corps not sanctioned against the host, with their tier,
--- the Growth they'd bring, and whether the host's CURRENT climate already clears their tier (temp 0) —
--- higher-tier suitors need sweeteners, which the Court action re-validates. Deterministic order.
+-- The suitor pool for a host: foreign 'placed' corps not sanctioned against the host, with their tier
+-- and the Growth they'd bring. The tier the host can actually attract depends on the incentive package,
+-- so the Court action re-validates tier ≤ ceiling at extend time. Deterministic order.
 create or replace function public.fdi_suitor_pool(p_nation text)
 returns jsonb language sql stable security definer set search_path = public as $$
-  with clim as (select public._fdi_climate(p_nation) as c)
   select coalesce(jsonb_agg(s order by s->>'tier' desc, s->>'name'), '[]'::jsonb) from (
     select jsonb_build_object(
              'corp_id', c.id, 'name', c.name, 'sector', c.category,
              'home_nation', c.nation_id, 'home_name', n.name,
              'tier', public._corp_fdi_tier(c.size),
-             'growth', public._fdi_growth_for(public._corp_fdi_tier(c.size)),
-             'available_now', public._corp_fdi_tier(c.size) <= public._fdi_tier_ceiling((select c from clim), 0)
+             'growth', public._fdi_growth_for(public._corp_fdi_tier(c.size))
            ) as s
       from public.corporations c
       join public.nations n on n.id = c.nation_id
