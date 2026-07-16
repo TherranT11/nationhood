@@ -28,6 +28,8 @@ export function cardEffectText(kind, p, nationName, cardName) {
     case 'sanction': return 'Sanction <b>' + esc(nn(p.nation) || 'a nation') + '</b> for at least <b>' + (p.ticks || 36) + '</b> ticks';
     case 'stat_up': return '<b>' + esc(p.stat || '?') + ' +' + (p.x || 0) + '</b>';
     case 'stat_down': return '<b>' + esc(p.stat || '?') + ' −' + (p.x || 0) + '</b>';
+    case 'budget_up': return '<b>Budget Balance +' + (p.x || 0) + '$B</b> (one time)';
+    case 'budget_down': return '<b>Budget Balance −' + (p.x || 0) + '$B</b> (one time)';
     case 'hex_pop': return 'At a chosen hex: <b>you +' + (p.x || 0) + '</b>, or <b>a rival −' + (p.x || 0) + '</b> approval';
     case 'res_add': return 'Add <b>' + (p.x || 0) + ' ' + esc(resLabel(p.res || 'food')) + '</b> to on-hand';
     case 'res_remove': return 'Remove <b>' + (p.x || 0) + ' ' + esc(resLabel(p.res || 'food')) + '</b> from on-hand';

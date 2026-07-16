@@ -51,6 +51,8 @@ const KINDS = {
   hex_pop:    { label: 'Swing X approval at a chosen hex (you +X, or a rival −X)' },
   res_add:    { label: 'Add X [resource] to on-hand' },
   res_remove: { label: 'Remove X [resource] from on-hand' },
+  budget_up:   { label: 'Budget Balance one time increase by X' },
+  budget_down: { label: 'Budget Balance one time decrease by X' },
   rel_up:     { label: 'Relations with a nation increase by X' },
   rel_down:   { label: 'Relations with a nation decrease by X' },
   rel_pick:   { label: 'Relations with a nation of the decider’s choice increase by X (decision cards)' },
@@ -73,7 +75,7 @@ const KINDS = {
   mil_rem:    { label: 'Remove Militia from Hex X' },
   event:      { label: 'Event Decision (write text, pick effect)', nested: true }
 };
-const SIMPLE = ['party_gain', 'party_lose', 'coal_up', 'coal_down', 'stat_up', 'stat_down', 'no_conf', 'nat_el'];
+const SIMPLE = ['party_gain', 'party_lose', 'coal_up', 'coal_down', 'stat_up', 'stat_down', 'budget_up', 'budget_down', 'no_conf', 'nat_el'];
 
 // ---- Archetype presets (the one radio row that replaces the old Mechanic / Decision / After-played /
 // Persistent sections). Each preset just STAMPS a set of lifecycle fields — the card's raw fields stay
@@ -686,6 +688,7 @@ export async function mountCardCreator(mount) {
     function statSel(v, field) { return '<select data-i="' + i + '" data-f="' + field + '">' + statOptions(v) + '</select>'; }
     function num(v, field) { return '<input type="number" value="' + (v || 0) + '" data-i="' + i + '" data-f="' + field + '" min="0" max="99">'; }
     if (f.kind === 'stat_up' || f.kind === 'stat_down') h = '<span class="lbl">stat</span>' + statSel(f.p.stat, 'stat') + '<span class="lbl">by</span>' + num(f.p.x, 'x');
+    if (f.kind === 'budget_up' || f.kind === 'budget_down') h = '<span class="lbl">Budget Balance</span>' + (f.kind === 'budget_up' ? '<span class="lbl">+</span>' : '<span class="lbl">−</span>') + num(f.p.x, 'x') + '<span class="lbl">$B, one time</span>';
     if (f.kind === 'party_gain' || f.kind === 'party_lose') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">target chosen on play</span>';
     if (f.kind === 'decider_gain' || f.kind === 'decider_lose') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">for the party that decides</span>';
     if (f.kind === 'hex_pop') h = '<span class="lbl">approval</span>' + num(f.p.x, 'x') + '<span class="lbl">hex &amp; side chosen on play</span>';
