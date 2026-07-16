@@ -1,6 +1,9 @@
 -- ===========================================================================
 -- 194 · Stat Connectors — couple any ministry stat to any other.
 --
+-- ⚠ LIVE OWNER = 254. The stat_connectors table and _nation_stat_connectors are re-created verbatim by
+-- 254 (self-contained connector revival), which runs later and wins. Edit 254 to change them.
+--
 -- A connector is an admin-authored, GLOBAL rule (it applies to every nation):
 --
 --     Every time <source> increases by <per>, <target> changes by <amount>.

@@ -1,6 +1,11 @@
 -- ===========================================================================
 -- 200 · Derived stats — compute the stats that used to be hand-typed.
 --
+-- ⚠ LIVE OWNER = 254. The formula functions (_nation_co2_emissions, _nation_global_warming,
+-- _nation_energy_availability, _nation_armed_forces_funding), _nation_stat_raw, nation_stat_values and
+-- the connector seed below are re-created verbatim by 254 (self-contained connector revival), which runs
+-- later and therefore wins. To TUNE any of them, edit 254 — editing here has no effect on a deployed DB.
+--
 -- Three kinds of derivation, all folded into nation_stat_values (schema/194, the ONE display source):
 --   • POLICY-DERIVED (already handled by _nation_live_stat's policy-contribution term): Bureaucracy,
 --     Tax Burden, Military Research, Civil Liberties — just removed from the admin grid (policies.js).
