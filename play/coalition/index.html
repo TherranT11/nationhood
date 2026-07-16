@@ -247,7 +247,14 @@
     return null;
   }
 
-  function scoreOf(key, members) { return members.reduce(function (t, m) { return t + W[voteOf(key, m)]; }, 0); }
+  // A backing vote (yes / yes-but) from a party holding ≥51% of the chamber counts 1.5 — its majority
+  // carries extra weight. Mirrors _resolve_coalitions (schema/242); keep the two in step.
+  function voteWeight(v, seats) {
+    var w = W[v] || 0;
+    if ((v === 'yes' || v === 'yesbut') && TOTAL > 0 && seats * 100 >= 51 * TOTAL) w = Math.max(w, 1.5);
+    return w;
+  }
+  function scoreOf(key, members) { return members.reduce(function (t, m) { return t + voteWeight(voteOf(key, m), (byId[m] && byId[m].seats) || 0); }, 0); }
   function votesForOf(key, members) { return members.reduce(function (t, m) { var v = voteOf(key, m); return t + ((v === 'yes' || v === 'yesbut') ? 1 : 0); }, 0); }
   function seatsOf(members) { return members.reduce(function (t, m) { return t + ((byId[m] && byId[m].seats) || 0); }, 0); }
 
