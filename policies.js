@@ -111,11 +111,13 @@ export function policyInForceAggregated(def, optionIdx) {
 // policyId → its definition (the nation.policies overrides feed policyOptionIdx). ONE source for the gate,
 // read by the Propose flow + the Policies slate. Prereqs are only checked at enact/change time — nothing
 // auto-reverts if a prerequisite is lost after the fact.
-export function policyRequirementsMet(def, overrides, defsById) {
+export function policyRequirementsMet(def, overrides, defsById, prod) {
   var req = def && def.requires;
   var conds = (req && req.conds) || [];
   if (!conds.length) return true;
   function holds(c) {
+    // Production gate: { prod:<resource>, min:<n> } holds when the nation produces at least min of it.
+    if (c.prod) return (Number(prod && prod[c.prod]) || 0) >= (Number(c.min) || 0);
     var d = defsById && defsById[c.policy];
     if (!d) return false;   // the referenced policy was removed → its condition can no longer be satisfied
     return policyOptionIdx(d, overrides, c.policy) === (Number(c.opt) || 0);
@@ -125,6 +127,7 @@ export function policyRequirementsMet(def, overrides, defsById) {
 // One condition as human text: on/off → "<policy> enabled/disabled" (index 1 = the On state by the
 // editor's [Off, On] convention); spectrum → "<policy> · <level name>". Unknown id → "(unknown policy)".
 function policyCondText(c, defsById) {
+  if (c.prod) return (c.prod.charAt(0).toUpperCase() + c.prod.slice(1)) + ' production ≥ ' + (Number(c.min) || 0);
   var d = defsById && defsById[c.policy];
   if (!d) return '(unknown policy)';
   var idx = Number(c.opt) || 0, name = d.name || 'policy';
