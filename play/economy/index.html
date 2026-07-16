@@ -184,6 +184,7 @@
   .fdi-inc-chip.on.sweet{border-color:#2c8c5a;color:#2c8c5a;background:rgba(62,207,142,.1)}
   .fdi-inc-chip.on.prot{border-color:var(--red);color:var(--red);background:rgba(220,80,80,.08)}
   .fdi-temp{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-left:auto}
+  .fdi-hex{width:100%;font-family:'Space Mono',monospace;font-size:11px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);border-radius:8px;padding:9px 11px;cursor:pointer}
   .readonly{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);text-align:right;line-height:1.35}
   .empty{text-align:center;padding:40px 20px;color:var(--soft)}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--bg);font-family:'Space Mono',monospace;font-size:12px;padding:13px 18px;border-radius:11px;opacity:0;pointer-events:none;transition:all .3s;z-index:140;text-align:center;max-width:90vw}
@@ -281,6 +282,7 @@
       <div class="tm-sub">Sweeteners raise the tier you can attract and the board’s odds; protections lower them. 3 AP to extend the invitation — the board decides within two ticks.</div></div>
     <div class="tm-body">
       <div class="tlabel">Incentive package</div><div class="fdi-inc" id="fdiInc"></div>
+      <div class="tlabel" style="margin-top:14px">Plant site</div><select class="fdi-hex" id="fdiHex"></select>
       <div class="tlabel" style="margin-top:14px">Suitors</div><div id="fdiSuitors"></div>
     </div>
   </div>
@@ -616,6 +618,11 @@
     FDI_SEL = { inc: {}, pool: [] };
     document.getElementById('fdiOverlay').classList.add('show');
     document.getElementById('fdiSuitors').innerHTML = '<div class="fdi-empty">Loading suitors…</div>';
+    document.getElementById('fdiHex').innerHTML = '<option value="">Auto — the largest site</option>' +
+      (STATE.hexes || []).map(function(h){
+        return '<option value="' + h.q + ',' + h.r + '">' + esc(h.name || ('Hex ' + h.q + ',' + h.r)) +
+          (h.population != null ? ' · pop ' + fmt(h.population) : '') + '</option>';
+      }).join('');
     renderInc();
     try {
       var { data, error } = await supabase.rpc('fdi_suitor_pool', { p_nation: STATE.nation.id });
@@ -628,7 +635,9 @@
     // lock EVERY suitor's Extend, not just the one clicked — courting costs 3 AP, no double-fire.
     var btns = document.querySelectorAll('[data-court]'); btns.forEach(function(b){ b.disabled = true; });
     var inc = FDI_INCENTIVES.filter(function(i){ return FDI_SEL.inc[i.k]; }).map(function(i){ return i.k; });
-    var { error } = await supabase.rpc('court_foreign_investment', { p_corp: corpId, p_incentives: inc, p_hex_q: null, p_hex_r: null });
+    var hx = (document.getElementById('fdiHex').value || '').split(',');
+    var hexQ = hx.length === 2 ? Number(hx[0]) : null, hexR = hx.length === 2 ? Number(hx[1]) : null;
+    var { error } = await supabase.rpc('court_foreign_investment', { p_corp: corpId, p_incentives: inc, p_hex_q: hexQ, p_hex_r: hexR });
     if (error){ ping('<b class="red">' + esc(error.message) + '</b>'); btns.forEach(function(b){ b.disabled = false; }); return; }
     document.getElementById('fdiOverlay').classList.remove('show');
     ping('Invitation extended — <b class="green">the board decides within two ticks</b>.'); await reload();
@@ -887,6 +896,8 @@
       const { data: fdi } = await supabase.from('fdi_deals')
         .select('id, state, corp_id, host_nation_id, owner_nation_id, host_growth, owner_growth, corporations(name)')
         .or('host_nation_id.eq.' + party.nation_id + ',owner_nation_id.eq.' + party.nation_id).neq('state', 'ENDED');
+      const { data: hexes } = await supabase.from('world_hexes').select('q, r, name, population')
+        .eq('nation_id', party.nation_id).eq('terrain', 'land').order('population', { ascending: false }).limit(60);
       const { data: tp } = await supabase.rpc('nation_trade_policy', { p_nation: party.nation_id });   // in-force trade rung
       const { data: flows } = await supabase.from('trade_flows').select('exporter_id, importer_id, resource, value');   // World Trade ledger
       const { data: sanc } = await supabase.from('sanctions').select('by_nation, target_nation, active')   // active embargoes touching this nation
@@ -908,6 +919,7 @@
         isTradeMin: tradeMin === true,
         isFinMin: finMin === true,
         fdi: fdi || [],
+        hexes: hexes || [],
         trade: tp || { importMult: 1, tariff: 0, blocked: false, name: 'Managed Trade' },
         flows: flows || [],
         sanctions: sancSets(sanc, party.nation_id),
