@@ -408,7 +408,7 @@ function applyTransform() {
   try { const { data } = await selectAll('military_units', 'nation_id, name, unit_type, strength, q, r'); units = data || []; } catch (e) {}
   // Foreign-investment plants (schema/246) — public; drawn in Investment map mode.
   var buildings = [];
-  try { const { data } = await selectAll('buildings', 'nation_id, q, r, owner_nation_id, growth, label, kind'); buildings = (data || []).filter(function (b) { return b.kind === 'plant' && b.q != null && b.r != null; }); } catch (e) {}
+  try { const { data } = await selectAll('buildings', 'q, r, owner_nation_id, kind'); buildings = (data || []).filter(function (b) { return b.kind === 'plant' && b.q != null && b.r != null; }); } catch (e) {}
   // International organizations (public — RLS is select-using-true) for the Intl Orgs map mode: keep the
   // active ones and their membership so a chip can highlight its member nations. Fetched once at load.
   var orgs = [], orgMembers = [];

@@ -69,9 +69,17 @@ revoke all on function public._remove_building(text, uuid) from public, anon, au
 create or replace function public._nation_fdi_growth(p_nation text)
 returns numeric language sql stable security definer set search_path = public as $$
   select coalesce(sum(g), 0) from (
-    select growth       as g from public.buildings  where source = 'fdi' and nation_id = p_nation
+    -- Host plants: a state-owned (nationalised-retained) plant always counts; a FOREIGN plant counts
+    -- only while its deal is ACTIVE. So if an owner nation is deleted (cascading its corps → deals),
+    -- the orphaned foreign plant stops contributing — Growth stays == active deals + retained assets,
+    -- upholding the invariant. (buildings.source_id carries no FK, so this guard, not a cascade, is the
+    -- one that keeps the sum honest.)
+    select b.growth as g from public.buildings b
+     where b.source = 'fdi' and b.nation_id = p_nation
+       and (b.owner_nation_id is null
+            or exists (select 1 from public.fdi_deals d where d.id = b.source_id and d.state = 'ACTIVE'))
     union all
-    select owner_growth as g from public.fdi_deals  where state = 'ACTIVE' and owner_nation_id = p_nation
+    select owner_growth as g from public.fdi_deals where state = 'ACTIVE' and owner_nation_id = p_nation
   ) x;
 $$;
 revoke all on function public._nation_fdi_growth(text) from public, anon, authenticated;
