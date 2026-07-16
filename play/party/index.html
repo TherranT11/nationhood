@@ -56,8 +56,7 @@
   .ac-when{color:var(--muted);letter-spacing:.04em}
   .ac-delta{font-weight:700;white-space:nowrap}
   .ac-delta.up{color:var(--green)} .ac-delta.down{color:var(--red)}
-  .ac-why{font-family:'JetBrains Mono',monospace;font-size:9px;line-height:1.35;letter-spacing:.02em;color:var(--muted);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  .ac-why{font-family:'JetBrains Mono',monospace;font-size:9px;line-height:1.35;letter-spacing:.02em;color:var(--muted)}
   .ac-why.ac-wind{font-style:italic;color:var(--dim)}
   .ac-none{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--dim);margin-top:4px}
   .apprcard{flex:1 1 300px}
@@ -381,8 +380,6 @@
   }
 
   // ---- approval + sparkline ----
-  // hist = party_popularity_history rows [{tick, popularity}] ascending. One source for the value,
-  // the trend arrow, the sparkline, and the per-tick "recent changes" list.
   // Condense a month's event bodies into one short "why" line (the first cause + a "+N more" tail).
   function apprReason(list) {
     var first = String(list[0] || '').replace(/\s+/g, ' ').trim();
@@ -952,8 +949,10 @@
       // row picks up the events from its own month. Continuous ideology winds write no event by design.
       var reasons = {};
       try {
+        // Recent nation events (cap 300) cover the ~8 months the change list shows; a busier nation
+        // that overruns the cap just falls the oldest rows back to the "Approval winds" default.
         const { data: pev } = await supabase.from('events').select('body, game_date, party_id')
-          .eq('nation_id', party.nation_id).order('created_at', { ascending: false }).limit(150);
+          .eq('nation_id', party.nation_id).order('created_at', { ascending: false }).limit(300);
         (pev || []).forEach(function (e) {
           var mine = e.party_id === party.id, natPop = e.party_id == null && /popularit/i.test(e.body || '');
           if (mine || natPop) (reasons[e.game_date] = reasons[e.game_date] || []).push(e.body);
