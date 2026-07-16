@@ -84,12 +84,32 @@
   .st-plenum{display:flex;justify-content:flex-end;margin-top:9px}
   .st-plenum button{font-family:'JetBrains Mono',monospace;background:var(--panel);border:1px dashed var(--line);color:var(--dim);border-radius:8px;padding:7px 14px;font-size:9.5px;font-weight:800;letter-spacing:.06em;cursor:not-allowed}
 
-  /* ideology card (a stat card in row 1) */
-  .ideocard{display:flex;flex-direction:column}
-  .ideo-name{font-weight:800;font-size:18px;margin-top:4px;line-height:1.15}
-  .ideo-name.empty{color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:24px}
-  .ideo-btn{margin-top:auto;align-self:flex-start;font-family:'JetBrains Mono',monospace;background:var(--panel2);border:1px dashed var(--line);color:var(--muted);border-radius:8px;padding:8px 11px;font-weight:800;font-size:9.5px;letter-spacing:.07em;cursor:pointer}
-  .ideo-btn:hover{border-color:var(--accent);color:var(--accent)}
+  /* ideology card — live approval-winds breakdown (its own full-width row) */
+  .ideocard{display:flex;flex-direction:column;flex:1 1 auto}
+  .ideo-hd{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .ideo-net{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700}
+  .ideo-net.pos{color:var(--green)} .ideo-net.neg{color:var(--red)} .ideo-net.zero{color:var(--dim)}
+  .ideo-title{display:flex;align-items:center;gap:9px;font-weight:800;font-size:20px;margin:3px 0 2px}
+  .ideo-title .em{font-size:20px}
+  .ideo-conds2{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:0 30px;margin-top:6px}
+  .ideo-cr{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:12.5px}
+  .ideo-cr__ar{font-size:10px;flex:none}
+  .ideo-cr__ar.pos{color:var(--green)} .ideo-cr__ar.neg{color:var(--red)}
+  .ideo-cr__st{font-weight:700}
+  .ideo-cr__val{font-family:'JetBrains Mono',monospace;color:var(--muted);font-size:12px}
+  .ideo-cr__rt{margin-left:auto;display:flex;align-items:center;gap:9px;font-family:'JetBrains Mono',monospace;font-size:10px}
+  .ideo-cr__dir{color:var(--dim);letter-spacing:.06em}
+  .ideo-cr__c{font-weight:700;min-width:38px;text-align:right}
+  .ideo-cr__c.pos{color:var(--green)} .ideo-cr__c.neg{color:var(--red)} .ideo-cr__c.off{color:var(--dim)}
+  .ideo-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:11px;padding-top:10px;border-top:1px solid var(--line)}
+  .ideo-status{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;color:var(--dim)}
+  .ideo-change{font-family:'JetBrains Mono',monospace;background:var(--panel2);border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:7px 12px;font-weight:800;font-size:9.5px;letter-spacing:.06em;cursor:pointer}
+  .ideo-change:hover{border-color:var(--accent);color:var(--accent)}
+  .ideo-empty{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .ideo-empty__t{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:800;color:var(--dim)}
+  .ideo-empty__d{font-size:12.5px;color:var(--muted);flex:1;min-width:200px}
+  .ideo-choose{font-family:'JetBrains Mono',monospace;background:var(--panel2);border:1px dashed var(--line);color:var(--muted);border-radius:8px;padding:9px 13px;font-weight:800;font-size:10px;letter-spacing:.07em;cursor:pointer}
+  .ideo-choose:hover{border-color:var(--accent);color:var(--accent)}
 
   /* ideology modal (scoped palette) */
   .imodal{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px}
@@ -189,12 +209,11 @@
             <div class="stat-note" id="reformNote"></div>
           </div>
 
-          <div class="card statcard ideocard" id="ideoCard">
-            <div class="ip-micro">Ideology</div>
-            <div class="ideo-name empty" id="ideoName">—</div>
-            <div class="stat-note" id="ideoNote">Winds blow while in opposition</div>
-            <button class="ideo-btn" id="ideoBtn" type="button">Choose an ideology</button>
-          </div>
+        </div>
+
+        <!-- Ideology: live approval-winds breakdown (its own full-width row) -->
+        <div class="ip-row">
+          <div class="card ideocard" id="ideoCard"></div>
         </div>
 
         <!-- ROW 2: assembly + stance -->
@@ -422,11 +441,62 @@
   var IDEO_SEL = null, IDEO_COUNTS = { local: {}, world: {} };
   var ideoModal = document.getElementById('ideoModal');
 
-  function renderIdeologyCard(party) {
-    var el = document.getElementById('ideoName'), ideo = ideologyByName(party.archetype);
-    if (ideo) { el.className = 'ideo-name'; el.style.color = ideo.color; el.textContent = ideo.name; }
-    else { el.className = 'ideo-name empty'; el.style.color = ''; el.textContent = '—'; }
-    document.getElementById('ideoBtn').textContent = party.archetype ? 'Change · 1 AP' : 'Choose an ideology';
+  // The gentle-gradient wind contribution of one condition (mirrors _apply_ideology_winds, schema/233):
+  // 0.01 × points a stat sits past the 40–60 neutral band, in its triggering direction.
+  var WIND_CAP = 0.5;
+  function windContribution(value, dir) {
+    var v = Math.max(0, Math.min(100, Number(value)));
+    return dir === 'HIGH' ? 0.01 * Math.max(0, v - 60) : 0.01 * Math.max(0, 40 - v);
+  }
+  function fmtSigned(n, dec) { return (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toFixed(dec == null ? 2 : dec); }
+
+  // The Ideology card: the current ideology and the live per-condition winds moving Party Approval.
+  // Winds apply only in opposition (schema/233) — governing shows the potential, marked paused.
+  async function renderIdeology(party) {
+    var card = document.getElementById('ideoCard');
+    var ideo = ideologyByName(party.archetype);
+    if (!ideo) {
+      card.innerHTML =
+        '<div class="ip-micro">Ideology</div>' +
+        '<div class="ideo-empty" style="margin-top:8px">' +
+          '<span class="ideo-empty__t">—</span>' +
+          '<span class="ideo-empty__d">Declare an ideology to steer how the nation’s conditions move your Party Approval while you sit in opposition.</span>' +
+          '<button class="ideo-choose" id="ideoBtn" type="button">Choose an ideology</button></div>';
+      document.getElementById('ideoBtn').onclick = openIdeo;
+      return;
+    }
+    var stats = ideo.bump.concat(ideo.drop).map(function (c) { return c.stat; });
+    var sv = {};
+    try { var r = await supabase.rpc('nation_stat_values', { p_nation: party.nation_id, p_stats: stats }); sv = (r && r.data) || {}; } catch (e) {}
+    var opp = !party.in_government, net = 0;
+    var rows = ideo.bump.map(function (c) { return { c: c, kind: 'bump' }; })
+      .concat(ideo.drop.map(function (c) { return { c: c, kind: 'drop' }; }));
+    var rowsHtml = rows.map(function (x) {
+      var val = sv[x.c.stat], contrib = windContribution(val, x.c.dir);
+      var signed = x.kind === 'bump' ? contrib : -contrib; net += signed;
+      var trig = contrib >= 0.005;
+      var valTxt = (val == null || !isFinite(Number(val))) ? '—' : String(Math.round(Number(val)));
+      var cCls = !opp ? 'off' : (signed > 0 ? 'pos' : signed < 0 ? 'neg' : 'off');
+      var cTxt = trig ? fmtSigned(signed, 2) : '· —';
+      return '<div class="ideo-cr">' +
+        '<span class="ideo-cr__ar ' + (x.kind === 'bump' ? 'pos' : 'neg') + '">' + (x.kind === 'bump' ? '▲' : '▼') + '</span>' +
+        '<span class="ideo-cr__st">' + esc(x.c.stat) + '</span>' +
+        '<span class="ideo-cr__val">' + valTxt + '</span>' +
+        '<span class="ideo-cr__rt"><span class="ideo-cr__dir">' + x.c.dir + (trig ? ' ✓' : '') + '</span>' +
+          '<span class="ideo-cr__c ' + cCls + '">' + cTxt + '</span></span></div>';
+    }).join('');
+    net = Math.max(-WIND_CAP, Math.min(WIND_CAP, net));
+    var netCls = opp ? (net > 0.0049 ? 'pos' : net < -0.0049 ? 'neg' : 'zero') : 'zero';
+    var netTxt = opp ? ((net > 0.0049 ? '▲ ' : net < -0.0049 ? '▼ ' : '') + fmtSigned(net, 1) + '% / tick net') : 'Paused · in office';
+    var status = opp ? 'Opposition · winds live' : 'Governing · winds paused in office';
+    card.innerHTML =
+      '<div class="ideo-hd"><div class="ip-micro">Ideology</div>' +
+        '<span class="ideo-net ' + netCls + '">' + esc(netTxt) + '</span></div>' +
+      '<div class="ideo-title" style="color:' + ideo.color + '"><span class="em">' + ideo.emoji + '</span>' + esc(ideo.name) + '</div>' +
+      '<div class="ideo-conds2">' + rowsHtml + '</div>' +
+      '<div class="ideo-foot"><span class="ideo-status">' + esc(status.toUpperCase()) + ' · CHANGE COSTS CREDIBILITY</span>' +
+        '<button class="ideo-change" id="ideoBtn" type="button">Change · 1 AP</button></div>';
+    document.getElementById('ideoBtn').onclick = openIdeo;
   }
 
   function condChips(list, cls) {
@@ -482,7 +552,7 @@
     }
   }
   document.getElementById('ideoDeclare').onclick = declareIdeo;
-  document.getElementById('ideoBtn').onclick = openIdeo;
+  // #ideoBtn is rendered dynamically by renderIdeology() (empty + declared states), bound there.
 
   // Live tallies of who holds each ideology (local = this nation, world = everywhere).
   async function loadIdeoCounts(nationId) {
@@ -563,8 +633,8 @@
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy').eq('id', party.nation_id).single();
       NATION = nation;
 
-      // ideology card + declare modal counts
-      renderIdeologyCard(party);
+      // ideology card (live winds breakdown) + declare modal counts
+      renderIdeology(party);
       loadIdeoCounts(party.nation_id);
 
       // shared chrome

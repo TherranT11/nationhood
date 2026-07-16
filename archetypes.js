@@ -10,35 +10,40 @@
 //
 // A condition is { stat, dir } where dir is 'HIGH' (the stat sitting above the neutral band
 // helps) or 'LOW' (below the band helps). stat names are canonical POLICY_STATS (policies.js).
+// emoji is the crest shown on the Ideology card header.
 export const ARCHETYPES = [
-  { id: 'far-left', name: 'Far Left', color: '#b5342c',
+  { id: 'far-left', name: 'Far Left', color: '#b5342c', emoji: '✊',
     quote: 'The system itself is the enemy; misery is the proof.',
     bump: [{ stat: 'Poverty', dir: 'HIGH' }, { stat: 'Unemployment', dir: 'HIGH' }],
     drop: [{ stat: 'Prosperity', dir: 'HIGH' }, { stat: 'Standard of Living', dir: 'HIGH' }] },
-  { id: 'left', name: 'Left', color: '#e07a5c',
+  { id: 'left', name: 'Left', color: '#e07a5c', emoji: '🌹',
     quote: 'The system can be fixed — tax it, fund it, protect the worker.',
     bump: [{ stat: 'Wages', dir: 'LOW' }, { stat: 'Health', dir: 'LOW' }],
     drop: [{ stat: 'Prosperity', dir: 'HIGH' }, { stat: 'Extremism', dir: 'HIGH' }] },
-  { id: 'center', name: 'Center', color: '#9c9cb5',
+  { id: 'center', name: 'Center', color: '#9c9cb5', emoji: '⚖️',
     quote: 'Steady hands, sound money, no adventures.',
     bump: [{ stat: 'Prosperity', dir: 'HIGH' }, { stat: 'Rule of Law', dir: 'HIGH' }],
     drop: [{ stat: 'Inflation', dir: 'HIGH' }, { stat: 'Extremism', dir: 'HIGH' }] },
-  { id: 'right', name: 'Right', color: '#4a7dc9',
+  { id: 'right', name: 'Right', color: '#4a7dc9', emoji: '🏛️',
     quote: "Order, tradition, and an honest day's market.",
     bump: [{ stat: 'Crime', dir: 'HIGH' }, { stat: 'Immigration', dir: 'HIGH' }],
     drop: [{ stat: 'Unemployment', dir: 'HIGH' }, { stat: 'Wages', dir: 'LOW' }] },
-  { id: 'far-right', name: 'Far Right', color: '#2c3f8a',
+  { id: 'far-right', name: 'Far Right', color: '#2c3f8a', emoji: '🦅',
     quote: 'The nation betrayed; the strongman waiting.',
     bump: [{ stat: 'Immigration', dir: 'HIGH' }, { stat: 'National Pride', dir: 'LOW' }],
     drop: [{ stat: 'Social Integration', dir: 'HIGH' }, { stat: 'Prosperity', dir: 'HIGH' }] },
-  { id: 'libertarian', name: 'Libertarian', color: '#f0c53c',
+  { id: 'libertarian', name: 'Libertarian', color: '#f0c53c', emoji: '🗽',
     quote: 'The state is the problem, in every sentence.',
     bump: [{ stat: 'Tax Burden', dir: 'HIGH' }, { stat: 'Bureaucracy', dir: 'HIGH' }],
     drop: [{ stat: 'Crime', dir: 'HIGH' }, { stat: 'Revolt Risk', dir: 'HIGH' }] },
-  { id: 'green', name: 'Green', color: '#3ecf8e',
+  { id: 'green', name: 'Green', color: '#3ecf8e', emoji: '🌿',
     quote: 'The ledger nobody else is keeping.',
     bump: [{ stat: 'Environment', dir: 'LOW' }, { stat: 'CO₂ Emissions', dir: 'HIGH' }],
     drop: [{ stat: 'Unemployment', dir: 'HIGH' }, { stat: 'Poverty', dir: 'HIGH' }] },
+  { id: 'faith', name: 'Faith / Religious', color: '#c78a3c', emoji: '🛐',
+    quote: 'A moral order, kept — the oldest authority there is.',
+    bump: [{ stat: 'Religious Influence', dir: 'HIGH' }, { stat: 'Crime', dir: 'LOW' }],
+    drop: [{ stat: 'Press Freedom', dir: 'LOW' }, { stat: 'Education', dir: 'LOW' }] },
 ];
 
 // Colour for a stored ideology NAME; neutral grey if it's unknown/missing.
