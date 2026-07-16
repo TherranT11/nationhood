@@ -7,9 +7,13 @@
 export const STAT_LADDERS = {
   prosperity: ['Economic collapse','Deep depression','Severe downturn','Struggling economy','Weak economy','Developing economy','Steady economy','Solid economy','Prosperous','Wealthy','Affluent economy','Economic powerhouse','Engine of the world'],
   welfare: ['Total destitution','No safety net','Deep deprivation','Threadbare services','Minimal provision','Patchy support','Adequate services','Decent provision','Strong public services','Comprehensive care','Generous welfare state','Universal abundance','Want abolished'],
-  order: ['Total anarchy','Lawless chaos','Rampant unrest','Crime and disorder','Shaky stability','Mostly calm','Settled and stable','Law and order','Firm control','Strong authority','Heavy enforcement','Surveillance state','Total police state'],
+  // Rule of Law (the stat stored as stats.order) — respect for institutions and legal accountability,
+  // NOT the old order/authority framing: low = arbitrary, lawless rule; high = strong, impartial
+  // institutions (rising is always better, so it never tips into "police state").
+  ruleoflaw: ['Rule by decree','Lawless rule','Arbitrary power','Weak institutions','Selective justice','Uneven legality','Functioning courts','Respected institutions','Strong rule of law','Impartial justice','Robust institutions','Exemplary legality','Unassailable rule of law'],
   image: ['Global pariah','Disgraced reputation','Widely distrusted','Poor standing','Quietly overlooked','Mildly regarded','Fair reputation','Well regarded','Rising influence','Admired abroad','Soft-power player','Globally admired','Icon of the age'],
   growth: ['Economic freefall','Severe contraction','Deep recession','Recession','Sharp slowdown','Stalling','Ticking over','Modest growth','Steady growth','Solid expansion','Strong growth','Booming','Red-hot expansion'],
+  health: ['Health collapse','Rampant disease','Failing healthcare','Strained system','Basic care','Patchy healthcare','Adequate care','Sound healthcare','Healthy nation','Strong healthcare','Excellent care','World-class health','Peak vitality'],
 };
 
 // The inclusive lower bound of each of the 13 bands on the 1–100 scale — band 0 is 1–8,

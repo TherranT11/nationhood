@@ -728,8 +728,8 @@ function applyTransform() {
       // Crime is low-good; crimeValue is its own inverse (101−x), so crimeBand/crimeLabel(101−v) score the
       // real Crime value directly and reuse ladders.js's crime words (one source).
       { rpc: 'Crime',       label: 'Crime',       band: function (v) { return crimeBand(101 - v); },        word: function (v) { return crimeLabel(101 - v); } },
-      { rpc: 'Rule of Law', label: 'Rule of Law', band: function (v) { return statBand('order', v); },      word: function (v) { return statLabel('order', v); } },
-      { rpc: 'Health',      label: 'Health',      band: function (v) { return statBand('health', v); },     word: function () { return null; } },
+      { rpc: 'Rule of Law', label: 'Rule of Law', band: function (v) { return statBand('ruleoflaw', v); }, word: function (v) { return statLabel('ruleoflaw', v); } },
+      { rpc: 'Health',      label: 'Health',      band: function (v) { return statBand('health', v); },    word: function (v) { return statLabel('health', v); } },
     ];
     function npCell(s, v, idAttr) {
       if (!isFinite(v)) return '<span class="sv"' + idAttr + '>—</span>';
