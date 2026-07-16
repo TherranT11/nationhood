@@ -73,6 +73,10 @@ returns numeric language sql stable security definer set search_path = public as
 $$;
 revoke all on function public._nation_fdi_growth(text) from public, anon, authenticated;
 
+-- ⚠ SUPERSEDED BY 252. This body was reproduced from schema/243, which was itself built on the OLD 221
+-- lineage — it calls _nation_stock_growth (dropped in 229) and omits the [0,100] clamp (222/229). That
+-- combination caused the all-"--" stat outage. 252 is the authoritative _nation_live_stat now; do NOT
+-- reproduce this version. When the FDI Growth/breadth terms are re-added, build on 252's body.
 -- Fold the FDI stat term into _nation_live_stat's generic (non-Growth) branch. Body reproduced from
 -- schema/243 with the single + _nation_fdi_stat added to the else path; Growth is unchanged (it already
 -- carries _nation_fdi_growth and never takes this branch, so no double count).
