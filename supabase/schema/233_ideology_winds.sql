@@ -34,30 +34,35 @@ begin
      where p.in_government = false and p.archetype is not null
        and exists (select 1 from public.ideology_conditions c where c.ideology = p.archetype)
   loop
-    -- the distinct set of stats any opposition ideology in this nation cares about
-    select array_agg(distinct c.stat) into v_stats
-      from public.parties p
-      join public.ideology_conditions c on c.ideology = p.archetype
-     where p.nation_id = v_nation and p.in_government = false;
-    if v_stats is null then continue; end if;
-    v_sv := public.nation_stat_values(v_nation, v_stats);   -- ONE read; matches the displayed values
-    for v_party in
-      select id, archetype from public.parties
-       where nation_id = v_nation and in_government = false and archetype is not null
-    loop
-      v_net := 0;
-      for v_c in select stat, dir, kind from public.ideology_conditions where ideology = v_party.archetype loop
-        -- clamp to the 0–100 band scale; a missing/neutral stat sits at 50 → no wind
-        v_val := least(100, greatest(0, coalesce((v_sv->>v_c.stat)::numeric, 50)));
-        if v_c.dir = 'HIGH' then v_contrib := 0.01 * greatest(0, v_val - 60);
-        else                     v_contrib := 0.01 * greatest(0, 40 - v_val); end if;
-        if v_c.kind = 'bump' then v_net := v_net + v_contrib; else v_net := v_net - v_contrib; end if;
+    -- Isolated per nation (like every _advance_tick step): one nation's stat read failing must not
+    -- rob every other nation of its winds this tick.
+    begin
+      -- the distinct set of stats any opposition ideology in this nation cares about
+      select array_agg(distinct c.stat) into v_stats
+        from public.parties p
+        join public.ideology_conditions c on c.ideology = p.archetype
+       where p.nation_id = v_nation and p.in_government = false;
+      if v_stats is null then continue; end if;
+      v_sv := public.nation_stat_values(v_nation, v_stats);   -- ONE read; matches the displayed values
+      for v_party in
+        select id, archetype from public.parties
+         where nation_id = v_nation and in_government = false and archetype is not null
+      loop
+        v_net := 0;
+        for v_c in select stat, dir, kind from public.ideology_conditions where ideology = v_party.archetype loop
+          -- clamp to the 0–100 band scale; a missing/neutral stat sits at 50 → no wind
+          v_val := least(100, greatest(0, coalesce((v_sv->>v_c.stat)::numeric, 50)));
+          if v_c.dir = 'HIGH' then v_contrib := 0.01 * greatest(0, v_val - 60);
+          else                     v_contrib := 0.01 * greatest(0, 40 - v_val); end if;
+          if v_c.kind = 'bump' then v_net := v_net + v_contrib; else v_net := v_net - v_contrib; end if;
+        end loop;
+        v_net := greatest(-0.5, least(0.5, round(v_net, 3)));
+        if v_net <> 0 then
+          update public.parties set popularity = public._clamp_pop(popularity + v_net) where id = v_party.id;
+        end if;
       end loop;
-      v_net := greatest(-0.5, least(0.5, round(v_net, 3)));
-      if v_net <> 0 then
-        update public.parties set popularity = public._clamp_pop(popularity + v_net) where id = v_party.id;
-      end if;
-    end loop;
+    exception when others then raise warning 'ideology winds failed for nation % — %', v_nation, sqlerrm;
+    end;
   end loop;
 end $$;
 revoke all on function public._apply_ideology_winds() from public, anon, authenticated;

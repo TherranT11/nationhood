@@ -445,7 +445,10 @@
   // 0.01 × points a stat sits past the 40–60 neutral band, in its triggering direction.
   var WIND_CAP = 0.5;
   function windContribution(value, dir) {
-    var v = Math.max(0, Math.min(100, Number(value)));
+    if (value == null) return 0;              // missing stat → neutral (mirrors backend coalesce→50: no wind)
+    var v = Number(value);
+    if (!isFinite(v)) return 0;               // non-numeric → neutral, never NaN into the net
+    v = Math.max(0, Math.min(100, v));
     return dir === 'HIGH' ? 0.01 * Math.max(0, v - 60) : 0.01 * Math.max(0, 40 - v);
   }
   function fmtSigned(n, dec) { return (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toFixed(dec == null ? 2 : dec); }
