@@ -35,20 +35,43 @@ returns int language sql immutable as $$
   select case p_tier when 1 then 1 when 3 then 3 else 2 end;
 $$;
 
+-- ONE SOURCE for the invariant: does a plant still contribute to its host? A state-owned
+-- (nationalised) plant always counts; a FOREIGN plant counts only while its deal is ACTIVE — so an
+-- orphaned plant (owner nation deleted → deal gone) stops contributing and the sum stays honest.
+-- Both _nation_fdi_growth and _nation_fdi_stat read this so the rule lives in exactly one place.
+create or replace function public._fdi_plant_counts(p_owner_nation_id text, p_source_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select p_owner_nation_id is null
+      or exists (select 1 from public.fdi_deals d where d.id = p_source_id and d.state = 'ACTIVE');
+$$;
+revoke all on function public._fdi_plant_counts(text, uuid) from public, anon, authenticated;
+
 -- The FDI contribution to a NON-Growth stat a nation feels: sum of effects->>stat over the plants it
--- counts. Same guard as _nation_fdi_growth — a foreign plant counts only while its deal is ACTIVE, a
--- state-owned (nationalised) plant always — so an orphaned plant stops contributing and the sum stays
--- honest. Reads buildings + fdi_deals only (never _nation_live_stat) → no recursion. Cheap: buildings
--- is tiny and nation-indexed, and the `? p_stat` filter skips plants with no such effect.
+-- counts (per _fdi_plant_counts). Reads buildings + fdi_deals only (never _nation_live_stat) → no
+-- recursion. Cheap: buildings is tiny and nation-indexed, and the `? p_stat` filter skips plants with
+-- no such effect.
 create or replace function public._nation_fdi_stat(p_nation text, p_stat text)
 returns numeric language sql stable security definer set search_path = public as $$
   select coalesce(sum(public._to_num(b.effects->>p_stat)), 0)
     from public.buildings b
    where b.source = 'fdi' and b.nation_id = p_nation and b.effects ? p_stat
-     and (b.owner_nation_id is null
-          or exists (select 1 from public.fdi_deals d where d.id = b.source_id and d.state = 'ACTIVE'));
+     and public._fdi_plant_counts(b.owner_nation_id, b.source_id);
 $$;
 revoke all on function public._nation_fdi_stat(text, text) from public, anon, authenticated;
+
+-- Redefine _nation_fdi_growth (body from schema/246) to read the shared predicate — so the "does this
+-- plant still count?" rule has ONE home (_fdi_plant_counts) instead of being copied here.
+create or replace function public._nation_fdi_growth(p_nation text)
+returns numeric language sql stable security definer set search_path = public as $$
+  select coalesce(sum(g), 0) from (
+    select b.growth as g from public.buildings b
+     where b.source = 'fdi' and b.nation_id = p_nation
+       and public._fdi_plant_counts(b.owner_nation_id, b.source_id)
+    union all
+    select owner_growth as g from public.fdi_deals where state = 'ACTIVE' and owner_nation_id = p_nation
+  ) x;
+$$;
+revoke all on function public._nation_fdi_growth(text) from public, anon, authenticated;
 
 -- Fold the FDI stat term into _nation_live_stat's generic (non-Growth) branch. Body reproduced from
 -- schema/243 with the single + _nation_fdi_stat added to the else path; Growth is unchanged (it already
