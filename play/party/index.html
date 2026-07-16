@@ -111,6 +111,22 @@
   .ideo-choose{font-family:'JetBrains Mono',monospace;background:var(--panel2);border:1px dashed var(--line);color:var(--muted);border-radius:8px;padding:9px 13px;font-weight:800;font-size:10px;letter-spacing:.07em;cursor:pointer}
   .ideo-choose:hover{border-color:var(--accent);color:var(--accent)}
 
+  /* Other Parties — an identity + ideology pair per rival */
+  .op-section{margin-top:18px}
+  .op-hd{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim);margin-bottom:10px}
+  .op-list{display:flex;flex-direction:column;gap:12px}
+  .op-row{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch}
+  .op-id{flex:1 1 250px;max-width:340px;display:flex;align-items:center;gap:12px}
+  .op-logo{width:46px;height:46px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;flex:none}
+  .op-logo img{width:100%;height:100%;object-fit:cover}
+  .op-idmeta{min-width:0}
+  .op-eyebrow{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.06em;color:var(--dim);text-transform:uppercase}
+  .op-name{font-weight:800;font-size:15px;margin:2px 0;line-height:1.2}
+  .op-leader{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--muted)}
+  .op-leader b{color:var(--text);font-weight:700}
+  .op-ideo{flex:2 1 420px;min-width:0}
+  .op-none{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim);margin-top:10px}
+
   /* ideology modal (scoped palette) */
   .imodal{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px}
   .imodal[hidden]{display:none}
@@ -232,6 +248,12 @@
             <div class="st-ladder" id="stanceLadder"></div>
             <div class="st-detail" id="stanceDetail"></div>
           </div>
+        </div>
+
+        <!-- Other Parties: identity + ideology pair per rival party in the nation -->
+        <div class="op-section" id="otherSection" hidden>
+          <div class="op-hd">Other Parties</div>
+          <div class="op-list" id="otherParties"></div>
         </div>
 
         <!-- Ideology modal (inside .ip-root so it inherits the scoped palette) -->
@@ -445,14 +467,17 @@
   // 0.01 × points a stat sits past the 40–60 neutral band, in its triggering direction.
   var WIND_CAP = 0.5;
   function windContribution(value, dir) {
-    var v = Math.max(0, Math.min(100, Number(value)));
+    if (value == null) return 0;              // missing stat → neutral (mirrors backend coalesce→50: no wind)
+    var v = Number(value);
+    if (!isFinite(v)) return 0;               // non-numeric → neutral, never NaN into the net
+    v = Math.max(0, Math.min(100, v));
     return dir === 'HIGH' ? 0.01 * Math.max(0, v - 60) : 0.01 * Math.max(0, 40 - v);
   }
   function fmtSigned(n, dec) { return (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toFixed(dec == null ? 2 : dec); }
 
-  // The Ideology card: the current ideology and the live per-condition winds moving Party Approval.
-  // Winds apply only in opposition (schema/233) — governing shows the potential, marked paused.
-  async function renderIdeology(party) {
+  // The Ideology card: the player's current ideology and the live per-condition winds moving Party
+  // Approval. Winds apply only in opposition (schema/233) — governing shows the potential, marked paused.
+  function renderIdeology(party, sv) {
     var card = document.getElementById('ideoCard');
     var ideo = ideologyByName(party.archetype);
     if (!ideo) {
@@ -465,10 +490,30 @@
       document.getElementById('ideoBtn').onclick = openIdeo;
       return;
     }
-    var stats = ideo.bump.concat(ideo.drop).map(function (c) { return c.stat; });
-    var sv = {};
-    try { var r = await supabase.rpc('nation_stat_values', { p_nation: party.nation_id, p_stats: stats }); sv = (r && r.data) || {}; } catch (e) {}
-    var opp = !party.in_government, net = 0;
+    var b = windBreakdown(ideo, sv || {}, party.in_government);
+    var status = b.opp ? 'Opposition · winds live' : 'Governing · winds paused in office';
+    card.innerHTML =
+      '<div class="ideo-hd"><div class="ip-micro">Ideology</div>' + netBadge(b) + '</div>' +
+      '<div class="ideo-title" style="color:' + ideo.color + '"><span class="em">' + ideo.emoji + '</span>' + esc(ideo.name) + '</div>' +
+      '<div class="ideo-conds2">' + b.rowsHtml + '</div>' +
+      '<div class="ideo-foot"><span class="ideo-status">' + esc(status.toUpperCase()) + ' · CHANGE COSTS CREDIBILITY</span>' +
+        '<button class="ideo-change" id="ideoBtn" type="button">Change · 1 AP</button></div>';
+    document.getElementById('ideoBtn').onclick = openIdeo;
+  }
+
+  // The founded month of a party from its created_at vs the game clock (one source: masthead + Other Parties).
+  function foundedLabel(createdAt, curTick) {
+    if (!createdAt || !curTick) return '—';
+    try {
+      var elapsed = Math.round((Date.now() - new Date(createdAt).getTime()) / TICK_PERIOD_MS);
+      return tickToDate(Math.max(1, Math.min(curTick, curTick - elapsed)));
+    } catch (e) { return '—'; }
+  }
+
+  // The per-condition winds rows + net for an ideology given the nation's live stats and government
+  // status. ONE source for the player's Ideology card and every Other Parties row.
+  function windBreakdown(ideo, sv, inGov) {
+    var opp = !inGov, net = 0;
     var rows = ideo.bump.map(function (c) { return { c: c, kind: 'bump' }; })
       .concat(ideo.drop.map(function (c) { return { c: c, kind: 'drop' }; }));
     var rowsHtml = rows.map(function (x) {
@@ -477,7 +522,7 @@
       var trig = contrib >= 0.005;
       var valTxt = (val == null || !isFinite(Number(val))) ? '—' : String(Math.round(Number(val)));
       var cCls = !opp ? 'off' : (signed > 0 ? 'pos' : signed < 0 ? 'neg' : 'off');
-      var cTxt = trig ? fmtSigned(signed, 2) : '· —';
+      var cTxt = trig ? fmtSigned(signed, 2) : '· —';
       return '<div class="ideo-cr">' +
         '<span class="ideo-cr__ar ' + (x.kind === 'bump' ? 'pos' : 'neg') + '">' + (x.kind === 'bump' ? '▲' : '▼') + '</span>' +
         '<span class="ideo-cr__st">' + esc(x.c.stat) + '</span>' +
@@ -486,17 +531,42 @@
           '<span class="ideo-cr__c ' + cCls + '">' + cTxt + '</span></span></div>';
     }).join('');
     net = Math.max(-WIND_CAP, Math.min(WIND_CAP, net));
-    var netCls = opp ? (net > 0.0049 ? 'pos' : net < -0.0049 ? 'neg' : 'zero') : 'zero';
-    var netTxt = opp ? ((net > 0.0049 ? '▲ ' : net < -0.0049 ? '▼ ' : '') + fmtSigned(net, 1) + '% / tick net') : 'Paused · in office';
-    var status = opp ? 'Opposition · winds live' : 'Governing · winds paused in office';
-    card.innerHTML =
-      '<div class="ideo-hd"><div class="ip-micro">Ideology</div>' +
-        '<span class="ideo-net ' + netCls + '">' + esc(netTxt) + '</span></div>' +
-      '<div class="ideo-title" style="color:' + ideo.color + '"><span class="em">' + ideo.emoji + '</span>' + esc(ideo.name) + '</div>' +
-      '<div class="ideo-conds2">' + rowsHtml + '</div>' +
-      '<div class="ideo-foot"><span class="ideo-status">' + esc(status.toUpperCase()) + ' · CHANGE COSTS CREDIBILITY</span>' +
-        '<button class="ideo-change" id="ideoBtn" type="button">Change · 1 AP</button></div>';
-    document.getElementById('ideoBtn').onclick = openIdeo;
+    return { rowsHtml: rowsHtml, net: net, opp: opp };
+  }
+  function netBadge(b) {
+    var cls = b.opp ? (b.net > 0.0049 ? 'pos' : b.net < -0.0049 ? 'neg' : 'zero') : 'zero';
+    var txt = b.opp ? ((b.net > 0.0049 ? '▲ ' : b.net < -0.0049 ? '▼ ' : '') + fmtSigned(b.net, 1) + '% / tick net') : 'Paused · in office';
+    return '<span class="ideo-net ' + cls + '">' + esc(txt) + '</span>';
+  }
+
+  // Other Parties: every rival party in the nation as an identity + ideology pair (read-only). The
+  // ideology container reuses windBreakdown/netBadge, read from the same one nation-stat read.
+  function renderOtherParties(others, leaders, sv, curTick) {
+    var sec = document.getElementById('otherSection'), wrap = document.getElementById('otherParties');
+    if (!others.length) { sec.hidden = true; return; }
+    others.sort(function (a, b) { return (b.seats || 0) - (a.seats || 0); });
+    wrap.innerHTML = others.map(function (p) {
+      var col = partyColor(p), ld = leaders[p.id];
+      var ldTxt = ld ? ((esc(((ld.first_name || '') + ' ' + (ld.last_name || '')).trim()) || '—') + (ld.age != null ? ' (' + ld.age + ')' : '')) : '—';
+      var idHtml = '<div class="card op-id">' +
+        '<div class="op-logo" style="border-color:' + col + '66">' + (p.logo_url ? '<img src="' + esc(p.logo_url) + '" alt="">' : '🏛') + '</div>' +
+        '<div class="op-idmeta">' +
+          '<div class="op-eyebrow">' + esc(p.abbreviation || '—') + ' · Founded ' + esc(foundedLabel(p.created_at, curTick)) + '</div>' +
+          '<div class="op-name" style="color:' + col + '">' + esc(p.name || 'Party') + '</div>' +
+          '<div class="op-leader">' + (p.in_government ? 'GOVERNING' : 'OPPOSITION') + ' · LEADER <b>' + ldTxt + '</b></div>' +
+        '</div></div>';
+      var ideo = ideologyByName(p.archetype), ideoHtml;
+      if (!ideo) {
+        ideoHtml = '<div class="card op-ideo"><div class="ip-micro">Ideology</div><div class="op-none">No ideology declared</div></div>';
+      } else {
+        var b = windBreakdown(ideo, sv || {}, p.in_government);
+        ideoHtml = '<div class="card op-ideo">' +
+          '<div class="ideo-hd"><div class="ideo-title" style="color:' + ideo.color + ';font-size:15px;margin:0"><span class="em" style="font-size:15px">' + ideo.emoji + '</span>' + esc(ideo.name) + '</div>' + netBadge(b) + '</div>' +
+          '<div class="ideo-conds2" style="margin-top:8px">' + b.rowsHtml + '</div></div>';
+      }
+      return '<div class="op-row">' + idHtml + ideoHtml + '</div>';
+    }).join('');
+    sec.hidden = false;
   }
 
   function condChips(list, cls) {
@@ -633,8 +703,7 @@
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy').eq('id', party.nation_id).single();
       NATION = nation;
 
-      // ideology card (live winds breakdown) + declare modal counts
-      renderIdeology(party);
+      // ideology declare-modal counts (the card + Other Parties render later, after the roster fetch)
       loadIdeoCounts(party.nation_id);
 
       // shared chrome
@@ -651,16 +720,10 @@
           .eq('party_id', party.id).eq('status', 'Party Leader').order('created_at').limit(1).maybeSingle();
         if (leader) { leaderName = ((leader.first_name || '') + ' ' + (leader.last_name || '')).trim(); leaderAge = leader.age; }
       } catch (e) {}
-      // founded — derive the in-game month from created_at vs the game clock
-      var foundedText = '—', curTick = 1;
-      try {
-        curTick = await currentTick();
-        if (party.created_at) {
-          var elapsed = Math.round((Date.now() - new Date(party.created_at).getTime()) / TICK_PERIOD_MS);
-          foundedText = tickToDate(Math.max(1, Math.min(curTick, curTick - elapsed)));
-        }
-      } catch (e) {}
-      renderIdentity(party, leaderName, leaderAge, foundedText);
+      // founded — the in-game month from created_at vs the game clock (one source: foundedLabel)
+      var curTick = 1;
+      try { curTick = await currentTick(); } catch (e) {}
+      renderIdentity(party, leaderName, leaderAge, foundedLabel(party.created_at, curTick));
       var eb = document.getElementById('editBtn'); eb.hidden = false; eb.onclick = openEdit;
 
       // approval history → sparkline + trend
@@ -672,14 +735,33 @@
       } catch (e) {}
       renderApproval(party, series, prevPop);
 
-      // the assembly: every party's seats
+      // the assembly: every party's seats (+ the fields the Other Parties cards need)
       var roster = [];
       try {
-        var pr = await supabase.from('parties').select('id, name, abbreviation, archetype, color, seats, in_government').eq('nation_id', party.nation_id);
-        if (pr.error) pr = await supabase.from('parties').select('id, name, abbreviation, archetype, seats, in_government').eq('nation_id', party.nation_id);
+        var pr = await supabase.from('parties').select('id, name, abbreviation, archetype, color, logo_url, seats, in_government, created_at').eq('nation_id', party.nation_id);
+        if (pr.error) pr = await supabase.from('parties').select('id, name, abbreviation, archetype, seats, in_government, created_at').eq('nation_id', party.nation_id);
         roster = pr.data || [];
       } catch (e) {}
       renderHemicycle(party, roster, Number(nation && nation.legislature_seats) || 0);
+
+      // ideology winds: ONE nation-stat read for the whole roster's ideologies, shared by the
+      // player's Ideology card and the Other Parties cards (one source, one query).
+      var wantStats = {};
+      roster.forEach(function (p) { var i = ideologyByName(p.archetype); if (i) i.bump.concat(i.drop).forEach(function (c) { wantStats[c.stat] = 1; }); });
+      var NATION_SV = {}, ks = Object.keys(wantStats);
+      if (ks.length) { try { var sr = await supabase.rpc('nation_stat_values', { p_nation: party.nation_id, p_stats: ks }); NATION_SV = (sr && sr.data) || {}; } catch (e) {} }
+      renderIdeology(party, NATION_SV);
+
+      // Other Parties: rivals' leaders in one query, then an identity + ideology pair per rival.
+      var others = roster.filter(function (p) { return p.id !== party.id; }), leaders = {};
+      if (others.length) {
+        try {
+          const { data: lds } = await supabase.from('politicians').select('party_id, first_name, last_name, age')
+            .in('party_id', others.map(function (p) { return p.id; })).eq('status', 'Party Leader').order('created_at');
+          (lds || []).forEach(function (l) { if (!leaders[l.party_id]) leaders[l.party_id] = l; });
+        } catch (e) {}
+      }
+      renderOtherParties(others, leaders, NATION_SV, curTick);
 
       // coalition health — one source: the active government row (schema/165)
       try {
