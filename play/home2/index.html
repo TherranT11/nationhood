@@ -762,16 +762,15 @@ function applyTransform() {
 
     // Fill in the DERIVED Growth (one source: nation_stat_values RPC, schema/177 — same as the
     // Government/Nation pages). Guarded against a race where another nation was opened before this
-    // resolves; falls back to the raw mirror only if the RPC is unavailable.
-    var fbGrowth = (st.growth != null && st.growth !== '') ? Number(st.growth) : NaN;
+    // resolves. On any failure we show "—", never the stale raw mirror — the mismatch is the bug.
     function paintGrowth(v) {
       if (natPanel.dataset.nid !== nid) return;
       var el = document.getElementById('npGrowth'); if (!el) return;
       el.outerHTML = statSpan('growth', v, ' id="npGrowth"');
     }
     supabase.rpc('nation_stat_values', { p_nation: nid, p_stats: ['Growth'] })
-      .then(function (r) { paintGrowth((r && r.data && r.data.Growth != null) ? Number(r.data.Growth) : fbGrowth); })
-      .catch(function () { paintGrowth(fbGrowth); });
+      .then(function (r) { paintGrowth((r && r.data && r.data.Growth != null) ? Number(r.data.Growth) : NaN); })
+      .catch(function () { paintGrowth(NaN); });
   }
 
   // Open the snapshot for a tapped/clicked map element: a nation hex opens, empty land/sea closes,
