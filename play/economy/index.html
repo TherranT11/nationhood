@@ -287,6 +287,8 @@
     { k:'energy', label:'Energy' }, { k:'food', label:'Food' }, { k:'minerals', label:'Minerals' },
     { k:'goods', label:'Goods' }, { k:'services', label:'Services' }, { k:'military', label:'Military' }
   ];
+  // The good/bad labels PREVIEW what the June accounts do server-side (_resolve_economy_demands,
+  // schema/240) — the backend is the source of truth; keep these in step if the penalties change.
   var DEMANDS = [
     { k:'food',     label:'Food',            type:'res',   good:'Population +1M', bad:'Standard of Living −1', formula:function(n){ return '1 Food per 50M people (min 1) · pop ' + fmt(n.population) + 'M'; } },
     { k:'goods',    label:'Goods',           type:'res',   good:'Prosperity held', bad:'Prosperity −1', formula:function(n){ return 'Prosperity ÷ 10 · ' + num((n.stats||{}).prosperity) + ' ÷ 10'; } },
