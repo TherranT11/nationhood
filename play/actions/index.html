@@ -1167,26 +1167,33 @@
     var inc = FDI_INCENTIVES.filter(function (i) { return FDI.sel.inc[i.k]; }).map(function (i) { return i.k; });
     var hx = (document.getElementById('fdiHex').value || '').split(',');
     var hexQ = hx.length === 2 ? Number(hx[0]) : null, hexR = hx.length === 2 ? Number(hx[1]) : null;
-    var res = await supabase.rpc('court_foreign_investment', { p_corp: corpId, p_incentives: inc, p_hex_q: hexQ, p_hex_r: hexR });
-    if (res.error) { ping(res.error.message || 'Could not extend the invitation.'); btns.forEach(function (b) { b.disabled = false; }); return; }
-    document.getElementById('fdiModal').hidden = true;
-    ping('Invitation extended — the board decides within two ticks.');
-    fdiReloadDeals();
+    var reenable = function () { btns.forEach(function (b) { b.disabled = false; }); };
+    try {
+      var res = await supabase.rpc('court_foreign_investment', { p_corp: corpId, p_incentives: inc, p_hex_q: hexQ, p_hex_r: hexR });
+      if (res.error) { ping(res.error.message || 'Could not extend the invitation.'); reenable(); return; }
+      document.getElementById('fdiModal').hidden = true;
+      ping('Invitation extended — the board decides within two ticks.');
+      fdiReloadDeals();
+    } catch (e) { ping('Could not extend the invitation. Try again.'); reenable(); }
   }
 
   async function fdiNationalize(id, btn) {
     if (!confirm('Nationalise this operation? Relations with the firm’s home nation will suffer.')) return;
     btn.disabled = true;
-    var res = await supabase.rpc('nationalize_fdi_deal', { p_deal: id });
-    if (res.error) { ping(res.error.message || 'Could not nationalise.'); btn.disabled = false; return; }
-    ping('The operation has been nationalised.'); fdiReloadDeals();
+    try {
+      var res = await supabase.rpc('nationalize_fdi_deal', { p_deal: id });
+      if (res.error) { ping(res.error.message || 'Could not nationalise.'); btn.disabled = false; return; }
+      ping('The operation has been nationalised.'); fdiReloadDeals();
+    } catch (e) { ping('Could not nationalise. Try again.'); btn.disabled = false; }
   }
 
   async function fdiRetain(id, btn) {
     btn.disabled = true;
-    var res = await supabase.rpc('retain_fdi_deal', { p_deal: id });
-    if (res.error) { ping(res.error.message || 'Could not match the terms.'); btn.disabled = false; return; }
-    ping('Terms matched — the plant stays.'); fdiReloadDeals();
+    try {
+      var res = await supabase.rpc('retain_fdi_deal', { p_deal: id });
+      if (res.error) { ping(res.error.message || 'Could not match the terms.'); btn.disabled = false; return; }
+      ping('Terms matched — the plant stays.'); fdiReloadDeals();
+    } catch (e) { ping('Could not match the terms. Try again.'); btn.disabled = false; }
   }
 
   // The FDI tile under Minister of Finance — always shown to the Treasury holder (independent of the
