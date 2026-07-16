@@ -20,6 +20,7 @@ const NAV = [
   { href: '/play/news/',        label: 'Events',       svg: '<path d="M4 5h12v15H4z"/><path d="M16 9h4v9a2 2 0 0 1-2 2h-2"/><path d="M7 9h6M7 13h6M7 17h4"/>' },
   { href: '/play/actions/',     label: 'Actions',      svg: '<path d="M13 2L4 14h6l-1 8 9-12h-6z"/>' },
   { href: '/play/party/',       label: 'Party',        svg: '<path d="M4 21V4"/><path d="M4 4c3-2 6 2 9 0s6-2 9 0v9c-3 2-6-2-9 0s-6 2-9 0"/>' },
+  { href: '/play/negotiations/',label: 'Negotiations', svg: '<path d="M8 11l-4 4 4 4"/><path d="M4 15h9a3 3 0 0 0 3-3V5"/><path d="M16 13l4-4-4-4"/><path d="M20 9h-9a3 3 0 0 0-3 3v0"/>' },
   { href: '/play/',             label: 'Nation',       svg: '<path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/>' },
   { href: '/play/government/',  label: 'Government',   svg: '<path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/>' },
   { href: '/play/coalition/',   label: 'Coalition',    svg: '<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2 20a6 6 0 0 1 10-4M22 20a6 6 0 0 0-10-4"/>' },
