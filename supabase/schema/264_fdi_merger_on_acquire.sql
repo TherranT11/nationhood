@@ -88,9 +88,10 @@ begin
       perform public._end_fdi_deal(d.id, 'MERGED');                 -- courtship of the absorbed firm collapses
     elsif d.host_nation_id = v_acq.nation_id then
       perform public._end_fdi_deal(d.id, 'MERGED');                 -- plant is now domestic to the acquirer — no longer FDI
-    elsif exists (select 1 from public.fdi_deals e
-                   where e.corp_id = p_acquirer and e.host_nation_id = d.host_nation_id and e.state = 'ACTIVE') then
-      update public.fdi_deals set host_growth = v_g                 -- merge into the acquirer's existing plant, re-rated
+    elsif exists (select 1 from public.fdi_deals e                  -- ACTIVE *or* PENDING: a pending courtship here would
+                   where e.corp_id = p_acquirer and e.host_nation_id = d.host_nation_id  -- otherwise leave two deals in one host
+                     and e.state in ('ACTIVE', 'PENDING')) then     -- once it activates, so merge rather than transfer in
+      update public.fdi_deals set host_growth = v_g                 -- re-rate the acquirer's ACTIVE plant here (no-op if it's pending)
         where corp_id = p_acquirer and host_nation_id = d.host_nation_id and state = 'ACTIVE';
       perform public._end_fdi_deal(d.id, 'MERGED');                 -- the duplicate ends
     else
