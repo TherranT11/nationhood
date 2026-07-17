@@ -38,6 +38,7 @@ const KINDS = {
   cond:       { label: 'IF [stat] is above/below X, then…', nested: true },
   party_gain: { label: 'Targeted party gains X approval' },
   party_lose: { label: 'Targeted party loses X approval' },
+  self_campaign: { label: 'Your party runs a national campaign — gains X approval' },
   decider_gain: { label: 'Deciding party gains X approval' },   // choice cards: the party that resolves it
   decider_lose: { label: 'Deciding party loses X approval' },
   coal_up:    { label: 'Coalition health +1' },
@@ -75,7 +76,7 @@ const KINDS = {
   mil_rem:    { label: 'Remove Militia from Hex X' },
   event:      { label: 'Event Decision (write text, pick effect)', nested: true }
 };
-const SIMPLE = ['party_gain', 'party_lose', 'coal_up', 'coal_down', 'stat_up', 'stat_down', 'budget_up', 'budget_down', 'no_conf', 'nat_el'];
+const SIMPLE = ['party_gain', 'party_lose', 'self_campaign', 'coal_up', 'coal_down', 'stat_up', 'stat_down', 'budget_up', 'budget_down', 'no_conf', 'nat_el'];
 
 // ---- Archetype presets (the one radio row that replaces the old Mechanic / Decision / After-played /
 // Persistent sections). Each preset just STAMPS a set of lifecycle fields — the card's raw fields stay
