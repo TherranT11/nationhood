@@ -1087,10 +1087,13 @@
     { k: 'local_hire', label: 'Local-hire quota (+1 job)', sweet: false },
     { k: 'profit_cap', label: 'Profit-repatriation cap',   sweet: false },
   ];
-  var FDI = { nation: null, sel: { inc: {}, pool: [] }, deals: [], hexes: [], names: {}, flags: {} };
+  var FDI = { nation: null, sel: { inc: {}, pool: [] }, deals: [], hexes: [], names: {}, flags: {}, renegDeal: null, renegBusy: false };
   var FDI_ACCENTS = ['var(--red)', 'var(--indigo)', 'var(--amber)', 'var(--green)', 'var(--ac-orange)'];
 
   function fdiTemp() { return FDI_INCENTIVES.reduce(function (t, i) { return t + (FDI.sel.inc[i.k] ? (i.sweet ? 1 : -1) : 0); }, 0); }
+  // The selected incentive keys (one source for court + renegotiate); fdiKnownInc = does the picker expose this key.
+  function fdiSelInc() { return FDI_INCENTIVES.filter(function (i) { return FDI.sel.inc[i.k]; }).map(function (i) { return i.k; }); }
+  function fdiKnownInc(k) { return FDI_INCENTIVES.some(function (i) { return i.k === k; }); }
   function fdiNationName(id) { return FDI.names[id] || id; }
   // A stable accent per nation id (same nation → same colour across the list), for the home-country name.
   function fdiColor(id) { var h = 0, s = id || ''; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return FDI_ACCENTS[h % FDI_ACCENTS.length]; }
@@ -1128,12 +1131,12 @@
   }
   function fdiCancelReneg() { FDI.renegDeal = null; FDI.sel.inc = {}; renderFdiInc(); }
   async function fdiConfirmReneg() {
+    if (FDI.renegBusy) return;   // 1 AP — a chip toggle re-enables the button mid-request, so guard on state, not the button
     var deal = (FDI.deals || []).find(function (x) { return x.id === FDI.renegDeal; }); if (!deal) return;
-    var go = document.getElementById('fdiRenegGo'); if (go) go.disabled = true;   // 1 AP — no double-fire
+    FDI.renegBusy = true;
+    var go = document.getElementById('fdiRenegGo'); if (go) go.disabled = true;
     // The picker only exposes four incentive keys; preserve any others already on the deal (e.g. grant).
-    var known = {}; FDI_INCENTIVES.forEach(function (i) { known[i.k] = true; });
-    var inc = FDI_INCENTIVES.filter(function (i) { return FDI.sel.inc[i.k]; }).map(function (i) { return i.k; })
-      .concat((deal.incentives || []).filter(function (k) { return !known[k]; }));
+    var inc = fdiSelInc().concat((deal.incentives || []).filter(function (k) { return !fdiKnownInc(k); }));
     try {
       var res = await supabase.rpc('renegotiate_fdi_deal', { p_deal: FDI.renegDeal, p_incentives: inc });
       if (res.error) { ping(res.error.message || 'Could not renegotiate.'); if (go) go.disabled = false; return; }
@@ -1142,6 +1145,7 @@
       fdiReloadDeals();   // re-render deals (and clears the picker via renderFdiInc below)
       renderFdiInc();
     } catch (e) { ping('Could not renegotiate. Try again.'); if (go) go.disabled = false; }
+    finally { FDI.renegBusy = false; }
   }
 
   function renderFdiSuitors() {
@@ -1209,7 +1213,7 @@
 
   async function fdiCourt(corpId) {
     var btns = document.querySelectorAll('#fdiSuitors [data-court]'); btns.forEach(function (b) { b.disabled = true; });  // 3 AP — no double-fire
-    var inc = FDI_INCENTIVES.filter(function (i) { return FDI.sel.inc[i.k]; }).map(function (i) { return i.k; });
+    var inc = fdiSelInc();
     var hx = (document.getElementById('fdiHex').value || '').split(',');
     var hexQ = hx.length === 2 ? Number(hx[0]) : null, hexR = hx.length === 2 ? Number(hx[1]) : null;
     var reenable = function () { btns.forEach(function (b) { b.disabled = false; }); };
