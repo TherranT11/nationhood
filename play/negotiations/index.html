@@ -100,6 +100,7 @@
   function natName(id) { return (NATIONS[id] && NATIONS[id].name) || id; }
   function canOpen() { return ROLES.indexOf('Minister of Foreign Affairs') >= 0; }
   function otherNation(c) { return c.nation_a === NATION_ID ? c.nation_b : c.nation_a; }
+  function openedByText(c) { return c.opened_by === NATION_ID ? 'You opened this channel' : natName(c.opened_by) + ' opened this channel'; }
   function fmtTime(iso) {
     var d = new Date(iso);
     if (isNaN(d)) return '';
@@ -134,7 +135,7 @@
       return '<button class="chrow" data-open="' + esc(c.id) + '">' +
           natFlag(oid, 26, 16) +
           '<span class="chrow__body"><b>Negotiations with ' + esc(natName(oid)) + '</b>' +
-            '<div class="chrow__sub">' + (c.opened_by === NATION_ID ? 'You opened this channel' : natName(c.opened_by) + ' opened this channel') + '</div></span>' +
+            '<div class="chrow__sub">' + esc(openedByText(c)) + '</div></span>' +
           pill('OPEN', 'var(--green)') + '<span class="chev">›</span>' +
         '</button>';
     }).join('');
@@ -172,7 +173,7 @@
     return '<span class="back" data-back>‹ Negotiations</span>' +
       '<div class="dhead">' + natFlag(oid, 34, 22) +
         '<div class="dhead__t"><b>Negotiations with ' + esc(natName(oid)) + '</b>' +
-          '<div class="micro" style="margin-top:3px">' + (c.opened_by === NATION_ID ? 'You opened this channel' : natName(c.opened_by) + ' opened this channel') + '</div></div>' +
+          '<div class="micro" style="margin-top:3px">' + esc(openedByText(c)) + '</div></div>' +
         pill('OPEN', 'var(--green)') + closeBtn +
       '</div>' +
       '<div class="card chat"><div class="micro">The channel</div>' +
