@@ -21,6 +21,7 @@ export function cardEffectText(kind, p, nationName, cardName) {
     case 'party_lose': return 'Targeted party <b>loses ' + (p.x || 0) + ' approval</b>';
     case 'decider_gain': return 'The deciding party <b>gains ' + (p.x || 0) + ' approval</b>';
     case 'decider_lose': return 'The deciding party <b>loses ' + (p.x || 0) + ' approval</b>';
+    case 'self_campaign': return 'Your party <b>gains ' + (p.x || 0) + ' national approval</b>';
     case 'coal_up': return 'Coalition health <b>+1</b>';
     case 'coal_down': return 'Coalition health <b>−1</b>';
     case 'coal_pop_up': return 'All coalition parties <b>gain ' + (p.x || 0) + ' approval</b>';

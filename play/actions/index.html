@@ -922,7 +922,9 @@
     ['Statement', 'Release a public statement.'],
     ['Appoint',   'Appoint a minister to the cabinet.'],
     ['Reshuffle', 'Reshuffle the cabinet.'],
-    ['Elections', 'Call a general election.']
+    ['Elections', 'Call a general election.'],
+    ['Declare War', 'Ask parliament to declare war on a foreign power.'],
+    ['Sue for Peace', 'Table an act for peace to end a war.']
   ];
   function renderPMBar(isPM) {
     var el = document.getElementById('pmbar');
@@ -933,10 +935,10 @@
       '<div class="leadbar__grid">' +
       PM_ACTIONS.map(function (a) {
         // Produce, Appoint, Statement, Reshuffle and Elections are live; the rest stay dimmed scaffolds.
-        var id = a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : a[0] === 'Statement' ? ' id="pm-statement"' : a[0] === 'Reshuffle' ? ' id="pm-reshuffle"' : a[0] === 'Elections' ? ' id="pm-elections"' : '';
+        var id = a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : a[0] === 'Statement' ? ' id="pm-statement"' : a[0] === 'Reshuffle' ? ' id="pm-reshuffle"' : a[0] === 'Elections' ? ' id="pm-elections"' : a[0] === 'Declare War' ? ' id="pm-declare-war"' : a[0] === 'Sue for Peace' ? ' id="pm-sue-peace"' : '';
         // Most premiership actions cost 1 AP; Statement is 1 AP too; Produce costs
         // PRODUCE_COST on a cooldown; Reshuffle costs 1 AP on a 6-tick cooldown.
-        var cost = a[0] === 'Statement' ? ' data-cost="1"' : a[0] === 'Produce' ? ' data-cost="' + PRODUCE_COST + '"' : a[0] === 'Reshuffle' ? ' data-cost="2"' : '';
+        var cost = a[0] === 'Statement' ? ' data-cost="1"' : a[0] === 'Produce' ? ' data-cost="' + PRODUCE_COST + '"' : a[0] === 'Reshuffle' ? ' data-cost="2"' : (a[0] === 'Declare War' || a[0] === 'Sue for Peace') ? ' data-cost="1"' : '';
         return '<button class="lead" type="button"' + (id || ' disabled') + cost +
           '><b>' + a[0] + '</b><span class="lead__desc">' + a[1] + '</span></button>';
       }).join('') +
@@ -980,6 +982,60 @@
         });
       });
     }
+    var dwBtn = el.querySelector('#pm-declare-war');
+    if (dwBtn) dwBtn.addEventListener('click', function () { if (!acting) openWarModal('war'); });
+    var spBtn = el.querySelector('#pm-sue-peace');
+    if (spBtn) spBtn.addEventListener('click', function () { if (!acting) openWarModal('peace'); });
+  }
+
+  // Declare War / Sue for Peace — the HoG tables a floor bill (schema/269). The picker lists eligible
+  // nations (war: those you're NOT at war with; peace: your current enemies) and fires propose_war/peace.
+  function openWarModal(mode) {
+    if (acting || !feedCtx) return;
+    var myNation = feedCtx.nationId, isWar = mode === 'war';
+    Promise.all([
+      supabase.from('nations').select('id, name'),
+      supabase.from('wars').select('nation_a, nation_b').eq('status', 'active')
+    ]).then(function (res) {
+      var nations = (res[0] && res[0].data) || [], wars = (res[1] && res[1].data) || [], foe = {};
+      wars.forEach(function (w) {
+        if (w.nation_a === myNation) foe[w.nation_b] = true;
+        else if (w.nation_b === myNation) foe[w.nation_a] = true;
+      });
+      var list = nations.filter(function (n) { return n.id !== myNation && (isWar ? !foe[n.id] : foe[n.id]); })
+        .sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
+      if (!list.length) { ping(isWar ? 'There is no nation to declare war on.' : 'You are not at war with anyone.'); return; }
+      showWarModal(isWar, list);
+    }).catch(function () { ping('Couldn’t load nations. Try again.'); });
+  }
+  function showWarModal(isWar, list) {
+    var old = document.getElementById('warModal'); if (old) old.remove();
+    var wrap = document.createElement('div');
+    wrap.id = 'warModal'; wrap.className = 'amodal';
+    wrap.innerHTML = '<div class="amodal__panel"><div class="amodal__hd"><b>' + (isWar ? 'Declare War' : 'Sue for Peace') +
+        '</b><button class="amodal__x" id="warX" aria-label="Close">×</button></div>' +
+        '<div style="padding:18px 20px">' +
+          '<p style="color:var(--muted);font-size:13px;line-height:1.5;margin-bottom:13px">' +
+            (isWar ? 'Table an act to declare war. It goes straight to the floor — your parliament must pass it (simple majority). Relations with the target drop to 1.'
+                   : 'Table an act for peace. The war ends only once both nations’ parliaments have agreed.') + '</p>' +
+          '<select id="warSel" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--field);color:var(--ink);font-size:13px;font-family:inherit">' +
+            list.map(function (n) { return '<option value="' + esc(n.id) + '">' + esc(n.name || n.id) + '</option>'; }).join('') + '</select>' +
+          '<button class="lead" id="warGo" style="margin-top:14px;width:100%;justify-content:center;cursor:pointer"><b>' +
+            (isWar ? '⚔ Move to Declare War · 1 AP' : '🕊 Move for Peace · 1 AP') + '</b></button>' +
+        '</div></div>';
+    document.body.appendChild(wrap);
+    var close = function () { wrap.remove(); };
+    document.getElementById('warX').onclick = close;
+    wrap.addEventListener('click', function (e) { if (e.target === wrap) close(); });
+    document.getElementById('warGo').onclick = function () {
+      var target = document.getElementById('warSel').value; if (!target) return;
+      close();
+      performAction(function () { return supabase.rpc(isWar ? 'propose_war' : 'propose_peace', { p_target: target }); }, function (d) {
+        var st = d && d.status;
+        if (isWar) return st === 'passed' ? 'War declared — the act carried the floor.' : st === 'voting' ? 'The war act is on the floor — the chamber is voting.' : 'Parliament rejected the declaration of war.';
+        return st === 'passed' ? 'Your parliament voted for peace — the war ends once the other side agrees too.' : st === 'voting' ? 'The peace act is on the floor — the chamber is voting.' : 'Parliament rejected the peace.';
+      });
+    };
   }
   // Mirror the Elections cooldown on the PM button (disabled + a "Cooldown" pill), like Produce.
   function applyElectionCooldown(now, until) {
