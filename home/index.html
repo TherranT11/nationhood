@@ -62,6 +62,9 @@
   .tag.start{color:#fff;background:var(--accent)}
   .tag.live,.tag.progress{color:var(--accent);border:1.5px solid color-mix(in srgb, var(--accent) 50%, transparent);display:flex;align-items:center;gap:6px;font-weight:700}
   .tag.live .pd,.tag.progress .pd{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 1.8s infinite}
+  .tag.lock{color:var(--accent);border:1.5px solid color-mix(in srgb, var(--accent) 50%, transparent);display:flex;align-items:center;gap:5px;font-weight:700}
+  .tag.lock svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .card.unlocked .tag.lock{opacity:.6}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
   .card.sub{padding:20px}
   .card.sub h2{font-size:19px}
@@ -149,11 +152,12 @@
         <span class="go">Learn more &rarr;</span>
       </button>
 
-      <button class="card sub" style="--accent:#1f86d6;--tint:#E3F1FB" disabled>
-        <span class="card__ico"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg></span>
-        <h2>Wiki</h2>
-        <p>Every system, nation, and mechanic, documented.</p>
-        <span class="go">Open &rarr;</span>
+      <button class="card sub" id="nationverse" style="--accent:#1f86d6;--tint:#E3F1FB">
+        <span class="tag lock"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>Patreon</span>
+        <span class="card__ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><ellipse cx="12" cy="12" rx="11" ry="4.2" transform="rotate(-24 12 12)"/></svg></span>
+        <h2>Join the Nationverse</h2>
+        <p>Enter a thriving and persistent world and make your mark on history.</p>
+        <span class="go">Enter &rarr;</span>
       </button>
     </div>
 
@@ -215,6 +219,27 @@
   // Join the Online Game → the rules gate.
   document.getElementById('online').addEventListener('click', () => {
     window.location.href = '/startup/';
+  });
+
+  // Join the Nationverse → soft code gate. NOTE: this is a Patreon-perk ceremony, not real access
+  // control — the code lives in this file (viewable in source) and the world is also reachable from
+  // the Online Game card. Once entered, the unlock is remembered so patrons skip the prompt next time.
+  const ACCESS_CODE = 'patreon1';                       // compared lowercased + trimmed
+  const nationverse = document.getElementById('nationverse');
+  if (localStorage.getItem('nv-unlocked') === '1') nationverse.classList.add('unlocked');
+  let nvBusy = false;                                   // loading lock: blocks double-fire
+  nationverse.addEventListener('click', () => {
+    if (nvBusy) return;
+    if (localStorage.getItem('nv-unlocked') === '1') { nvBusy = true; window.location.href = '/startup/'; return; }
+    const entered = window.prompt('Enter your access code to join the Nationverse:');
+    if (entered == null) return;                        // cancelled
+    if (entered.trim().toLowerCase() === ACCESS_CODE) {
+      localStorage.setItem('nv-unlocked', '1');
+      nvBusy = true;
+      window.location.href = '/startup/';
+    } else {
+      window.alert('That code isn’t right. Access is a Patreon perk — check there for the current code.');
+    }
   });
 </script>
 </body>

@@ -91,7 +91,10 @@ export function policyInForceEffects(def, optionIdx) {
   var idx = Math.max(0, Math.min(Number(optionIdx) || 0, opts.length - 1));
   var inForce = (def.type === 'spectrum') ? opts.slice(1, idx + 1) : [opts[idx]];
   var out = [];
-  inForce.forEach(function (o) { ((o && o.effects) || []).forEach(function (e) { out.push(e); }); });
+  // unit:'once' Budget Balance effects are one-time enactment hits (applied whole by _apply_law,
+  // schema/270), never standing "in force" contributions — so they're excluded here, keeping the
+  // client standing/transition math in step with the server (_nation_policy_stat / _policy_transition_effects).
+  inForce.forEach(function (o) { ((o && o.effects) || []).forEach(function (e) { if (e && e.unit === 'once') return; out.push(e); }); });
   return out;
 }
 // The cumulative in-force effects at the current option, aggregated to ONE signed entry per {t, unit} —
@@ -305,6 +308,11 @@ export function fiscalNet(curOpt, propOpt, pop, pros) {
 export function optOneTimeMoney(o, pop, pros) {
   var m = { Income: 0, Budget: 0, Debt: 0 };
   ((o && o.effects) || []).forEach(function (e) {
+    // A Budget Balance effect authored as unit:'once' is a one-time Public Debt change (flat ₣B),
+    // applied whole on enactment by _apply_law (schema/270) — a cost (v<0) adds to debt, a windfall
+    // pays it down. Booked in the Debt bucket (moneyNet treats Debt as a liability) so the propose
+    // preview's "one-time cost" line matches what enacts. Excluded from the recurring balance everywhere.
+    if (e && e.t === 'Budget Balance' && e.unit === 'once') { m.Debt += -(Number(e.v) || 0); return; }
     if (!isMoneyTarget(e.t) || fiscalFactor(e)) return;   // recurring money is the /year delta, not here
     m[e.t] += policyMoney(Number(e.v) || 0, e.scale, pop, pros);
   });

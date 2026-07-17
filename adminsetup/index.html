@@ -2926,7 +2926,8 @@
       // nation proportionally). The unit selector only appears for Budget Balance.
       var unit = e.t === 'Budget Balance'
         ? '<select class="eunit"><option value="flat"'+((e.unit||'flat')==='flat'?' selected':'')+'>$ flat</option>'+
-          '<option value="gdp"'+(e.unit==='gdp'?' selected':'')+'>% of GDP</option></select>'
+          '<option value="gdp"'+(e.unit==='gdp'?' selected':'')+'>% of GDP</option>'+
+          '<option value="once"'+(e.unit==='once'?' selected':'')+'>One Time</option></select>'
         : '';
       return '<div class="effrow">'+polTgtSelect(e.t)+
         '<select class="edir"><option value="up"'+(up?' selected':'')+'>Increase</option><option value="down"'+(!up?' selected':'')+'>Decrease</option></select>'+
@@ -3074,8 +3075,10 @@
     }
     function polEffLine(e){
       var v=Number(e.v)||0, sign=v>=0?'+':'−', cls=v>0?'pos':v<0?'neg':'';
-      var suffix=(e.t==='Budget Balance'&&e.unit==='gdp')?'% GDP':'';   // Budget Balance can be a % of GDP
-      return '<div class="e '+cls+'"><b>'+esc(e.t)+' '+sign+Math.abs(v)+suffix+'</b></div>';
+      // Budget Balance can be a % of GDP or a one-time enactment hit (else a standing $ flat line).
+      var suffix=(e.t==='Budget Balance'&&e.unit==='gdp')?'% GDP':'';
+      var tail=(e.t==='Budget Balance'&&e.unit==='once')?' <span class="hint" style="font-style:normal">· one-time</span>':'';
+      return '<div class="e '+cls+'"><b>'+esc(e.t)+' '+sign+Math.abs(v)+suffix+'</b>'+tail+'</div>';
     }
     function renderPolPrev(){
       var box=document.getElementById('polPrev');
