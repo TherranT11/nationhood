@@ -8,10 +8,10 @@
 -- once" — and NOT an ongoing balance line.
 --
 -- Where it fires: _apply_law's once moment (a passed law bill flips the nation's option). The one-time
--- amount hits the budget STOCK through _nation_budget_add — the single money primitive that floors the
--- treasury at 0 and rolls any shortfall into Public Debt — and leaves one 'budget' ledger event. It is
--- NOT applied on the initial admin nation setup (that writes nations.policies directly, never _apply_law),
--- so a one-time cost only lands when the policy is legislated in.
+-- amount moves Public Debt directly — a cost (negative) is ADDED to the national debt; a windfall
+-- (positive) pays it down, never below 0 — and leaves one 'budget' ledger event. It is NOT applied on
+-- the initial admin nation setup (that writes nations.policies directly, never _apply_law), so a
+-- one-time cost only lands when the policy is legislated in.
 --
 -- Where it is EXCLUDED (so it never double-counts as a standing line):
 --   · _nation_policy_stat (schema/210)          — the standing Budget Balance sum skips unit='once'
@@ -105,7 +105,7 @@ end $$;
 create or replace function public._apply_law(p_nation text, p_policy uuid, p_option int)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_tick int; v_old int; v_def jsonb; v_oldname text; v_newname text; v_opts jsonb; r record;
-        v_once numeric; v_cur text;
+        v_once numeric; v_cur text; v_debt0 numeric; v_debt numeric; v_moved numeric;
 begin
   select current_tick into v_tick from public.game_state where id;
   select definition into v_def from public.policies where id = p_policy;
@@ -119,25 +119,29 @@ begin
    where id = p_nation;
   perform public._apply_policy_option_effects(p_nation, p_policy, p_option, 'once');
 
-  -- One-time Budget Balance hit: a Budget Balance effect authored as unit='once' is a discrete treasury
-  -- cost (or windfall) applied the moment the option is enacted — NOT a standing per-year line
+  -- One-time Budget Balance hit: a Budget Balance effect authored as unit='once' is a discrete Public
+  -- Debt change applied the moment the option is enacted — NOT a standing per-year line
   -- (_nation_policy_stat / policies.js exclude unit='once' from the balance). Sum the newly-in-force
-  -- option's one-time Budget Balance effects and route them through _nation_budget_add (the treasury
-  -- floors at 0, any shortfall rolls into Public Debt), then leave one 'budget' ledger event.
+  -- option's one-time Budget Balance effects: a cost (negative) is ADDED to the national debt; a windfall
+  -- (positive) pays it down, never below 0. One 'budget' ledger event records the actual move.
   if v_def is not null then
     select coalesce(sum((e->>'v')::numeric), 0) into v_once
       from jsonb_array_elements(coalesce((public._policy_options(v_def)->p_option)->'effects', '[]'::jsonb)) e
      where e->>'t' = 'Budget Balance' and e->>'unit' = 'once';
     if coalesce(v_once, 0) <> 0 then
-      perform public._nation_budget_add(p_nation, v_once);
-      select coalesce(economy->>'currency', '$') into v_cur from public.nations where id = p_nation;
-      insert into public.events (nation_id, kind, body, game_date, tone)
-        values (p_nation, 'budget',
-          'Enacting ' || coalesce(v_def->>'name', 'a policy')
-            || case when v_once > 0 then ' brought the treasury a one-time windfall of '
-                    else ' cost the treasury a one-time ' end
-            || v_cur || trim_scale(abs(round(v_once, 1))) || 'B.',
-          public.current_game_date(), case when v_once > 0 then 'pos' else 'neg' end);
+      select coalesce(economy->>'currency', '$'), coalesce((economy->>'debt')::numeric, 0)
+        into v_cur, v_debt0 from public.nations where id = p_nation;
+      v_debt  := greatest(0, round(v_debt0 - v_once, 1));   -- cost (v_once<0) grows debt; windfall pays it down, floor 0
+      v_moved := abs(v_debt - v_debt0);
+      if v_moved > 0 then
+        update public.nations set economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{debt}', to_jsonb(v_debt)) where id = p_nation;
+        insert into public.events (nation_id, kind, body, game_date, tone, debt_after)
+          values (p_nation, 'budget',
+            'Enacting ' || coalesce(v_def->>'name', 'a policy')
+              || case when v_once > 0 then ' paid down ' || v_cur || trim_scale(v_moved) || 'B of national debt.'
+                      else ' added ' || v_cur || trim_scale(v_moved) || 'B to the national debt.' end,
+            public.current_game_date(), case when v_once > 0 then 'pos' else 'neg' end, v_debt);
+      end if;
     end if;
   end if;
 
