@@ -308,10 +308,11 @@ export function fiscalNet(curOpt, propOpt, pop, pros) {
 export function optOneTimeMoney(o, pop, pros) {
   var m = { Income: 0, Budget: 0, Debt: 0 };
   ((o && o.effects) || []).forEach(function (e) {
-    // A Budget Balance effect authored as unit:'once' is a one-time treasury hit (flat ₣B), applied
-    // whole on enactment by _apply_law (schema/270) — surface it here so the propose preview's
-    // "one-time cost" line matches what enacts. (It's excluded from the recurring balance everywhere.)
-    if (e && e.t === 'Budget Balance' && e.unit === 'once') { m.Budget += (Number(e.v) || 0); return; }
+    // A Budget Balance effect authored as unit:'once' is a one-time Public Debt change (flat ₣B),
+    // applied whole on enactment by _apply_law (schema/270) — a cost (v<0) adds to debt, a windfall
+    // pays it down. Booked in the Debt bucket (moneyNet treats Debt as a liability) so the propose
+    // preview's "one-time cost" line matches what enacts. Excluded from the recurring balance everywhere.
+    if (e && e.t === 'Budget Balance' && e.unit === 'once') { m.Debt += -(Number(e.v) || 0); return; }
     if (!isMoneyTarget(e.t) || fiscalFactor(e)) return;   // recurring money is the /year delta, not here
     m[e.t] += policyMoney(Number(e.v) || 0, e.scale, pop, pros);
   });

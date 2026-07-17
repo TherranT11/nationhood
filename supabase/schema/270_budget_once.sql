@@ -1,10 +1,10 @@
 -- ===========================================================================
--- 270 · Budget Balance "One Time" — a discrete treasury hit on enactment.
+-- 270 · Budget Balance "One Time" — a discrete Public Debt hit on enactment.
 --
 -- Until now a policy option's Budget Balance effect was ALWAYS a standing per-year line ($ flat or %
 -- of GDP), summed forever by _nation_budget_balance and bled into Public Debt every tick. This adds a
--- third authoring mode: unit='once'. A one-time Budget Balance effect is a single cash cost (or
--- windfall) applied the instant the option is enacted — "enacting this policy costs the treasury $5B,
+-- third authoring mode: unit='once'. A one-time Budget Balance effect is a single Public Debt change
+-- applied the instant the option is enacted — "enacting this policy adds $5B to the national debt,
 -- once" — and NOT an ongoing balance line.
 --
 -- Where it fires: _apply_law's once moment (a passed law bill flips the nation's option). The one-time
