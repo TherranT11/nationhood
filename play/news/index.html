@@ -116,6 +116,16 @@
   .ev-guide-item>div{margin-top:3px}
   @media(max-width:720px){.ev-guide-row{grid-template-columns:repeat(2,1fr)}}
 
+  /* target picker (party-targeted event cards, e.g. Attack Campaign) */
+  .tgt-modal{position:fixed;inset:0;z-index:80;background:rgba(10,13,19,.55);display:flex;align-items:center;justify-content:center;padding:20px}
+  .tgt-panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;max-width:360px;width:100%;box-shadow:0 20px 60px -20px rgba(0,0,0,.5)}
+  .tgt-hd{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+  .tgt-list{display:flex;flex-direction:column;gap:7px;max-height:50vh;overflow:auto}
+  .tgt-opt{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;text-align:left}
+  .tgt-opt:hover{border-color:var(--accent)}
+  .tgt-dot{width:10px;height:10px;border-radius:50%;flex:none}
+  .tgt-cancel{margin-top:12px;width:100%;padding:9px;border-radius:9px;border:1px solid var(--line);background:none;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;cursor:pointer}
+
   /* arms-request + government decisions banners (share the deccard look) */
   .ev-arms{margin-bottom:16px}
   .decopt.armsok{border-color:var(--green);color:var(--green)}
@@ -466,13 +476,40 @@
   window.addEventListener('resize', matchPanelHeights);
 
   // ---- claims + decisions go through run() for the shared BUSY lock + reload ----------------------
-  async function claim(cardId, action) {
-    await run(function () { return supabase.rpc('claim_card', { p_deck_card: (action === 'pass' ? null : cardId), p_action: action }); });
+  async function claim(cardId, action, target) {
+    await run(function () { return supabase.rpc('claim_card', { p_deck_card: (action === 'pass' ? null : cardId), p_action: action, p_target: target || null }); });
+  }
+  // A card whose event effect hits a rival party (Attack Campaign etc.) needs a target picked first.
+  function cardTargetsParty(def) {
+    return !!(def && Array.isArray(def.fx) && def.fx.some(function (e) { return e && (e.kind === 'party_lose' || e.kind === 'party_gain'); }));
+  }
+  function openTargetPick(cardId, action) {
+    var rivals = (window.__roster || []).filter(function (p) { return !PARTY || p.id !== PARTY.id; });
+    if (!rivals.length) { alert('There is no rival party to target — you can still bank the card’s Action Points.'); return; }
+    var old = document.getElementById('tgtModal'); if (old) old.remove();
+    var wrap = document.createElement('div');
+    wrap.id = 'tgtModal'; wrap.className = 'tgt-modal';
+    wrap.innerHTML = '<div class="tgt-panel"><div class="tgt-hd">Choose a party to target</div><div class="tgt-list">' +
+      rivals.map(function (p) {
+        return '<button class="tgt-opt" data-tgt="' + esc(p.id) + '"><span class="tgt-dot" style="background:' + (p.color || 'var(--accent)') + '"></span>' + esc(p.name || p.abbreviation || 'A party') + '</button>';
+      }).join('') + '</div><button class="tgt-cancel" id="tgtCancel">Cancel</button></div>';
+    document.body.appendChild(wrap);
+    wrap.addEventListener('click', function (e) { if (e.target === wrap) wrap.remove(); });
+    document.getElementById('tgtCancel').onclick = function () { wrap.remove(); };
+    wrap.querySelectorAll('[data-tgt]').forEach(function (b) {
+      b.onclick = function () { var t = b.dataset.tgt; wrap.remove(); claim(cardId, action, t); };
+    });
   }
   document.addEventListener('click', function (ev) {
     var b = ev.target.closest && ev.target.closest('.js-claim');
     if (!b || b.disabled) return;
-    claim(b.dataset.card || null, b.dataset.action);
+    var action = b.dataset.action, cardId = b.dataset.card || null;
+    // Event/Both on a party-targeted card → pick the rival first, then claim with that target.
+    if ((action === 'event' || action === 'both') && cardId) {
+      var card = (window.__cards || []).find(function (c) { return String(c.id) === String(cardId); });
+      if (card && cardTargetsParty(card.definition)) { openTargetPick(cardId, action); return; }
+    }
+    claim(cardId, action);
   });
   async function decideCard(id, opt, nation) { await run(function () { return supabase.rpc('card_decide', { p_decision: id, p_option: opt, p_nation: nation || null }); }); }
   async function run(fn) {
@@ -514,6 +551,7 @@
     try {
       const { data } = await supabase.from('deck_cards').select('id, created_at, cards(definition)').eq('nation_id', NATION_ID).eq('status', 'on_block').order('created_at', { ascending: true });
       cards = (data || []).map(function (r) { return { id: r.id, definition: (r.cards && r.cards.definition) || {} }; });
+      window.__cards = cards;   // for the claim handler's party-target lookup
     } catch (e) {}
     try {
       const { data } = await supabase.from('card_claims').select('party_id, deck_card_id, action').eq('nation_id', NATION_ID).eq('tick', CUR_TICK);
