@@ -994,7 +994,7 @@
     if (acting || !feedCtx) return;
     var myNation = feedCtx.nationId, isWar = mode === 'war';
     Promise.all([
-      supabase.from('nations').select('id, name'),
+      supabase.from('nations').select('id, name').eq('dormant', false),
       supabase.from('wars').select('nation_a, nation_b').eq('status', 'active')
     ]).then(function (res) {
       var nations = (res[0] && res[0].data) || [], wars = (res[1] && res[1].data) || [], foe = {};
