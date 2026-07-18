@@ -65,6 +65,17 @@
   .del { border: 1px solid var(--line); background: transparent; color: var(--err); border-radius: 8px; padding: 4px 11px; font-size: 12px; font-weight: 700; cursor: pointer; }
   .del:hover { background: color-mix(in srgb, var(--err) 10%, transparent); }
 
+  /* Personalities panel: dropdowns match the other form controls; the roster is a selectable list. */
+  #p-nation, #p-role { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 14.5px; font-family: inherit; }
+  .perslist { margin-bottom: 20px; }
+  .perslist:empty { display: none; }
+  .prow2 { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); margin-bottom: 8px; cursor: pointer; }
+  .prow2:hover { border-color: color-mix(in srgb, var(--ink) 25%, var(--line)); }
+  .prow2.sel { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
+  .prow2 .pnm { font-weight: 700; font-size: 14px; }
+  .prow2 .pmeta { color: var(--muted); font-size: 12.5px; }
+  .btn-solid[disabled], .btn-ghost[disabled] { opacity: .45; cursor: not-allowed; }
+
   .actions { display: flex; align-items: center; gap: 14px; margin-top: 24px; }
   .note { font-size: 13.5px; color: var(--muted); }
   .note.ok { color: #16915a; }
@@ -94,9 +105,11 @@
     </div>
     <div class="adminbody">
       <nav class="vtabs">
-        <button class="vtab active" type="button">Nation Creator</button>
+        <button class="vtab active" data-tab="nation" type="button">Nation Creator</button>
+        <button class="vtab" data-tab="personalities" type="button">Personalities</button>
       </nav>
       <div class="panel">
+        <div class="tabpanel" data-panel="nation">
         <div class="card">
           <h2>Add Nation</h2>
           <p class="lead">Create a nation for the Nationverse. It starts with the thirteen stats below (0–20 each).</p>
@@ -129,6 +142,29 @@
             <span class="note" id="addNote" role="status" aria-live="polite"></span>
           </div>
         </div>
+        </div><!-- /tabpanel nation -->
+
+        <div class="tabpanel" data-panel="personalities" hidden>
+        <div class="card">
+          <h2>Personalities</h2>
+          <p class="lead">Create a personality tied to a Nationverse nation. Add, then select one from the list to edit or delete.</p>
+
+          <div id="persList" class="perslist"></div>
+
+          <div class="f"><label>Nation</label><select id="p-nation"></select></div>
+          <div class="f"><label>Name</label><input id="p2-name" type="text" autocomplete="off"></div>
+          <div class="f"><label>Starting Age</label><input id="p-age" type="number" min="0" step="1"></div>
+          <div class="f"><label>Description</label><textarea id="p-desc2"></textarea></div>
+          <div class="f"><label>Role</label><select id="p-role"></select></div>
+
+          <div class="actions">
+            <button class="btn btn-solid" id="persAdd" type="button">Add Personality</button>
+            <button class="btn btn-ghost" id="persEdit" type="button" disabled>Edit Personality</button>
+            <button class="btn btn-ghost" id="persDelete" type="button" disabled>Delete Personality</button>
+            <span class="note" id="persNote" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+        </div><!-- /tabpanel personalities -->
       </div>
     </div>
   </div>
@@ -320,6 +356,134 @@
       } catch (e) {
         addNote.textContent = e.message || 'Could not add the nation.'; addNote.className = 'note error';
       } finally { adding = false; addBtn.disabled = false; }
+    });
+
+    // ---- Tabs (Nation Creator / Personalities) ----
+    const vtabs = document.querySelectorAll('.vtab');
+    const panels = document.querySelectorAll('.tabpanel');
+    vtabs.forEach(t => t.addEventListener('click', () => {
+      vtabs.forEach(x => x.classList.toggle('active', x === t));
+      panels.forEach(p => { p.hidden = p.dataset.panel !== t.dataset.tab; });
+      if (t.dataset.tab === 'personalities') { loadNvNations(); loadPersonalities(); }   // always fresh
+    }));
+
+    // ---- Personalities (CRUD against an existing Nationverse nation) ----
+    const ROLES = ['Politician of Party 1', 'Politician of Party 2', 'Politician of Party 3', 'Politician of Party 4', 'Politician of Party 5',
+      'Oligarch', 'Chief of Staff of the Military', 'Head of the Faith', 'Head of State (Monarch)', 'Royal Heir', 'Royal Pretender',
+      'Dissident Leader', 'Labor Leader', 'Warlord'];
+    const roleSel = document.getElementById('p-role');
+    roleSel.innerHTML = ROLES.map(r => '<option value="' + esc(r) + '">' + esc(r) + '</option>').join('');
+
+    const natSel = document.getElementById('p-nation');
+    const persList = document.getElementById('persList');
+    const persNote = document.getElementById('persNote');
+    const persAdd = document.getElementById('persAdd');
+    const persEdit = document.getElementById('persEdit');
+    const persDelete = document.getElementById('persDelete');
+    let natNames = {};        // nation id → name, for the roster line
+    let selectedPers = null;  // id of the personality loaded for edit/delete
+    let persBusy = false;     // single-fire lock on the write buttons
+
+    async function loadNvNations() {
+      try {
+        const { data, error } = await supabase.from('nationverse_nations').select('id, name').order('name', { ascending: true });
+        if (error) throw error;
+        const rows = data || [];
+        natNames = {}; rows.forEach(n => { natNames[n.id] = n.name; });
+        natSel.innerHTML = rows.length
+          ? rows.map(n => '<option value="' + esc(n.id) + '">' + esc(n.name || 'Untitled') + '</option>').join('')
+          : '<option value="">No nations yet — add one first</option>';
+      } catch (e) { natSel.innerHTML = '<option value="">Couldn’t load nations</option>'; }
+    }
+
+    function clearPersForm() {
+      selectedPers = null;
+      document.getElementById('p2-name').value = '';
+      document.getElementById('p-age').value = '';
+      document.getElementById('p-desc2').value = '';
+      roleSel.selectedIndex = 0;
+      persEdit.disabled = true; persDelete.disabled = true;
+      persList.querySelectorAll('.prow2.sel').forEach(r => r.classList.remove('sel'));
+    }
+
+    async function loadPersonalities() {
+      try {
+        const { data, error } = await supabase.from('nationverse_personalities').select('*').order('created_at', { ascending: true });
+        if (error) throw error;
+        const rows = data || [];
+        persList.innerHTML = rows.map(p =>
+          '<div class="prow2" data-id="' + esc(p.id) + '"><div><div class="pnm">' + esc(p.name || 'Unnamed') + '</div>' +
+          '<div class="pmeta">' + esc(p.role || '—') + ' · ' + esc(natNames[p.nation_id] || '—') + '</div></div></div>'
+        ).join('');
+        persList.querySelectorAll('.prow2').forEach(row => row.addEventListener('click', () => {
+          const p = rows.find(x => x.id === row.dataset.id); if (!p) return;
+          selectedPers = p.id;
+          natSel.value = p.nation_id;
+          document.getElementById('p2-name').value = p.name || '';
+          document.getElementById('p-age').value = p.starting_age != null ? p.starting_age : '';
+          document.getElementById('p-desc2').value = p.description || '';
+          roleSel.value = p.role || ROLES[0];
+          persEdit.disabled = false; persDelete.disabled = false;
+          persList.querySelectorAll('.prow2').forEach(r => r.classList.toggle('sel', r === row));
+        }));
+      } catch (e) { persList.innerHTML = ''; persNote.textContent = 'Couldn’t load personalities.'; persNote.className = 'note error'; }
+    }
+
+    function persPayload() {
+      const ageRaw = document.getElementById('p-age').value;
+      return {
+        nation_id: natSel.value || null,
+        name: document.getElementById('p2-name').value.trim(),
+        starting_age: ageRaw === '' ? null : Math.max(0, Math.round(Number(ageRaw) || 0)),
+        description: document.getElementById('p-desc2').value.trim() || null,
+        role: roleSel.value
+      };
+    }
+    // Name + nation are required; returns the payload or null (with a note) if invalid.
+    function validPers() {
+      const p = persPayload();
+      if (!p.nation_id) { persNote.textContent = 'Pick a nation first.'; persNote.className = 'note error'; return null; }
+      if (!p.name) { persNote.textContent = 'A name is required.'; persNote.className = 'note error'; return null; }
+      return p;
+    }
+    const reenablePers = () => { persBusy = false; persEdit.disabled = !selectedPers; persDelete.disabled = !selectedPers; };
+
+    persAdd.addEventListener('click', async () => {
+      if (persBusy) return;
+      const p = validPers(); if (!p) return;
+      persBusy = true; persAdd.disabled = true; persNote.textContent = 'Saving…'; persNote.className = 'note';
+      try {
+        const { error } = await supabase.from('nationverse_personalities').insert(p);
+        if (error) throw error;
+        persNote.textContent = 'Added “' + p.name + '”.'; persNote.className = 'note ok';
+        clearPersForm(); await loadPersonalities();
+      } catch (e) { persNote.textContent = e.message || 'Could not add the personality.'; persNote.className = 'note error'; }
+      finally { persBusy = false; persAdd.disabled = false; }
+    });
+
+    persEdit.addEventListener('click', async () => {
+      if (persBusy || !selectedPers) return;
+      const p = validPers(); if (!p) return;
+      persBusy = true; persEdit.disabled = true; persNote.textContent = 'Saving…'; persNote.className = 'note';
+      try {
+        const { error } = await supabase.from('nationverse_personalities').update(p).eq('id', selectedPers);
+        if (error) throw error;
+        persNote.textContent = 'Saved changes.'; persNote.className = 'note ok';
+        clearPersForm(); await loadPersonalities();
+      } catch (e) { persNote.textContent = e.message || 'Could not save the changes.'; persNote.className = 'note error'; }
+      finally { reenablePers(); }
+    });
+
+    persDelete.addEventListener('click', async () => {
+      if (persBusy || !selectedPers) return;
+      persBusy = true; persDelete.disabled = true; persNote.textContent = 'Deleting…'; persNote.className = 'note';
+      try {
+        const { error } = await supabase.from('nationverse_personalities').delete().eq('id', selectedPers);
+        if (error) throw error;
+        persNote.textContent = 'Deleted.'; persNote.className = 'note ok';
+        clearPersForm(); await loadPersonalities();
+      } catch (e) { persNote.textContent = e.message || 'Could not delete.'; persNote.className = 'note error'; }
+      finally { reenablePers(); }
     });
 
     refresh();
