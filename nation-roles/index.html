@@ -28,6 +28,7 @@
   .rolecard .rtop { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
   .rolecard .rn { font-size: 15.5px; font-weight: 800; }
   .rolecard .rr { color: var(--muted); font-size: 13px; }
+  .rolecard .rcreds { color: var(--ink); font-size: 12.5px; font-weight: 700; margin-top: 5px; opacity: .82; }
   .rolecard .rage { color: var(--muted); font-size: 12.5px; flex: none; }
   .rolecard .rdesc { color: var(--muted); font-size: 13px; line-height: 1.5; margin-top: 6px; }
   .empty { padding: 40px 24px; border: 1px dashed var(--line); border-radius: 14px; text-align: center; color: var(--muted); font-size: 14.5px; }
@@ -64,9 +65,10 @@
       if (!isConfigured) { content.innerHTML = '<div class="empty">Nation data isn’t connected yet.</div>'; return; }
       if (!nationId) { content.innerHTML = '<div class="empty">No nation selected. <a href="/nations/">Choose one.</a></div>'; return; }
       try {
-        const [natRes, persRes] = await Promise.all([
+        const [natRes, persRes, corpsRes] = await Promise.all([
           supabase.from('nationverse_nations').select('id, name, flag, analogous, capital, parties').eq('id', nationId).maybeSingle(),
-          supabase.from('nationverse_personalities').select('*').eq('nation_id', nationId).order('created_at', { ascending: true })
+          supabase.from('nationverse_personalities').select('*').eq('nation_id', nationId).order('created_at', { ascending: true }),
+          supabase.from('nationverse_corporations').select('name, ownership').eq('hq_nation_id', nationId)
         ]);
         if (natRes.error) throw natRes.error;
         const n = natRes.data;
@@ -82,6 +84,20 @@
           return party ? ('Party Leader of ' + party) : (p.role || '—');
         };
 
+        // Credentials shown under the role: the personality's Starting Office and any corporate stake
+        // ("70% Owner of <corp>"). Ownership is read from each corp's cap table (one source: the corp).
+        const corpsByOwner = {};
+        (corpsRes && !corpsRes.error ? (corpsRes.data || []) : []).forEach(c =>
+          (c.ownership || []).forEach(o => {
+            if (o.type === 'personality' && o.id) (corpsByOwner[o.id] = corpsByOwner[o.id] || []).push({ name: c.name, share: o.share });
+          }));
+        const credsOf = p => {
+          const parts = [];
+          if (p.office && p.office !== 'No Specific Office') parts.push(p.office);
+          (corpsByOwner[p.id] || []).forEach(c => parts.push((c.share != null ? c.share + '% ' : '') + 'Owner of ' + (c.name || 'a corporation')));
+          return parts;
+        };
+
         const flag = n.flag
           ? '<img class="nflag" alt="Flag" src="' + esc(n.flag) + '">'
           : '<div class="nflag ph">' + esc((n.name || '?').slice(0, 3)) + '</div>';
@@ -94,6 +110,7 @@
                   (r.starting_age != null ? '<div class="rage">Age ' + esc(r.starting_age) + '</div>' : '') +
                 '</div>' +
                 '<div class="rr">' + esc(roleLabelOf(r)) + '</div>' +
+                (credsOf(r).length ? '<div class="rcreds">' + esc(credsOf(r).join(' · ')) + '</div>' : '') +
                 (r.description ? '<div class="rdesc">' + esc(r.description) + '</div>' : '') +
               '</button>'
             ).join('') + '</div>'
