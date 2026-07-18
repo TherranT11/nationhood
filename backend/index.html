@@ -106,6 +106,10 @@
   .effgrid .fld.wide { grid-column: 1 / -1; }
   .effgrid label { font-size: 12px; font-weight: 700; color: var(--muted); }
   .effgrid select, .effgrid input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 13.5px; font-family: inherit; width: 100%; box-sizing: border-box; }
+  /* Story Bill trigger rows reuse .effrow2/.effgrid/.fld; the detail area lays its controls out inline. */
+  .tg-detail { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .tg-detail select, .tg-detail input { width: auto; flex: 1 1 90px; min-width: 90px; }
+  .tg-mid { color: var(--muted); font-size: 13px; flex: none; }
   .modstat .k { color: var(--muted); }
 
   /* Corporation ownership rows */
@@ -164,6 +168,7 @@
         <button class="vtab" data-tab="personalities" type="button">Personalities</button>
         <button class="vtab" data-tab="modifiers" type="button">Modifiers</button>
         <button class="vtab" data-tab="corporations" type="button">Corporations</button>
+        <button class="vtab" data-tab="story" type="button">Story Bills</button>
       </nav>
       <div class="panel">
         <div class="tabpanel" data-panel="list">
@@ -300,6 +305,39 @@
           </div>
         </div>
         </div><!-- /tabpanel corporations -->
+
+        <div class="tabpanel" data-panel="story" hidden>
+        <div class="card">
+          <h2 id="sbTitle">Story Bill Creator</h2>
+          <p class="lead">A narrative bill presented to the player. First slice: triggers use conditions that exist today (statistics, active modifiers, party alignment); each choice's effects use the shared effect builder.</p>
+
+          <div id="sbList" class="natlist"></div>
+
+          <div class="f"><label>Bill Name</label><input id="sb-name" type="text" autocomplete="off"></div>
+          <div class="f"><label>Internal ID <span class="hint">optional · e.g. freedoms_act</span></label><input id="sb-slug" type="text" autocomplete="off" style="max-width:280px"></div>
+          <div class="f"><label>Nation</label><select id="sb-nation"></select></div>
+          <div class="f"><label>Presented By <span class="hint">optional</span></label><input id="sb-presenter" type="text" autocomplete="off" placeholder="e.g. Interior Minister, Chief Justice, Prime Minister"></div>
+          <div class="f"><label>Flavor Text</label><textarea id="sb-flavor"></textarea></div>
+
+          <div class="statshd">Trigger Conditions <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">optional · all must hold for the bill to appear</span></div>
+          <div id="sbTrigList"></div>
+          <button class="btn btn-ghost" id="addTrig" type="button" style="margin-top:2px">+ Add Condition</button>
+
+          <div class="statshd">If Signed — Effects</div>
+          <div id="sb-sign-eff"></div>
+          <button class="btn btn-ghost" id="addSignEff" type="button" style="margin-top:2px">+ Add Effect</button>
+
+          <div class="statshd">If Vetoed — Effects</div>
+          <div id="sb-veto-eff"></div>
+          <button class="btn btn-ghost" id="addVetoEff" type="button" style="margin-top:2px">+ Add Effect</button>
+
+          <div class="actions">
+            <button class="btn btn-solid" id="saveBill" type="button">Save Story Bill</button>
+            <button class="btn btn-ghost" id="cancelBill" type="button" hidden>Cancel</button>
+            <span class="note" id="sbNote" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+        </div><!-- /tabpanel story -->
       </div>
     </div>
   </div>
@@ -653,6 +691,7 @@
       if (tab === 'personalities') { loadNvNations(); loadPersonalities(); }
       if (tab === 'modifiers') loadModList();
       if (tab === 'corporations') loadCorpRefs().then(loadCorpList);
+      if (tab === 'story') loadStoryRefs().then(loadStoryList);
     }
     vtabs.forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
 
@@ -712,7 +751,6 @@
     const STAT_NAMES = STATS.map(s => s[1]);   // the nation stat labels (one source; opts() defined at top)
     const CORP_STATS = ['Capital', 'Growth', 'Reputation'];   // the editable corporation stats (one source with the Corporation Creator)
 
-    const effListBox = document.getElementById('effList');
     // National Statistic → a dropdown of the real nation stats; Corporate Stat → the corp stats; every
     // other category → free text (those target systems — groups, policies, roles, situations — don't
     // exist in the new universe yet).
@@ -735,19 +773,25 @@
           '<div class="fld wide"><label>Conditions (optional)</label><input class="eff-cond" type="text" placeholder="e.g. Unrest > 12"></div>' +
         '</div></div>';
     }
-    function renumberEffects() { effListBox.querySelectorAll('.effrow2 .enum').forEach((el, i) => { el.textContent = 'Effect ' + (i + 1); }); }
-    function addEffect() { effListBox.insertAdjacentHTML('beforeend', effectRowHTML()); renumberEffects(); }
-    effListBox.addEventListener('click', e => { if (e.target.classList.contains('eff-del')) { e.target.closest('.effrow2').remove(); renumberEffects(); } });
-    effListBox.addEventListener('change', e => {
-      const row = e.target.closest('.effrow2'); if (!row) return;
-      if (e.target.classList.contains('eff-cat')) row.querySelector('.eff-target-wrap').innerHTML = targetControlHTML(e.target.value);
-      if (e.target.classList.contains('eff-timing')) row.querySelector('.eff-dur-fld').hidden = e.target.value !== 'Temporary';
-    });
-    document.getElementById('addEffect').addEventListener('click', addEffect);
+    // The effect builder is container-parameterised so multiple lists reuse it (Modifiers, and each Story
+    // Bill choice) — one source for the effect row shape and behaviour.
+    function renumberEffects(box) { box.querySelectorAll('.effrow2 .enum').forEach((el, i) => { el.textContent = 'Effect ' + (i + 1); }); }
+    function addEffect(box) { box.insertAdjacentHTML('beforeend', effectRowHTML()); renumberEffects(box); }
+    function wireEffectBox(box) {
+      box.addEventListener('click', e => { if (e.target.classList.contains('eff-del')) { e.target.closest('.effrow2').remove(); renumberEffects(box); } });
+      box.addEventListener('change', e => {
+        const row = e.target.closest('.effrow2'); if (!row) return;
+        if (e.target.classList.contains('eff-cat')) row.querySelector('.eff-target-wrap').innerHTML = targetControlHTML(e.target.value);
+        if (e.target.classList.contains('eff-timing')) row.querySelector('.eff-dur-fld').hidden = e.target.value !== 'Temporary';
+      });
+    }
+    const effListBox = document.getElementById('effList');
+    wireEffectBox(effListBox);
+    document.getElementById('addEffect').addEventListener('click', () => addEffect(effListBox));
 
-    function collectEffects() {
+    function collectEffects(box) {
       const out = [];
-      effListBox.querySelectorAll('.effrow2').forEach(r => {
+      box.querySelectorAll('.effrow2').forEach(r => {
         const target = (r.querySelector('.eff-target').value || '').trim();
         const value = r.querySelector('.eff-val').value.trim();
         if (!target && !value) return;   // skip an untouched row
@@ -763,11 +807,11 @@
       });
       return out;
     }
-    function setEffects(effects) {
-      effListBox.innerHTML = '';
+    function setEffects(box, effects) {
+      box.innerHTML = '';
       (effects || []).forEach(ef => {
-        addEffect();
-        const r = effListBox.lastElementChild, cat = ef.category || EFFECT_CATEGORIES[0];
+        addEffect(box);
+        const r = box.lastElementChild, cat = ef.category || EFFECT_CATEGORIES[0];
         r.querySelector('.eff-cat').value = cat;
         r.querySelector('.eff-target-wrap').innerHTML = targetControlHTML(cat, ef.target);
         r.querySelector('.eff-op').value = ef.operation || OPERATIONS[0];
@@ -779,7 +823,7 @@
         r.querySelector('.eff-freq').value = ef.frequency || FREQUENCIES[0];
         r.querySelector('.eff-cond').value = ef.conditions || '';
       });
-      if (!effListBox.children.length) addEffect();
+      if (!box.children.length) addEffect(box);
     }
 
     const modNote = document.getElementById('modNote');
@@ -791,12 +835,12 @@
     function resetModForm() {
       editingModId = null; modTitle.textContent = 'Modifiers Creator'; saveModBtn.textContent = 'Save Modifier'; cancelModBtn.hidden = true;
       document.getElementById('m-name').value = ''; document.getElementById('m-desc').value = '';
-      effListBox.innerHTML = ''; addEffect();
+      effListBox.innerHTML = ''; addEffect(effListBox);
     }
     function editMod(m) {
       editingModId = m.id; modTitle.textContent = 'Edit Modifier'; saveModBtn.textContent = 'Save changes'; cancelModBtn.hidden = false;
       document.getElementById('m-name').value = m.name || ''; document.getElementById('m-desc').value = m.description || '';
-      setEffects(m.effects);
+      setEffects(effListBox, m.effects);
       showTab('modifiers'); window.scrollTo(0, 0);
     }
     cancelModBtn.addEventListener('click', () => { resetModForm(); modNote.textContent = ''; modNote.className = 'note'; });
@@ -805,7 +849,7 @@
       if (modBusy) return;
       const name = document.getElementById('m-name').value.trim();
       if (!name) { modNote.textContent = 'A name is required.'; modNote.className = 'note error'; return; }
-      const row = { name, description: document.getElementById('m-desc').value.trim() || null, effects: collectEffects() };
+      const row = { name, description: document.getElementById('m-desc').value.trim() || null, effects: collectEffects(effListBox) };
       modBusy = true; saveModBtn.disabled = true; modNote.textContent = 'Saving…'; modNote.className = 'note';
       try {
         if (editingModId) {
@@ -852,7 +896,7 @@
         });
       } catch (e) { modListBox.innerHTML = '<div class="empty">Couldn’t load modifiers. Try again.</div>'; }
     }
-    addEffect();   // start with one effect row
+    addEffect(effListBox);   // start with one effect row
 
     // ---- Personalities (CRUD against an existing Nationverse nation) ----
     // Non-party roles (the party-politician entries are built per-nation from that nation's parties).
@@ -1198,6 +1242,180 @@
         });
       } catch (e) { corpListBox.innerHTML = '<div class="empty">Couldn’t load corporations. Try again.</div>'; }
     }
+
+    // ---- Story Bills (first slice: define name/scope/presenter/flavor, triggers from conditions that
+    // exist today, and Sign/Veto choices whose effects reuse the shared effect builder above) ----
+    const SB_TRIG_TYPES = ['Statistic', 'Modifier', 'Party'];
+    const SB_STAT_OPS = ['≥', '≤', '=', '>', '<'];
+    const SB_MOD_STATES = ['Active', 'Not Active'];
+    const SB_ALIGNMENTS = ['Government', 'Coalition', 'Confidence-and-Supply', 'Opposition'];
+    const SB_KEY_TYPE = { stat: 'Statistic', modifier: 'Modifier', party: 'Party' };   // stored key → UI label
+    const sbTrigBox = document.getElementById('sbTrigList');
+
+    // The controls shown for a condition depend on its type. Statistic → stat/op/value (all exist today);
+    // Modifier → name + active-state; Party → alignment contains <party>.
+    function trigDetailHTML(type, t) {
+      t = t || {};
+      if (type === 'Modifier')
+        return '<input class="tg-name" type="text" placeholder="Modifier name" value="' + esc(t.name || '') + '">' +
+               '<select class="tg-state">' + opts(SB_MOD_STATES, t.state) + '</select>';
+      if (type === 'Party')
+        return '<select class="tg-align">' + opts(SB_ALIGNMENTS, t.alignment) + '</select>' +
+               '<span class="tg-mid">contains</span>' +
+               '<input class="tg-party" type="text" placeholder="Party name" value="' + esc(t.party || '') + '">';
+      return '<select class="tg-stat">' + opts(STAT_NAMES, t.stat) + '</select>' +               // Statistic
+             '<select class="tg-op">' + opts(SB_STAT_OPS, t.op) + '</select>' +
+             '<input class="tg-num" type="number" step="1" placeholder="value" value="' + esc(t.value != null ? t.value : '') + '">';
+    }
+    function trigRowHTML(t) {
+      const type = (t && t.typeLabel) || SB_TRIG_TYPES[0];
+      return '<div class="effrow2 trigrow">' +
+        '<div class="effrow2-hd"><span class="tenum"></span><button class="del tg-del" type="button">Remove</button></div>' +
+        '<div class="effgrid">' +
+          '<div class="fld"><label>Condition</label><select class="tg-type">' + opts(SB_TRIG_TYPES, type) + '</select></div>' +
+          '<div class="fld wide"><label>Detail</label><div class="tg-detail">' + trigDetailHTML(type, t) + '</div></div>' +
+        '</div></div>';
+    }
+    function renumberTrigs() { sbTrigBox.querySelectorAll('.trigrow .tenum').forEach((el, i) => { el.textContent = 'Condition ' + (i + 1); }); }
+    function addTrig(t) { sbTrigBox.insertAdjacentHTML('beforeend', trigRowHTML(t)); renumberTrigs(); }
+    sbTrigBox.addEventListener('click', e => { if (e.target.classList.contains('tg-del')) { e.target.closest('.trigrow').remove(); renumberTrigs(); } });
+    sbTrigBox.addEventListener('change', e => {
+      if (e.target.classList.contains('tg-type')) e.target.closest('.trigrow').querySelector('.tg-detail').innerHTML = trigDetailHTML(e.target.value);
+    });
+    document.getElementById('addTrig').addEventListener('click', () => addTrig());
+
+    function collectTriggers() {
+      const out = [];
+      sbTrigBox.querySelectorAll('.trigrow').forEach(r => {
+        const type = r.querySelector('.tg-type').value;
+        if (type === 'Modifier') {
+          const name = r.querySelector('.tg-name').value.trim();
+          if (name) out.push({ type: 'modifier', name, state: r.querySelector('.tg-state').value });
+        } else if (type === 'Party') {
+          const party = r.querySelector('.tg-party').value.trim();
+          if (party) out.push({ type: 'party', alignment: r.querySelector('.tg-align').value, party });
+        } else {
+          const num = r.querySelector('.tg-num').value.trim();
+          if (num !== '') out.push({ type: 'stat', stat: r.querySelector('.tg-stat').value, op: r.querySelector('.tg-op').value, value: Number(num) });
+        }
+      });
+      return out;
+    }
+    function setTriggers(list) {
+      sbTrigBox.innerHTML = '';
+      (list || []).forEach(t => sbTrigBox.insertAdjacentHTML('beforeend', trigRowHTML({ ...t, typeLabel: SB_KEY_TYPE[t.type] || 'Statistic' })));
+      renumberTrigs();
+    }
+
+    // Each choice gets its own effect list, reusing the shared effect builder.
+    const sbSignBox = document.getElementById('sb-sign-eff'), sbVetoBox = document.getElementById('sb-veto-eff');
+    wireEffectBox(sbSignBox); wireEffectBox(sbVetoBox);
+    document.getElementById('addSignEff').addEventListener('click', () => addEffect(sbSignBox));
+    document.getElementById('addVetoEff').addEventListener('click', () => addEffect(sbVetoBox));
+
+    const sbNatSel = document.getElementById('sb-nation');
+    let sbNatNames = {};
+    async function loadStoryRefs() {
+      try {
+        const { data, error } = await supabase.from('nationverse_nations').select('id, name').order('name', { ascending: true });
+        if (error) throw error;
+        const rows = data || [];
+        sbNatNames = {}; rows.forEach(n => { sbNatNames[n.id] = n.name; });
+        sbNatSel.innerHTML = '<option value="">Global (reusable)</option>' +
+          rows.map(n => '<option value="' + esc(n.id) + '">' + esc(n.name || 'Untitled') + '</option>').join('');
+      } catch (e) { sbNatSel.innerHTML = '<option value="">Global (reusable)</option>'; }
+    }
+
+    const sbNote = document.getElementById('sbNote'), saveBillBtn = document.getElementById('saveBill');
+    const sbTitle = document.getElementById('sbTitle'), cancelBillBtn = document.getElementById('cancelBill');
+    let sbBusy = false, editingBillId = null;
+
+    function resetBillForm() {
+      editingBillId = null; sbTitle.textContent = 'Story Bill Creator'; saveBillBtn.textContent = 'Save Story Bill'; cancelBillBtn.hidden = true;
+      ['sb-name', 'sb-slug', 'sb-presenter', 'sb-flavor'].forEach(id => { document.getElementById(id).value = ''; });
+      sbNatSel.value = '';
+      sbTrigBox.innerHTML = '';
+      sbSignBox.innerHTML = ''; addEffect(sbSignBox);
+      sbVetoBox.innerHTML = ''; addEffect(sbVetoBox);
+    }
+    function editBill(b) {
+      editingBillId = b.id; sbTitle.textContent = 'Edit Story Bill'; saveBillBtn.textContent = 'Save changes'; cancelBillBtn.hidden = false;
+      document.getElementById('sb-name').value = b.name || '';
+      document.getElementById('sb-slug').value = b.internal_id || '';
+      sbNatSel.value = b.nation_id || '';
+      document.getElementById('sb-presenter').value = b.presented_by || '';
+      document.getElementById('sb-flavor').value = b.flavor || '';
+      setTriggers(b.triggers);
+      const choices = b.choices || [];
+      setEffects(sbSignBox, (choices.find(c => c.key === 'sign') || {}).effects);
+      setEffects(sbVetoBox, (choices.find(c => c.key === 'veto') || {}).effects);
+      // Already on the Story Bills tab (Edit lives in this list) — do NOT re-run showTab, which would
+      // rebuild the nation select and drop the selection we just set.
+      window.scrollTo(0, 0);
+    }
+    cancelBillBtn.addEventListener('click', () => { resetBillForm(); sbNote.textContent = ''; sbNote.className = 'note'; });
+
+    saveBillBtn.addEventListener('click', async () => {
+      if (sbBusy) return;
+      const name = document.getElementById('sb-name').value.trim();
+      if (!name) { sbNote.textContent = 'A bill name is required.'; sbNote.className = 'note error'; return; }
+      const row = {
+        name,
+        internal_id: document.getElementById('sb-slug').value.trim() || null,
+        nation_id: sbNatSel.value || null,
+        presented_by: document.getElementById('sb-presenter').value.trim() || null,
+        flavor: document.getElementById('sb-flavor').value.trim() || null,
+        triggers: collectTriggers(),
+        choices: [
+          { key: 'sign', label: 'Sign', effects: collectEffects(sbSignBox) },
+          { key: 'veto', label: 'Veto', effects: collectEffects(sbVetoBox) }
+        ]
+      };
+      sbBusy = true; saveBillBtn.disabled = true; sbNote.textContent = 'Saving…'; sbNote.className = 'note';
+      try {
+        if (editingBillId) {
+          const { error } = await supabase.from('nationverse_story_bills').update(row).eq('id', editingBillId);
+          if (error) throw error; sbNote.textContent = 'Saved changes to “' + name + '”.'; sbNote.className = 'note ok';
+        } else {
+          const { error } = await supabase.from('nationverse_story_bills').insert(row);
+          if (error) throw error; sbNote.textContent = 'Added “' + name + '”.'; sbNote.className = 'note ok';
+        }
+        resetBillForm(); loadStoryList();
+      } catch (e) { sbNote.textContent = e.message || 'Could not save the story bill.'; sbNote.className = 'note error'; }
+      finally { sbBusy = false; saveBillBtn.disabled = false; }
+    });
+
+    const sbListBox = document.getElementById('sbList');
+    async function loadStoryList() {
+      sbListBox.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        const { data, error } = await supabase.from('nationverse_story_bills').select('*').order('name', { ascending: true });
+        if (error) throw error;
+        const rows = data || [];
+        if (!rows.length) { sbListBox.innerHTML = '<div class="empty">No story bills yet — create one below.</div>'; return; }
+        sbListBox.innerHTML = rows.map(b => {
+          const scope = b.nation_id ? esc(sbNatNames[b.nation_id] || 'Nation') : 'Global';
+          const nTrig = (b.triggers || []).length, nEff = (b.choices || []).reduce((a, c) => a + ((c.effects || []).length), 0);
+          const sub = [scope, b.presented_by ? 'by ' + esc(b.presented_by) : '', nTrig + ' condition' + (nTrig === 1 ? '' : 's'), nEff + ' effect' + (nEff === 1 ? '' : 's')].filter(Boolean).join(' · ');
+          return '<div class="natcard" data-id="' + esc(b.id) + '">' +
+            '<div class="natcard-hd"><div class="natmeta"><div class="natnm">' + esc(b.name || 'Untitled') + '</div>' +
+            '<div class="natsub">' + sub + '</div></div>' +
+            '<div class="natbtns"><button class="btn btn-ghost bill-edit" type="button">Edit</button><button class="del bill-del" type="button">Delete</button></div></div>' +
+            (b.flavor ? '<div class="natdesc">' + esc(b.flavor) + '</div>' : '') +
+          '</div>';
+        }).join('');
+        sbListBox.querySelectorAll('.natcard').forEach(card => {
+          const b = rows.find(x => x.id === card.dataset.id); if (!b) return;
+          card.querySelector('.bill-edit').addEventListener('click', () => editBill(b));
+          card.querySelector('.bill-del').addEventListener('click', async () => {
+            if (!window.confirm('Delete “' + (b.name || 'this bill') + '”?')) return;
+            try { const { error } = await supabase.from('nationverse_story_bills').delete().eq('id', b.id); if (error) throw error; if (editingBillId === b.id) resetBillForm(); loadStoryList(); }
+            catch (e) { alert(e.message || 'Could not delete the story bill.'); }
+          });
+        });
+      } catch (e) { sbListBox.innerHTML = '<div class="empty">Couldn’t load story bills.</div>'; }
+    }
+    resetBillForm();   // initial blank state (one effect row per choice)
 
     refresh();
   </script>
