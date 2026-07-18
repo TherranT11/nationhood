@@ -66,7 +66,10 @@
   .del:hover { background: color-mix(in srgb, var(--err) 10%, transparent); }
 
   /* Personalities panel: dropdowns match the other form controls; the roster is a selectable list. */
-  #p-nation, #p-role { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 14.5px; font-family: inherit; }
+  #p-nation, #p-role, #p-office { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 14.5px; font-family: inherit; }
+  .align { margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .align:empty { display: none; }
+  .align b { color: var(--ink); font-weight: 700; }
   .perslist { margin-bottom: 20px; }
   .perslist:empty { display: none; }
   .prow2 { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); margin-bottom: 8px; cursor: pointer; }
@@ -232,7 +235,9 @@
           <div class="f"><label>Name</label><input id="p2-name" type="text" autocomplete="off"></div>
           <div class="f"><label>Starting Age</label><input id="p-age" type="number" min="0" step="1"></div>
           <div class="f"><label>Description</label><textarea id="p-desc2"></textarea></div>
-          <div class="f"><label>Role</label><select id="p-role"></select></div>
+          <div class="f"><label>Role</label><select id="p-role"></select>
+            <div id="p-align" class="align"></div></div>
+          <div class="f"><label>Starting Office <span class="hint">optional</span></label><select id="p-office"></select></div>
 
           <div class="actions">
             <button class="btn btn-solid" id="persAdd" type="button">Add Personality</button>
@@ -818,12 +823,15 @@
     addEffect();   // start with one effect row
 
     // ---- Personalities (CRUD against an existing Nationverse nation) ----
-    const ROLES = ['Politician of Party 1', 'Politician of Party 2', 'Politician of Party 3', 'Politician of Party 4', 'Politician of Party 5',
-      'Oligarch', 'Chief of Staff of the Military', 'Head of the Faith', 'Head of State (Monarch)', 'Royal Heir', 'Royal Pretender',
-      'Dissident Leader', 'Labor Leader', 'Warlord'];
+    // Non-party roles (the party-politician entries are built per-nation from that nation's parties).
+    const NON_PARTY_ROLES = ['Oligarch', 'Chief of Staff of the Military', 'Head of the Faith', 'Head of State (Monarch)',
+      'Royal Heir', 'Royal Pretender', 'Dissident Leader', 'Labor Leader', 'Warlord'];
+    const GOV_OFFICES = ['Head of Government', 'Deputy Head of Government', 'Economic Minister', 'Foreign Minister',
+      'Interior Minister', 'Defense Minister', 'Other Cabinet Minister', 'Government Backbencher'];
+    const OPP_OFFICES = ['Opposition Leader', 'Opposition Spokesperson', 'Opposition Backbencher'];
     const roleSel = document.getElementById('p-role');
-    roleSel.innerHTML = opts(ROLES);
-
+    const officeSel = document.getElementById('p-office');
+    const alignBox = document.getElementById('p-align');
     const natSel = document.getElementById('p-nation');
     const persList = document.getElementById('persList');
     const persNote = document.getElementById('persNote');
@@ -831,8 +839,55 @@
     const persEdit = document.getElementById('persEdit');
     const persDelete = document.getElementById('persDelete');
     let natNames = {};        // nation id → name, for the roster line
+    let curNation = null;     // the selected nation's { parties, government }, for role/alignment/office
     let selectedPers = null;  // id of the personality loaded for edit/delete
     let persBusy = false;     // single-fire lock on the write buttons
+
+    // The alignment a party has under the current nation's government (the one source: the nation).
+    function alignmentOf(partyName) {
+      const g = (curNation && curNation.government) || {};
+      if (!partyName) return null;
+      if (g.lead === partyName) return 'Lead Government';
+      if ((g.coalition || []).includes(partyName)) return 'Coalition Government';
+      if ((g.supply || []).includes(partyName)) return 'Government Supporter';
+      return 'Opposition';
+    }
+    // Role options: a "Politician — <party>" per party of the selected nation, then the fixed roles.
+    function buildRoleOptions() {
+      const cur = roleSel.value;
+      const parties = (curNation && curNation.parties) || [];
+      const polOpts = parties.filter(p => p.name).map(p => '<option value="p:' + esc(p.name) + '">Politician — ' + esc(p.name) + '</option>').join('');
+      roleSel.innerHTML = polOpts + NON_PARTY_ROLES.map(r => '<option value="' + esc(r) + '">' + esc(r) + '</option>').join('');
+      if (cur && [...roleSel.options].some(o => o.value === cur)) roleSel.value = cur;
+    }
+    // Alignment readout + office options that fit the alignment (opposition can hold cabinet only under
+    // a National Unity government — the one exception in the spec).
+    function refreshAlignAndOffice() {
+      const val = roleSel.value, party = val.startsWith('p:') ? val.slice(2) : null;
+      const align = alignmentOf(party);
+      alignBox.innerHTML = align ? 'Current Alignment: <b>' + esc(align) + '</b>' : '';
+      const govType = (curNation && curNation.government && curNation.government.type) || '';
+      let offices;
+      if (!party) offices = ['No Specific Office'];                                   // non-party roles
+      else if (align === 'Opposition') offices = govType === 'National Unity Government'
+        ? ['No Specific Office', ...GOV_OFFICES, ...OPP_OFFICES] : ['No Specific Office', ...OPP_OFFICES];
+      else offices = ['No Specific Office', ...GOV_OFFICES];                           // government-aligned
+      const cur = officeSel.value;
+      officeSel.innerHTML = offices.map(o => '<option' + (o === cur ? ' selected' : '') + '>' + esc(o) + '</option>').join('');
+    }
+    // Fetch the selected nation's parties + government (drives the role dropdown + alignment/office).
+    async function loadNationDetail(id) {
+      curNation = null;
+      if (id) {
+        try {
+          const { data } = await supabase.from('nationverse_nations').select('parties, government').eq('id', id).maybeSingle();
+          if (data) curNation = { parties: data.parties || [], government: data.government || {} };
+        } catch (e) { /* leave curNation null → only non-party roles */ }
+      }
+      buildRoleOptions(); refreshAlignAndOffice();
+    }
+    natSel.addEventListener('change', () => loadNationDetail(natSel.value));
+    roleSel.addEventListener('change', refreshAlignAndOffice);
 
     async function loadNvNations() {
       try {
@@ -844,7 +899,11 @@
           ? rows.map(n => '<option value="' + esc(n.id) + '">' + esc(n.name || 'Untitled') + '</option>').join('')
           : '<option value="">No nations yet — add one first</option>';
       } catch (e) { natSel.innerHTML = '<option value="">Couldn’t load nations</option>'; }
+      await loadNationDetail(natSel.value);   // init the role dropdown for the first nation
     }
+
+    // A personality's role as a label: politicians show "Politician — <party>"; others show the role.
+    const roleLabel = p => p.party ? ('Politician — ' + p.party) : (p.role || '—');
 
     function clearPersForm() {
       selectedPers = null;
@@ -852,6 +911,7 @@
       document.getElementById('p-age').value = '';
       document.getElementById('p-desc2').value = '';
       roleSel.selectedIndex = 0;
+      refreshAlignAndOffice();
       persEdit.disabled = true; persDelete.disabled = true;
       persList.querySelectorAll('.prow2.sel').forEach(r => r.classList.remove('sel'));
     }
@@ -863,16 +923,19 @@
         const rows = data || [];
         persList.innerHTML = rows.map(p =>
           '<div class="prow2" data-id="' + esc(p.id) + '"><div><div class="pnm">' + esc(p.name || 'Unnamed') + '</div>' +
-          '<div class="pmeta">' + esc(p.role || '—') + ' · ' + esc(natNames[p.nation_id] || '—') + '</div></div></div>'
+          '<div class="pmeta">' + esc(roleLabel(p)) + (p.office ? ' · ' + esc(p.office) : '') + ' · ' + esc(natNames[p.nation_id] || '—') + '</div></div></div>'
         ).join('');
-        persList.querySelectorAll('.prow2').forEach(row => row.addEventListener('click', () => {
+        persList.querySelectorAll('.prow2').forEach(row => row.addEventListener('click', async () => {
           const p = rows.find(x => x.id === row.dataset.id); if (!p) return;
           selectedPers = p.id;
           natSel.value = p.nation_id;
           document.getElementById('p2-name').value = p.name || '';
           document.getElementById('p-age').value = p.starting_age != null ? p.starting_age : '';
           document.getElementById('p-desc2').value = p.description || '';
-          roleSel.value = p.role || ROLES[0];
+          await loadNationDetail(p.nation_id);                          // build role opts for this nation
+          roleSel.value = p.party ? ('p:' + p.party) : (p.role || '');
+          refreshAlignAndOffice();
+          officeSel.value = p.office || 'No Specific Office';
           persEdit.disabled = false; persDelete.disabled = false;
           persList.querySelectorAll('.prow2').forEach(r => r.classList.toggle('sel', r === row));
         }));
@@ -881,12 +944,15 @@
 
     function persPayload() {
       const ageRaw = document.getElementById('p-age').value;
+      const rv = roleSel.value, isPol = rv.startsWith('p:');
       return {
         nation_id: natSel.value || null,
         name: document.getElementById('p2-name').value.trim(),
         starting_age: ageRaw === '' ? null : Math.max(0, Math.round(Number(ageRaw) || 0)),
         description: document.getElementById('p-desc2').value.trim() || null,
-        role: roleSel.value
+        role: isPol ? 'Politician' : rv,
+        party: isPol ? rv.slice(2) : null,
+        office: (officeSel.value && officeSel.value !== 'No Specific Office') ? officeSel.value : null
       };
     }
     // Name + nation are required; returns the payload or null (with a note) if invalid.
