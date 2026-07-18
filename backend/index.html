@@ -212,6 +212,9 @@
             <div id="g-calc" class="govcalc"></div>
           </div>
 
+          <div class="statshd">Starting Cabinet <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">read-only · derived from each personality's Starting Office</span></div>
+          <div id="g-cabinet" class="govcalc"></div>
+
           <div class="statshd">Demographics</div>
           <div id="demoGroups"></div>
           <button class="btn btn-ghost" id="addGroup" type="button" style="margin-top:2px">+ Add Group</button>
@@ -445,6 +448,33 @@
       computeGovCalc();
     }
 
+    // ---- Starting Cabinet (read-only reflection of who holds each office). The office is authored ONCE
+    // on each personality (Starting Office); this just fetches this nation's personalities and lists them
+    // by office in cabinet order. Loaded when a nation is opened for editing; blank for a brand-new nation.
+    const cabinetBox = document.getElementById('g-cabinet');
+    async function renderStartingCabinet(nationId) {
+      if (!nationId) { cabinetBox.innerHTML = '<div class="opp">Save the nation, then give personalities a Starting Office to populate the cabinet.</div>'; return; }
+      cabinetBox.innerHTML = '<div class="opp">Loading…</div>';
+      let rows = [];
+      try {
+        const { data, error } = await supabase.from('nationverse_personalities').select('name, party, office').eq('nation_id', nationId);
+        if (error) throw error;
+        rows = data || [];
+      } catch (e) { cabinetBox.innerHTML = '<div class="opp">Couldn’t load the cabinet.</div>'; return; }
+      const held = rows.filter(p => p.office && p.office !== 'No Specific Office');
+      if (!held.length) { cabinetBox.innerHTML = '<div class="opp">No personalities hold an office yet.</div>'; return; }
+      const byOffice = {};
+      held.forEach(p => { (byOffice[p.office] = byOffice[p.office] || []).push(p); });
+      const order = [...GOV_OFFICES, ...OPP_OFFICES];   // one source with the personality office dropdown
+      const ordered = order.filter(o => byOffice[o]).concat(Object.keys(byOffice).filter(o => !order.includes(o)));
+      cabinetBox.innerHTML = ordered.map(o =>
+        '<div class="row"><span class="k">' + esc(o) + '</span><span class="v">' +
+        byOffice[o].map(p => esc(p.name || 'Unnamed') + (p.party ? ' (' + esc(p.party) + ')' : '')).join(', ') +
+        '</span></div>'
+      ).join('');
+    }
+    renderStartingCabinet(null);   // initial blank-form state (Add mode)
+
     // Flags upload to the existing 'world-event-images' bucket (folder 'flags') via upload.js — served
     // from storage, never committed to the repo.
     // Flag preview (local object URL — no upload until the nation is saved).
@@ -547,6 +577,7 @@
       document.querySelectorAll('#partySlots .p-ideo').forEach(s => { s.selectedIndex = 0; });
       demoBox.innerHTML = ''; addGroup();
       setGovernment({});
+      renderStartingCabinet(null);
     }
 
     // Load an existing nation into the form for editing, and switch to the Nation Creator tab.
@@ -570,6 +601,7 @@
         s.querySelector('.p-seats').value = p.seats != null ? p.seats : '';
       });
       setGovernment(n.government);   // build pickers from the loaded parties, then apply the saved government
+      renderStartingCabinet(n.id);   // read-only reflection of this nation's authored cabinet
       demoBox.innerHTML = '';
       (n.demographics || []).forEach(g => {
         addGroup();
