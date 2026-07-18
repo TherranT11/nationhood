@@ -24,6 +24,8 @@
   @media (max-width: 640px) { .roles { grid-template-columns: 1fr; } }
   .rolecard { text-align: left; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 15px 17px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
   .rolecard:hover { border-color: color-mix(in srgb, var(--ink) 28%, var(--line)); }
+  .rolecard.sel { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
+  .rconfirm { margin-top: 14px; width: 100%; padding: 11px; font-size: 15px; }
   .rolecard .rtop { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
   .rolecard .rn { font-size: 15.5px; font-weight: 800; }
   .rolecard .rr { color: var(--muted); font-size: 13px; }
@@ -104,14 +106,15 @@
 
         const roleList = roles.length
           ? '<div class="roles">' + roles.map(r =>
-              '<button class="rolecard" type="button" data-id="' + esc(r.id) + '">' +
+              '<div class="rolecard" data-id="' + esc(r.id) + '">' +
                 '<div class="rtop"><div class="rn">' + esc(r.name || 'Unnamed') + '</div>' +
                   (r.starting_age != null ? '<div class="rage">Age ' + esc(r.starting_age) + '</div>' : '') +
                 '</div>' +
                 '<div class="rr">' + esc(roleLabelOf(r)) + '</div>' +
                 (credsOf(r).length ? '<div class="rcreds">' + esc(credsOf(r).join(' · ')) + '</div>' : '') +
                 (r.description ? '<div class="rdesc">' + esc(r.description) + '</div>' : '') +
-              '</button>'
+                '<button class="btn btn-solid rconfirm" type="button" hidden>Confirm &rarr;</button>' +
+              '</div>'
             ).join('') + '</div>'
           : '<div class="empty">No roles have been created for this nation yet.</div>';
 
@@ -120,10 +123,19 @@
           (sub ? '<p class="sub">' + sub + '</p>' : '') + '</div></div>' +
           '<div class="rhd">Choose your role</div>' + roleList;
 
-        // Selecting a role enters the Nationverse home for this nation, carrying the chosen role.
-        content.querySelectorAll('.rolecard').forEach(card => card.addEventListener('click', () => {
-          window.location.href = '/nation-home/?nation=' + encodeURIComponent(nationId) + '&role=' + encodeURIComponent(card.dataset.id);
-        }));
+        // Selecting a role highlights it and reveals a Confirm button inside that card; Confirm enters
+        // the Nationverse home for this nation, carrying the chosen role.
+        content.querySelectorAll('.rolecard').forEach(card => {
+          card.addEventListener('click', e => {
+            if (e.target.closest('.rconfirm')) return;   // Confirm has its own handler
+            content.querySelectorAll('.rolecard.sel').forEach(c => { c.classList.remove('sel'); c.querySelector('.rconfirm').hidden = true; });
+            card.classList.add('sel');
+            card.querySelector('.rconfirm').hidden = false;
+          });
+          card.querySelector('.rconfirm').addEventListener('click', () => {
+            window.location.href = '/nation-home/?nation=' + encodeURIComponent(nationId) + '&role=' + encodeURIComponent(card.dataset.id);
+          });
+        });
       } catch (e) { content.innerHTML = '<div class="empty">Couldn’t load this nation. Try again shortly.</div>'; }
     })();
   </script>
