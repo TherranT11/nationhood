@@ -76,6 +76,24 @@
   .prow2 .pmeta { color: var(--muted); font-size: 12.5px; }
   .btn-solid[disabled], .btn-ghost[disabled] { opacity: .45; cursor: not-allowed; }
 
+  /* List of Nations */
+  .natlist .empty { color: var(--muted); font-size: 14px; padding: 24px; text-align: center; border: 1px dashed var(--line); border-radius: 12px; }
+  .natcard { border: 1px solid var(--line); border-radius: 14px; background: var(--bg); padding: 16px 18px; margin-bottom: 14px; }
+  .natcard-hd { display: flex; align-items: center; gap: 14px; }
+  .natflag { width: 64px; height: 42px; border: 1px solid var(--line); border-radius: 7px; object-fit: cover; flex: none; background: var(--surface); }
+  .natflag.ph { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .natmeta { flex: 1; min-width: 0; }
+  .natnm { font-size: 17px; font-weight: 800; }
+  .natsub { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+  .natbtns { display: flex; gap: 8px; flex: none; }
+  .natbtns .btn { padding: 7px 14px; font-size: 13px; }
+  .natdesc { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 12px 0 0; }
+  .natstatgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin-top: 14px; }
+  .natstat { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; }
+  .natstat .k { color: var(--muted); }
+  .natstat .v { font-weight: 700; }
+  .natextra { color: var(--muted); font-size: 12.5px; margin-top: 12px; }
+
   .actions { display: flex; align-items: center; gap: 14px; margin-top: 24px; }
   .note { font-size: 13.5px; color: var(--muted); }
   .note.ok { color: #16915a; }
@@ -105,13 +123,22 @@
     </div>
     <div class="adminbody">
       <nav class="vtabs">
-        <button class="vtab active" data-tab="nation" type="button">Nation Creator</button>
+        <button class="vtab active" data-tab="list" type="button">List of Nations</button>
+        <button class="vtab" data-tab="nation" type="button">Nation Creator</button>
         <button class="vtab" data-tab="personalities" type="button">Personalities</button>
       </nav>
       <div class="panel">
-        <div class="tabpanel" data-panel="nation">
+        <div class="tabpanel" data-panel="list">
         <div class="card">
-          <h2>Add Nation</h2>
+          <h2>List of Nations</h2>
+          <p class="lead">Every nation in the Nationverse. <b>Edit</b> loads it into the Nation Creator; <b>Delete</b> removes it (and its personalities).</p>
+          <div id="natList" class="natlist"></div>
+        </div>
+        </div><!-- /tabpanel list -->
+
+        <div class="tabpanel" data-panel="nation" hidden>
+        <div class="card">
+          <h2 id="ncTitle">Add Nation</h2>
           <p class="lead">Create a nation for the Nationverse. It starts with the thirteen stats below (0–20 each).</p>
 
           <div class="f"><label>Name</label><input id="n-name" type="text" autocomplete="off"></div>
@@ -139,6 +166,7 @@
 
           <div class="actions">
             <button class="btn btn-solid" id="addNation" type="button">Add Nation</button>
+            <button class="btn btn-ghost" id="cancelEdit" type="button" hidden>Cancel</button>
             <span class="note" id="addNote" role="status" aria-live="polite"></span>
           </div>
         </div>
@@ -271,6 +299,7 @@
         if (session && isAdmin(session.user)) {
           document.getElementById('who').textContent = 'Signed in as ' + session.user.email;
           show('admin');
+          loadNationsList();   // the default tab is List of Nations
         } else if (session) {
           show('login');
           loginNote.textContent = 'This account isn’t the admin — sign in with the admin account.';
@@ -300,28 +329,26 @@
       await refresh();
     });
 
-    // ---- Add Nation ----
+    // ---- Nation Creator (add + edit) ----
     const addBtn = document.getElementById('addNation');
     const addNote = document.getElementById('addNote');
-    let adding = false;   // single-fire lock: this uploads + writes
-    addBtn.addEventListener('click', async () => {
-      if (adding) return;
-      const name = document.getElementById('n-name').value.trim();
-      if (!name) { addNote.textContent = 'A name is required.'; addNote.className = 'note error'; return; }
+    const cancelBtn = document.getElementById('cancelEdit');
+    const ncTitle = document.getElementById('ncTitle');
+    let adding = false;            // single-fire lock: this uploads + writes
+    let editingId = null;          // null = adding a new nation; else the id being edited
+    let editingFlag = null;        // the existing flag URL while editing (kept unless a new file is chosen)
+
+    // Read the whole nation form → a row (empty party slots / unnamed groups are skipped).
+    function collectNation() {
       const stats = {};
       document.querySelectorAll('#statGrid input[data-key]').forEach(i => { stats[i.dataset.key] = clamp20(i.value); });
-
-      // Parties (empty slots — no name — are skipped) and demographic groups (same rule).
       const parties = [];
       document.querySelectorAll('#partySlots .pslot').forEach(s => {
         const pname = s.querySelector('.p-name').value.trim();
         if (!pname) return;
-        parties.push({
-          name: pname,
-          description: s.querySelector('.p-desc').value.trim() || null,
+        parties.push({ name: pname, description: s.querySelector('.p-desc').value.trim() || null,
           ideology: s.querySelector('.p-ideo').value,
-          seats: Math.max(0, Math.round(Number(s.querySelector('.p-seats').value) || 0))
-        });
+          seats: Math.max(0, Math.round(Number(s.querySelector('.p-seats').value) || 0)) });
       });
       const demographics = [];
       document.querySelectorAll('#demoGroups .dgroup').forEach(g => {
@@ -330,42 +357,146 @@
         const approval = Array.from(g.querySelectorAll('.d-appr')).map(a => Math.max(0, Math.min(100, Math.round(Number(a.value) || 0))));
         demographics.push({ name: gname, description: g.querySelector('.d-desc').value.trim() || null, approval });
       });
+      return {
+        name: document.getElementById('n-name').value.trim(),
+        description: document.getElementById('n-desc').value.trim() || null,
+        analogous: document.getElementById('n-analog').value.trim() || null,
+        capital: document.getElementById('n-capital').value.trim() || null,
+        stats, parties, demographics
+      };
+    }
 
+    // Reset the whole form back to a blank "add" state.
+    function resetNationForm() {
+      editingId = null; editingFlag = null;
+      ncTitle.textContent = 'Add Nation'; addBtn.textContent = 'Add Nation'; cancelBtn.hidden = true;
+      ['n-name', 'n-desc', 'n-analog', 'n-capital'].forEach(id => { document.getElementById(id).value = ''; });
+      flagInput.value = ''; flagPrev.style.display = 'none';
+      document.querySelectorAll('#statGrid input[data-key]').forEach(i => { i.value = 10; });
+      document.querySelectorAll('#partySlots .p-name, #partySlots .p-desc, #partySlots .p-seats').forEach(i => { i.value = ''; });
+      document.querySelectorAll('#partySlots .p-ideo').forEach(s => { s.selectedIndex = 0; });
+      demoBox.innerHTML = ''; addGroup();
+    }
+
+    // Load an existing nation into the form for editing, and switch to the Nation Creator tab.
+    function editNation(n) {
+      editingId = n.id; editingFlag = n.flag || null;
+      ncTitle.textContent = 'Edit Nation'; addBtn.textContent = 'Save changes'; cancelBtn.hidden = false;
+      document.getElementById('n-name').value = n.name || '';
+      document.getElementById('n-desc').value = n.description || '';
+      document.getElementById('n-analog').value = n.analogous || '';
+      document.getElementById('n-capital').value = n.capital || '';
+      flagInput.value = '';
+      if (editingFlag) { flagPrev.src = editingFlag; flagPrev.style.display = 'block'; } else { flagPrev.style.display = 'none'; }
+      const stats = n.stats || {};
+      document.querySelectorAll('#statGrid input[data-key]').forEach(i => { i.value = stats[i.dataset.key] != null ? stats[i.dataset.key] : 10; });
+      const parties = n.parties || [];
+      document.querySelectorAll('#partySlots .pslot').forEach((s, i) => {
+        const p = parties[i] || {};
+        s.querySelector('.p-name').value = p.name || '';
+        s.querySelector('.p-desc').value = p.description || '';
+        s.querySelector('.p-ideo').value = p.ideology || IDEOLOGIES[0];
+        s.querySelector('.p-seats').value = p.seats != null ? p.seats : '';
+      });
+      demoBox.innerHTML = '';
+      (n.demographics || []).forEach(g => {
+        addGroup();
+        const el = demoBox.lastElementChild;
+        el.querySelector('.d-name').value = g.name || '';
+        el.querySelector('.d-desc').value = g.description || '';
+        const ap = el.querySelectorAll('.d-appr');
+        (g.approval || []).forEach((v, i) => { if (ap[i]) ap[i].value = v; });
+      });
+      if (!demoBox.children.length) addGroup();
+      showTab('nation');
+      window.scrollTo(0, 0);
+    }
+
+    cancelBtn.addEventListener('click', () => { resetNationForm(); addNote.textContent = ''; addNote.className = 'note'; });
+
+    addBtn.addEventListener('click', async () => {
+      if (adding) return;
+      const row = collectNation();
+      if (!row.name) { addNote.textContent = 'A name is required.'; addNote.className = 'note error'; return; }
       adding = true; addBtn.disabled = true; addNote.textContent = 'Saving…'; addNote.className = 'note';
       try {
         let flagUrl = null;
         const file = flagInput.files && flagInput.files[0];
         if (file) flagUrl = await uploadFlag(file);
-        const { error } = await supabase.from('nationverse_nations').insert({
-          name,
-          description: document.getElementById('n-desc').value.trim() || null,
-          analogous: document.getElementById('n-analog').value.trim() || null,
-          capital: document.getElementById('n-capital').value.trim() || null,
-          flag: flagUrl,
-          stats, parties, demographics
-        });
-        if (error) throw error;
-        addNote.textContent = 'Added “' + name + '”.'; addNote.className = 'note ok';
-        // Reset the form for the next nation.
-        ['n-name', 'n-desc', 'n-analog', 'n-capital'].forEach(id => { document.getElementById(id).value = ''; });
-        flagInput.value = ''; flagPrev.style.display = 'none';
-        document.querySelectorAll('#statGrid input[data-key]').forEach(i => { i.value = 10; });
-        document.querySelectorAll('#partySlots .p-name, #partySlots .p-desc, #partySlots .p-seats').forEach(i => { i.value = ''; });
-        document.querySelectorAll('#partySlots .p-ideo').forEach(s => { s.selectedIndex = 0; });
-        demoBox.innerHTML = ''; addGroup();
+        if (editingId) {
+          row.flag = flagUrl || editingFlag || null;   // keep the existing flag unless a new one was chosen
+          const { error } = await supabase.from('nationverse_nations').update(row).eq('id', editingId);
+          if (error) throw error;
+          addNote.textContent = 'Saved changes to “' + row.name + '”.'; addNote.className = 'note ok';
+          resetNationForm();
+        } else {
+          row.flag = flagUrl;
+          const { error } = await supabase.from('nationverse_nations').insert(row);
+          if (error) throw error;
+          addNote.textContent = 'Added “' + row.name + '”.'; addNote.className = 'note ok';
+          resetNationForm();
+        }
       } catch (e) {
-        addNote.textContent = e.message || 'Could not add the nation.'; addNote.className = 'note error';
+        addNote.textContent = e.message || 'Could not save the nation.'; addNote.className = 'note error';
       } finally { adding = false; addBtn.disabled = false; }
     });
 
-    // ---- Tabs (Nation Creator / Personalities) ----
+    // ---- Tabs (List of Nations / Nation Creator / Personalities) ----
     const vtabs = document.querySelectorAll('.vtab');
     const panels = document.querySelectorAll('.tabpanel');
-    vtabs.forEach(t => t.addEventListener('click', () => {
-      vtabs.forEach(x => x.classList.toggle('active', x === t));
-      panels.forEach(p => { p.hidden = p.dataset.panel !== t.dataset.tab; });
-      if (t.dataset.tab === 'personalities') { loadNvNations(); loadPersonalities(); }   // always fresh
-    }));
+    function showTab(tab) {
+      vtabs.forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+      panels.forEach(p => { p.hidden = p.dataset.panel !== tab; });
+      if (tab === 'list') loadNationsList();
+      if (tab === 'personalities') { loadNvNations(); loadPersonalities(); }
+    }
+    vtabs.forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
+
+    // ---- List of Nations ----
+    const natListBox = document.getElementById('natList');
+    async function loadNationsList() {
+      natListBox.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        const { data, error } = await supabase.from('nationverse_nations').select('*').order('name', { ascending: true });
+        if (error) throw error;
+        const rows = data || [];
+        if (!rows.length) { natListBox.innerHTML = '<div class="empty">No nations yet — add one in the Nation Creator.</div>'; return; }
+        natListBox.innerHTML = rows.map(n => {
+          const stats = n.stats || {};
+          const statHtml = STATS.map(([key, nm]) =>
+            '<div class="natstat"><span class="k">' + esc(nm) + '</span><span class="v">' + (stats[key] != null ? stats[key] : '—') + '</span></div>'
+          ).join('');
+          const sub = [n.analogous ? 'Analogous: ' + esc(n.analogous) : '', n.capital ? 'Capital: ' + esc(n.capital) : ''].filter(Boolean).join(' · ');
+          const flag = n.flag
+            ? '<img class="natflag" src="' + esc(n.flag) + '" alt="Flag">'
+            : '<div class="natflag ph">' + esc((n.name || '?').slice(0, 3)) + '</div>';
+          return '<div class="natcard" data-id="' + esc(n.id) + '">' +
+            '<div class="natcard-hd">' + flag +
+              '<div class="natmeta"><div class="natnm">' + esc(n.name || 'Untitled') + '</div>' +
+              (sub ? '<div class="natsub">' + sub + '</div>' : '') + '</div>' +
+              '<div class="natbtns"><button class="btn btn-ghost nat-edit" type="button">Edit</button>' +
+              '<button class="del nat-del" type="button">Delete</button></div>' +
+            '</div>' +
+            (n.description ? '<div class="natdesc">' + esc(n.description) + '</div>' : '') +
+            '<div class="natstatgrid">' + statHtml + '</div>' +
+            '<div class="natextra">Parties: ' + (n.parties || []).length + ' · Demographics: ' + (n.demographics || []).length + '</div>' +
+          '</div>';
+        }).join('');
+        natListBox.querySelectorAll('.natcard').forEach(card => {
+          const n = rows.find(x => x.id === card.dataset.id); if (!n) return;
+          card.querySelector('.nat-edit').addEventListener('click', () => editNation(n));
+          card.querySelector('.nat-del').addEventListener('click', async () => {
+            if (!window.confirm('Delete “' + (n.name || 'this nation') + '”? This also removes its personalities.')) return;
+            try {
+              const { error } = await supabase.from('nationverse_nations').delete().eq('id', n.id);
+              if (error) throw error;
+              if (editingId === n.id) resetNationForm();   // was being edited — bail out of edit mode
+              loadNationsList();
+            } catch (e) { alert(e.message || 'Could not delete the nation.'); }
+          });
+        });
+      } catch (e) { natListBox.innerHTML = '<div class="empty">Couldn’t load nations. Try again.</div>'; }
+    }
 
     // ---- Personalities (CRUD against an existing Nationverse nation) ----
     const ROLES = ['Politician of Party 1', 'Politician of Party 2', 'Politician of Party 3', 'Politician of Party 4', 'Politician of Party 5',
