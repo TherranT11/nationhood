@@ -199,18 +199,16 @@
           <div id="partySlots"></div>
 
           <div class="statshd">Current Government</div>
-          <div class="govbox">
-            <div class="f"><label>Government System</label><select id="g-system"></select></div>
-            <div class="f"><label>Government Type</label><select id="g-type"></select></div>
-            <div class="f"><label>Lead Government Party</label><select id="g-lead"></select></div>
-            <div class="f"><label>Coalition Parties</label><div id="g-coalition" class="checks"></div></div>
-            <div class="f"><label>Confidence-and-Supply Parties</label><div id="g-supply" class="checks"></div></div>
-            <div class="f" style="display:flex;gap:18px;flex-wrap:wrap">
-              <span><label>Government Stability <span class="hint">optional · 0–20</span></label><input id="g-stability" type="number" min="0" max="20" step="1" style="max-width:110px"></span>
-              <span><label>Date Government Formed <span class="hint">optional</span></label><input id="g-formed" type="date" style="max-width:200px"></span>
-            </div>
-            <div id="g-calc" class="govcalc"></div>
+          <div class="f"><label>Government System</label><select id="g-system"></select></div>
+          <div class="f"><label>Government Type</label><select id="g-type"></select></div>
+          <div class="f"><label>Lead Government Party</label><select id="g-lead"></select></div>
+          <div class="f"><label>Coalition Parties</label><div id="g-coalition" class="checks"></div></div>
+          <div class="f"><label>Confidence-and-Supply Parties</label><div id="g-supply" class="checks"></div></div>
+          <div class="f" style="display:flex;gap:18px;flex-wrap:wrap">
+            <span><label>Government Stability <span class="hint">optional · 0–20</span></label><input id="g-stability" type="number" min="0" max="20" step="1" style="max-width:110px"></span>
+            <span><label>Date Government Formed <span class="hint">optional</span></label><input id="g-formed" type="date" style="max-width:200px"></span>
           </div>
+          <div id="g-calc" class="govcalc"></div>
 
           <div class="statshd">Starting Cabinet <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">read-only · derived from each personality's Starting Office</span></div>
           <div id="g-cabinet" class="govcalc"></div>
