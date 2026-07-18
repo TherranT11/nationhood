@@ -105,7 +105,8 @@
   .effgrid .fld { display: flex; flex-direction: column; gap: 4px; }
   .effgrid .fld.wide { grid-column: 1 / -1; }
   .effgrid label { font-size: 12px; font-weight: 700; color: var(--muted); }
-  .effgrid select, .effgrid input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 13.5px; font-family: inherit; width: 100%; box-sizing: border-box; }
+  .effgrid select, .effgrid input, .effgrid textarea { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 13.5px; font-family: inherit; width: 100%; box-sizing: border-box; }
+  .effgrid textarea { min-height: 58px; resize: vertical; line-height: 1.5; }
   /* Story Bill trigger rows reuse .effrow2/.effgrid/.fld; the detail area lays its controls out inline. */
   .tg-detail { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .tg-detail select, .tg-detail input { width: auto; flex: 1 1 90px; min-width: 90px; }
@@ -169,6 +170,7 @@
         <button class="vtab" data-tab="modifiers" type="button">Modifiers</button>
         <button class="vtab" data-tab="corporations" type="button">Corporations</button>
         <button class="vtab" data-tab="story" type="button">Story Bills</button>
+        <button class="vtab" data-tab="narratives" type="button">Narratives</button>
       </nav>
       <div class="panel">
         <div class="tabpanel" data-panel="list">
@@ -338,6 +340,52 @@
           </div>
         </div>
         </div><!-- /tabpanel story -->
+
+        <div class="tabpanel" data-panel="narratives" hidden>
+        <div class="card">
+          <h2 id="narTitle">Narrative Creator</h2>
+          <p class="lead">A triggered story: an opening conversation, player choices (each with a response), then a decision whose options carry effects. Triggers and effects use the shared builders; a decision option can Create a Story Bill or Unlock another Narrative via its effect category.</p>
+
+          <div id="narList" class="natlist"></div>
+
+          <div class="f"><label>Narrative Name</label><input id="nr-name" type="text" autocomplete="off"></div>
+          <div class="f"><label>Internal ID <span class="hint">optional · e.g. police_reform_debate</span></label><input id="nr-slug" type="text" autocomplete="off" style="max-width:320px"></div>
+          <div class="f"><label>Nation</label><select id="nr-nation"></select></div>
+          <div class="f" style="display:flex;gap:18px;flex-wrap:wrap">
+            <span><label>Category</label><select id="nr-cat"></select></span>
+            <span><label>Priority <span class="hint">0–100 · higher interrupts lower</span></label><input id="nr-priority" type="number" min="0" max="100" step="1" value="0" style="max-width:110px"></span>
+          </div>
+
+          <div class="statshd">Trigger Conditions <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">optional · all must hold for the narrative to start</span></div>
+          <div id="nrTrigList"></div>
+          <button class="btn btn-ghost" id="nrAddTrig" type="button" style="margin-top:2px">+ Add Condition</button>
+
+          <div class="statshd">Opening Conversation</div>
+          <div class="f" style="display:flex;gap:18px;flex-wrap:wrap">
+            <span style="flex:1;min-width:220px"><label>Speaker</label><input id="nr-speaker" type="text" autocomplete="off" placeholder="e.g. John Smith" style="width:100%;box-sizing:border-box"></span>
+            <span style="flex:1;min-width:220px"><label>Role <span class="hint">or personality</span></label><input id="nr-role" type="text" autocomplete="off" placeholder="e.g. Deputy Economic Minister" style="width:100%;box-sizing:border-box"></span>
+          </div>
+          <div class="f"><label>Dialogue Lines <span class="hint">shown one at a time; the player clicks Continue through each before the choices appear</span></label>
+            <div id="nrDialogue"></div>
+            <button class="btn btn-ghost" id="nrAddLine" type="button" style="margin-top:6px">+ Add Dialogue Line</button>
+          </div>
+
+          <div class="statshd">Player Choices <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">how the player continues the conversation; each leads to a short response</span></div>
+          <div id="nrChoices"></div>
+          <button class="btn btn-ghost" id="nrAddChoice" type="button" style="margin-top:2px">+ Add Choice</button>
+
+          <div class="statshd">Decision</div>
+          <div class="f"><label>Prompt <span class="hint">optional</span></label><textarea id="nr-decprompt" placeholder="The framing shown before the options."></textarea></div>
+          <div id="nrDecOptions"></div>
+          <button class="btn btn-ghost" id="nrAddOption" type="button" style="margin-top:2px">+ Add Decision Option</button>
+
+          <div class="actions">
+            <button class="btn btn-solid" id="saveNar" type="button">Save Narrative</button>
+            <button class="btn btn-ghost" id="cancelNar" type="button" hidden>Cancel</button>
+            <span class="note" id="narNote" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+        </div><!-- /tabpanel narratives -->
       </div>
     </div>
   </div>
@@ -692,6 +740,7 @@
       if (tab === 'modifiers') loadModList();
       if (tab === 'corporations') loadCorpRefs().then(loadCorpList);
       if (tab === 'story') loadStoryRefs().then(loadStoryList);
+      if (tab === 'narratives') loadNarrativeRefs().then(loadNarrativeList);
     }
     vtabs.forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
 
@@ -742,7 +791,7 @@
     }
 
     // ---- Modifiers Creator (one reusable effect builder for every modifier) ----
-    const EFFECT_CATEGORIES = ['National Statistic', 'Corporate Stat', 'Interest-Group Opinion', 'Party Approval', 'Policy', 'Situation / Event', 'Role Action', 'Restriction'];
+    const EFFECT_CATEGORIES = ['National Statistic', 'Corporate Stat', 'Interest-Group Opinion', 'Party Approval', 'Policy', 'Situation / Event', 'Role Action', 'Restriction', 'Create Story Bill', 'Unlock Narrative', 'Hidden Variable'];
     const OPERATIONS = ['Add', 'Subtract', 'Set', 'Multiply', 'Divide', 'Increase by %', 'Decrease by %', 'Set minimum', 'Set maximum',
       'Unlock', 'Lock', 'Enable', 'Disable', 'Add requirement', 'Remove requirement', 'Add immunity', 'Remove immunity', 'Replace', 'Redirect',
       'Delay', 'Accelerate', 'Pause', 'Trigger', 'Prevent', 'Reveal', 'Hide', 'Increase weight', 'Decrease weight', 'Increase chance', 'Decrease chance'];
@@ -1252,67 +1301,72 @@
 
     // ---- Story Bills (first slice: define name/scope/presenter/flavor, triggers from conditions that
     // exist today, and Sign/Veto choices whose effects reuse the shared effect builder above) ----
-    const SB_TRIG_TYPES = ['Statistic', 'Modifier', 'Party'];
-    const SB_STAT_OPS = ['≥', '≤', '=', '>', '<'];
-    const SB_MOD_STATES = ['Active', 'Not Active'];
-    const SB_ALIGNMENTS = ['Government', 'Coalition', 'Confidence-and-Supply', 'Opposition'];
-    const SB_KEY_TYPE = { stat: 'Statistic', modifier: 'Modifier', party: 'Party' };   // stored key → UI label
-    const sbTrigBox = document.getElementById('sbTrigList');
+    // Shared, container-parameterised trigger builder (one source), used by Story Bills AND Narratives.
+    const TRIG_TYPES = ['Statistic', 'Modifier', 'Party', 'Role', 'Previous Narrative'];
+    const TRIG_STAT_OPS = ['≥', '≤', '=', '>', '<'];
+    const TRIG_MOD_STATES = ['Active', 'Not Active'];
+    const TRIG_ALIGNMENTS = ['Government', 'Coalition', 'Confidence-and-Supply', 'Opposition'];
+    const TRIG_ROLE_STATES = ['Exists', 'Absent'];
+    const TRIG_NARR_STATES = ['Completed', 'Not Completed'];
+    const TRIG_KEY_TYPE = { stat: 'Statistic', modifier: 'Modifier', party: 'Party', role: 'Role', narrative: 'Previous Narrative' };
 
-    // The controls shown for a condition depend on its type. Statistic → stat/op/value (all exist today);
-    // Modifier → name + active-state; Party → alignment contains <party>.
+    // The controls shown for a condition depend on its type — all reuse conditions that exist today, plus
+    // Role (a role/office present or absent) and Previous Narrative (completed or not).
     function trigDetailHTML(type, t) {
       t = t || {};
       if (type === 'Modifier')
         return '<input class="tg-name" type="text" placeholder="Modifier name" value="' + esc(t.name || '') + '">' +
-               '<select class="tg-state">' + opts(SB_MOD_STATES, t.state) + '</select>';
+               '<select class="tg-state">' + opts(TRIG_MOD_STATES, t.state) + '</select>';
       if (type === 'Party')
-        return '<select class="tg-align">' + opts(SB_ALIGNMENTS, t.alignment) + '</select>' +
+        return '<select class="tg-align">' + opts(TRIG_ALIGNMENTS, t.alignment) + '</select>' +
                '<span class="tg-mid">contains</span>' +
                '<input class="tg-party" type="text" placeholder="Party name" value="' + esc(t.party || '') + '">';
+      if (type === 'Role')
+        return '<input class="tg-role" type="text" placeholder="Role or office, e.g. Economic Minister" value="' + esc(t.role || '') + '">' +
+               '<select class="tg-rstate">' + opts(TRIG_ROLE_STATES, t.state) + '</select>';
+      if (type === 'Previous Narrative')
+        return '<input class="tg-narr" type="text" placeholder="Narrative name or internal id" value="' + esc(t.name || '') + '">' +
+               '<select class="tg-nstate">' + opts(TRIG_NARR_STATES, t.state) + '</select>';
       return '<select class="tg-stat">' + opts(STAT_NAMES, t.stat) + '</select>' +               // Statistic
-             '<select class="tg-op">' + opts(SB_STAT_OPS, t.op) + '</select>' +
+             '<select class="tg-op">' + opts(TRIG_STAT_OPS, t.op) + '</select>' +
              '<input class="tg-num" type="number" step="1" placeholder="value" value="' + esc(t.value != null ? t.value : '') + '">';
     }
     function trigRowHTML(t) {
-      const type = (t && t.typeLabel) || SB_TRIG_TYPES[0];
+      const type = (t && t.typeLabel) || TRIG_TYPES[0];
       return '<div class="effrow2 trigrow">' +
         '<div class="effrow2-hd"><span class="tenum"></span><button class="del tg-del" type="button">Remove</button></div>' +
         '<div class="effgrid">' +
-          '<div class="fld"><label>Condition</label><select class="tg-type">' + opts(SB_TRIG_TYPES, type) + '</select></div>' +
+          '<div class="fld"><label>Condition</label><select class="tg-type">' + opts(TRIG_TYPES, type) + '</select></div>' +
           '<div class="fld wide"><label>Detail</label><div class="tg-detail">' + trigDetailHTML(type, t) + '</div></div>' +
         '</div></div>';
     }
-    function renumberTrigs() { sbTrigBox.querySelectorAll('.trigrow .tenum').forEach((el, i) => { el.textContent = 'Condition ' + (i + 1); }); }
-    function addTrig(t) { sbTrigBox.insertAdjacentHTML('beforeend', trigRowHTML(t)); renumberTrigs(); }
-    sbTrigBox.addEventListener('click', e => { if (e.target.classList.contains('tg-del')) { e.target.closest('.trigrow').remove(); renumberTrigs(); } });
-    sbTrigBox.addEventListener('change', e => {
-      if (e.target.classList.contains('tg-type')) e.target.closest('.trigrow').querySelector('.tg-detail').innerHTML = trigDetailHTML(e.target.value);
-    });
-    document.getElementById('addTrig').addEventListener('click', () => addTrig());
-
-    function collectTriggers() {
+    function renumberTrigs(box) { box.querySelectorAll('.trigrow .tenum').forEach((el, i) => { el.textContent = 'Condition ' + (i + 1); }); }
+    function addTrig(box, t) { box.insertAdjacentHTML('beforeend', trigRowHTML(t)); renumberTrigs(box); }
+    function wireTrigBox(box) {
+      box.addEventListener('click', e => { if (e.target.classList.contains('tg-del')) { e.target.closest('.trigrow').remove(); renumberTrigs(box); } });
+      box.addEventListener('change', e => { if (e.target.classList.contains('tg-type')) e.target.closest('.trigrow').querySelector('.tg-detail').innerHTML = trigDetailHTML(e.target.value); });
+    }
+    function collectTriggers(box) {
       const out = [];
-      sbTrigBox.querySelectorAll('.trigrow').forEach(r => {
+      box.querySelectorAll('.trigrow').forEach(r => {
         const type = r.querySelector('.tg-type').value;
-        if (type === 'Modifier') {
-          const name = r.querySelector('.tg-name').value.trim();
-          if (name) out.push({ type: 'modifier', name, state: r.querySelector('.tg-state').value });
-        } else if (type === 'Party') {
-          const party = r.querySelector('.tg-party').value.trim();
-          if (party) out.push({ type: 'party', alignment: r.querySelector('.tg-align').value, party });
-        } else {
-          const num = r.querySelector('.tg-num').value.trim();
-          if (num !== '') out.push({ type: 'stat', stat: r.querySelector('.tg-stat').value, op: r.querySelector('.tg-op').value, value: Number(num) });
-        }
+        if (type === 'Modifier') { const name = r.querySelector('.tg-name').value.trim(); if (name) out.push({ type: 'modifier', name, state: r.querySelector('.tg-state').value }); }
+        else if (type === 'Party') { const party = r.querySelector('.tg-party').value.trim(); if (party) out.push({ type: 'party', alignment: r.querySelector('.tg-align').value, party }); }
+        else if (type === 'Role') { const role = r.querySelector('.tg-role').value.trim(); if (role) out.push({ type: 'role', role, state: r.querySelector('.tg-rstate').value }); }
+        else if (type === 'Previous Narrative') { const name = r.querySelector('.tg-narr').value.trim(); if (name) out.push({ type: 'narrative', name, state: r.querySelector('.tg-nstate').value }); }
+        else { const num = r.querySelector('.tg-num').value.trim(); if (num !== '') out.push({ type: 'stat', stat: r.querySelector('.tg-stat').value, op: r.querySelector('.tg-op').value, value: Number(num) }); }
       });
       return out;
     }
-    function setTriggers(list) {
-      sbTrigBox.innerHTML = '';
-      (list || []).forEach(t => sbTrigBox.insertAdjacentHTML('beforeend', trigRowHTML({ ...t, typeLabel: SB_KEY_TYPE[t.type] || 'Statistic' })));
-      renumberTrigs();
+    function setTriggers(box, list) {
+      box.innerHTML = '';
+      (list || []).forEach(t => box.insertAdjacentHTML('beforeend', trigRowHTML({ ...t, typeLabel: TRIG_KEY_TYPE[t.type] || 'Statistic' })));
+      renumberTrigs(box);
     }
+    // Story Bills trigger box wiring.
+    const sbTrigBox = document.getElementById('sbTrigList');
+    wireTrigBox(sbTrigBox);
+    document.getElementById('addTrig').addEventListener('click', () => addTrig(sbTrigBox));
 
     // Each choice gets its own effect list, reusing the shared effect builder.
     const sbSignBox = document.getElementById('sb-sign-eff'), sbVetoBox = document.getElementById('sb-veto-eff');
@@ -1346,7 +1400,7 @@
       sbNatSel.value = b.nation_id || '';
       document.getElementById('sb-presenter').value = b.presented_by || '';
       document.getElementById('sb-flavor').value = b.flavor || '';
-      setTriggers(b.triggers);
+      setTriggers(sbTrigBox, b.triggers);
       const choices = b.choices || [];
       setEffects(sbSignBox, (choices.find(c => c.key === 'sign') || {}).effects);
       setEffects(sbVetoBox, (choices.find(c => c.key === 'veto') || {}).effects);
@@ -1366,7 +1420,7 @@
         nation_id: sbNatSel.value || null,
         presented_by: document.getElementById('sb-presenter').value.trim() || null,
         flavor: document.getElementById('sb-flavor').value.trim() || null,
-        triggers: collectTriggers(),
+        triggers: collectTriggers(sbTrigBox),
         choices: [
           { key: 'sign', label: 'Sign', effects: collectEffects(sbSignBox) },
           { key: 'veto', label: 'Veto', effects: collectEffects(sbVetoBox) }
@@ -1417,6 +1471,201 @@
       } catch (e) { sbListBox.innerHTML = '<div class="empty">Couldn’t load story bills.</div>'; }
     }
     resetBillForm();   // initial blank state (one effect row per choice)
+
+    // ---- Narratives (first slice: metadata + shared trigger builder + opening conversation, player
+    // choices each with a response, and a decision whose options carry effects via the shared builder) ----
+    const NARR_CATEGORIES = ['Economy', 'Politics', 'Military', 'Foreign Affairs', 'Labor', 'Religion', 'Judiciary', 'Election', 'Crisis', 'Corporation', 'Intelligence'];
+    document.getElementById('nr-cat').innerHTML = opts(NARR_CATEGORIES);
+
+    const nrTrigBox = document.getElementById('nrTrigList');
+    wireTrigBox(nrTrigBox);
+    document.getElementById('nrAddTrig').addEventListener('click', () => addTrig(nrTrigBox));
+
+    // Opening dialogue: an ordered list of lines the player clicks Continue through before the choices.
+    const nrDlgBox = document.getElementById('nrDialogue');
+    function lineRowHTML(text) {
+      return '<div class="effrow2 nrline">' +
+        '<div class="effrow2-hd"><span class="lnum"></span><button class="del nrl-del" type="button">Remove</button></div>' +
+        '<div class="effgrid"><div class="fld wide"><textarea class="nrl-text" placeholder="A line of dialogue the player clicks Continue past.">' + esc(text || '') + '</textarea></div></div>' +
+      '</div>';
+    }
+    function renumberLines() { nrDlgBox.querySelectorAll('.nrline .lnum').forEach((el, i) => { el.textContent = 'Line ' + (i + 1); }); }
+    function addLine(text) { nrDlgBox.insertAdjacentHTML('beforeend', lineRowHTML(text)); renumberLines(); }
+    nrDlgBox.addEventListener('click', e => { if (e.target.classList.contains('nrl-del')) { e.target.closest('.nrline').remove(); renumberLines(); } });
+    document.getElementById('nrAddLine').addEventListener('click', () => addLine());
+    function collectLines() { const out = []; nrDlgBox.querySelectorAll('.nrl-text').forEach(t => { const v = t.value.trim(); if (v) out.push(v); }); return out; }
+    function setLines(list) { nrDlgBox.innerHTML = ''; (list && list.length ? list : ['']).forEach(addLine); renumberLines(); }
+
+    // Player choices: a label + a short response conversation.
+    const nrChoicesBox = document.getElementById('nrChoices');
+    function choiceRowHTML(c) {
+      c = c || {};
+      return '<div class="effrow2 nrchoice">' +
+        '<div class="effrow2-hd"><span class="cnum"></span><button class="del nrc-del" type="button">Remove</button></div>' +
+        '<div class="effgrid">' +
+          '<div class="fld wide"><label>Choice label</label><input class="nrc-label" type="text" placeholder="e.g. Tell me more about reform." value="' + esc(c.label || '') + '"></div>' +
+          '<div class="fld wide"><label>Response conversation</label><textarea class="nrc-response" placeholder="What the speaker replies when this choice is picked.">' + esc(c.response || '') + '</textarea></div>' +
+        '</div>' +
+      '</div>';
+    }
+    function renumberChoices() { nrChoicesBox.querySelectorAll('.nrchoice .cnum').forEach((el, i) => { el.textContent = 'Choice ' + (i + 1); }); }
+    function addChoice(c) { nrChoicesBox.insertAdjacentHTML('beforeend', choiceRowHTML(c)); renumberChoices(); }
+    nrChoicesBox.addEventListener('click', e => { if (e.target.classList.contains('nrc-del')) { e.target.closest('.nrchoice').remove(); renumberChoices(); } });
+    document.getElementById('nrAddChoice').addEventListener('click', () => addChoice());
+    function collectChoices() {
+      const out = [];
+      nrChoicesBox.querySelectorAll('.nrchoice').forEach(r => {
+        const label = r.querySelector('.nrc-label').value.trim(), response = r.querySelector('.nrc-response').value.trim();
+        if (label || response) out.push({ label, response: response || null });
+      });
+      return out;
+    }
+    function setChoices(list) { nrChoicesBox.innerHTML = ''; (list || []).forEach(addChoice); renumberChoices(); }
+
+    // Decision options: a label + its own effect list (shared effect builder). "Create Story Bill" /
+    // "Unlock Narrative" / "Hidden Variable" are effect categories, so chaining needs no separate system.
+    const nrDecBox = document.getElementById('nrDecOptions');
+    function decOptionHTML(o) {
+      o = o || {};
+      return '<div class="effrow2 nropt">' +
+        '<div class="effrow2-hd"><span class="onum"></span><button class="del nro-del" type="button">Remove Option</button></div>' +
+        '<div class="effgrid"><div class="fld wide"><label>Option label</label><input class="nro-label" type="text" placeholder="e.g. Introduce the Financial Transparency Act." value="' + esc(o.label || '') + '"></div></div>' +
+        '<div class="fld" style="margin-top:10px"><label style="font-size:12px;font-weight:700;color:var(--muted)">Effects</label><div class="nro-eff"></div>' +
+        '<button class="btn btn-ghost nro-addeff" type="button" style="margin-top:6px">+ Add Effect</button></div>' +
+      '</div>';
+    }
+    function renumberOptions() { nrDecBox.querySelectorAll('.nropt .onum').forEach((el, i) => { el.textContent = 'Option ' + (i + 1); }); }
+    function addOption(o) {
+      nrDecBox.insertAdjacentHTML('beforeend', decOptionHTML(o));
+      const row = nrDecBox.lastElementChild, box = row.querySelector('.nro-eff');
+      wireEffectBox(box);
+      if (o && o.effects && o.effects.length) setEffects(box, o.effects); else addEffect(box);
+      renumberOptions();
+    }
+    nrDecBox.addEventListener('click', e => {
+      if (e.target.classList.contains('nro-del')) { e.target.closest('.nropt').remove(); renumberOptions(); }
+      else if (e.target.classList.contains('nro-addeff')) addEffect(e.target.closest('.nropt').querySelector('.nro-eff'));
+    });
+    document.getElementById('nrAddOption').addEventListener('click', () => addOption());
+    function collectDecision() {
+      const options = [];
+      nrDecBox.querySelectorAll('.nropt').forEach(r => {
+        const label = r.querySelector('.nro-label').value.trim();
+        const effects = collectEffects(r.querySelector('.nro-eff'));
+        if (label || effects.length) options.push({ label, effects });
+      });
+      return { prompt: document.getElementById('nr-decprompt').value.trim() || null, options };
+    }
+    function setDecision(d) {
+      d = d || {};
+      document.getElementById('nr-decprompt').value = d.prompt || '';
+      nrDecBox.innerHTML = '';
+      (d.options || []).forEach(addOption);
+      if (!nrDecBox.children.length) addOption();
+    }
+
+    const nrNatSel = document.getElementById('nr-nation');
+    let narNatNames = {};
+    async function loadNarrativeRefs() {
+      const rows = await loadNationOptions(nrNatSel, { global: true });   // shared nation-options source
+      narNatNames = {}; rows.forEach(n => { narNatNames[n.id] = n.name; });
+    }
+
+    const narNote = document.getElementById('narNote'), saveNarBtn = document.getElementById('saveNar');
+    const narTitle = document.getElementById('narTitle'), cancelNarBtn = document.getElementById('cancelNar');
+    let narBusy = false, editingNarId = null;
+
+    function resetNarrativeForm() {
+      editingNarId = null; narTitle.textContent = 'Narrative Creator'; saveNarBtn.textContent = 'Save Narrative'; cancelNarBtn.hidden = true;
+      ['nr-name', 'nr-slug', 'nr-speaker', 'nr-role', 'nr-decprompt'].forEach(id => { document.getElementById(id).value = ''; });
+      nrNatSel.value = ''; document.getElementById('nr-cat').selectedIndex = 0; document.getElementById('nr-priority').value = 0;
+      nrTrigBox.innerHTML = '';
+      setLines([]); setChoices([]); setDecision({});
+    }
+    function editNarrative(n) {
+      editingNarId = n.id; narTitle.textContent = 'Edit Narrative'; saveNarBtn.textContent = 'Save changes'; cancelNarBtn.hidden = false;
+      document.getElementById('nr-name').value = n.name || '';
+      document.getElementById('nr-slug').value = n.internal_id || '';
+      nrNatSel.value = n.nation_id || '';
+      document.getElementById('nr-cat').value = n.category || NARR_CATEGORIES[0];
+      document.getElementById('nr-priority').value = n.priority != null ? n.priority : 0;
+      setTriggers(nrTrigBox, n.triggers);
+      const o = n.opening || {};
+      document.getElementById('nr-speaker').value = o.speaker || '';
+      document.getElementById('nr-role').value = o.role || '';
+      setLines(o.lines || (o.dialogue ? [o.dialogue] : []));   // supports legacy single-dialogue records
+      setChoices(n.choices);
+      setDecision(n.decision);
+      // Already on the Narratives tab — don't re-run showTab (would rebuild the nation select).
+      window.scrollTo(0, 0);
+    }
+    cancelNarBtn.addEventListener('click', () => { resetNarrativeForm(); narNote.textContent = ''; narNote.className = 'note'; });
+
+    saveNarBtn.addEventListener('click', async () => {
+      if (narBusy) return;
+      const name = document.getElementById('nr-name').value.trim();
+      if (!name) { narNote.textContent = 'A narrative name is required.'; narNote.className = 'note error'; return; }
+      const pr = document.getElementById('nr-priority').value;
+      const row = {
+        name,
+        internal_id: document.getElementById('nr-slug').value.trim() || null,
+        nation_id: nrNatSel.value || null,
+        category: document.getElementById('nr-cat').value,
+        priority: Math.max(0, Math.min(100, Math.round(Number(pr) || 0))),
+        triggers: collectTriggers(nrTrigBox),
+        opening: {
+          speaker: document.getElementById('nr-speaker').value.trim() || null,
+          role: document.getElementById('nr-role').value.trim() || null,
+          lines: collectLines()
+        },
+        choices: collectChoices(),
+        decision: collectDecision()
+      };
+      narBusy = true; saveNarBtn.disabled = true; narNote.textContent = 'Saving…'; narNote.className = 'note';
+      try {
+        if (editingNarId) {
+          const { error } = await supabase.from('nationverse_narratives').update(row).eq('id', editingNarId);
+          if (error) throw error; narNote.textContent = 'Saved changes to “' + name + '”.'; narNote.className = 'note ok';
+        } else {
+          const { error } = await supabase.from('nationverse_narratives').insert(row);
+          if (error) throw error; narNote.textContent = 'Added “' + name + '”.'; narNote.className = 'note ok';
+        }
+        resetNarrativeForm(); loadNarrativeList();
+      } catch (e) { narNote.textContent = e.message || 'Could not save the narrative.'; narNote.className = 'note error'; }
+      finally { narBusy = false; saveNarBtn.disabled = false; }
+    });
+
+    const narListBox = document.getElementById('narList');
+    async function loadNarrativeList() {
+      narListBox.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        const { data, error } = await supabase.from('nationverse_narratives').select('*').order('priority', { ascending: false });
+        if (error) throw error;
+        const rows = data || [];
+        if (!rows.length) { narListBox.innerHTML = '<div class="empty">No narratives yet — create one below.</div>'; return; }
+        narListBox.innerHTML = rows.map(n => {
+          const scope = n.nation_id ? esc(narNatNames[n.nation_id] || 'Nation') : 'Global';
+          const nOpt = (n.decision && n.decision.options ? n.decision.options.length : 0), nCh = (n.choices || []).length;
+          const sub = [scope, n.category ? esc(n.category) : '', 'priority ' + (n.priority != null ? n.priority : 0), nCh + ' choice' + (nCh === 1 ? '' : 's'), nOpt + ' option' + (nOpt === 1 ? '' : 's')].filter(Boolean).join(' · ');
+          return '<div class="natcard" data-id="' + esc(n.id) + '">' +
+            '<div class="natcard-hd"><div class="natmeta"><div class="natnm">' + esc(n.name || 'Untitled') + '</div>' +
+            '<div class="natsub">' + sub + '</div></div>' +
+            '<div class="natbtns"><button class="btn btn-ghost nar-edit" type="button">Edit</button><button class="del nar-del" type="button">Delete</button></div></div>' +
+            (n.opening && ((n.opening.lines && n.opening.lines[0]) || n.opening.dialogue) ? '<div class="natdesc">' + esc((n.opening.lines && n.opening.lines[0]) || n.opening.dialogue) + '</div>' : '') +
+          '</div>';
+        }).join('');
+        narListBox.querySelectorAll('.natcard').forEach(card => {
+          const n = rows.find(x => x.id === card.dataset.id); if (!n) return;
+          card.querySelector('.nar-edit').addEventListener('click', () => editNarrative(n));
+          card.querySelector('.nar-del').addEventListener('click', async () => {
+            if (!window.confirm('Delete “' + (n.name || 'this narrative') + '”?')) return;
+            try { const { error } = await supabase.from('nationverse_narratives').delete().eq('id', n.id); if (error) throw error; if (editingNarId === n.id) resetNarrativeForm(); loadNarrativeList(); }
+            catch (e) { alert(e.message || 'Could not delete the narrative.'); }
+          });
+        });
+      } catch (e) { narListBox.innerHTML = '<div class="empty">Couldn’t load narratives.</div>'; }
+    }
+    resetNarrativeForm();   // initial blank state
 
     refresh();
   </script>
