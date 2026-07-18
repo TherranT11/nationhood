@@ -14,15 +14,20 @@
 -- ===========================================================================
 
 create table if not exists public.nationverse_nations (
-  id          uuid primary key default gen_random_uuid(),
-  name        text not null,
-  description text,
-  analogous   text,                                 -- real-world analogue, e.g. 'France'
-  capital     text,
-  flag        text,                                 -- uploaded flag public URL (Supabase storage), or null
-  stats       jsonb not null default '{}'::jsonb,   -- the 13 Nationverse stats, each an integer 0..20
-  created_at  timestamptz not null default now()
+  id           uuid primary key default gen_random_uuid(),
+  name         text not null,
+  description  text,
+  analogous    text,                                 -- real-world analogue, e.g. 'France'
+  capital      text,
+  flag         text,                                 -- uploaded flag public URL (Supabase storage), or null
+  stats        jsonb not null default '{}'::jsonb,   -- the 13 Nationverse stats, each an integer 0..20
+  parties      jsonb not null default '[]'::jsonb,   -- starting parties: [{name, ideology, seats}]
+  demographics jsonb not null default '[]'::jsonb,   -- groups: [{name, description, approval:[p1..p5]}]
+  created_at   timestamptz not null default now()
 );
+-- Backfill the party/demographic columns onto an already-created table (re-running is idempotent).
+alter table public.nationverse_nations add column if not exists parties      jsonb not null default '[]'::jsonb;
+alter table public.nationverse_nations add column if not exists demographics jsonb not null default '[]'::jsonb;
 
 alter table public.nationverse_nations enable row level security;
 

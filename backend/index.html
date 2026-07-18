@@ -54,6 +54,17 @@
   .stat .ds { color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 2px; }
   .stat input { width: 58px; flex: none; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 15px; font-weight: 700; text-align: center; }
 
+  /* Parties + demographics */
+  .pslot, .dgroup { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--bg); margin-bottom: 12px; }
+  .pslot-hd, .dgroup-hd { font-size: 13px; font-weight: 800; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+  .pslot select, .pslot input, .pslot textarea, .dgroup input, .dgroup textarea { width: 100%; box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font-size: 14px; font-family: inherit; }
+  .pslot textarea, .dgroup textarea { min-height: 60px; resize: vertical; line-height: 1.5; }
+  .approw { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .apr { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); border-radius: 9px; padding: 6px 11px; background: var(--surface); font-size: 13px; }
+  .apr input { width: 56px !important; flex: none; text-align: center; font-weight: 700; padding: 6px !important; }
+  .del { border: 1px solid var(--line); background: transparent; color: var(--err); border-radius: 8px; padding: 4px 11px; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .del:hover { background: color-mix(in srgb, var(--err) 10%, transparent); }
+
   .actions { display: flex; align-items: center; gap: 14px; margin-top: 24px; }
   .note { font-size: 13.5px; color: var(--muted); }
   .note.ok { color: #16915a; }
@@ -106,6 +117,13 @@
           <div class="statshd">Stats · 0 to 20</div>
           <div class="statgrid" id="statGrid"></div>
 
+          <div class="statshd">Parties</div>
+          <div id="partySlots"></div>
+
+          <div class="statshd">Demographics</div>
+          <div id="demoGroups"></div>
+          <button class="btn btn-ghost" id="addGroup" type="button" style="margin-top:2px">+ Add Group</button>
+
           <div class="actions">
             <button class="btn btn-solid" id="addNation" type="button">Add Nation</button>
             <span class="note" id="addNote" role="status" aria-live="polite"></span>
@@ -143,6 +161,42 @@
       (ds ? '<div class="ds">' + esc(ds) + '</div>' : '') + '</div>' +
       '<input type="number" min="0" max="20" step="1" value="10" data-key="' + key + '" aria-label="' + esc(nm) + '"></div>'
     ).join('');
+
+    // Party ideologies — ONE source for the dropdown.
+    const IDEOLOGIES = ['Far Left', 'Left', 'Center', 'Right', 'Far Right', 'Green', 'Libertarian', 'Faith'];
+    const ideoOptions = IDEOLOGIES.map(x => '<option value="' + esc(x) + '">' + esc(x) + '</option>').join('');
+
+    // Five party slots — captured with the nation on Add Nation; empty slots (no name) are ignored.
+    document.getElementById('partySlots').innerHTML = [1, 2, 3, 4, 5].map(n =>
+      '<div class="pslot">' +
+        '<div class="pslot-hd">Party ' + n + '</div>' +
+        '<div class="f"><label>Name</label><input class="p-name" type="text" autocomplete="off"></div>' +
+        '<div class="f"><label>Description</label><textarea class="p-desc"></textarea></div>' +
+        '<div class="f"><label>Ideology</label><select class="p-ideo">' + ideoOptions + '</select></div>' +
+        '<div class="f" style="margin-bottom:0"><label>Starting Seats</label><input class="p-seats" type="number" min="0" step="1"></div>' +
+      '</div>'
+    ).join('');
+
+    // Demographics — a variable list of groups; each carries a Party Approval value for Party 1..5.
+    const demoBox = document.getElementById('demoGroups');
+    function groupHTML() {
+      const appr = [1, 2, 3, 4, 5].map(n =>
+        '<div class="apr"><span>Party ' + n + '</span><input class="d-appr" type="number" min="0" max="100" data-p="' + (n - 1) + '"></div>'
+      ).join('');
+      return '<div class="dgroup">' +
+        '<div class="dgroup-hd"><span class="gnum"></span><button class="del" type="button">Delete</button></div>' +
+        '<div class="f"><label>Group Name</label><input class="d-name" type="text" autocomplete="off"></div>' +
+        '<div class="f"><label>Description</label><textarea class="d-desc"></textarea></div>' +
+        '<div class="f" style="margin-bottom:0"><label>Party Approval <span class="hint">0–100 per party</span></label><div class="approw">' + appr + '</div></div>' +
+      '</div>';
+    }
+    function renumberGroups() { demoBox.querySelectorAll('.dgroup .gnum').forEach((el, i) => { el.textContent = 'Group ' + (i + 1); }); }
+    function addGroup() { demoBox.insertAdjacentHTML('beforeend', groupHTML()); renumberGroups(); }
+    demoBox.addEventListener('click', e => {
+      if (e.target.classList.contains('del')) { e.target.closest('.dgroup').remove(); renumberGroups(); }
+    });
+    document.getElementById('addGroup').addEventListener('click', addGroup);
+    addGroup();   // start with Group 1
 
     // ONE image-upload path (mirrors adminsetup/forum/wiki — see note in the reply): push a file to a
     // Supabase storage bucket and return its public URL. Reuses the existing 'world-event-images'
@@ -221,6 +275,26 @@
       const stats = {};
       document.querySelectorAll('#statGrid input[data-key]').forEach(i => { stats[i.dataset.key] = clamp20(i.value); });
 
+      // Parties (empty slots — no name — are skipped) and demographic groups (same rule).
+      const parties = [];
+      document.querySelectorAll('#partySlots .pslot').forEach(s => {
+        const pname = s.querySelector('.p-name').value.trim();
+        if (!pname) return;
+        parties.push({
+          name: pname,
+          description: s.querySelector('.p-desc').value.trim() || null,
+          ideology: s.querySelector('.p-ideo').value,
+          seats: Math.max(0, Math.round(Number(s.querySelector('.p-seats').value) || 0))
+        });
+      });
+      const demographics = [];
+      document.querySelectorAll('#demoGroups .dgroup').forEach(g => {
+        const gname = g.querySelector('.d-name').value.trim();
+        if (!gname) return;
+        const approval = Array.from(g.querySelectorAll('.d-appr')).map(a => Math.max(0, Math.min(100, Math.round(Number(a.value) || 0))));
+        demographics.push({ name: gname, description: g.querySelector('.d-desc').value.trim() || null, approval });
+      });
+
       adding = true; addBtn.disabled = true; addNote.textContent = 'Saving…'; addNote.className = 'note';
       try {
         let flagUrl = null;
@@ -232,7 +306,7 @@
           analogous: document.getElementById('n-analog').value.trim() || null,
           capital: document.getElementById('n-capital').value.trim() || null,
           flag: flagUrl,
-          stats
+          stats, parties, demographics
         });
         if (error) throw error;
         addNote.textContent = 'Added “' + name + '”.'; addNote.className = 'note ok';
@@ -240,6 +314,9 @@
         ['n-name', 'n-desc', 'n-analog', 'n-capital'].forEach(id => { document.getElementById(id).value = ''; });
         flagInput.value = ''; flagPrev.style.display = 'none';
         document.querySelectorAll('#statGrid input[data-key]').forEach(i => { i.value = 10; });
+        document.querySelectorAll('#partySlots .p-name, #partySlots .p-desc, #partySlots .p-seats').forEach(i => { i.value = ''; });
+        document.querySelectorAll('#partySlots .p-ideo').forEach(s => { s.selectedIndex = 0; });
+        demoBox.innerHTML = ''; addGroup();
       } catch (e) {
         addNote.textContent = e.message || 'Could not add the nation.'; addNote.className = 'note error';
       } finally { adding = false; addBtn.disabled = false; }
