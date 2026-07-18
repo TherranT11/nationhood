@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Choose your role · Nationhood Game</title>
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+<style>
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  .wrap3 { max-width: 760px; margin: 0 auto; padding: 40px 24px 80px; }
+  .back { display: inline-block; color: var(--muted); font-size: 13.5px; font-weight: 600; text-decoration: none; margin-bottom: 20px; }
+  .back:hover { color: var(--ink); }
+
+  .nhead { display: flex; align-items: center; gap: 18px; margin-bottom: 8px; }
+  .nflag { width: 96px; height: 62px; border: 1px solid var(--line); border-radius: 10px; object-fit: cover; flex: none; background: var(--surface); }
+  .nflag.ph { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .nhead h1 { font-size: clamp(24px, 4.5vw, 32px); letter-spacing: -0.02em; font-weight: 800; margin: 0; }
+  .nhead .sub { color: var(--muted); font-size: 13px; font-style: italic; margin: 4px 0 0; }
+
+  .rhd { font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 30px 0 12px; }
+  .roles { display: flex; flex-direction: column; gap: 10px; }
+  .rolecard { text-align: left; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 15px 17px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .rolecard:hover { border-color: color-mix(in srgb, var(--ink) 28%, var(--line)); }
+  .rolecard.sel { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
+  .rolecard .rn { font-size: 15.5px; font-weight: 800; }
+  .rolecard .rr { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .rolecard .rage { color: var(--muted); font-size: 12.5px; flex: none; }
+  .empty { padding: 40px 24px; border: 1px dashed var(--line); border-radius: 14px; text-align: center; color: var(--muted); font-size: 14.5px; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="wrap nav">
+      <div class="brand">Nationhood</div>
+      <nav class="nav-actions">
+        <a class="btn btn-discord" href="https://discord.gg/HBvWxJUm8" target="_blank" rel="noopener" aria-label="Join the Discord">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 16.558 3a13.6 13.6 0 0 0-.6 1.23 18.27 18.27 0 0 0-5.487 0A13.6 13.6 0 0 0 9.87 3a19.79 19.79 0 0 0-3.76 1.369C2.72 9.046 1.79 13.605 2.255 18.1a19.9 19.9 0 0 0 6.073 3.058c.49-.668.926-1.377 1.302-2.122a12.93 12.93 0 0 1-2.05-.978c.172-.126.34-.257.502-.392a14.2 14.2 0 0 0 12.036 0c.164.135.332.266.502.392-.654.386-1.343.714-2.052.98.376.743.812 1.452 1.302 2.12a19.86 19.86 0 0 0 6.075-3.058c.546-5.21-.93-9.728-3.93-13.73ZM9.682 15.33c-1.182 0-2.157-1.086-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.334-.955 2.42-2.157 2.42Zm4.636 0c-1.182 0-2.157-1.086-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.334-.946 2.42-2.157 2.42Z"/></svg>
+          <span class="btn-label">Discord</span>
+        </a>
+        <button class="btn btn-ghost" id="logout" type="button">Log out</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap3">
+    <a class="back" href="/nations/">&larr; Back to nations</a>
+    <div id="content"><div class="empty">Loading…</div></div>
+  </main>
+
+  <script type="module">
+    import { supabase, isConfigured, logout } from '/supabase.js';
+    import { esc } from '/util.js';
+
+    document.getElementById('logout').addEventListener('click', logout);
+    const content = document.getElementById('content');
+    const nationId = new URLSearchParams(location.search).get('nation');
+
+    (async () => {
+      if (!isConfigured) { content.innerHTML = '<div class="empty">Nation data isn’t connected yet.</div>'; return; }
+      if (!nationId) { content.innerHTML = '<div class="empty">No nation selected. <a href="/nations/">Choose one.</a></div>'; return; }
+      try {
+        const [natRes, persRes] = await Promise.all([
+          supabase.from('nationverse_nations').select('id, name, flag, analogous, capital').eq('id', nationId).maybeSingle(),
+          supabase.from('nationverse_personalities').select('*').eq('nation_id', nationId).order('created_at', { ascending: true })
+        ]);
+        if (natRes.error) throw natRes.error;
+        const n = natRes.data;
+        if (!n) { content.innerHTML = '<div class="empty">That nation no longer exists. <a href="/nations/">Choose another.</a></div>'; return; }
+        const roles = (persRes.error ? [] : (persRes.data || []));
+
+        const flag = n.flag
+          ? '<img class="nflag" alt="Flag" src="' + esc(n.flag) + '">'
+          : '<div class="nflag ph">' + esc((n.name || '?').slice(0, 3)) + '</div>';
+        const sub = [n.analogous ? 'Analogous: ' + esc(n.analogous) : '', n.capital ? 'Capital: ' + esc(n.capital) : ''].filter(Boolean).join(' · ');
+
+        const roleList = roles.length
+          ? '<div class="roles">' + roles.map(r =>
+              '<button class="rolecard" type="button" data-id="' + esc(r.id) + '">' +
+                '<div><div class="rn">' + esc(r.name || 'Unnamed') + '</div>' +
+                '<div class="rr">' + esc(r.role || '—') + '</div></div>' +
+                (r.starting_age != null ? '<div class="rage">Age ' + esc(r.starting_age) + '</div>' : '') +
+              '</button>'
+            ).join('') + '</div>'
+          : '<div class="empty">No roles have been created for this nation yet.</div>';
+
+        content.innerHTML =
+          '<div class="nhead">' + flag + '<div><h1>' + esc(n.name || 'Unknown') + '</h1>' +
+          (sub ? '<p class="sub">' + sub + '</p>' : '') + '</div></div>' +
+          '<div class="rhd">Choose your role</div>' + roleList;
+
+        // Selectable roles (single-select highlight; the play flow lands later).
+        content.querySelectorAll('.rolecard').forEach(card => card.addEventListener('click', () => {
+          content.querySelectorAll('.rolecard.sel').forEach(c => c.classList.remove('sel'));
+          card.classList.add('sel');
+        }));
+      } catch (e) { content.innerHTML = '<div class="empty">Couldn’t load this nation. Try again shortly.</div>'; }
+    })();
+  </script>
+</body>
+</html>
