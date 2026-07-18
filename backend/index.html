@@ -105,6 +105,15 @@
   .effgrid select, .effgrid input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 13.5px; font-family: inherit; width: 100%; box-sizing: border-box; }
   .modstat .k { color: var(--muted); }
 
+  /* Corporation ownership rows */
+  #c-nation, #c-sector { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 14.5px; font-family: inherit; }
+  .ownrow { display: grid; grid-template-columns: 1fr 1.4fr 90px auto; gap: 10px; align-items: end; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--bg); margin-bottom: 10px; }
+  @media (max-width: 720px) { .ownrow { grid-template-columns: 1fr 1fr; } }
+  .ownrow .fld { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .ownrow label { font-size: 12px; font-weight: 700; color: var(--muted); }
+  .ownrow select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 13.5px; font-family: inherit; width: 100%; box-sizing: border-box; }
+  .ownrow .o-del { align-self: end; height: 36px; }
+
   .actions { display: flex; align-items: center; gap: 14px; margin-top: 24px; }
   .note { font-size: 13.5px; color: var(--muted); }
   .note.ok { color: #16915a; }
@@ -138,6 +147,7 @@
         <button class="vtab" data-tab="nation" type="button">Nation Creator</button>
         <button class="vtab" data-tab="personalities" type="button">Personalities</button>
         <button class="vtab" data-tab="modifiers" type="button">Modifiers</button>
+        <button class="vtab" data-tab="corporations" type="button">Corporations</button>
       </nav>
       <div class="panel">
         <div class="tabpanel" data-panel="list">
@@ -227,6 +237,36 @@
           </div>
         </div>
         </div><!-- /tabpanel modifiers -->
+
+        <div class="tabpanel" data-panel="corporations" hidden>
+        <div class="card">
+          <h2 id="corpTitle">Corporation Creator</h2>
+          <p class="lead">Create a corporation headquartered in a Nationverse nation. Select one from the list to edit or delete.</p>
+
+          <div id="corpList" class="natlist"></div>
+
+          <div class="f"><label>Name of Corporation</label><input id="c-name" type="text" autocomplete="off"></div>
+          <div class="f"><label>Headquartered Nation</label><select id="c-nation"></select></div>
+          <div class="f"><label>Abbreviation <span class="hint">2–4 letters</span></label><input id="c-abbr" type="text" maxlength="4" autocomplete="off" style="max-width:160px"></div>
+          <div class="f"><label>Sector</label><select id="c-sector"></select></div>
+          <div class="statgrid">
+            <div class="stat"><div class="meta"><div class="nm">Capital</div><div class="ds">−50 to 100</div></div><input id="c-capital" type="number" min="-50" max="100" step="1" value="0"></div>
+            <div class="stat"><div class="meta"><div class="nm">Growth</div><div class="ds">−50 to 100</div></div><input id="c-growth" type="number" min="-50" max="100" step="1" value="0"></div>
+            <div class="stat"><div class="meta"><div class="nm">Special Resource</div><div class="ds">0 to 20</div></div><input id="c-special" type="number" min="0" max="20" step="1" value="0"></div>
+            <div class="stat"><div class="meta"><div class="nm">Starting Reputation</div><div class="ds">−20 to 20</div></div><input id="c-rep" type="number" min="-20" max="20" step="1" value="0"></div>
+          </div>
+
+          <div class="statshd">Ownership</div>
+          <div id="ownList"></div>
+          <button class="btn btn-ghost" id="addOwner" type="button" style="margin-top:2px">+ Add Ownership</button>
+
+          <div class="actions">
+            <button class="btn btn-solid" id="saveCorp" type="button">Save Corporation</button>
+            <button class="btn btn-ghost" id="cancelCorp" type="button" hidden>Cancel</button>
+            <span class="note" id="corpNote" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+        </div><!-- /tabpanel corporations -->
       </div>
     </div>
   </div>
@@ -476,6 +516,7 @@
       if (tab === 'list') loadNationsList();
       if (tab === 'personalities') { loadNvNations(); loadPersonalities(); }
       if (tab === 'modifiers') loadModList();
+      if (tab === 'corporations') loadCorpRefs().then(loadCorpList);
     }
     vtabs.forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
 
@@ -793,6 +834,171 @@
       } catch (e) { persNote.textContent = e.message || 'Could not delete.'; persNote.className = 'note error'; }
       finally { reenablePers(); }
     });
+
+    // ---- Corporation Creator (add + edit; headquartered in a Nationverse nation) ----
+    const SECTORS = ['Banking', 'Automotive', 'Construction', 'Arms', 'Energy', 'Media', 'Agribusiness',
+      'Mining', 'Manufacturing', 'Shipping', 'Telecom', 'Pharma', 'Military Contractor'];
+    document.getElementById('c-sector').innerHTML = opts(SECTORS);
+    const clampN = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
+
+    const natSelC = document.getElementById('c-nation');
+    const ownListBox = document.getElementById('ownList');
+    const corpNote = document.getElementById('corpNote');
+    const saveCorpBtn = document.getElementById('saveCorp');
+    const cancelCorpBtn = document.getElementById('cancelCorp');
+    const corpTitle = document.getElementById('corpTitle');
+    const corpListBox = document.getElementById('corpList');
+    let corpNats = [], corpPers = [];    // {id,name} of Nationverse nations + personalities (owner pickers)
+    let corpBusy = false, editingCorpId = null;
+
+    const shareOptions = sel => [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+      .map(v => '<option value="' + v + '"' + (v === sel ? ' selected' : '') + '>' + v + '%</option>').join('');
+    function ownerOptions(type, selId) {
+      const arr = type === 'Nation' ? corpNats : corpPers;
+      if (!arr.length) return '<option value="">No ' + (type === 'Nation' ? 'nations' : 'personalities') + ' yet</option>';
+      return arr.map(o => '<option value="' + esc(o.id) + '"' + (o.id === selId ? ' selected' : '') + '>' + esc(o.name || 'Untitled') + '</option>').join('');
+    }
+    function ownerRowHTML() {
+      return '<div class="ownrow">' +
+        '<div class="fld"><label>Owner Type</label><select class="o-type"><option>Personality</option><option>Nation</option></select></div>' +
+        '<div class="fld"><label>Owner</label><select class="o-owner">' + ownerOptions('Personality') + '</select></div>' +
+        '<div class="fld"><label>Share</label><select class="o-share">' + shareOptions(10) + '</select></div>' +
+        '<button class="del o-del" type="button">Remove</button>' +
+      '</div>';
+    }
+    function addOwner() { ownListBox.insertAdjacentHTML('beforeend', ownerRowHTML()); }
+    ownListBox.addEventListener('click', e => { if (e.target.classList.contains('o-del')) e.target.closest('.ownrow').remove(); });
+    ownListBox.addEventListener('change', e => {
+      if (e.target.classList.contains('o-type')) {
+        const row = e.target.closest('.ownrow');
+        row.querySelector('.o-owner').innerHTML = ownerOptions(e.target.value);
+      }
+    });
+    document.getElementById('addOwner').addEventListener('click', addOwner);
+
+    function collectOwnership() {
+      const out = [];
+      ownListBox.querySelectorAll('.ownrow').forEach(r => {
+        const id = r.querySelector('.o-owner').value;
+        if (!id) return;   // empty owner list / nothing selected
+        out.push({ type: r.querySelector('.o-type').value.toLowerCase(), id, share: Number(r.querySelector('.o-share').value) || 0 });
+      });
+      return out;
+    }
+    function setOwnership(list) {
+      ownListBox.innerHTML = '';
+      (list || []).forEach(o => {
+        addOwner();
+        const r = ownListBox.lastElementChild, type = o.type === 'nation' ? 'Nation' : 'Personality';
+        r.querySelector('.o-type').value = type;
+        r.querySelector('.o-owner').innerHTML = ownerOptions(type, o.id);
+        r.querySelector('.o-share').value = o.share || 10;
+      });
+    }
+
+    // Load the nation + personality pickers (and refresh any open owner dropdowns).
+    async function loadCorpRefs() {
+      try {
+        const [natsRes, persRes] = await Promise.all([
+          supabase.from('nationverse_nations').select('id, name').order('name', { ascending: true }),
+          supabase.from('nationverse_personalities').select('id, name').order('name', { ascending: true })
+        ]);
+        corpNats = natsRes.data || []; corpPers = persRes.data || [];
+      } catch (e) { corpNats = []; corpPers = []; }
+      natSelC.innerHTML = corpNats.length
+        ? corpNats.map(n => '<option value="' + esc(n.id) + '">' + esc(n.name || 'Untitled') + '</option>').join('')
+        : '<option value="">No nations yet — add one first</option>';
+      ownListBox.querySelectorAll('.ownrow').forEach(r => { r.querySelector('.o-owner').innerHTML = ownerOptions(r.querySelector('.o-type').value); });
+    }
+
+    function resetCorpForm() {
+      editingCorpId = null; corpTitle.textContent = 'Corporation Creator'; saveCorpBtn.textContent = 'Save Corporation'; cancelCorpBtn.hidden = true;
+      ['c-name', 'c-abbr'].forEach(id => { document.getElementById(id).value = ''; });
+      document.getElementById('c-sector').selectedIndex = 0;
+      document.getElementById('c-capital').value = 0; document.getElementById('c-growth').value = 0;
+      document.getElementById('c-special').value = 0; document.getElementById('c-rep').value = 0;
+      ownListBox.innerHTML = '';
+    }
+    async function editCorp(c) {
+      await loadCorpRefs();
+      editingCorpId = c.id; corpTitle.textContent = 'Edit Corporation'; saveCorpBtn.textContent = 'Save changes'; cancelCorpBtn.hidden = false;
+      document.getElementById('c-name').value = c.name || '';
+      natSelC.value = c.hq_nation_id || '';
+      document.getElementById('c-abbr').value = c.abbreviation || '';
+      document.getElementById('c-sector').value = c.sector || SECTORS[0];
+      document.getElementById('c-capital').value = c.capital != null ? c.capital : 0;
+      document.getElementById('c-growth').value = c.growth != null ? c.growth : 0;
+      document.getElementById('c-special').value = c.special_resource != null ? c.special_resource : 0;
+      document.getElementById('c-rep').value = c.reputation != null ? c.reputation : 0;
+      setOwnership(c.ownership);
+      vtabs.forEach(x => x.classList.toggle('active', x.dataset.tab === 'corporations'));
+      panels.forEach(p => { p.hidden = p.dataset.panel !== 'corporations'; });
+      loadCorpList(); window.scrollTo(0, 0);
+    }
+    cancelCorpBtn.addEventListener('click', () => { resetCorpForm(); corpNote.textContent = ''; corpNote.className = 'note'; });
+
+    saveCorpBtn.addEventListener('click', async () => {
+      if (corpBusy) return;
+      const name = document.getElementById('c-name').value.trim();
+      const abbr = document.getElementById('c-abbr').value.trim().toUpperCase();
+      const hq = natSelC.value || null;
+      if (!name) { corpNote.textContent = 'A name is required.'; corpNote.className = 'note error'; return; }
+      if (!hq) { corpNote.textContent = 'Pick a headquartered nation first.'; corpNote.className = 'note error'; return; }
+      if (abbr && !/^[A-Z]{2,4}$/.test(abbr)) { corpNote.textContent = 'Abbreviation must be 2–4 letters.'; corpNote.className = 'note error'; return; }
+      const row = {
+        name, hq_nation_id: hq, abbreviation: abbr || null, sector: document.getElementById('c-sector').value,
+        capital: clampN(document.getElementById('c-capital').value, -50, 100),
+        growth: clampN(document.getElementById('c-growth').value, -50, 100),
+        special_resource: clampN(document.getElementById('c-special').value, 0, 20),
+        reputation: clampN(document.getElementById('c-rep').value, -20, 20),
+        ownership: collectOwnership()
+      };
+      corpBusy = true; saveCorpBtn.disabled = true; corpNote.textContent = 'Saving…'; corpNote.className = 'note';
+      try {
+        if (editingCorpId) {
+          const { error } = await supabase.from('nationverse_corporations').update(row).eq('id', editingCorpId);
+          if (error) throw error; corpNote.textContent = 'Saved changes to “' + name + '”.'; corpNote.className = 'note ok';
+        } else {
+          const { error } = await supabase.from('nationverse_corporations').insert(row);
+          if (error) throw error; corpNote.textContent = 'Added “' + name + '”.'; corpNote.className = 'note ok';
+        }
+        resetCorpForm(); loadCorpList();
+      } catch (e) { corpNote.textContent = e.message || 'Could not save the corporation.'; corpNote.className = 'note error'; }
+      finally { corpBusy = false; saveCorpBtn.disabled = false; }
+    });
+
+    async function loadCorpList() {
+      corpListBox.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        const { data, error } = await supabase.from('nationverse_corporations').select('*').order('name', { ascending: true });
+        if (error) throw error;
+        const rows = data || [];
+        if (!rows.length) { corpListBox.innerHTML = '<div class="empty">No corporations yet — create one below.</div>'; return; }
+        const natName = id => (corpNats.find(n => n.id === id) || {}).name || '—';
+        const ownName = (t, id) => ((t === 'nation' ? corpNats : corpPers).find(o => o.id === id) || {}).name || '(removed)';
+        corpListBox.innerHTML = rows.map(c => {
+          const stat = (k, v) => '<div class="natstat"><span class="k">' + k + '</span><span class="v">' + (v != null ? v : '—') + '</span></div>';
+          const own = (c.ownership || []).map(o => '<div class="natstat"><span class="k">' + esc(ownName(o.type, o.id)) + '</span><span class="v">' + (o.share || 0) + '%</span></div>').join('');
+          const sub = [c.abbreviation ? esc(c.abbreviation) : '', c.sector ? esc(c.sector) : '', 'HQ: ' + esc(natName(c.hq_nation_id))].filter(Boolean).join(' · ');
+          return '<div class="natcard" data-id="' + esc(c.id) + '">' +
+            '<div class="natcard-hd"><div class="natmeta"><div class="natnm">' + esc(c.name || 'Untitled') + '</div>' +
+            '<div class="natsub">' + sub + '</div></div>' +
+            '<div class="natbtns"><button class="btn btn-ghost corp-edit" type="button">Edit</button><button class="del corp-del" type="button">Delete</button></div></div>' +
+            '<div class="natstatgrid">' + stat('Capital', c.capital) + stat('Growth', c.growth) + stat('Special Resource', c.special_resource) + stat('Reputation', c.reputation) + '</div>' +
+            (own ? '<div class="natextra" style="margin-bottom:6px">Ownership</div><div class="natstatgrid">' + own + '</div>' : '') +
+          '</div>';
+        }).join('');
+        corpListBox.querySelectorAll('.natcard').forEach(card => {
+          const c = rows.find(x => x.id === card.dataset.id); if (!c) return;
+          card.querySelector('.corp-edit').addEventListener('click', () => editCorp(c));
+          card.querySelector('.corp-del').addEventListener('click', async () => {
+            if (!window.confirm('Delete “' + (c.name || 'this corporation') + '”?')) return;
+            try { const { error } = await supabase.from('nationverse_corporations').delete().eq('id', c.id); if (error) throw error; if (editingCorpId === c.id) resetCorpForm(); loadCorpList(); }
+            catch (e) { alert(e.message || 'Could not delete the corporation.'); }
+          });
+        });
+      } catch (e) { corpListBox.innerHTML = '<div class="empty">Couldn’t load corporations. Try again.</div>'; }
+    }
 
     refresh();
   </script>
