@@ -20,13 +20,16 @@
   .nhead .sub { color: var(--muted); font-size: 13px; font-style: italic; margin: 4px 0 0; }
 
   .rhd { font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 30px 0 12px; }
-  .roles { display: flex; flex-direction: column; gap: 10px; }
-  .rolecard { text-align: left; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 15px 17px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .roles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; align-items: start; }
+  @media (max-width: 640px) { .roles { grid-template-columns: 1fr; } }
+  .rolecard { text-align: left; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 15px 17px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
   .rolecard:hover { border-color: color-mix(in srgb, var(--ink) 28%, var(--line)); }
   .rolecard.sel { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
+  .rolecard .rtop { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
   .rolecard .rn { font-size: 15.5px; font-weight: 800; }
-  .rolecard .rr { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .rolecard .rr { color: var(--muted); font-size: 13px; }
   .rolecard .rage { color: var(--muted); font-size: 12.5px; flex: none; }
+  .rolecard .rdesc { color: var(--muted); font-size: 13px; line-height: 1.5; margin-top: 6px; }
   .empty { padding: 40px 24px; border: 1px dashed var(--line); border-radius: 14px; text-align: center; color: var(--muted); font-size: 14.5px; }
 </style>
 </head>
@@ -62,13 +65,22 @@
       if (!nationId) { content.innerHTML = '<div class="empty">No nation selected. <a href="/nations/">Choose one.</a></div>'; return; }
       try {
         const [natRes, persRes] = await Promise.all([
-          supabase.from('nationverse_nations').select('id, name, flag, analogous, capital').eq('id', nationId).maybeSingle(),
+          supabase.from('nationverse_nations').select('id, name, flag, analogous, capital, parties').eq('id', nationId).maybeSingle(),
           supabase.from('nationverse_personalities').select('*').eq('nation_id', nationId).order('created_at', { ascending: true })
         ]);
         if (natRes.error) throw natRes.error;
         const n = natRes.data;
         if (!n) { content.innerHTML = '<div class="empty">That nation no longer exists. <a href="/nations/">Choose another.</a></div>'; return; }
         const roles = (persRes.error ? [] : (persRes.data || []));
+
+        // A politician's role reads "Party Leader of <party>". The party name is the one source (the
+        // nation's parties): prefer the stored party name, else map the legacy "Politician of Party N" slot.
+        const parties = n.parties || [];
+        const roleLabelOf = p => {
+          let party = p.party || null;
+          if (!party) { const m = /^Politician of Party (\d+)$/.exec(p.role || ''); if (m) party = (parties[+m[1] - 1] || {}).name || null; }
+          return party ? ('Party Leader of ' + party) : (p.role || '—');
+        };
 
         const flag = n.flag
           ? '<img class="nflag" alt="Flag" src="' + esc(n.flag) + '">'
@@ -78,9 +90,11 @@
         const roleList = roles.length
           ? '<div class="roles">' + roles.map(r =>
               '<button class="rolecard" type="button" data-id="' + esc(r.id) + '">' +
-                '<div><div class="rn">' + esc(r.name || 'Unnamed') + '</div>' +
-                '<div class="rr">' + esc(r.role || '—') + '</div></div>' +
-                (r.starting_age != null ? '<div class="rage">Age ' + esc(r.starting_age) + '</div>' : '') +
+                '<div class="rtop"><div class="rn">' + esc(r.name || 'Unnamed') + '</div>' +
+                  (r.starting_age != null ? '<div class="rage">Age ' + esc(r.starting_age) + '</div>' : '') +
+                '</div>' +
+                '<div class="rr">' + esc(roleLabelOf(r)) + '</div>' +
+                (r.description ? '<div class="rdesc">' + esc(r.description) + '</div>' : '') +
               '</button>'
             ).join('') + '</div>'
           : '<div class="empty">No roles have been created for this nation yet.</div>';
