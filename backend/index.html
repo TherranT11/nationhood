@@ -274,6 +274,7 @@
   <script type="module">
     import { supabase, isConfigured } from '/supabase.js';
     import { esc } from '/util.js';   // shared HTML-escape (one source)
+    import { NV_STATS } from '/nationverse.js';   // the 13 Nationverse stats (one source)
     import { uploadToStorage } from '/upload.js';                          // ONE image-upload path
     import { getAdminState, adminSignIn, adminSignOut } from '/admin-auth.js';  // ONE admin gate
 
@@ -282,21 +283,7 @@
 
     // The thirteen Nationverse stats — ONE source: the form renders inputs from this list and the
     // submit collects values back from it (key → integer 0..20).
-    const STATS = [
-      ['budget', 'Budget', 'Government finances and fiscal flexibility'],
-      ['economic_growth', 'Economic Growth', 'Expansion or contraction of the economy'],
-      ['inflation', 'Inflation', ''],
-      ['standard_of_living', 'Standard of Living', 'Average quality of life for citizens'],
-      ['unrest', 'Unrest', 'Active protests, strikes, riots, insurgency, and instability'],
-      ['legitimacy', 'Legitimacy', 'Public acceptance of the government and political system'],
-      ['corruption', 'Corruption', 'Misuse of public office and institutional integrity'],
-      ['state_capacity', 'State Capacity', 'Government ability to enforce laws, collect taxes, and implement policy'],
-      ['social_cohesion', 'Social Cohesion', 'Unity between ethnic, religious, regional, and class groups'],
-      ['power_projection', 'Power Projection', 'Ability to influence events beyond national borders'],
-      ['military_readiness', 'Military Readiness', 'Training, equipment, logistics, morale, and combat preparedness of the armed forces'],
-      ['media_freedom', 'Media Freedom', 'Independence of the press and public access to information'],
-      ['business_climate', 'Business Climate', 'Attractiveness of the country for investment and private enterprise'],
-    ];
+    const STATS = NV_STATS;   // the thirteen Nationverse stats (one source: nationverse.js)
     const clamp20 = v => Math.max(0, Math.min(20, Math.round(Number(v) || 0)));
 
     document.getElementById('statGrid').innerHTML = STATS.map(([key, nm, ds]) =>

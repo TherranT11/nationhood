@@ -12,14 +12,33 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  .pick { max-width: 960px; margin: 0 auto; padding: 56px 24px 80px; }
+  .pick { max-width: 1180px; margin: 0 auto; padding: 44px 24px 80px; }
   .pick h1 { font-size: clamp(28px, 5vw, 38px); letter-spacing: -0.03em; font-weight: 800; margin: 0 0 10px; }
-  .date { color: var(--muted); font-size: 15px; font-weight: 600; margin: 0; }
+  .date { color: var(--muted); font-size: 15px; font-weight: 600; margin: 0 0 30px; }
   .date b { color: var(--ink); font-weight: 700; }
-  /* Empty state — the nation grid lands here later. */
-  .empty { margin-top: 40px; padding: 48px 24px; border: 1px dashed var(--line); border-radius: 14px;
-    text-align: center; color: var(--muted); font-size: 14.5px; }
-  @media (max-width: 560px) { .pick { padding: 40px 16px 64px; } }
+  .empty { padding: 48px 24px; border: 1px dashed var(--line); border-radius: 14px; text-align: center; color: var(--muted); font-size: 14.5px; }
+
+  /* Nation cards — a responsive grid; each shows the 13 stats + its authored parties. */
+  .nvgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 22px; }
+  @media (max-width: 560px) { .nvgrid { grid-template-columns: 1fr; } }
+  .nvcard { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: var(--surface); }
+  .nvbanner { height: 150px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--bg); border-bottom: 1px solid var(--line); }
+  .nvbanner img { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; }
+  .nvbanner .ph { color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+  .nvbody { padding: 20px 22px 22px; }
+  .nvname { font-size: 23px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+  .nvsub { color: var(--muted); font-size: 13px; font-style: italic; margin: 4px 0 0; }
+  .nvdesc { color: var(--muted); font-size: 14px; line-height: 1.55; margin: 12px 0 0; }
+  .nvstats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 7px; margin-top: 16px; }
+  .nvstat { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); border-radius: 9px; padding: 7px 11px; font-size: 12.5px; }
+  .nvstat .k { color: var(--muted); }
+  .nvstat .v { font-weight: 800; }
+  .nvpart { margin-top: 16px; }
+  .nvpart .hd { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .prow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; }
+  .prow .pn { font-weight: 700; }
+  .prow .pmeta { color: var(--muted); font-size: 12px; }
+  @media (max-width: 560px) { .pick { padding: 32px 16px 64px; } }
 </style>
 </head>
 <body>
@@ -39,15 +58,60 @@
   <main class="pick">
     <h1>Choose the nation you will call home.</h1>
     <p class="date">Current Date: <b id="gamedate">…</b></p>
-
-    <div class="empty">Nations will appear here soon.</div>
+    <div id="nations"><div class="empty">Loading…</div></div>
   </main>
 
   <script type="module">
-    import { mountGameDate } from '/gamedate.js';   // live game date (one source)
+    import { supabase, isConfigured } from '/supabase.js';
     import { logout } from '/supabase.js';
+    import { mountGameDate } from '/gamedate.js';   // live game date (one source)
+    import { esc } from '/util.js';
+    import { NV_STATS } from '/nationverse.js';      // the 13 stats (one source)
+
     mountGameDate(document.getElementById('gamedate'));
     document.getElementById('logout').addEventListener('click', logout);
+
+    const box = document.getElementById('nations');
+
+    (async () => {
+      if (!isConfigured) { box.innerHTML = '<div class="empty">Nation data isn’t connected yet.</div>'; return; }
+      try {
+        const { data, error } = await supabase.from('nationverse_nations').select('*').order('name', { ascending: true });
+        if (error) throw error;
+        const rows = data || [];
+        if (!rows.length) { box.innerHTML = '<div class="empty">Nations will appear here soon.</div>'; return; }
+        box.className = 'nvgrid';
+        box.innerHTML = rows.map(n => {
+          const stats = n.stats || {};
+          const statHtml = NV_STATS.map(([key, nm]) =>
+            '<div class="nvstat"><span class="k">' + esc(nm) + '</span><span class="v">' + (stats[key] != null ? stats[key] : '—') + '</span></div>'
+          ).join('');
+          const sub = [n.analogous ? 'Analogous: ' + esc(n.analogous) : '', n.capital ? 'Capital: ' + esc(n.capital) : ''].filter(Boolean).join(' · ');
+          const flag = n.flag
+            ? '<img alt="Flag" src="' + esc(n.flag) + '">'
+            : '<span class="ph">' + esc(n.name || '') + '</span>';
+          const parties = (n.parties || []).length
+            ? '<div class="nvpart"><div class="hd">Parties</div>' + n.parties.map(p =>
+                '<div class="prow"><span class="pn">' + esc(p.name || 'Unnamed') + '</span>' +
+                '<span class="pmeta">' + [esc(p.ideology || ''), (p.seats != null ? p.seats + ' seats' : '')].filter(Boolean).join(' · ') + '</span></div>'
+              ).join('') + '</div>'
+            : '';
+          return '<article class="nvcard">' +
+            '<div class="nvbanner">' + flag + '</div>' +
+            '<div class="nvbody">' +
+              '<h2 class="nvname">' + esc(n.name || 'Unknown') + '</h2>' +
+              (sub ? '<p class="nvsub">' + sub + '</p>' : '') +
+              (n.description ? '<p class="nvdesc">' + esc(n.description) + '</p>' : '') +
+              '<div class="nvstats">' + statHtml + '</div>' +
+              parties +
+            '</div></article>';
+        }).join('');
+        // Flag fallback: if an asset 404s, swap in the name placeholder.
+        box.querySelectorAll('.nvbanner img').forEach((img, i) => {
+          img.onerror = () => img.replaceWith(Object.assign(document.createElement('span'), { className: 'ph', textContent: rows[i] && rows[i].name || '' }));
+        });
+      } catch (e) { box.innerHTML = '<div class="empty">Couldn’t load nations. Try again shortly.</div>'; }
+    })();
   </script>
 </body>
 </html>
