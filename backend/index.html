@@ -114,6 +114,19 @@
   .ownrow select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 13.5px; font-family: inherit; width: 100%; box-sizing: border-box; }
   .ownrow .o-del { align-self: end; height: 36px; }
 
+  /* Government section */
+  #g-system, #g-type, #g-lead { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 14.5px; font-family: inherit; }
+  .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+  .checks label { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; font-size: 13.5px; font-weight: 600; cursor: pointer; background: var(--bg); }
+  .checks input { width: 16px; height: 16px; flex: none; accent-color: var(--ink); }
+  .checks .none { color: var(--muted); font-size: 13px; font-style: italic; padding: 8px 2px; }
+  .govcalc { border: 1px solid var(--line); border-radius: 12px; background: var(--bg); padding: 14px 16px; margin-top: 6px; font-size: 13.5px; }
+  .govcalc .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .govcalc .row:last-child { border-bottom: 0; }
+  .govcalc .k { color: var(--muted); }
+  .govcalc .v { font-weight: 700; }
+  .govcalc .opp { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
   .actions { display: flex; align-items: center; gap: 14px; margin-top: 24px; }
   .note { font-size: 13.5px; color: var(--muted); }
   .note.ok { color: #16915a; }
@@ -181,6 +194,20 @@
 
           <div class="statshd">Parties</div>
           <div id="partySlots"></div>
+
+          <div class="statshd">Current Government</div>
+          <div class="govbox">
+            <div class="f"><label>Government System</label><select id="g-system"></select></div>
+            <div class="f"><label>Government Type</label><select id="g-type"></select></div>
+            <div class="f"><label>Lead Government Party</label><select id="g-lead"></select></div>
+            <div class="f"><label>Coalition Parties</label><div id="g-coalition" class="checks"></div></div>
+            <div class="f"><label>Confidence-and-Supply Parties</label><div id="g-supply" class="checks"></div></div>
+            <div class="f" style="display:flex;gap:18px;flex-wrap:wrap">
+              <span><label>Government Stability <span class="hint">optional · 0–20</span></label><input id="g-stability" type="number" min="0" max="20" step="1" style="max-width:110px"></span>
+              <span><label>Date Government Formed <span class="hint">optional</span></label><input id="g-formed" type="date" style="max-width:200px"></span>
+            </div>
+            <div id="g-calc" class="govcalc"></div>
+          </div>
 
           <div class="statshd">Demographics</div>
           <div id="demoGroups"></div>
@@ -328,6 +355,91 @@
     document.getElementById('addGroup').addEventListener('click', addGroup);
     addGroup();   // start with Group 1
 
+    // ---- Current Government (structure authored here; opposition/seats/threshold derive live) ----
+    const GOV_SYSTEMS = ['Parliamentary Republic', 'Presidential Republic', 'Semi-Presidential Republic',
+      'Constitutional Monarchy', 'Absolute Monarchy', 'Military Junta', 'One-Party State', 'Provisional Government', 'Theocracy'];
+    const GOV_TYPES = ['Majority Government', 'Minority Government', 'Coalition Government', 'National Unity Government',
+      'Caretaker Government', 'Provisional Government', 'Suspended Government'];
+    document.getElementById('g-system').innerHTML = opts(GOV_SYSTEMS);
+    document.getElementById('g-type').innerHTML = opts(GOV_TYPES);
+    const gLead = document.getElementById('g-lead'), gCoalBox = document.getElementById('g-coalition'),
+          gSupBox = document.getElementById('g-supply'), gCalc = document.getElementById('g-calc');
+
+    // The parties currently named in the slots above — the government references parties by name.
+    function namedParties() {
+      const out = [];
+      document.querySelectorAll('#partySlots .pslot').forEach(s => {
+        const name = s.querySelector('.p-name').value.trim();
+        if (name) out.push({ name, seats: Math.max(0, Math.round(Number(s.querySelector('.p-seats').value) || 0)) });
+      });
+      return out;
+    }
+    const checkedNames = box => Array.from(box.querySelectorAll('input:checked')).map(i => i.value);
+    const cssEsc = n => (window.CSS && CSS.escape ? CSS.escape(n) : n);
+    function checksHTML(names, checked) {
+      return names.length
+        ? names.map(n => '<label><input type="checkbox" value="' + esc(n) + '"' + (checked.includes(n) ? ' checked' : '') + '>' + esc(n) + '</label>').join('')
+        : '<div class="none">Add parties above first.</div>';
+    }
+    function renderGovParties() {
+      const names = namedParties().map(p => p.name);
+      const curLead = gLead.value, curCoal = checkedNames(gCoalBox), curSup = checkedNames(gSupBox);
+      gLead.innerHTML = '<option value="">— none —</option>' + names.map(n => '<option' + (n === curLead ? ' selected' : '') + '>' + esc(n) + '</option>').join('');
+      gCoalBox.innerHTML = checksHTML(names, curCoal);
+      gSupBox.innerHTML = checksHTML(names, curSup);
+      computeGovCalc();
+    }
+    function computeGovCalc() {
+      const parties = namedParties(), byName = {};
+      parties.forEach(p => { byName[p.name] = p.seats; });
+      const total = parties.reduce((a, p) => a + p.seats, 0);
+      const lead = gLead.value || null, coalition = checkedNames(gCoalBox), supply = checkedNames(gSupBox);
+      const govParties = [lead].concat(coalition).filter(Boolean);
+      const govSeats = govParties.reduce((a, n) => a + (byName[n] || 0), 0);
+      const threshold = total > 0 ? Math.floor(total / 2) + 1 : 0;
+      const inGov = new Set([lead, ...coalition, ...supply].filter(Boolean));
+      const opposition = parties.filter(p => !inGov.has(p.name)).map(p => p.name);
+      const breakdown = govParties.map(n => esc(n) + ': ' + (byName[n] || 0)).join(' · ');
+      gCalc.innerHTML =
+        '<div class="row"><span class="k">Government seats</span><span class="v">' + govSeats + ' / ' + total + '</span></div>' +
+        (breakdown ? '<div class="opp">' + breakdown + '</div>' : '') +
+        '<div class="row"><span class="k">Majority threshold</span><span class="v">' + threshold + '</span></div>' +
+        '<div class="row"><span class="k">Opposition (auto)</span><span class="v">' + (opposition.length ? '' : 'None') + '</span></div>' +
+        (opposition.length ? '<div class="opp">' + opposition.map(esc).join(' · ') + '</div>' : '');
+    }
+    gLead.addEventListener('change', computeGovCalc);
+    gCoalBox.addEventListener('change', computeGovCalc);
+    gSupBox.addEventListener('change', computeGovCalc);
+    document.getElementById('partySlots').addEventListener('input', e => {
+      if (e.target.classList.contains('p-name') || e.target.classList.contains('p-seats')) renderGovParties();
+    });
+    renderGovParties();
+
+    function collectGovernment() {
+      const st = document.getElementById('g-stability').value;
+      return {
+        system: document.getElementById('g-system').value,
+        type: document.getElementById('g-type').value,
+        lead: gLead.value || null,
+        coalition: checkedNames(gCoalBox),
+        supply: checkedNames(gSupBox),
+        stability: st === '' ? null : Math.max(0, Math.min(20, Math.round(Number(st) || 0))),
+        formed: document.getElementById('g-formed').value || null
+      };
+    }
+    function setGovernment(g) {
+      g = g || {};
+      document.getElementById('g-system').value = g.system || GOV_SYSTEMS[0];
+      document.getElementById('g-type').value = g.type || GOV_TYPES[0];
+      document.getElementById('g-stability').value = g.stability != null ? g.stability : '';
+      document.getElementById('g-formed').value = g.formed || '';
+      renderGovParties();                       // build pickers from the current party slots
+      gLead.value = g.lead || '';
+      (g.coalition || []).forEach(n => { const el = gCoalBox.querySelector('input[value="' + cssEsc(n) + '"]'); if (el) el.checked = true; });
+      (g.supply || []).forEach(n => { const el = gSupBox.querySelector('input[value="' + cssEsc(n) + '"]'); if (el) el.checked = true; });
+      computeGovCalc();
+    }
+
     // Flags upload to the existing 'world-event-images' bucket (folder 'flags') via upload.js — served
     // from storage, never committed to the repo.
     // Flag preview (local object URL — no upload until the nation is saved).
@@ -415,7 +527,7 @@
         description: document.getElementById('n-desc').value.trim() || null,
         analogous: document.getElementById('n-analog').value.trim() || null,
         capital: document.getElementById('n-capital').value.trim() || null,
-        stats, parties, demographics
+        stats, parties, demographics, government: collectGovernment()
       };
     }
 
@@ -429,6 +541,7 @@
       document.querySelectorAll('#partySlots .p-name, #partySlots .p-desc, #partySlots .p-seats').forEach(i => { i.value = ''; });
       document.querySelectorAll('#partySlots .p-ideo').forEach(s => { s.selectedIndex = 0; });
       demoBox.innerHTML = ''; addGroup();
+      setGovernment({});
     }
 
     // Load an existing nation into the form for editing, and switch to the Nation Creator tab.
@@ -451,6 +564,7 @@
         s.querySelector('.p-ideo').value = p.ideology || IDEOLOGIES[0];
         s.querySelector('.p-seats').value = p.seats != null ? p.seats : '';
       });
+      setGovernment(n.government);   // build pickers from the loaded parties, then apply the saved government
       demoBox.innerHTML = '';
       (n.demographics || []).forEach(g => {
         addGroup();
