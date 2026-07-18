@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Backend · Nationhood Admin</title>
+<link rel="stylesheet" href="/site.css">
+<style>
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+
+  /* Login */
+  .login { max-width: 380px; margin: 12vh auto 0; padding: 0 24px; }
+  .login h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .login .sub { color: var(--muted); font-size: 14.5px; margin: 0 0 22px; }
+  .login label { display: block; font-size: 13px; font-weight: 700; margin: 14px 0 5px; }
+  .login input { width: 100%; box-sizing: border-box; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 15px; }
+  .btn-full { width: 100%; margin-top: 18px; padding: 12px; font-size: 15px; }
+
+  /* Admin shell */
+  .wrap2 { max-width: 1180px; margin: 0 auto; padding: 28px 24px 80px; }
+  .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+  .topbar h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+  .topbar .sub { color: var(--muted); font-size: 14px; margin: 4px 0 0; }
+  .who { color: var(--muted); font-size: 12.5px; }
+  .adminbody { display: flex; gap: 26px; align-items: flex-start; }
+  .vtabs { display: flex; flex-direction: column; gap: 4px; width: 190px; flex: none; position: sticky; top: 20px; }
+  .vtab { text-align: left; padding: 10px 13px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; }
+  .vtab.active { background: var(--surface); border-color: var(--line); color: var(--ink); }
+  .panel { flex: 1; min-width: 0; }
+
+  .card { border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 24px; }
+  .card h2 { font-size: 19px; font-weight: 800; margin: 0 0 4px; }
+  .card .lead { color: var(--muted); font-size: 13.5px; margin: 0 0 20px; }
+  .f { margin-bottom: 16px; }
+  .f label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 5px; }
+  .f input[type="text"], .f textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 14.5px; font-family: inherit; }
+  .f textarea { min-height: 84px; resize: vertical; line-height: 1.5; }
+  .f .hint { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 6px; }
+
+  /* Flag upload */
+  .flagrow { display: flex; align-items: center; gap: 14px; }
+  .flagprev { width: 72px; height: 48px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); object-fit: cover; display: none; }
+  .flaghint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  /* Stats grid — one card per stat, a 0..20 input each. */
+  .statshd { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 26px 0 12px; }
+  .statgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  @media (max-width: 720px) { .statgrid { grid-template-columns: 1fr; } .adminbody { flex-direction: column; } .vtabs { flex-direction: row; flex-wrap: wrap; width: auto; position: static; } }
+  .stat { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--bg); display: flex; gap: 12px; align-items: flex-start; }
+  .stat .meta { flex: 1; min-width: 0; }
+  .stat .nm { font-size: 14px; font-weight: 700; }
+  .stat .ds { color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 2px; }
+  .stat input { width: 58px; flex: none; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 15px; font-weight: 700; text-align: center; }
+
+  .actions { display: flex; align-items: center; gap: 14px; margin-top: 24px; }
+  .note { font-size: 13.5px; color: var(--muted); }
+  .note.ok { color: #16915a; }
+  .note.error { color: var(--err); }
+</style>
+</head>
+<body>
+  <!-- LOGIN -->
+  <div class="login" id="loginView" hidden>
+    <h1>Backend</h1>
+    <p class="sub">Sign in with the admin account.</p>
+    <form id="loginForm">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required>
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button class="btn btn-solid btn-full" type="submit" id="signIn">Sign In</button>
+      <div class="note" id="loginNote" role="status" aria-live="polite" style="margin-top:12px"></div>
+    </form>
+  </div>
+
+  <!-- ADMIN -->
+  <div class="wrap2" id="adminView" hidden>
+    <div class="topbar">
+      <div><h1>Backend</h1><p class="sub">Nationverse admin panel.</p></div>
+      <div style="text-align:right"><div class="who" id="who"></div><button class="btn btn-ghost" id="logout" type="button" style="margin-top:6px">Log out</button></div>
+    </div>
+    <div class="adminbody">
+      <nav class="vtabs">
+        <button class="vtab active" type="button">Nation Creator</button>
+      </nav>
+      <div class="panel">
+        <div class="card">
+          <h2>Add Nation</h2>
+          <p class="lead">Create a nation for the Nationverse. It starts with the thirteen stats below (0–20 each).</p>
+
+          <div class="f"><label>Name</label><input id="n-name" type="text" autocomplete="off"></div>
+          <div class="f"><label>Nation Description</label><textarea id="n-desc"></textarea></div>
+          <div class="f"><label>Analogous</label><input id="n-analog" type="text" placeholder="e.g. France" autocomplete="off"></div>
+          <div class="f"><label>Capital</label><input id="n-capital" type="text" autocomplete="off"></div>
+
+          <div class="f">
+            <label>Nation Flag <span class="hint">optional · png/jpg/webp · max 2 MB · used from inception (no repo commit)</span></label>
+            <div class="flagrow">
+              <input id="n-flag" type="file" accept="image/png,image/jpeg,image/webp">
+              <img id="n-flagPrev" class="flagprev" alt="Flag preview">
+            </div>
+          </div>
+
+          <div class="statshd">Stats · 0 to 20</div>
+          <div class="statgrid" id="statGrid"></div>
+
+          <div class="actions">
+            <button class="btn btn-solid" id="addNation" type="button">Add Nation</button>
+            <span class="note" id="addNote" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, isConfigured } from '/supabase.js';
+
+    // The thirteen Nationverse stats — ONE source: the form renders inputs from this list and the
+    // submit collects values back from it (key → integer 0..20).
+    const STATS = [
+      ['budget', 'Budget', 'Government finances and fiscal flexibility'],
+      ['economic_growth', 'Economic Growth', 'Expansion or contraction of the economy'],
+      ['inflation', 'Inflation', ''],
+      ['standard_of_living', 'Standard of Living', 'Average quality of life for citizens'],
+      ['unrest', 'Unrest', 'Active protests, strikes, riots, insurgency, and instability'],
+      ['legitimacy', 'Legitimacy', 'Public acceptance of the government and political system'],
+      ['corruption', 'Corruption', 'Misuse of public office and institutional integrity'],
+      ['state_capacity', 'State Capacity', 'Government ability to enforce laws, collect taxes, and implement policy'],
+      ['social_cohesion', 'Social Cohesion', 'Unity between ethnic, religious, regional, and class groups'],
+      ['power_projection', 'Power Projection', 'Ability to influence events beyond national borders'],
+      ['military_readiness', 'Military Readiness', 'Training, equipment, logistics, morale, and combat preparedness of the armed forces'],
+      ['media_freedom', 'Media Freedom', 'Independence of the press and public access to information'],
+      ['business_climate', 'Business Climate', 'Attractiveness of the country for investment and private enterprise'],
+    ];
+    const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const clamp20 = v => Math.max(0, Math.min(20, Math.round(Number(v) || 0)));
+
+    document.getElementById('statGrid').innerHTML = STATS.map(([key, nm, ds]) =>
+      '<div class="stat"><div class="meta"><div class="nm">' + esc(nm) + '</div>' +
+      (ds ? '<div class="ds">' + esc(ds) + '</div>' : '') + '</div>' +
+      '<input type="number" min="0" max="20" step="1" value="10" data-key="' + key + '" aria-label="' + esc(nm) + '"></div>'
+    ).join('');
+
+    // ONE image-upload path (mirrors adminsetup/forum/wiki — see note in the reply): push a file to a
+    // Supabase storage bucket and return its public URL. Reuses the existing 'world-event-images'
+    // bucket (folder 'flags'), so flags are served from storage, never committed to the repo.
+    async function uploadFlag(file) {
+      if (file.size > 2 * 1024 * 1024) throw new Error('That image is over 2 MB.');
+      const u = (await supabase.auth.getUser()).data.user; if (!u) throw new Error('Not signed in.');
+      const ext = ((file.name || '').split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+      const path = 'flags/' + u.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+      const up = await supabase.storage.from('world-event-images').upload(path, file, { cacheControl: '3600', upsert: false });
+      if (up.error) throw new Error(up.error.message);
+      return supabase.storage.from('world-event-images').getPublicUrl(path).data.publicUrl;
+    }
+
+    // Flag preview (local object URL — no upload until the nation is saved).
+    const flagInput = document.getElementById('n-flag');
+    const flagPrev = document.getElementById('n-flagPrev');
+    flagInput.addEventListener('change', () => {
+      const f = flagInput.files && flagInput.files[0];
+      if (f) { flagPrev.src = URL.createObjectURL(f); flagPrev.style.display = 'block'; }
+      else { flagPrev.style.display = 'none'; }
+    });
+
+    // ---- Auth (mirrors adminsetup: email gate for the UI, is_admin() RLS is the real gate) ----
+    const ADMIN_EMAIL = 'therrant@gmail.com';
+    const loginView = document.getElementById('loginView');
+    const adminView = document.getElementById('adminView');
+    const loginNote = document.getElementById('loginNote');
+    const isAdmin = user => !!user && (user.email || '').toLowerCase() === ADMIN_EMAIL;
+    const show = view => { loginView.hidden = view !== 'login'; adminView.hidden = view !== 'admin'; };
+
+    async function refresh() {
+      if (!isConfigured) { show('login'); loginNote.textContent = 'Auth isn’t connected yet.'; loginNote.className = 'note error'; return; }
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && isAdmin(session.user)) {
+          document.getElementById('who').textContent = 'Signed in as ' + session.user.email;
+          show('admin');
+        } else if (session) {
+          show('login');
+          loginNote.textContent = 'This account isn’t the admin — sign in with the admin account.';
+          loginNote.className = 'note error';
+        } else { show('login'); }
+      } catch (e) { show('login'); }
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('signIn');
+      loginNote.textContent = ''; loginNote.className = 'note';
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      if (!email || !password) return;
+      btn.disabled = true;
+      try {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) { loginNote.textContent = error.message || 'Sign-in failed.'; loginNote.className = 'note error'; return; }
+        await refresh();
+      } catch (e) { loginNote.textContent = 'Sign-in failed. Try again.'; loginNote.className = 'note error'; }
+      finally { btn.disabled = false; }
+    });
+
+    document.getElementById('logout').addEventListener('click', async () => {
+      try { await supabase.auth.signOut(); } catch (e) { /* ignore */ }
+      await refresh();
+    });
+
+    // ---- Add Nation ----
+    const addBtn = document.getElementById('addNation');
+    const addNote = document.getElementById('addNote');
+    let adding = false;   // single-fire lock: this uploads + writes
+    addBtn.addEventListener('click', async () => {
+      if (adding) return;
+      const name = document.getElementById('n-name').value.trim();
+      if (!name) { addNote.textContent = 'A name is required.'; addNote.className = 'note error'; return; }
+      const stats = {};
+      document.querySelectorAll('#statGrid input[data-key]').forEach(i => { stats[i.dataset.key] = clamp20(i.value); });
+
+      adding = true; addBtn.disabled = true; addNote.textContent = 'Saving…'; addNote.className = 'note';
+      try {
+        let flagUrl = null;
+        const file = flagInput.files && flagInput.files[0];
+        if (file) flagUrl = await uploadFlag(file);
+        const { error } = await supabase.from('nationverse_nations').insert({
+          name,
+          description: document.getElementById('n-desc').value.trim() || null,
+          analogous: document.getElementById('n-analog').value.trim() || null,
+          capital: document.getElementById('n-capital').value.trim() || null,
+          flag: flagUrl,
+          stats
+        });
+        if (error) throw error;
+        addNote.textContent = 'Added “' + name + '”.'; addNote.className = 'note ok';
+        // Reset the form for the next nation.
+        ['n-name', 'n-desc', 'n-analog', 'n-capital'].forEach(id => { document.getElementById(id).value = ''; });
+        flagInput.value = ''; flagPrev.style.display = 'none';
+        document.querySelectorAll('#statGrid input[data-key]').forEach(i => { i.value = 10; });
+      } catch (e) {
+        addNote.textContent = e.message || 'Could not add the nation.'; addNote.className = 'note error';
+      } finally { adding = false; addBtn.disabled = false; }
+    });
+
+    refresh();
+  </script>
+</body>
+</html>
