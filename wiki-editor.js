@@ -5,6 +5,7 @@
 // may write what — this is just the form.
 
 import { injectWikiCSS, articleHTML } from '/wiki.js';
+import { uploadToStorage } from '/upload.js';
 
 var WK_KINDS = ['Nation', 'Political party', 'Politician', 'Place', 'Organization', 'Event'];
 
@@ -141,12 +142,7 @@ export function mountWikiEditor(opts) {
     if (file.size > 2 * 1024 * 1024) { note.textContent = 'That image is over 2 MB.'; return; }
     note.textContent = 'Uploading…';
     try {
-      var u = (await supabase.auth.getUser()).data.user; if (!u) throw new Error('Not signed in.');
-      var ext = ((file.name || '').split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-      var path = u.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
-      var up = await supabase.storage.from('wiki-images').upload(path, file, { cacheControl: '3600', upsert: false });
-      if (up.error) throw new Error(up.error.message);
-      S.image = supabase.storage.from('wiki-images').getPublicUrl(path).data.publicUrl;
+      S.image = await uploadToStorage('wiki-images', '', file, 0);   // size already checked above; one source: upload.js
       note.textContent = 'Image uploaded.'; showUpload(); preview();
     } catch (e) { note.textContent = 'Upload failed: ' + (e.message || e); }
   }
