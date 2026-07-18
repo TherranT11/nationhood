@@ -31,6 +31,7 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 16.558 3a13.6 13.6 0 0 0-.6 1.23 18.27 18.27 0 0 0-5.487 0A13.6 13.6 0 0 0 9.87 3a19.79 19.79 0 0 0-3.76 1.369C2.72 9.046 1.79 13.605 2.255 18.1a19.9 19.9 0 0 0 6.073 3.058c.49-.668.926-1.377 1.302-2.122a12.93 12.93 0 0 1-2.05-.978c.172-.126.34-.257.502-.392a14.2 14.2 0 0 0 12.036 0c.164.135.332.266.502.392-.654.386-1.343.714-2.052.98.376.743.812 1.452 1.302 2.12a19.86 19.86 0 0 0 6.075-3.058c.546-5.21-.93-9.728-3.93-13.73ZM9.682 15.33c-1.182 0-2.157-1.086-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.334-.955 2.42-2.157 2.42Zm4.636 0c-1.182 0-2.157-1.086-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.334-.946 2.42-2.157 2.42Z"/></svg>
           <span class="btn-label">Discord</span>
         </a>
+        <button class="btn btn-ghost" id="logout" type="button">Log out</button>
       </nav>
     </div>
   </header>
@@ -44,7 +45,9 @@
 
   <script type="module">
     import { mountGameDate } from '/gamedate.js';   // live game date (one source)
+    import { logout } from '/supabase.js';
     mountGameDate(document.getElementById('gamedate'));
+    document.getElementById('logout').addEventListener('click', logout);
   </script>
 </body>
 </html>

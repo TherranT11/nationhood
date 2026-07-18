@@ -64,7 +64,6 @@
   .tag.live .pd,.tag.progress .pd{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 1.8s infinite}
   .tag.lock{color:var(--accent);border:1.5px solid color-mix(in srgb, var(--accent) 50%, transparent);display:flex;align-items:center;gap:5px;font-weight:700}
   .tag.lock svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-  .card.unlocked .tag.lock{opacity:.6}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
   .card.sub{padding:20px}
   .card.sub h2{font-size:19px}
@@ -221,20 +220,16 @@
     window.location.href = '/startup/';
   });
 
-  // Join the Nationverse → soft code gate. NOTE: this is a Patreon-perk ceremony, not real access
-  // control — the code lives in this file (viewable in source) and the world is also reachable from
-  // the Online Game card. Once entered, the unlock is remembered so patrons skip the prompt next time.
+  // Join the Nationverse → code gate. Prompts for the access code on EVERY click (a Patreon-perk
+  // ceremony, not real access control — the code lives in this file, viewable in source, and the
+  // world is also reachable from the Online Game card).
   const ACCESS_CODE = 'patreon1';                       // compared lowercased + trimmed
-  const nationverse = document.getElementById('nationverse');
-  if (localStorage.getItem('nv-unlocked') === '1') nationverse.classList.add('unlocked');
   let nvBusy = false;                                   // loading lock: blocks double-fire
-  nationverse.addEventListener('click', () => {
+  document.getElementById('nationverse').addEventListener('click', () => {
     if (nvBusy) return;
-    if (localStorage.getItem('nv-unlocked') === '1') { nvBusy = true; window.location.href = '/startup/'; return; }
     const entered = window.prompt('Enter your access code to join the Nationverse:');
     if (entered == null) return;                        // cancelled
     if (entered.trim().toLowerCase() === ACCESS_CODE) {
-      localStorage.setItem('nv-unlocked', '1');
       nvBusy = true;
       window.location.href = '/startup/';
     } else {
