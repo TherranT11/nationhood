@@ -94,6 +94,17 @@
   .natstat .v { font-weight: 700; }
   .natextra { color: var(--muted); font-size: 12.5px; margin-top: 12px; }
 
+  /* Modifier effect builder */
+  .effrow2 { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--bg); margin-bottom: 12px; }
+  .effrow2-hd { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 800; margin-bottom: 12px; }
+  .effgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  @media (max-width: 720px) { .effgrid { grid-template-columns: 1fr; } }
+  .effgrid .fld { display: flex; flex-direction: column; gap: 4px; }
+  .effgrid .fld.wide { grid-column: 1 / -1; }
+  .effgrid label { font-size: 12px; font-weight: 700; color: var(--muted); }
+  .effgrid select, .effgrid input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 13.5px; font-family: inherit; width: 100%; box-sizing: border-box; }
+  .modstat .k { color: var(--muted); }
+
   .actions { display: flex; align-items: center; gap: 14px; margin-top: 24px; }
   .note { font-size: 13.5px; color: var(--muted); }
   .note.ok { color: #16915a; }
@@ -126,6 +137,7 @@
         <button class="vtab active" data-tab="list" type="button">List of Nations</button>
         <button class="vtab" data-tab="nation" type="button">Nation Creator</button>
         <button class="vtab" data-tab="personalities" type="button">Personalities</button>
+        <button class="vtab" data-tab="modifiers" type="button">Modifiers</button>
       </nav>
       <div class="panel">
         <div class="tabpanel" data-panel="list">
@@ -193,6 +205,28 @@
           </div>
         </div>
         </div><!-- /tabpanel personalities -->
+
+        <div class="tabpanel" data-panel="modifiers" hidden>
+        <div class="card">
+          <h2 id="modTitle">Modifiers Creator</h2>
+          <p class="lead">A modifier is a named bundle of effects. Every effect uses the same reusable builder.</p>
+
+          <div id="modList" class="natlist"></div>
+
+          <div class="f"><label>Modifier Name</label><input id="m-name" type="text" autocomplete="off"></div>
+          <div class="f"><label>Description</label><textarea id="m-desc"></textarea></div>
+
+          <div class="statshd">Effects</div>
+          <div id="effList"></div>
+          <button class="btn btn-ghost" id="addEffect" type="button" style="margin-top:2px">+ Add Effect</button>
+
+          <div class="actions">
+            <button class="btn btn-solid" id="saveMod" type="button">Save Modifier</button>
+            <button class="btn btn-ghost" id="cancelMod" type="button" hidden>Cancel</button>
+            <span class="note" id="modNote" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+        </div><!-- /tabpanel modifiers -->
       </div>
     </div>
   </div>
@@ -449,6 +483,7 @@
       panels.forEach(p => { p.hidden = p.dataset.panel !== tab; });
       if (tab === 'list') loadNationsList();
       if (tab === 'personalities') { loadNvNations(); loadPersonalities(); }
+      if (tab === 'modifiers') loadModList();
     }
     vtabs.forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
 
@@ -497,6 +532,157 @@
         });
       } catch (e) { natListBox.innerHTML = '<div class="empty">Couldn’t load nations. Try again.</div>'; }
     }
+
+    // ---- Modifiers Creator (one reusable effect builder for every modifier) ----
+    const EFFECT_CATEGORIES = ['National Statistic', 'Interest-Group Opinion', 'Party Approval', 'Policy', 'Situation / Event', 'Role Action', 'Restriction'];
+    const OPERATIONS = ['Add', 'Subtract', 'Set', 'Multiply', 'Divide', 'Increase by %', 'Decrease by %', 'Set minimum', 'Set maximum',
+      'Unlock', 'Lock', 'Enable', 'Disable', 'Add requirement', 'Remove requirement', 'Add immunity', 'Remove immunity', 'Replace', 'Redirect',
+      'Delay', 'Accelerate', 'Pause', 'Trigger', 'Prevent', 'Reveal', 'Hide', 'Increase weight', 'Decrease weight', 'Increase chance', 'Decrease chance'];
+    const TIMINGS = ['While Modifier Is Active', 'Permanent', 'Temporary'];
+    const FREQUENCIES = ['Continuous', 'Per Turn', 'Per Year', 'One-time'];
+    const STAT_NAMES = STATS.map(s => s[1]);   // the 13 stat labels (one source)
+    const opts = (arr, sel) => arr.map(v => '<option' + (v === sel ? ' selected' : '') + '>' + esc(v) + '</option>').join('');
+
+    const effListBox = document.getElementById('effList');
+    // National Statistic → a dropdown of the real 13 stats; every other category → free text (those
+    // target systems — groups, policies, roles, situations — don't exist in the new universe yet).
+    function targetControlHTML(cat, val) {
+      return cat === 'National Statistic'
+        ? '<select class="eff-target">' + opts(STAT_NAMES, val) + '</select>'
+        : '<input class="eff-target" type="text" placeholder="e.g. Banking &amp; Finance, Economic policies, Economic Minister" value="' + esc(val || '') + '">';
+    }
+    function effectRowHTML() {
+      return '<div class="effrow2">' +
+        '<div class="effrow2-hd"><span class="enum"></span><button class="del eff-del" type="button">Remove</button></div>' +
+        '<div class="effgrid">' +
+          '<div class="fld"><label>Effect Category</label><select class="eff-cat">' + opts(EFFECT_CATEGORIES) + '</select></div>' +
+          '<div class="fld"><label>Operation</label><select class="eff-op">' + opts(OPERATIONS) + '</select></div>' +
+          '<div class="fld"><label>Target</label><span class="eff-target-wrap">' + targetControlHTML('National Statistic') + '</span></div>' +
+          '<div class="fld"><label>Value</label><input class="eff-val" type="text" placeholder="e.g. +2, 25%, 0"></div>' +
+          '<div class="fld"><label>Timing</label><select class="eff-timing">' + opts(TIMINGS) + '</select></div>' +
+          '<div class="fld eff-dur-fld" hidden><label>Duration</label><input class="eff-dur" type="text" placeholder="e.g. 6 months, 3 turns"></div>' +
+          '<div class="fld"><label>Frequency</label><select class="eff-freq">' + opts(FREQUENCIES) + '</select></div>' +
+          '<div class="fld wide"><label>Conditions (optional)</label><input class="eff-cond" type="text" placeholder="e.g. Unrest > 12"></div>' +
+        '</div></div>';
+    }
+    function renumberEffects() { effListBox.querySelectorAll('.effrow2 .enum').forEach((el, i) => { el.textContent = 'Effect ' + (i + 1); }); }
+    function addEffect() { effListBox.insertAdjacentHTML('beforeend', effectRowHTML()); renumberEffects(); }
+    effListBox.addEventListener('click', e => { if (e.target.classList.contains('eff-del')) { e.target.closest('.effrow2').remove(); renumberEffects(); } });
+    effListBox.addEventListener('change', e => {
+      const row = e.target.closest('.effrow2'); if (!row) return;
+      if (e.target.classList.contains('eff-cat')) row.querySelector('.eff-target-wrap').innerHTML = targetControlHTML(e.target.value);
+      if (e.target.classList.contains('eff-timing')) row.querySelector('.eff-dur-fld').hidden = e.target.value !== 'Temporary';
+    });
+    document.getElementById('addEffect').addEventListener('click', addEffect);
+
+    function collectEffects() {
+      const out = [];
+      effListBox.querySelectorAll('.effrow2').forEach(r => {
+        const target = (r.querySelector('.eff-target').value || '').trim();
+        const value = r.querySelector('.eff-val').value.trim();
+        if (!target && !value) return;   // skip an untouched row
+        const timing = r.querySelector('.eff-timing').value;
+        out.push({
+          category: r.querySelector('.eff-cat').value,
+          operation: r.querySelector('.eff-op').value,
+          target, value: value || null, timing,
+          duration: timing === 'Temporary' ? (r.querySelector('.eff-dur').value.trim() || null) : null,
+          frequency: r.querySelector('.eff-freq').value,
+          conditions: r.querySelector('.eff-cond').value.trim() || null
+        });
+      });
+      return out;
+    }
+    function setEffects(effects) {
+      effListBox.innerHTML = '';
+      (effects || []).forEach(ef => {
+        addEffect();
+        const r = effListBox.lastElementChild, cat = ef.category || EFFECT_CATEGORIES[0];
+        r.querySelector('.eff-cat').value = cat;
+        r.querySelector('.eff-target-wrap').innerHTML = targetControlHTML(cat, ef.target);
+        r.querySelector('.eff-op').value = ef.operation || OPERATIONS[0];
+        r.querySelector('.eff-target').value = ef.target || '';
+        r.querySelector('.eff-val').value = ef.value || '';
+        r.querySelector('.eff-timing').value = ef.timing || TIMINGS[0];
+        r.querySelector('.eff-dur-fld').hidden = ef.timing !== 'Temporary';
+        if (ef.timing === 'Temporary') r.querySelector('.eff-dur').value = ef.duration || '';
+        r.querySelector('.eff-freq').value = ef.frequency || FREQUENCIES[0];
+        r.querySelector('.eff-cond').value = ef.conditions || '';
+      });
+      if (!effListBox.children.length) addEffect();
+    }
+
+    const modNote = document.getElementById('modNote');
+    const saveModBtn = document.getElementById('saveMod');
+    const modTitle = document.getElementById('modTitle');
+    const cancelModBtn = document.getElementById('cancelMod');
+    let modBusy = false, editingModId = null;
+
+    function resetModForm() {
+      editingModId = null; modTitle.textContent = 'Modifiers Creator'; saveModBtn.textContent = 'Save Modifier'; cancelModBtn.hidden = true;
+      document.getElementById('m-name').value = ''; document.getElementById('m-desc').value = '';
+      effListBox.innerHTML = ''; addEffect();
+    }
+    function editMod(m) {
+      editingModId = m.id; modTitle.textContent = 'Edit Modifier'; saveModBtn.textContent = 'Save changes'; cancelModBtn.hidden = false;
+      document.getElementById('m-name').value = m.name || ''; document.getElementById('m-desc').value = m.description || '';
+      setEffects(m.effects);
+      showTab('modifiers'); window.scrollTo(0, 0);
+    }
+    cancelModBtn.addEventListener('click', () => { resetModForm(); modNote.textContent = ''; modNote.className = 'note'; });
+
+    saveModBtn.addEventListener('click', async () => {
+      if (modBusy) return;
+      const name = document.getElementById('m-name').value.trim();
+      if (!name) { modNote.textContent = 'A name is required.'; modNote.className = 'note error'; return; }
+      const row = { name, description: document.getElementById('m-desc').value.trim() || null, effects: collectEffects() };
+      modBusy = true; saveModBtn.disabled = true; modNote.textContent = 'Saving…'; modNote.className = 'note';
+      try {
+        if (editingModId) {
+          const { error } = await supabase.from('nationverse_modifiers').update(row).eq('id', editingModId);
+          if (error) throw error; modNote.textContent = 'Saved changes to “' + name + '”.'; modNote.className = 'note ok';
+        } else {
+          const { error } = await supabase.from('nationverse_modifiers').insert(row);
+          if (error) throw error; modNote.textContent = 'Added “' + name + '”.'; modNote.className = 'note ok';
+        }
+        resetModForm(); loadModList();
+      } catch (e) { modNote.textContent = e.message || 'Could not save the modifier.'; modNote.className = 'note error'; }
+      finally { modBusy = false; saveModBtn.disabled = false; }
+    });
+
+    const modListBox = document.getElementById('modList');
+    async function loadModList() {
+      modListBox.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        const { data, error } = await supabase.from('nationverse_modifiers').select('*').order('name', { ascending: true });
+        if (error) throw error;
+        const rows = data || [];
+        if (!rows.length) { modListBox.innerHTML = '<div class="empty">No modifiers yet — create one below.</div>'; return; }
+        modListBox.innerHTML = rows.map(m => {
+          const effs = (m.effects || []).map(e =>
+            '<div class="natstat modstat"><span class="k">' + esc(e.category || '—') + '</span><span class="v">' + esc([e.operation, e.target, e.value].filter(Boolean).join(' ')) + '</span></div>'
+          ).join('');
+          const n = (m.effects || []).length;
+          return '<div class="natcard" data-id="' + esc(m.id) + '">' +
+            '<div class="natcard-hd"><div class="natmeta"><div class="natnm">' + esc(m.name || 'Untitled') + '</div>' +
+            '<div class="natsub">' + n + ' effect' + (n === 1 ? '' : 's') + '</div></div>' +
+            '<div class="natbtns"><button class="btn btn-ghost mod-edit" type="button">Edit</button><button class="del mod-del" type="button">Delete</button></div></div>' +
+            (m.description ? '<div class="natdesc">' + esc(m.description) + '</div>' : '') +
+            (effs ? '<div class="natstatgrid">' + effs + '</div>' : '') +
+          '</div>';
+        }).join('');
+        modListBox.querySelectorAll('.natcard').forEach(card => {
+          const m = rows.find(x => x.id === card.dataset.id); if (!m) return;
+          card.querySelector('.mod-edit').addEventListener('click', () => editMod(m));
+          card.querySelector('.mod-del').addEventListener('click', async () => {
+            if (!window.confirm('Delete “' + (m.name || 'this modifier') + '”?')) return;
+            try { const { error } = await supabase.from('nationverse_modifiers').delete().eq('id', m.id); if (error) throw error; if (editingModId === m.id) resetModForm(); loadModList(); }
+            catch (e) { alert(e.message || 'Could not delete the modifier.'); }
+          });
+        });
+      } catch (e) { modListBox.innerHTML = '<div class="empty">Couldn’t load modifiers. Try again.</div>'; }
+    }
+    addEffect();   // start with one effect row
 
     // ---- Personalities (CRUD against an existing Nationverse nation) ----
     const ROLES = ['Politician of Party 1', 'Politician of Party 2', 'Politician of Party 3', 'Politician of Party 4', 'Politician of Party 5',
