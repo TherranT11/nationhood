@@ -936,6 +936,15 @@
       roleSel.innerHTML = polOpts + NON_PARTY_ROLES.map(r => '<option value="' + esc(r) + '">' + esc(r) + '</option>').join('');
       if (cur && [...roleSel.options].some(o => o.value === cur)) roleSel.value = cur;
     }
+    // Resolve a personality's stored role into a dropdown value. New records store party by name; legacy
+    // records store role="Politician of Party N" with no party — map N to the nation's Nth party so the
+    // right option is selected (otherwise the Role dropdown loads blank and a save would wipe the role).
+    function roleSelectValue(p) {
+      if (p.party) return 'p:' + p.party;
+      const m = /^Politician of Party (\d+)$/.exec(p.role || '');
+      if (m) { const slot = ((curNation && curNation.parties) || [])[+m[1] - 1]; if (slot && slot.name) return 'p:' + slot.name; }
+      return p.role || '';
+    }
     // Alignment readout + office options that fit the alignment (opposition can hold cabinet only under
     // a National Unity government — the one exception in the spec).
     function refreshAlignAndOffice() {
@@ -1009,7 +1018,7 @@
           document.getElementById('p-age').value = p.starting_age != null ? p.starting_age : '';
           document.getElementById('p-desc2').value = p.description || '';
           await loadNationDetail(p.nation_id);                          // build role opts for this nation
-          roleSel.value = p.party ? ('p:' + p.party) : (p.role || '');
+          roleSel.value = roleSelectValue(p);                           // maps legacy "Politician of Party N" too
           refreshAlignAndOffice();
           officeSel.value = p.office || 'No Specific Office';
           persEdit.disabled = false; persDelete.disabled = false;
