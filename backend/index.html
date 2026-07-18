@@ -234,6 +234,11 @@
   <script type="module">
     import { supabase, isConfigured } from '/supabase.js';
     import { esc } from '/util.js';   // shared HTML-escape (one source)
+    import { uploadToStorage } from '/upload.js';                          // ONE image-upload path
+    import { getAdminState, adminSignIn, adminSignOut } from '/admin-auth.js';  // ONE admin gate
+
+    // Build <option>s from a list (one source for every dropdown on this page).
+    const opts = (arr, sel) => arr.map(v => '<option' + (v === sel ? ' selected' : '') + '>' + esc(v) + '</option>').join('');
 
     // The thirteen Nationverse stats — ONE source: the form renders inputs from this list and the
     // submit collects values back from it (key → integer 0..20).
@@ -262,7 +267,7 @@
 
     // Party ideologies — ONE source for the dropdown.
     const IDEOLOGIES = ['Far Left', 'Left', 'Center', 'Right', 'Far Right', 'Green', 'Libertarian', 'Faith'];
-    const ideoOptions = IDEOLOGIES.map(x => '<option value="' + esc(x) + '">' + esc(x) + '</option>').join('');
+    const ideoOptions = opts(IDEOLOGIES);
 
     // Five party slots — captured with the nation on Add Nation; empty slots (no name) are ignored.
     document.getElementById('partySlots').innerHTML = [1, 2, 3, 4, 5].map(n =>
@@ -296,19 +301,8 @@
     document.getElementById('addGroup').addEventListener('click', addGroup);
     addGroup();   // start with Group 1
 
-    // ONE image-upload path (mirrors adminsetup/forum/wiki — see note in the reply): push a file to a
-    // Supabase storage bucket and return its public URL. Reuses the existing 'world-event-images'
-    // bucket (folder 'flags'), so flags are served from storage, never committed to the repo.
-    async function uploadFlag(file) {
-      if (file.size > 2 * 1024 * 1024) throw new Error('That image is over 2 MB.');
-      const u = (await supabase.auth.getUser()).data.user; if (!u) throw new Error('Not signed in.');
-      const ext = ((file.name || '').split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-      const path = 'flags/' + u.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
-      const up = await supabase.storage.from('world-event-images').upload(path, file, { cacheControl: '3600', upsert: false });
-      if (up.error) throw new Error(up.error.message);
-      return supabase.storage.from('world-event-images').getPublicUrl(path).data.publicUrl;
-    }
-
+    // Flags upload to the existing 'world-event-images' bucket (folder 'flags') via upload.js — served
+    // from storage, never committed to the repo.
     // Flag preview (local object URL — no upload until the nation is saved).
     const flagInput = document.getElementById('n-flag');
     const flagPrev = document.getElementById('n-flagPrev');
@@ -318,19 +312,17 @@
       else { flagPrev.style.display = 'none'; }
     });
 
-    // ---- Auth (mirrors adminsetup: email gate for the UI, is_admin() RLS is the real gate) ----
-    const ADMIN_EMAIL = 'therrant@gmail.com';
+    // ---- Auth (UI gate via admin-auth.js; the real gate is the is_admin() RLS policy) ----
     const loginView = document.getElementById('loginView');
     const adminView = document.getElementById('adminView');
     const loginNote = document.getElementById('loginNote');
-    const isAdmin = user => !!user && (user.email || '').toLowerCase() === ADMIN_EMAIL;
     const show = view => { loginView.hidden = view !== 'login'; adminView.hidden = view !== 'admin'; };
 
     async function refresh() {
       if (!isConfigured) { show('login'); loginNote.textContent = 'Auth isn’t connected yet.'; loginNote.className = 'note error'; return; }
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session && isAdmin(session.user)) {
+        const { session, isAdmin: ok } = await getAdminState();
+        if (ok) {
           document.getElementById('who').textContent = 'Signed in as ' + session.user.email;
           show('admin');
           loadNationsList();   // the default tab is List of Nations
@@ -351,7 +343,7 @@
       if (!email || !password) return;
       btn.disabled = true;
       try {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await adminSignIn(email, password);
         if (error) { loginNote.textContent = error.message || 'Sign-in failed.'; loginNote.className = 'note error'; return; }
         await refresh();
       } catch (e) { loginNote.textContent = 'Sign-in failed. Try again.'; loginNote.className = 'note error'; }
@@ -359,7 +351,7 @@
     });
 
     document.getElementById('logout').addEventListener('click', async () => {
-      try { await supabase.auth.signOut(); } catch (e) { /* ignore */ }
+      try { await adminSignOut(); } catch (e) { /* ignore */ }
       await refresh();
     });
 
@@ -456,7 +448,7 @@
       try {
         let flagUrl = null;
         const file = flagInput.files && flagInput.files[0];
-        if (file) flagUrl = await uploadFlag(file);
+        if (file) flagUrl = await uploadToStorage('world-event-images', 'flags', file);
         if (editingId) {
           row.flag = flagUrl || editingFlag || null;   // keep the existing flag unless a new one was chosen
           const { error } = await supabase.from('nationverse_nations').update(row).eq('id', editingId);
@@ -540,8 +532,7 @@
       'Delay', 'Accelerate', 'Pause', 'Trigger', 'Prevent', 'Reveal', 'Hide', 'Increase weight', 'Decrease weight', 'Increase chance', 'Decrease chance'];
     const TIMINGS = ['While Modifier Is Active', 'Permanent', 'Temporary'];
     const FREQUENCIES = ['Continuous', 'Per Turn', 'Per Year', 'One-time'];
-    const STAT_NAMES = STATS.map(s => s[1]);   // the 13 stat labels (one source)
-    const opts = (arr, sel) => arr.map(v => '<option' + (v === sel ? ' selected' : '') + '>' + esc(v) + '</option>').join('');
+    const STAT_NAMES = STATS.map(s => s[1]);   // the 13 stat labels (one source; opts() defined at top)
 
     const effListBox = document.getElementById('effList');
     // National Statistic → a dropdown of the real 13 stats; every other category → free text (those
@@ -689,7 +680,7 @@
       'Oligarch', 'Chief of Staff of the Military', 'Head of the Faith', 'Head of State (Monarch)', 'Royal Heir', 'Royal Pretender',
       'Dissident Leader', 'Labor Leader', 'Warlord'];
     const roleSel = document.getElementById('p-role');
-    roleSel.innerHTML = ROLES.map(r => '<option value="' + esc(r) + '">' + esc(r) + '</option>').join('');
+    roleSel.innerHTML = opts(ROLES);
 
     const natSel = document.getElementById('p-nation');
     const persList = document.getElementById('persList');

@@ -1194,28 +1194,15 @@
     import { ARCHETYPES } from '/archetypes.js';
     import { policyOptions, policyDefaultIdx, policyOptionIdx, policyDefsById, policyRequiresText, isMoneyTarget, POLICY_STATS, MINISTRY_STATS, STAT_RANGES, fmtInitiativeCost } from '/policies.js';
     import { MINISTRIES } from '/ministries.js';
+    import { uploadToStorage } from '/upload.js';                          // ONE image-upload path
+    import { getAdminState, adminSignIn, adminSignOut } from '/admin-auth.js';  // ONE admin gate
 
-    // ONE image-upload path: push a file to a Supabase storage bucket (optionally under a folder)
-    // and return its public URL. Shared by the world-event image and the nation flag. Throws on
-    // oversize / not-signed-in / upload error so callers show one message.
-    async function uploadToStorage(bucket, folder, file) {
-      if (file.size > 2 * 1024 * 1024) throw new Error('That image is over 2 MB.');
-      var u = (await supabase.auth.getUser()).data.user; if (!u) throw new Error('Not signed in.');
-      var ext = ((file.name || '').split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-      var path = (folder ? folder + '/' : '') + u.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
-      var up = await supabase.storage.from(bucket).upload(path, file, { cacheControl: '3600', upsert: false });
-      if (up.error) throw new Error(up.error.message);
-      return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
-    }
-
-    var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
     var adminView = document.getElementById('adminView');
     var loginNote = document.getElementById('loginNote');
     var addNote = document.getElementById('addNote');
     var modNote = document.getElementById('modNote');
 
-    function isAdmin(user) { return !!user && (user.email || '').toLowerCase() === ADMIN_EMAIL; }
     function show(view) { loginView.hidden = view !== 'login'; adminView.hidden = view !== 'admin'; }
 
     // Game clock: show the current date/tick and let the admin advance it. Each
@@ -1252,8 +1239,8 @@
     async function refresh() {
       if (!isConfigured) { show('login'); loginNote.textContent = 'Auth isn’t connected yet.'; loginNote.className = 'note error'; return; }
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session && isAdmin(session.user)) {
+        const { session, isAdmin: ok } = await getAdminState();
+        if (ok) {
           document.getElementById('who').textContent = 'Signed in as ' + session.user.email;
           show('admin');
           renderClock();
@@ -1284,7 +1271,7 @@
       if (!email || !password) return;
       btn.disabled = true;
       try {
-        const { error } = await supabase.auth.signInWithPassword({ email: email, password: password });
+        const { error } = await adminSignIn(email, password);
         if (error) { loginNote.textContent = error.message || 'Sign-in failed.'; loginNote.className = 'note error'; return; }
         await refresh();
       } catch (e) { loginNote.textContent = 'Sign-in failed. Try again.'; loginNote.className = 'note error'; }
@@ -1292,7 +1279,7 @@
     });
 
     document.getElementById('logout').addEventListener('click', async function () {
-      try { await supabase.auth.signOut(); } catch (e) { /* ignore */ }
+      try { await adminSignOut(); } catch (e) { /* ignore */ }
       await refresh();
     });
 

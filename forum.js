@@ -1,6 +1,7 @@
 // forum.js — data access for the Forum (boards / threads / posts). Thin wrappers over
 // supabase; all writes go through the server RPCs (which snapshot author identity).
 import { supabase } from '/supabase.js';
+import { uploadToStorage } from '/upload.js';
 
 function unwrap(res) { if (res.error) throw new Error(res.error.message); return res.data; }
 
@@ -54,16 +55,10 @@ export async function deletePost(postId) {
 }
 // (Setting the nickname is wired in the shared topbar gear, which calls set_handle directly.)
 
-// Upload an image to the public forum bucket, into a folder named by the user's id
-// (matches the storage RLS), and return its public URL to embed in a post.
+// Upload an image to the public forum bucket (folder = the user's id, matching the storage RLS) and
+// return its public URL to embed in a post. No size cap (matches prior behaviour) — one source: upload.js.
 export async function uploadImage(file) {
-  var u = (await supabase.auth.getUser()).data.user;
-  if (!u) throw new Error('Not signed in.');
-  var ext = ((file.name || '').split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-  var path = u.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
-  var up = await supabase.storage.from('forum-images').upload(path, file, { cacheControl: '3600', upsert: false });
-  if (up.error) throw new Error(up.error.message);
-  return supabase.storage.from('forum-images').getPublicUrl(path).data.publicUrl;
+  return uploadToStorage('forum-images', '', file, 0);
 }
 
 // Relative "2h" / "40m" / "3d" style age from a timestamp — matches the mockup.
