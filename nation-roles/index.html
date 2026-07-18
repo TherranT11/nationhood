@@ -24,7 +24,6 @@
   @media (max-width: 640px) { .roles { grid-template-columns: 1fr; } }
   .rolecard { text-align: left; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 15px 17px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
   .rolecard:hover { border-color: color-mix(in srgb, var(--ink) 28%, var(--line)); }
-  .rolecard.sel { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
   .rolecard .rtop { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
   .rolecard .rn { font-size: 15.5px; font-weight: 800; }
   .rolecard .rr { color: var(--muted); font-size: 13px; }
@@ -121,10 +120,9 @@
           (sub ? '<p class="sub">' + sub + '</p>' : '') + '</div></div>' +
           '<div class="rhd">Choose your role</div>' + roleList;
 
-        // Selectable roles (single-select highlight; the play flow lands later).
+        // Selecting a role enters the Nationverse home for this nation, carrying the chosen role.
         content.querySelectorAll('.rolecard').forEach(card => card.addEventListener('click', () => {
-          content.querySelectorAll('.rolecard.sel').forEach(c => c.classList.remove('sel'));
-          card.classList.add('sel');
+          window.location.href = '/nation-home/?nation=' + encodeURIComponent(nationId) + '&role=' + encodeURIComponent(card.dataset.id);
         }));
       } catch (e) { content.innerHTML = '<div class="empty">Couldn’t load this nation. Try again shortly.</div>'; }
     })();
