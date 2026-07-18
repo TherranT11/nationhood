@@ -117,6 +117,7 @@
 
   <script type="module">
     import { supabase, isConfigured } from '/supabase.js';
+    import { esc } from '/util.js';   // shared HTML-escape (one source)
 
     // The thirteen Nationverse stats — ONE source: the form renders inputs from this list and the
     // submit collects values back from it (key → integer 0..20).
@@ -135,7 +136,6 @@
       ['media_freedom', 'Media Freedom', 'Independence of the press and public access to information'],
       ['business_climate', 'Business Climate', 'Attractiveness of the country for investment and private enterprise'],
     ];
-    const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const clamp20 = v => Math.max(0, Math.min(20, Math.round(Number(v) || 0)));
 
     document.getElementById('statGrid').innerHTML = STATS.map(([key, nm, ds]) =>
