@@ -10,7 +10,7 @@ export const NV_STATS = [
   ['legitimacy', 'Legitimacy', 'Public acceptance of the government and political system'],
   ['corruption', 'Corruption', 'Misuse of public office and institutional integrity'],
   ['state_capacity', 'State Capacity', 'Government ability to enforce laws, collect taxes, and implement policy'],
-  ['security', 'Security', 'Public safety and protection from crime, terrorism, and external threats'],
+  ['civic_liberties', 'Civic Liberties', 'Freedom of speech, assembly, religion, and protection of individual rights from state overreach'],
   ['social_cohesion', 'Social Cohesion', 'Unity between ethnic, religious, regional, and class groups'],
   ['power_projection', 'Power Projection', 'Ability to influence events beyond national borders'],
   ['military_readiness', 'Military Readiness', 'Training, equipment, logistics, morale, and combat preparedness of the armed forces'],

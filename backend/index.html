@@ -673,21 +673,23 @@
     }
 
     // ---- Modifiers Creator (one reusable effect builder for every modifier) ----
-    const EFFECT_CATEGORIES = ['National Statistic', 'Interest-Group Opinion', 'Party Approval', 'Policy', 'Situation / Event', 'Role Action', 'Restriction'];
+    const EFFECT_CATEGORIES = ['National Statistic', 'Corporate Stat', 'Interest-Group Opinion', 'Party Approval', 'Policy', 'Situation / Event', 'Role Action', 'Restriction'];
     const OPERATIONS = ['Add', 'Subtract', 'Set', 'Multiply', 'Divide', 'Increase by %', 'Decrease by %', 'Set minimum', 'Set maximum',
       'Unlock', 'Lock', 'Enable', 'Disable', 'Add requirement', 'Remove requirement', 'Add immunity', 'Remove immunity', 'Replace', 'Redirect',
       'Delay', 'Accelerate', 'Pause', 'Trigger', 'Prevent', 'Reveal', 'Hide', 'Increase weight', 'Decrease weight', 'Increase chance', 'Decrease chance'];
     const TIMINGS = ['While Modifier Is Active', 'Permanent', 'Temporary'];
     const FREQUENCIES = ['Continuous', 'Per Turn', 'Per Year', 'One-time'];
-    const STAT_NAMES = STATS.map(s => s[1]);   // the 13 stat labels (one source; opts() defined at top)
+    const STAT_NAMES = STATS.map(s => s[1]);   // the nation stat labels (one source; opts() defined at top)
+    const CORP_STATS = ['Capital', 'Growth', 'Reputation'];   // the editable corporation stats (one source with the Corporation Creator)
 
     const effListBox = document.getElementById('effList');
-    // National Statistic → a dropdown of the real 13 stats; every other category → free text (those
-    // target systems — groups, policies, roles, situations — don't exist in the new universe yet).
+    // National Statistic → a dropdown of the real nation stats; Corporate Stat → the corp stats; every
+    // other category → free text (those target systems — groups, policies, roles, situations — don't
+    // exist in the new universe yet).
     function targetControlHTML(cat, val) {
-      return cat === 'National Statistic'
-        ? '<select class="eff-target">' + opts(STAT_NAMES, val) + '</select>'
-        : '<input class="eff-target" type="text" placeholder="e.g. Banking &amp; Finance, Economic policies, Economic Minister" value="' + esc(val || '') + '">';
+      if (cat === 'National Statistic') return '<select class="eff-target">' + opts(STAT_NAMES, val) + '</select>';
+      if (cat === 'Corporate Stat')     return '<select class="eff-target">' + opts(CORP_STATS, val) + '</select>';
+      return '<input class="eff-target" type="text" placeholder="e.g. Banking &amp; Finance, Economic policies, Economic Minister" value="' + esc(val || '') + '">';
     }
     function effectRowHTML() {
       return '<div class="effrow2">' +
