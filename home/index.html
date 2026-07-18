@@ -231,7 +231,7 @@
     if (entered == null) return;                        // cancelled
     if (entered.trim().toLowerCase() === ACCESS_CODE) {
       nvBusy = true;
-      window.location.href = '/startup/';
+      window.location.href = '/startup/?nv=1';           // marks the rules gate as the Nationverse flow
     } else {
       window.alert('That code isn’t right. Access is a Patreon perk — check there for the current code.');
     }
