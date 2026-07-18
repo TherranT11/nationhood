@@ -26,7 +26,9 @@
   .rolecard { text-align: left; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 15px 17px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
   .rolecard:hover { border-color: color-mix(in srgb, var(--ink) 28%, var(--line)); }
   .rolecard.sel { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
-  .rconfirm { margin-top: auto; width: 100%; padding: 11px; font-size: 15px; }   /* auto pins Confirm to the card bottom */
+  /* Confirm shows only when its card is selected (specificity beats .btn's display). */
+  .rolecard .rconfirm { display: none; margin-top: auto; width: 100%; padding: 11px; font-size: 15px; }
+  .rolecard.sel .rconfirm { display: flex; }   /* auto margin pins it to the card bottom */
   .rolecard .rtop { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .rolecard .rn { font-size: 15.5px; font-weight: 800; flex: 1; min-width: 0; }
   .rolecard .rtr { display: flex; align-items: center; gap: 10px; flex: none; }
@@ -129,7 +131,7 @@
                 '<div class="rr">' + esc(roleLabelOf(r)) + '</div>' +
                 (credsOf(r).length ? '<div class="rcreds">' + esc(credsOf(r).join(' · ')) + '</div>' : '') +
                 (r.description ? '<div class="rdesc">' + esc(r.description) + '</div>' : '') +
-                '<button class="btn btn-solid rconfirm" type="button" hidden>Confirm &rarr;</button>' +
+                '<button class="btn btn-solid rconfirm" type="button">Confirm &rarr;</button>' +
               '</div>'
             ).join('') + '</div>'
           : '<div class="empty">No roles have been created for this nation yet.</div>';
@@ -144,9 +146,8 @@
         content.querySelectorAll('.rolecard').forEach(card => {
           card.addEventListener('click', e => {
             if (e.target.closest('.rconfirm')) return;   // Confirm has its own handler
-            content.querySelectorAll('.rolecard.sel').forEach(c => { c.classList.remove('sel'); c.querySelector('.rconfirm').hidden = true; });
-            card.classList.add('sel');
-            card.querySelector('.rconfirm').hidden = false;
+            content.querySelectorAll('.rolecard.sel').forEach(c => c.classList.remove('sel'));
+            card.classList.add('sel');   // CSS reveals this card's Confirm button
           });
           card.querySelector('.rconfirm').addEventListener('click', () => {
             window.location.href = '/nation-home/?nation=' + encodeURIComponent(nationId) + '&role=' + encodeURIComponent(card.dataset.id);
