@@ -83,7 +83,10 @@
     accept.addEventListener('change', function () { join.disabled = !accept.checked; });
     join.addEventListener('click', function () {
       if (join.disabled) return;
-      window.location.href = '/nations/';
+      // Two flows share this rules gate: the Nationverse (new universe → /nations, arrives with
+      // ?nv=1) and the Online Game (old universe → /nation-select).
+      var nv = new URLSearchParams(window.location.search).get('nv') === '1';
+      window.location.href = nv ? '/nations/' : '/nation-select/';
     });
   </script>
 </body>
