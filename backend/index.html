@@ -242,6 +242,10 @@
           <div class="f"><label>Nation</label><select id="p-nation"></select></div>
           <div class="f"><label>Name</label><input id="p2-name" type="text" autocomplete="off"></div>
           <div class="f"><label>Starting Age</label><input id="p-age" type="number" min="0" step="1"></div>
+          <div class="f" style="display:flex;gap:18px;flex-wrap:wrap">
+            <span><label>Personal Wealth <span class="hint">starting value</span></label><input id="p-wealth" type="number" min="0" step="1" value="0" style="max-width:170px"></span>
+            <span><label>Influence <span class="hint">starting value</span></label><input id="p-influence" type="number" min="0" step="1" value="0" style="max-width:170px"></span>
+          </div>
           <div class="f"><label>Description</label><textarea id="p-desc2"></textarea></div>
           <div class="f"><label>Role</label><select id="p-role"></select>
             <div id="p-align" class="align"></div></div>
@@ -1052,6 +1056,8 @@
       selectedPers = null;
       document.getElementById('p2-name').value = '';
       document.getElementById('p-age').value = '';
+      document.getElementById('p-wealth').value = 0;
+      document.getElementById('p-influence').value = 0;
       document.getElementById('p-desc2').value = '';
       roleSel.selectedIndex = 0;
       refreshAlignAndOffice();
@@ -1074,6 +1080,8 @@
           natSel.value = p.nation_id;
           document.getElementById('p2-name').value = p.name || '';
           document.getElementById('p-age').value = p.starting_age != null ? p.starting_age : '';
+          document.getElementById('p-wealth').value = p.wealth != null ? p.wealth : 0;
+          document.getElementById('p-influence').value = p.influence != null ? p.influence : 0;
           document.getElementById('p-desc2').value = p.description || '';
           await loadNationDetail(p.nation_id);                          // build role opts for this nation
           roleSel.value = roleSelectValue(p);                           // maps legacy "Politician of Party N" too
@@ -1095,7 +1103,9 @@
         description: document.getElementById('p-desc2').value.trim() || null,
         role: isPol ? 'Politician' : rv,
         party: isPol ? rv.slice(2) : null,
-        office: (officeSel.value && officeSel.value !== 'No Specific Office') ? officeSel.value : null
+        office: (officeSel.value && officeSel.value !== 'No Specific Office') ? officeSel.value : null,
+        wealth: Math.max(0, Math.round(Number(document.getElementById('p-wealth').value) || 0)),
+        influence: Math.max(0, Math.round(Number(document.getElementById('p-influence').value) || 0))
       };
     }
     // Name + nation are required; returns the payload or null (with a note) if invalid.
