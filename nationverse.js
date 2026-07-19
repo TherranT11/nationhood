@@ -17,3 +17,21 @@ export const NV_STATS = [
   ['media_freedom', 'Media Freedom', 'Independence of the press and public access to information'],
   ['business_climate', 'Business Climate', 'Attractiveness of the country for investment and private enterprise'],
 ];
+
+// A player is locked to one character. If the signed-in user has already claimed a personality, send
+// them straight to that character's nation home. Returns true when it redirects (callers should then
+// stop rendering). ONE source for the "you're locked to your character" routing — used by /nations and
+// /nation-roles so login always lands on the home screen.
+export async function redirectToMyCharacter(supabase) {
+  try {
+    const { data: u } = await supabase.auth.getUser();
+    const uid = u && u.user ? u.user.id : null;
+    if (!uid) return false;
+    const { data } = await supabase.from('nationverse_personalities').select('id, nation_id').eq('claimed_by', uid).maybeSingle();
+    if (data && data.nation_id) {
+      window.location.replace('/nation-home/?nation=' + encodeURIComponent(data.nation_id) + '&role=' + encodeURIComponent(data.id));
+      return true;
+    }
+  } catch (e) { /* not signed in / not connected → fall through to the normal page */ }
+  return false;
+}

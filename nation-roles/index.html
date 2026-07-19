@@ -33,6 +33,11 @@
   .rolecard .rn { font-size: 15.5px; font-weight: 800; flex: 1; min-width: 0; }
   .rolecard .rtr { display: flex; align-items: center; gap: 10px; flex: none; }
   .rtag { display: inline-flex; align-items: center; font-size: 10.5px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+  .rolecard.taken { opacity: .5; cursor: default; }
+  .rolecard.taken:hover { border-color: var(--line); }
+  .rtaken, .rmine { display: inline-flex; align-items: center; font-size: 10.5px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+  .rtaken { color: var(--muted); }
+  .rmine { color: #3ecf8e; border-color: #3ecf8e66; background: #3ecf8e1f; }
   .rolecard .rr { color: var(--muted); font-size: 13px; }
   .rolecard .rcreds { color: var(--ink); font-size: 12.5px; font-weight: 700; margin-top: 5px; opacity: .82; }
   .rolecard .rage { color: var(--muted); font-size: 12.5px; flex: none; }
@@ -62,6 +67,7 @@
   <script type="module">
     import { supabase, isConfigured, logout } from '/supabase.js';
     import { esc } from '/util.js';
+    import { redirectToMyCharacter } from '/nationverse.js';   // one-character routing (one source)
 
     document.getElementById('logout').addEventListener('click', logout);
     const content = document.getElementById('content');
@@ -69,17 +75,20 @@
 
     (async () => {
       if (!isConfigured) { content.innerHTML = '<div class="empty">Nation data isn’t connected yet.</div>'; return; }
+      if (await redirectToMyCharacter(supabase)) return;   // already have a character → straight to your home
       if (!nationId) { content.innerHTML = '<div class="empty">No nation selected. <a href="/nations/">Choose one.</a></div>'; return; }
       try {
-        const [natRes, persRes, corpsRes] = await Promise.all([
+        const [natRes, persRes, corpsRes, userRes] = await Promise.all([
           supabase.from('nationverse_nations').select('id, name, flag, analogous, capital, parties').eq('id', nationId).maybeSingle(),
           supabase.from('nationverse_personalities').select('*').eq('nation_id', nationId).order('created_at', { ascending: true }),
-          supabase.from('nationverse_corporations').select('name, ownership').eq('hq_nation_id', nationId)
+          supabase.from('nationverse_corporations').select('name, ownership').eq('hq_nation_id', nationId),
+          supabase.auth.getUser()
         ]);
         if (natRes.error) throw natRes.error;
         const n = natRes.data;
         if (!n) { content.innerHTML = '<div class="empty">That nation no longer exists. <a href="/nations/">Choose another.</a></div>'; return; }
         const roles = (persRes.error ? [] : (persRes.data || []));
+        const myId = (userRes && userRes.data && userRes.data.user) ? userRes.data.user.id : null;   // for claim state
 
         // A politician's role reads "Party Leader of <party>". The party name is the one source (the
         // nation's parties): prefer the stored party name, else map the legacy "Politician of Party N" slot.
@@ -121,19 +130,24 @@
         const sub = [n.analogous ? 'Analogous: ' + esc(n.analogous) : '', n.capital ? 'Capital: ' + esc(n.capital) : ''].filter(Boolean).join(' · ');
 
         const roleList = roles.length
-          ? '<div class="roles">' + roles.map(r =>
-              '<div class="rolecard" data-id="' + esc(r.id) + '">' +
+          ? '<div class="roles">' + roles.map(r => {
+              const takenByOther = r.claimed_by && r.claimed_by !== myId;
+              const mine = r.claimed_by && r.claimed_by === myId;
+              const statusTag = takenByOther ? '<span class="rtaken">Already Selected</span>'
+                : (mine ? '<span class="rmine">Your Role</span>' : '');
+              return '<div class="rolecard' + (takenByOther ? ' taken' : '') + '" data-id="' + esc(r.id) + '"' +
+                  (mine ? ' data-mine="1"' : '') + (takenByOther ? ' data-taken="1"' : '') + '>' +
                 '<div class="rtop"><div class="rn">' + esc(r.name || 'Unnamed') + '</div>' +
-                  '<div class="rtr">' + catTag(r) +
+                  '<div class="rtr">' + catTag(r) + statusTag +
                     (r.starting_age != null ? '<span class="rage">Age ' + esc(r.starting_age) + '</span>' : '') +
                   '</div>' +
                 '</div>' +
                 '<div class="rr">' + esc(roleLabelOf(r)) + '</div>' +
                 (credsOf(r).length ? '<div class="rcreds">' + esc(credsOf(r).join(' · ')) + '</div>' : '') +
                 (r.description ? '<div class="rdesc">' + esc(r.description) + '</div>' : '') +
-                '<button class="btn btn-solid rconfirm" type="button">Confirm &rarr;</button>' +
-              '</div>'
-            ).join('') + '</div>'
+                (takenByOther ? '' : '<button class="btn btn-solid rconfirm" type="button">' + (mine ? 'Enter' : 'Confirm') + ' &rarr;</button>') +
+              '</div>';
+            }).join('') + '</div>'
           : '<div class="empty">No roles have been created for this nation yet.</div>';
 
         content.innerHTML =
@@ -144,13 +158,23 @@
         // Selecting a role highlights it and reveals a Confirm button inside that card; Confirm enters
         // the Nationverse home for this nation, carrying the chosen role.
         content.querySelectorAll('.rolecard').forEach(card => {
+          if (card.dataset.taken) return;   // claimed by another player — not selectable
           card.addEventListener('click', e => {
             if (e.target.closest('.rconfirm')) return;   // Confirm has its own handler
             content.querySelectorAll('.rolecard.sel').forEach(c => c.classList.remove('sel'));
             card.classList.add('sel');   // CSS reveals this card's Confirm button
           });
-          card.querySelector('.rconfirm').addEventListener('click', () => {
-            window.location.href = '/nation-home/?nation=' + encodeURIComponent(nationId) + '&role=' + encodeURIComponent(card.dataset.id);
+          const confirmBtn = card.querySelector('.rconfirm');
+          confirmBtn.addEventListener('click', async () => {
+            const go = () => { window.location.href = '/nation-home/?nation=' + encodeURIComponent(nationId) + '&role=' + encodeURIComponent(card.dataset.id); };
+            if (card.dataset.mine) { go(); return; }   // already ours — just enter
+            confirmBtn.disabled = true;   // loading lock against double-fire
+            try {
+              const { data, error } = await supabase.rpc('nationverse_claim_role', { p_personality: card.dataset.id });
+              if (error) throw error;
+              if (data === true) go();
+              else { alert('That role was just claimed by someone else.'); location.reload(); }
+            } catch (e) { confirmBtn.disabled = false; alert('Could not claim that role — try again.'); }
           });
         });
       } catch (e) { content.innerHTML = '<div class="empty">Couldn’t load this nation. Try again shortly.</div>'; }
