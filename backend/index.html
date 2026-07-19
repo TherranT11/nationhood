@@ -348,6 +348,19 @@
 
         <div class="tabpanel" data-panel="narratives" hidden>
         <div class="card">
+          <h2>Launch a Narrative Conversation</h2>
+          <p class="lead">Interim World-Master tool: open a narrative as a two-player conversation now. (Automatic, trigger-driven launch is coming later.) Both players get a Ready to Begin prompt; once both are ready the narrative's opening lines play into their chat.</p>
+          <div class="f" style="display:flex;gap:18px;flex-wrap:wrap">
+            <span style="flex:1 1 220px"><label>Narrative</label><select id="ln-narr"></select></span>
+            <span style="flex:1 1 180px"><label>Player A</label><select id="ln-a"></select></span>
+            <span style="flex:1 1 180px"><label>Player B</label><select id="ln-b"></select></span>
+          </div>
+          <div class="row">
+            <button class="btn btn-solid" id="ln-launch" type="button">Launch to Players</button>
+            <span class="note" id="ln-note" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+        <div class="card">
           <h2 id="narTitle">Narrative Creator</h2>
           <p class="lead">A triggered story: an opening conversation, player choices (each with a response), then a decision whose options carry effects. Triggers and effects use the shared builders; a decision option can Create a Story Bill or Unlock another Narrative via its effect category.</p>
 
@@ -754,7 +767,7 @@
       if (tab === 'modifiers') loadModList();
       if (tab === 'corporations') loadCorpRefs().then(loadCorpList);
       if (tab === 'story') loadStoryRefs().then(loadStoryList);
-      if (tab === 'narratives') loadNarrativeRefs().then(loadNarrativeList);
+      if (tab === 'narratives') { loadNarrativeRefs().then(loadNarrativeList); loadLaunchRefs(); }
       if (tab === 'claims') loadClaims();
     }
     vtabs.forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
@@ -1603,6 +1616,35 @@
       narNatNames = {}; rows.forEach(n => { narNatNames[n.id] = n.name; });
       await loadNarrativePersonalities(nrNatSel.value);   // personalities for the initially-selected nation
     }
+
+    // ---- Launch a Narrative Conversation (interim World-Master tool) ----
+    const lnNarr = document.getElementById('ln-narr'), lnA = document.getElementById('ln-a'),
+      lnB = document.getElementById('ln-b'), lnNote = document.getElementById('ln-note'), lnLaunch = document.getElementById('ln-launch');
+    async function loadLaunchRefs() {
+      try {
+        const [nRes, pRes] = await Promise.all([
+          supabase.from('nationverse_narratives').select('id, name').order('name', { ascending: true }),
+          supabase.from('nationverse_personalities').select('id, name').not('claimed_by', 'is', null).order('name', { ascending: true })
+        ]);
+        lnNarr.innerHTML = (nRes.data || []).map(n => '<option value="' + esc(n.id) + '">' + esc(n.name || 'Untitled') + '</option>').join('')
+          || '<option value="">No narratives yet</option>';
+        const playerOpts = (pRes.data || []).map(p => '<option value="' + esc(p.id) + '">' + esc(p.name || 'Unnamed') + '</option>').join('');
+        lnA.innerHTML = playerOpts || '<option value="">No claimed players</option>';
+        lnB.innerHTML = playerOpts || '<option value="">No claimed players</option>';
+      } catch (e) { lnNote.textContent = 'Couldn’t load launch options.'; lnNote.className = 'note error'; }
+    }
+    lnLaunch.addEventListener('click', async () => {
+      const narr = lnNarr.value, a = lnA.value, b = lnB.value;
+      if (!narr) { lnNote.textContent = 'Pick a narrative.'; lnNote.className = 'note error'; return; }
+      if (!a || !b || a === b) { lnNote.textContent = 'Pick two different players.'; lnNote.className = 'note error'; return; }
+      lnLaunch.disabled = true; lnNote.textContent = 'Launching…'; lnNote.className = 'note';
+      try {
+        const { error } = await supabase.rpc('nationverse_launch_narrative', { p_narrative: narr, p_a: a, p_b: b });
+        if (error) throw error;
+        lnNote.textContent = 'Launched — both players now see a Ready to Begin prompt.'; lnNote.className = 'note ok';
+      } catch (e) { lnNote.textContent = e.message || 'Could not launch.'; lnNote.className = 'note error'; }
+      finally { lnLaunch.disabled = false; }
+    });
 
     const narNote = document.getElementById('narNote'), saveNarBtn = document.getElementById('saveNar');
     const narTitle = document.getElementById('narTitle'), cancelNarBtn = document.getElementById('cancelNar');
