@@ -80,4 +80,21 @@ $$;
 revoke all on function public.nationverse_mark_ready(uuid) from public, anon;
 grant execute on function public.nationverse_mark_ready(uuid) to authenticated;
 
+-- Harden Accept/Decline (from 284) to p2p only: a narrative conversation must go through the both-ready
+-- gate (nationverse_mark_ready), so a crafted respond call can't open one early or skip its opening lines.
+create or replace function public.nationverse_respond_meeting(p_conv uuid, p_accept boolean)
+returns text language plpgsql security definer set search_path = public as $$
+declare v_me uuid; v_status text;
+begin
+  v_me := public.nationverse_my_personality();
+  if v_me is null then raise exception 'no_character'; end if;
+  update public.nationverse_conversations
+     set status = case when p_accept then 'accepted' else 'declined' end, responded_at = now()
+   where id = p_conv and to_personality = v_me and status = 'pending' and kind = 'p2p'
+  returning status into v_status;
+  if v_status is null then raise exception 'not_pending_or_not_recipient'; end if;
+  return v_status;
+end;
+$$;
+
 notify pgrst, 'reload schema';
