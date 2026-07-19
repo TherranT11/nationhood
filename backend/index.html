@@ -1831,6 +1831,9 @@
 
     const csvToArr = s => (s || '').split(',').map(x => x.trim()).filter(Boolean);
 
+    // Parent options exclude self (a node can't be its own parent). Deeper cycles (picking a descendant as
+    // parent) aren't prevented — the list only renders direct children so it can't loop; the future runtime
+    // should treat the tree defensively. Admin authoring tool, so this is left to admin discipline.
     function populateParent(excludeId, selectedId) {
       agParentSel.innerHTML = '<option value="">None</option>' +
         agAll.filter(a => a.id !== excludeId).map(a =>
