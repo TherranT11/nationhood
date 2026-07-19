@@ -171,6 +171,7 @@
         <button class="vtab" data-tab="corporations" type="button">Corporations</button>
         <button class="vtab" data-tab="story" type="button">Story Bills</button>
         <button class="vtab" data-tab="narratives" type="button">Narratives</button>
+        <button class="vtab" data-tab="claims" type="button">Role Claims</button>
       </nav>
       <div class="panel">
         <div class="tabpanel" data-panel="list">
@@ -390,6 +391,14 @@
           </div>
         </div>
         </div><!-- /tabpanel narratives -->
+
+        <div class="tabpanel" data-panel="claims" hidden>
+        <div class="card">
+          <h2>Role Claims</h2>
+          <p class="lead">Every Nationverse role a player currently holds. Release a claim to free the role (the player is sent back to the nation chooser next time they load their home).</p>
+          <div id="claimList" class="natlist"></div>
+        </div>
+        </div><!-- /tabpanel claims -->
       </div>
     </div>
   </div>
@@ -745,6 +754,7 @@
       if (tab === 'corporations') loadCorpRefs().then(loadCorpList);
       if (tab === 'story') loadStoryRefs().then(loadStoryList);
       if (tab === 'narratives') loadNarrativeRefs().then(loadNarrativeList);
+      if (tab === 'claims') loadClaims();
     }
     vtabs.forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
 
@@ -1676,6 +1686,36 @@
       } catch (e) { narListBox.innerHTML = '<div class="empty">Couldn’t load narratives.</div>'; }
     }
     resetNarrativeForm();   // initial blank state
+
+    // ---- Role Claims (admin view + release) ----
+    const claimListBox = document.getElementById('claimList');
+    async function loadClaims() {
+      claimListBox.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        const { data, error } = await supabase.rpc('nationverse_list_claims');
+        if (error) throw error;
+        const rows = data || [];
+        if (!rows.length) { claimListBox.innerHTML = '<div class="empty">No roles are currently claimed.</div>'; return; }
+        claimListBox.innerHTML = rows.map(c =>
+          '<div class="natcard" data-id="' + esc(c.id) + '">' +
+          '<div class="natcard-hd"><div class="natmeta"><div class="natnm">' + esc(c.name || 'Unnamed') + '</div>' +
+          '<div class="natsub">' + esc(c.nation_name || '—') + ' · held by ' + esc(c.email || 'unknown') + '</div></div>' +
+          '<div class="natbtns"><button class="del claim-release" type="button">Release</button></div></div>' +
+          '</div>'
+        ).join('');
+        claimListBox.querySelectorAll('.natcard').forEach(card => {
+          const c = rows.find(x => x.id === card.dataset.id); if (!c) return;
+          card.querySelector('.claim-release').addEventListener('click', async () => {
+            if (!window.confirm('Release “' + (c.name || 'this role') + '” from ' + (c.email || 'its holder') + '? The role becomes open again.')) return;
+            try {
+              const { error } = await supabase.from('nationverse_personalities').update({ claimed_by: null }).eq('id', c.id);
+              if (error) throw error;
+              loadClaims();
+            } catch (e) { alert(e.message || 'Could not release the claim.'); }
+          });
+        });
+      } catch (e) { claimListBox.innerHTML = '<div class="empty">Couldn’t load claims.</div>'; }
+    }
 
     refresh();
   </script>
