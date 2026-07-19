@@ -100,8 +100,8 @@
     const nationId = params.get('nation'), roleId = params.get('role');
     const SEP = ' <span class="nhsep">|</span> ';
 
-    // Countdown to the next game tick. game_state has no tick timestamp, so this counts to the next
-    // 6-hour UTC boundary (00/06/12/18) — the assumed tick cadence. Anchor to a real last-tick time later.
+    // Countdown to the next game tick. The tick runs on pg_cron '0 */6 * * *' (00/06/12/18 UTC — see
+    // schema/60), so counting to the next 6-hour UTC boundary is anchored to the actual schedule.
     function startTickCountdown(el) {
       const TICK_H = 6, pad = n => String(n).padStart(2, '0');
       const render = () => {

@@ -67,6 +67,7 @@
   <script type="module">
     import { supabase, isConfigured, logout } from '/supabase.js';
     import { esc } from '/util.js';
+    import { redirectToMyCharacter } from '/nationverse.js';   // one-character routing (one source)
 
     document.getElementById('logout').addEventListener('click', logout);
     const content = document.getElementById('content');
@@ -74,6 +75,7 @@
 
     (async () => {
       if (!isConfigured) { content.innerHTML = '<div class="empty">Nation data isn’t connected yet.</div>'; return; }
+      if (await redirectToMyCharacter(supabase)) return;   // already have a character → straight to your home
       if (!nationId) { content.innerHTML = '<div class="empty">No nation selected. <a href="/nations/">Choose one.</a></div>'; return; }
       try {
         const [natRes, persRes, corpsRes, userRes] = await Promise.all([
