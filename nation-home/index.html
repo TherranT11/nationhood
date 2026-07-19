@@ -125,6 +125,16 @@
   .bub.them { align-self: flex-start; background: var(--bg); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
   .chat-foot { display: flex; gap: 9px; padding: 12px 14px; border-top: 1px solid var(--line); }
   .chat-foot input { flex: 1; padding: 10px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 14px; }
+  .chat-tools { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 14px 0; }
+  .chat-tool { font-size: 12px; font-weight: 700; border-radius: 8px; padding: 6px 12px; cursor: pointer; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .chat-tool:hover { border-color: var(--accent); color: var(--accent); }
+  .chat-tool.end:hover { border-color: var(--err); color: var(--err); }
+  .chat-ended { text-align: center; color: var(--muted); font-size: 13px; padding: 13px; border-top: 1px solid var(--line); }
+  /* Promise = attributed, gold-bordered note; system = centred neutral line */
+  .bub.promise { align-self: stretch; max-width: 100%; background: rgba(232,181,74,.10); border: 1px solid #e8b54a66; color: var(--ink); border-radius: 12px; }
+  .bub.promise .plabel { display: block; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #b98a17; margin-bottom: 3px; }
+  .sysline { align-self: center; text-align: center; color: var(--muted); font-size: 12px; padding: 4px 10px; }
+  .conv-tag { margin-left: auto; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; }
 </style>
 </head>
 <body>
@@ -362,9 +372,11 @@
       const box = document.getElementById('convBox');
       if (!me) { box.innerHTML = '<div class="conv-empty">Sign in to see your conversations.</div>'; return; }
       try {
+        // Accepted (live) and ended (viewable) conversations, most recent activity first.
         const { data: convs, error } = await supabase.from('nationverse_conversations')
-          .select('id, from_personality, to_personality, reason, created_at').eq('status', 'accepted')
-          .order('created_at', { ascending: false });
+          .select('id, from_personality, to_personality, reason, status, created_at, last_message_at')
+          .in('status', ['accepted', 'ended'])
+          .order('last_message_at', { ascending: false, nullsFirst: false });
         if (error) throw error;
         if (!convs || !convs.length) { box.innerHTML = '<div class="conv-empty">No conversations yet. Accept a meeting request or send one from your Character page.</div>'; return; }
         const others = [...new Set(convs.map(c => c.from_personality === me.id ? c.to_personality : c.from_personality))];
@@ -375,63 +387,177 @@
           const p = byId[otherId] || {}; const role = roleLabelOf(p);
           return '<div class="conv-card" data-id="' + esc(c.id) + '"><span class="pav">' + esc(initialsOf(p.name)) + '</span>' +
             '<div style="flex:1;min-width:0"><div class="cnm">' + esc(p.name || 'Unknown') + '</div>' +
-            '<div class="crl">' + (role ? esc(role) : '') + (c.reason ? ' · ' + esc(c.reason) : '') + '</div></div></div>';
+            '<div class="crl">' + (role ? esc(role) : '') + (c.reason ? ' · ' + esc(c.reason) : '') + '</div></div>' +
+            (c.status === 'ended' ? '<span class="conv-tag">Ended</span>' : '') + '</div>';
         }).join('');
         box.querySelectorAll('.conv-card').forEach(card => card.addEventListener('click', () => openChat(card.dataset.id)));
       } catch (e) { box.innerHTML = '<div class="conv-empty">Couldn’t load conversations.</div>'; }
     }
 
-    // ---- Chat (a single accepted conversation) ----
+    // ---- Chat (a single conversation). Accepted → live (input + actions); ended → read-only. ----
+    let curConv = null;   // the open conversation {id, other, status}
     async function openChat(convId) {
       stopPolling();
       setActiveNav('conversations');
       content.innerHTML = '<div class="conv-empty">Loading…</div>';
-      let other = {};
+      let conv = null, other = {};
       try {
-        const { data: conv, error } = await supabase.from('nationverse_conversations')
+        const { data, error } = await supabase.from('nationverse_conversations')
           .select('id, from_personality, to_personality, reason, status').eq('id', convId).maybeSingle();
         if (error) throw error;
-        if (!conv || conv.status !== 'accepted') { content.innerHTML = '<div class="conv-empty">That conversation isn’t available.</div>'; return; }
+        conv = data;
+        if (!conv || (conv.status !== 'accepted' && conv.status !== 'ended')) { content.innerHTML = '<div class="conv-empty">That conversation isn’t available.</div>'; return; }
         const otherId = conv.from_personality === me.id ? conv.to_personality : conv.from_personality;
         const { data: p } = await supabase.from('nationverse_personalities').select('id, name, role, office, party').eq('id', otherId).maybeSingle();
         other = p || {};
       } catch (e) { content.innerHTML = '<div class="conv-empty">Couldn’t open that conversation.</div>'; return; }
-      const role = roleLabelOf(other);
+      curConv = { id: convId, other, status: conv.status };
+      const role = roleLabelOf(other), live = conv.status === 'accepted';
+      const foot = live
+        ? '<div class="chat-tools"><button class="chat-tool" id="tPromise" type="button">Promise</button>' +
+            '<button class="chat-tool" id="tExchange" type="button">Exchange Wealth</button>' +
+            '<button class="chat-tool end" id="tEnd" type="button">End Meeting</button></div>' +
+          '<div class="chat-foot"><input type="text" id="chatInput" placeholder="Write a message…" maxlength="2000" autocomplete="off">' +
+            '<button class="ch-actbtn" id="chatSend">Send</button></div>'
+        : '<div class="chat-ended">This meeting has ended. You can view it, but not continue it.</div>';
       content.innerHTML =
         '<div class="chat"><div class="chat-hd"><button class="chat-back" id="chatBack">← Conversations</button>' +
           '<div class="chat-title"><b>' + esc(other.name || 'Unknown') + '</b>' + (role ? ' <span>· ' + esc(role) + '</span>' : '') + '</div></div>' +
-          '<div class="chat-scroll" id="chatScroll"><div class="conv-empty">Loading messages…</div></div>' +
-          '<div class="chat-foot"><input type="text" id="chatInput" placeholder="Write a message…" maxlength="2000" autocomplete="off">' +
-          '<button class="ch-actbtn" id="chatSend">Send</button></div></div>';
+          '<div class="chat-scroll" id="chatScroll"><div class="conv-empty">Loading messages…</div></div>' + foot + '</div>';
       document.getElementById('chatBack').addEventListener('click', () => showView('conversations'));
-      const input = document.getElementById('chatInput'), scroll = document.getElementById('chatScroll');
-      const send = async () => {
-        const body = input.value.trim(); if (!body) return;
-        input.value = '';
-        try {
-          const { error } = await supabase.rpc('nationverse_send_message', { p_conv: convId, p_body: body });
-          if (error) throw error;
-          await loadMessages(convId, scroll, true);
-        } catch (e) { input.value = body; alert('Could not send. Try again.'); }
-      };
-      document.getElementById('chatSend').addEventListener('click', send);
-      input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
+      const scroll = document.getElementById('chatScroll');
+      if (live) {
+        const input = document.getElementById('chatInput');
+        const send = async () => {
+          const body = input.value.trim(); if (!body) return;
+          input.value = '';
+          try {
+            const { error } = await supabase.rpc('nationverse_send_message', { p_conv: convId, p_body: body });
+            if (error) throw error;
+            await loadMessages(convId, scroll, true);
+          } catch (e) { input.value = body; alert('Could not send. Try again.'); }
+        };
+        document.getElementById('chatSend').addEventListener('click', send);
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
+        document.getElementById('tPromise').addEventListener('click', () => openPromise(convId, scroll));
+        document.getElementById('tExchange').addEventListener('click', () => openExchange(convId, other, scroll));
+        document.getElementById('tEnd').addEventListener('click', async () => {
+          if (!window.confirm('End this meeting? It can’t be continued afterwards.')) return;
+          try { const { error } = await supabase.rpc('nationverse_end_meeting', { p_conv: convId }); if (error) throw error; openChat(convId); }
+          catch (e) { alert('Could not end the meeting.'); }
+        });
+        pollTimer = setInterval(() => loadMessages(convId, scroll, false), 4000);   // live-ish refresh
+      }
       await loadMessages(convId, scroll, true);
-      pollTimer = setInterval(() => loadMessages(convId, scroll, false), 4000);   // live-ish refresh
     }
 
     async function loadMessages(convId, scroll, forceScroll) {
       try {
         const { data, error } = await supabase.from('nationverse_messages')
-          .select('id, sender_personality, body, created_at').eq('conversation_id', convId).order('created_at', { ascending: true });
+          .select('id, sender_personality, body, kind, created_at').eq('conversation_id', convId).order('created_at', { ascending: true });
         if (error) throw error;
         const msgs = data || [];
         const atBottom = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 60;
-        scroll.innerHTML = msgs.length
-          ? msgs.map(m => '<div class="bub ' + (m.sender_personality === me.id ? 'me' : 'them') + '">' + esc(m.body) + '</div>').join('')
-          : '<div class="conv-empty">No messages yet — say hello.</div>';
+        scroll.innerHTML = msgs.length ? msgs.map(m => {
+          if (m.kind === 'system') return '<div class="sysline">' + esc(m.body) + '</div>';
+          if (m.kind === 'promise') return '<div class="bub promise ' + (m.sender_personality === me.id ? 'me' : 'them') + '">' +
+            '<span class="plabel">🤝 Promise' + (m.sender_personality === me.id ? ' — you' : '') + '</span>' + esc(m.body) + '</div>';
+          return '<div class="bub ' + (m.sender_personality === me.id ? 'me' : 'them') + '">' + esc(m.body) + '</div>';
+        }).join('') : '<div class="conv-empty">No messages yet — say hello.</div>';
         if (forceScroll || atBottom) scroll.scrollTop = scroll.scrollHeight;
       } catch (e) { /* keep the last render on a transient error */ }
+    }
+
+    // ---- Promise modal ----
+    function openPromise(convId, scroll) {
+      modalEl = document.createElement('div');
+      modalEl.className = 'modal-back';
+      modalEl.innerHTML = '<div class="modal"><h2>Make a Promise</h2>' +
+        '<p class="msub">A recorded pledge both of you will see in the transcript.</p>' +
+        '<label>I promise…</label><input type="text" id="prText" maxlength="240" autocomplete="off" placeholder="e.g. to vote for your bill next week">' +
+        '<div class="mnote" id="prNote"></div>' +
+        '<div class="modal-foot"><button class="ch-mini" id="prCancel">Cancel</button>' +
+        '<button class="ch-actbtn" id="prSubmit">Make Promise</button></div></div>';
+      document.body.appendChild(modalEl);
+      modalEl.addEventListener('click', e => { if (e.target === modalEl) closeModal(); });
+      document.getElementById('prCancel').addEventListener('click', closeModal);
+      document.getElementById('prSubmit').addEventListener('click', async () => {
+        const text = document.getElementById('prText').value.trim();
+        const note = document.getElementById('prNote');
+        if (!text) { note.textContent = 'Write what you promise.'; note.className = 'mnote error'; return; }
+        note.textContent = 'Recording…'; note.className = 'mnote';
+        try {
+          const { error } = await supabase.rpc('nationverse_make_promise', { p_conv: convId, p_text: text });
+          if (error) throw error;
+          note.textContent = 'Promise made.'; note.className = 'mnote';
+          setTimeout(() => { closeModal(); loadMessages(convId, scroll, true); }, 650);
+        } catch (e) { note.textContent = 'Could not record the promise.'; note.className = 'mnote error'; }
+      });
+    }
+
+    // ---- Exchange Wealth modal (money or corporation shares) ----
+    async function openExchange(convId, other, scroll) {
+      modalEl = document.createElement('div');
+      modalEl.className = 'modal-back';
+      modalEl.innerHTML = '<div class="modal"><h2>Exchange Wealth</h2>' +
+        '<p class="msub">Send money or a stake in a corporation to ' + esc(other.name || 'the other player') + '.</p>' +
+        '<div class="ch-actions" style="margin-bottom:4px"><button class="chat-tool" id="exMoneyTab" type="button">Money</button>' +
+          '<button class="chat-tool" id="exSharesTab" type="button">Corporation shares</button></div>' +
+        '<div id="exBody"></div>' +
+        '<div class="mnote" id="exNote"></div>' +
+        '<div class="modal-foot"><button class="ch-mini" id="exCancel">Cancel</button>' +
+        '<button class="ch-actbtn" id="exSubmit">Send</button></div></div>';
+      document.body.appendChild(modalEl);
+      modalEl.addEventListener('click', e => { if (e.target === modalEl) closeModal(); });
+      document.getElementById('exCancel').addEventListener('click', closeModal);
+      const body = document.getElementById('exBody'), note = document.getElementById('exNote');
+      let mode = 'money', myCorps = [];
+
+      // Corporations where I hold a stake (for the shares mode) — read from the public corp cap tables.
+      try {
+        const { data } = await supabase.from('nationverse_corporations').select('id, name, ownership');
+        myCorps = (data || []).map(c => {
+          const st = (c.ownership || []).find(o => o.type === 'personality' && o.id === me.id);
+          return st ? { id: c.id, name: c.name, share: Number(st.share) || 0 } : null;
+        }).filter(Boolean).filter(c => c.share > 0);
+      } catch (e) { myCorps = []; }
+
+      const renderMoney = () => {
+        const wealth = (me && me.wealth != null) ? me.wealth : 0;
+        body.innerHTML = '<label>Amount <span class="msub" style="margin:0">(you have ' + esc(wealth) + ')</span></label>' +
+          '<input type="number" id="exAmt" min="1" step="1" max="' + esc(wealth) + '" placeholder="0">';
+      };
+      const renderShares = () => {
+        if (!myCorps.length) { body.innerHTML = '<p class="msub">You don’t hold shares in any corporation.</p>'; return; }
+        body.innerHTML = '<label>Corporation</label><select id="exCorp" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:14px">' +
+          myCorps.map(c => '<option value="' + esc(c.id) + '" data-share="' + esc(c.share) + '">' + esc(c.name) + ' (you hold ' + esc(c.share) + '%)</option>').join('') + '</select>' +
+          '<label>Share % to transfer</label><input type="number" id="exAmt" min="0.1" step="0.1" placeholder="0">';
+      };
+      const setTab = m => {
+        mode = m;
+        document.getElementById('exMoneyTab').classList.toggle('sel', m === 'money');
+        document.getElementById('exSharesTab').classList.toggle('sel', m === 'shares');
+        if (m === 'money') renderMoney(); else renderShares();
+      };
+      document.getElementById('exMoneyTab').addEventListener('click', () => setTab('money'));
+      document.getElementById('exSharesTab').addEventListener('click', () => setTab('shares'));
+      setTab('money');
+
+      document.getElementById('exSubmit').addEventListener('click', async () => {
+        const amt = Number((document.getElementById('exAmt') || {}).value);
+        if (!isFinite(amt) || amt <= 0) { note.textContent = 'Enter an amount.'; note.className = 'mnote error'; return; }
+        const corp = mode === 'shares' ? (document.getElementById('exCorp') || {}).value : null;
+        if (mode === 'shares' && !corp) { note.textContent = 'Pick a corporation.'; note.className = 'mnote error'; return; }
+        note.textContent = 'Sending…'; note.className = 'mnote';
+        try {
+          const { error } = await supabase.rpc('nationverse_exchange_wealth', { p_conv: convId, p_kind: mode, p_amount: amt, p_corp: corp });
+          if (error) throw error;
+          closeModal(); loadMessages(convId, scroll, true);
+        } catch (e) {
+          const msg = (e && e.message || '').includes('insufficient') ? 'You don’t have that much to send.' : 'Could not complete the exchange.';
+          note.textContent = msg; note.className = 'mnote error';
+        }
+      });
     }
 
     // ---- View switching ----
