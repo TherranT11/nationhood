@@ -356,6 +356,7 @@
           <div class="f"><label>Narrative Name</label><input id="nr-name" type="text" autocomplete="off"></div>
           <div class="f"><label>Internal ID <span class="hint">optional · e.g. police_reform_debate</span></label><input id="nr-slug" type="text" autocomplete="off" style="max-width:320px"></div>
           <div class="f"><label>Nation</label><select id="nr-nation"></select></div>
+          <div class="f"><label>Assigned Personality <span class="hint">optional · who this narrative is for</span></label><select id="nr-personality"></select></div>
           <div class="f" style="display:flex;gap:18px;flex-wrap:wrap">
             <span><label>Category</label><select id="nr-cat"></select></span>
             <span><label>Priority <span class="hint">0–100 · higher interrupts lower</span></label><input id="nr-priority" type="number" min="0" max="100" step="1" value="0" style="max-width:110px"></span>
@@ -1584,11 +1585,23 @@
       if (!nrDecBox.children.length) addOption();
     }
 
-    const nrNatSel = document.getElementById('nr-nation');
+    const nrNatSel = document.getElementById('nr-nation'), nrPersSel = document.getElementById('nr-personality');
     let narNatNames = {};
+    // The Assigned Personality options follow the selected nation (empty when Global / no nation).
+    async function loadNarrativePersonalities(nationId, selectedId) {
+      if (!nationId) { nrPersSel.innerHTML = '<option value="">— No specific personality —</option>'; return; }
+      try {
+        const { data, error } = await supabase.from('nationverse_personalities').select('id, name').eq('nation_id', nationId).order('name', { ascending: true });
+        if (error) throw error;
+        nrPersSel.innerHTML = '<option value="">— No specific personality —</option>' +
+          (data || []).map(p => '<option value="' + esc(p.id) + '"' + (p.id === selectedId ? ' selected' : '') + '>' + esc(p.name || 'Unnamed') + '</option>').join('');
+      } catch (e) { nrPersSel.innerHTML = '<option value="">— No specific personality —</option>'; }
+    }
+    nrNatSel.addEventListener('change', () => loadNarrativePersonalities(nrNatSel.value));
     async function loadNarrativeRefs() {
       const rows = await loadNationOptions(nrNatSel, { global: true });   // shared nation-options source
       narNatNames = {}; rows.forEach(n => { narNatNames[n.id] = n.name; });
+      await loadNarrativePersonalities(nrNatSel.value);   // personalities for the initially-selected nation
     }
 
     const narNote = document.getElementById('narNote'), saveNarBtn = document.getElementById('saveNar');
@@ -1599,14 +1612,16 @@
       editingNarId = null; narTitle.textContent = 'Narrative Creator'; saveNarBtn.textContent = 'Save Narrative'; cancelNarBtn.hidden = true;
       ['nr-name', 'nr-slug', 'nr-speaker', 'nr-role', 'nr-decprompt'].forEach(id => { document.getElementById(id).value = ''; });
       nrNatSel.value = ''; document.getElementById('nr-cat').selectedIndex = 0; document.getElementById('nr-priority').value = 0;
+      nrPersSel.innerHTML = '<option value="">— No specific personality —</option>';
       nrTrigBox.innerHTML = '';
       setLines([]); setChoices([]); setDecision({});
     }
-    function editNarrative(n) {
+    async function editNarrative(n) {
       editingNarId = n.id; narTitle.textContent = 'Edit Narrative'; saveNarBtn.textContent = 'Save changes'; cancelNarBtn.hidden = false;
       document.getElementById('nr-name').value = n.name || '';
       document.getElementById('nr-slug').value = n.internal_id || '';
       nrNatSel.value = n.nation_id || '';
+      await loadNarrativePersonalities(n.nation_id, n.personality_id);   // fill + select the assigned personality
       document.getElementById('nr-cat').value = n.category || NARR_CATEGORIES[0];
       document.getElementById('nr-priority').value = n.priority != null ? n.priority : 0;
       setTriggers(nrTrigBox, n.triggers);
@@ -1630,6 +1645,7 @@
         name,
         internal_id: document.getElementById('nr-slug').value.trim() || null,
         nation_id: nrNatSel.value || null,
+        personality_id: nrPersSel.value || null,
         category: document.getElementById('nr-cat').value,
         priority: Math.max(0, Math.min(100, Math.round(Number(pr) || 0))),
         triggers: collectTriggers(nrTrigBox),
