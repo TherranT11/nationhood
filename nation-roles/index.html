@@ -39,6 +39,7 @@
   .rtaken { color: var(--muted); }
   .rmine { color: #3ecf8e; border-color: #3ecf8e66; background: #3ecf8e1f; }
   .rolecard .rr { color: var(--muted); font-size: 13px; }
+  .rolecard .rideo { display: inline-flex; align-items: center; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; padding: 2px 8px; margin-left: 6px; border-radius: 999px; border: 1px solid var(--line2, var(--line)); color: var(--ink); vertical-align: middle; }
   .rolecard .rcreds { color: var(--ink); font-size: 12.5px; font-weight: 700; margin-top: 5px; opacity: .82; }
   .rolecard .rage { color: var(--muted); font-size: 12.5px; flex: none; }
   .rolecard .rdesc { color: var(--muted); font-size: 13px; line-height: 1.5; margin-top: 6px; }
@@ -93,11 +94,14 @@
         // A politician's role reads "Party Leader of <party>". The party name is the one source (the
         // nation's parties): prefer the stored party name, else map the legacy "Politician of Party N" slot.
         const parties = n.parties || [];
-        const roleLabelOf = p => {
+        const partyOf = p => {
           let party = p.party || null;
           if (!party) { const m = /^Politician of Party (\d+)$/.exec(p.role || ''); if (m) party = (parties[+m[1] - 1] || {}).name || null; }
-          return party ? ('Party Leader of ' + party) : (p.role || '—');
+          return party;
         };
+        const roleLabelOf = p => { const party = partyOf(p); return party ? ('Party Leader of ' + party) : (p.role || '—'); };
+        // The party's declared ideology, shown on the role when the personality belongs to a party.
+        const ideologyOf = p => { const party = partyOf(p); if (!party) return ''; const pd = parties.find(x => x && x.name === party); return (pd && pd.ideology) || ''; };
 
         // Credentials shown under the role: the personality's Starting Office and any corporate stake
         // ("70% Owner of <corp>"). Ownership is read from each corp's cap table (one source: the corp).
@@ -142,7 +146,7 @@
                     (r.starting_age != null ? '<span class="rage">Age ' + esc(r.starting_age) + '</span>' : '') +
                   '</div>' +
                 '</div>' +
-                '<div class="rr">' + esc(roleLabelOf(r)) + '</div>' +
+                '<div class="rr">' + esc(roleLabelOf(r)) + (ideologyOf(r) ? ' <span class="rideo">' + esc(ideologyOf(r)) + '</span>' : '') + '</div>' +
                 (credsOf(r).length ? '<div class="rcreds">' + esc(credsOf(r).join(' · ')) + '</div>' : '') +
                 (r.description ? '<div class="rdesc">' + esc(r.description) + '</div>' : '') +
                 (takenByOther ? '' : '<button class="btn btn-solid rconfirm" type="button">' + (mine ? 'Enter' : 'Confirm') + ' &rarr;</button>') +
