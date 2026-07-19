@@ -140,10 +140,6 @@
   .bub.promise { align-self: stretch; max-width: 100%; background: rgba(232,181,74,.10); border: 1px solid #e8b54a66; color: var(--ink); border-radius: 12px; }
   .bub.promise .plabel { display: block; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #b98a17; margin-bottom: 3px; }
   .sysline { align-self: center; text-align: center; color: var(--muted); font-size: 12px; padding: 4px 10px; }
-  /* Narrator = the World Master's authored situation lines */
-  .narline { align-self: stretch; max-width: 100%; background: color-mix(in srgb, var(--accent) 7%, transparent); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 13px; font-size: 13.5px; line-height: 1.45; }
-  .narline .nspk { display: block; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-bottom: 3px; }
-  .ch-notif.narr .txt b { color: var(--accent); }
   .conv-tag { margin-left: auto; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; }
 </style>
 </head>
@@ -307,70 +303,38 @@
       if (me) loadPendingRequests();   // incoming meeting requests → Requires Your Attention
     }
 
-    // ---- Requires Your Attention: incoming meeting requests + narrative Ready-to-Begin gates ----
+    // ---- Requires Your Attention: incoming meeting requests ----
     async function loadPendingRequests() {
       const box = document.getElementById('attnBox'), count = document.getElementById('attnCount');
       if (!box) return;
       try {
-        // (a) p2p requests where I'm the recipient; (b) narrative conversations I'm part of, awaiting readiness.
-        const [reqRes, narrRes] = await Promise.all([
-          supabase.from('nationverse_conversations')
-            .select('id, from_personality, reason, created_at').eq('to_personality', me.id)
-            .eq('kind', 'p2p').eq('status', 'pending').order('created_at', { ascending: true }),
-          supabase.from('nationverse_conversations')
-            .select('id, from_personality, to_personality, reason, from_ready, to_ready, created_at')
-            .eq('kind', 'narrative').eq('status', 'pending')
-            .or('from_personality.eq.' + me.id + ',to_personality.eq.' + me.id).order('created_at', { ascending: true })
-        ]);
-        if (reqRes.error) throw reqRes.error;
-        const reqs = reqRes.data || [], narrs = (narrRes && narrRes.data) || [];
-        if (!reqs.length && !narrs.length) {
+        const { data, error } = await supabase.from('nationverse_conversations')
+          .select('id, from_personality, reason').eq('to_personality', me.id)
+          .eq('kind', 'p2p').eq('status', 'pending').order('created_at', { ascending: true });
+        if (error) throw error;
+        const reqs = data || [];
+        if (!reqs.length) {
           box.innerHTML = '<div class="ch-empty">Nothing needs your attention right now.</div>';
           if (count) count.textContent = ''; return;
         }
         const byId = await peopleById(reqs.map(c => c.from_personality));
-        const reqRows = reqs.map(c => {
+        box.innerHTML = reqs.map(c => {
           const p = byId[c.from_personality] || {};
           const role = roleLabelOf(p), name = p.name || 'Someone';
-          return '<div class="ch-notif" data-id="' + esc(c.id) + '" data-t="req"><div class="txt">' +
+          return '<div class="ch-notif" data-id="' + esc(c.id) + '"><div class="txt">' +
             (role ? '<b>' + esc(role) + ' ' + esc(name) + '</b>' : '<b>' + esc(name) + '</b>') +
             ' is requesting to meet with you' +
             (c.reason ? ' regarding <i>' + esc(c.reason) + '</i>' : '') + '.</div>' +
             '<div class="ch-notifbtns"><button class="ch-mini ok" data-act="accept">Accept</button>' +
             '<button class="ch-mini no" data-act="decline">Decline</button></div></div>';
         }).join('');
-        const narrRows = narrs.map(c => {
-          const iAmReady = c.from_personality === me.id ? c.from_ready : c.to_ready;
-          const title = c.reason || 'A situation';
-          return '<div class="ch-notif narr" data-id="' + esc(c.id) + '" data-t="narr"><div class="txt">' +
-            '<b>🎭 ' + esc(title) + '</b> — ' + (iAmReady
-              ? 'waiting for the other player to be ready.'
-              : 'a narrative situation awaits you.') + '</div>' +
-            (iAmReady ? '' : '<div class="ch-notifbtns"><button class="ch-mini ok" data-act="ready">Ready to Begin</button></div>') +
-            '</div>';
-        }).join('');
-        box.innerHTML = reqRows + narrRows;
-        const total = reqs.length + narrs.length;
-        if (count) count.textContent = total + ' item' + (total === 1 ? '' : 's');
-        box.querySelectorAll('.ch-notif[data-t=req]').forEach(row => {
+        if (count) count.textContent = reqs.length + ' item' + (reqs.length === 1 ? '' : 's');
+        box.querySelectorAll('.ch-notif').forEach(row => {
           const id = row.dataset.id;
           row.querySelector('[data-act=accept]').addEventListener('click', () => respondMeeting(id, true));
           row.querySelector('[data-act=decline]').addEventListener('click', () => respondMeeting(id, false));
         });
-        box.querySelectorAll('.ch-notif[data-t=narr] [data-act=ready]').forEach(btn =>
-          btn.addEventListener('click', () => markReady(btn.closest('.ch-notif').dataset.id)));
       } catch (e) { box.innerHTML = '<div class="ch-empty">Couldn’t load your requests.</div>'; }
-    }
-
-    async function markReady(convId) {
-      if (navBusy) return; navBusy = true;
-      try {
-        const { data, error } = await supabase.rpc('nationverse_mark_ready', { p_conv: convId });
-        if (error) throw error;
-        if (data === 'accepted') openChat(convId);   // both ready → the situation opens (openChat sets the nav)
-        else loadPendingRequests();                  // waiting on the other player
-      } catch (e) { alert('Could not mark ready. Try again shortly.'); }
-      finally { navBusy = false; }
     }
 
     async function respondMeeting(convId, accept) {
@@ -549,7 +513,6 @@
         const msgs = data || [];
         const atBottom = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 60;
         scroll.innerHTML = msgs.length ? msgs.map(m => {
-          if (m.kind === 'narrator') return '<div class="narline">' + (m.speaker ? '<span class="nspk">' + esc(m.speaker) + '</span>' : '') + esc(m.body) + '</div>';
           if (m.kind === 'system') return '<div class="sysline">' + esc(m.body) + '</div>';
           if (m.kind === 'promise') return '<div class="bub promise ' + (m.sender_personality === me.id ? 'me' : 'them') + '">' +
             '<span class="plabel">🤝 Promise' + (m.sender_personality === me.id ? ' — you' : '') + '</span>' + esc(m.body) + '</div>';
