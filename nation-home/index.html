@@ -101,6 +101,16 @@
     const nationId = params.get('nation'), roleId = params.get('role');
     const SEP = ' <span class="nhsep">|</span> ';
 
+    // Economic Growth (0–20 stat) shown as a word rating on the top bar, in paired bands:
+    // 1–2 Depression … 19–20 Booming. Band index = floor((v−1)/2), clamped to the 10 labels.
+    const ECON_RATINGS = ['Depression', 'Recession', 'Stagnant', 'Weak', 'Stable',
+      'Healthy', 'Prosperous', 'Strong Growth', 'Rapid Growth', 'Booming'];
+    function economyRating(v) {
+      const n = Number(v);
+      if (v == null || !isFinite(n)) return '—';
+      return ECON_RATINGS[Math.max(0, Math.min(9, Math.floor((n - 1) / 2)))];
+    }
+
     // Countdown to the next game tick. The tick runs on pg_cron '0 */6 * * *' (00/06/12/18 UTC — see
     // schema/60), so counting to the next 6-hour UTC boundary is anchored to the actual schedule.
     function startTickCountdown(el) {
@@ -154,10 +164,10 @@
           : '<span class="nhflag ph">' + esc((n.name || '?').slice(0, 3)) + '</span>';
 
         const stats = n.stats || {};
-        const growth = stats.economic_growth != null ? stats.economic_growth : '—';
+        const economy = economyRating(stats.economic_growth);
         const budget = stats.budget != null ? stats.budget : '—';
         const wealth = (p && p.wealth != null) ? p.wealth : 0;
-        nhEcon.innerHTML = SEP + 'Economy: <b>' + esc(growth) + '</b>' + SEP + 'Budget: <b>' + esc(budget) + '</b>' + SEP + 'Personal Wealth: <b>' + esc(wealth) + '</b>';
+        nhEcon.innerHTML = SEP + 'Economy: <b>' + esc(economy) + '</b>' + SEP + 'Budget: <b>' + esc(budget) + '</b>' + SEP + 'Personal Wealth: <b>' + esc(wealth) + '</b>';
 
         // Top bar right: character name | role | party (party resolved for legacy politician records too).
         if (p) {
