@@ -18,6 +18,23 @@ export const NV_STATS = [
   ['business_climate', 'Business Climate', 'Attractiveness of the country for investment and private enterprise'],
 ];
 
+// Resolve a personality's party NAME from the nation's party list: the stored party name if any, else the
+// legacy "Politician of Party N" slot. ONE source, used by the role chooser and the home top bar.
+export function partyOf(p, parties) {
+  if (!p) return null;
+  if (p.party) return p.party;
+  const m = /^Politician of Party (\d+)$/.exec(p.role || '');
+  return m ? (((parties || [])[+m[1] - 1] || {}).name || null) : null;
+}
+
+// The declared ideology of a personality's party ('' when they belong to no party or none is set).
+export function partyIdeology(p, parties) {
+  const name = partyOf(p, parties);
+  if (!name) return '';
+  const pd = (parties || []).find(x => x && x.name === name);
+  return (pd && pd.ideology) || '';
+}
+
 // A player is locked to one character. If the signed-in user has already claimed a personality, send
 // them straight to that character's nation home. Returns true when it redirects (callers should then
 // stop rendering). ONE source for the "you're locked to your character" routing — used by /nations and

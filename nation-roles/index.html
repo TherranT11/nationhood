@@ -68,7 +68,7 @@
   <script type="module">
     import { supabase, isConfigured, logout } from '/supabase.js';
     import { esc } from '/util.js';
-    import { redirectToMyCharacter } from '/nationverse.js';   // one-character routing (one source)
+    import { redirectToMyCharacter, partyOf, partyIdeology } from '/nationverse.js';   // routing + party/ideology (one source)
 
     document.getElementById('logout').addEventListener('click', logout);
     const content = document.getElementById('content');
@@ -91,17 +91,10 @@
         const roles = (persRes.error ? [] : (persRes.data || []));
         const myId = (userRes && userRes.data && userRes.data.user) ? userRes.data.user.id : null;   // for claim state
 
-        // A politician's role reads "Party Leader of <party>". The party name is the one source (the
-        // nation's parties): prefer the stored party name, else map the legacy "Politician of Party N" slot.
+        // A politician's role reads "Party Leader of <party>"; party name + ideology resolve from the
+        // nation's party list via the shared helpers (partyOf / partyIdeology, one source in nationverse.js).
         const parties = n.parties || [];
-        const partyOf = p => {
-          let party = p.party || null;
-          if (!party) { const m = /^Politician of Party (\d+)$/.exec(p.role || ''); if (m) party = (parties[+m[1] - 1] || {}).name || null; }
-          return party;
-        };
-        const roleLabelOf = p => { const party = partyOf(p); return party ? ('Party Leader of ' + party) : (p.role || '—'); };
-        // The party's declared ideology, shown on the role when the personality belongs to a party.
-        const ideologyOf = p => { const party = partyOf(p); if (!party) return ''; const pd = parties.find(x => x && x.name === party); return (pd && pd.ideology) || ''; };
+        const roleLabelOf = p => { const party = partyOf(p, parties); return party ? ('Party Leader of ' + party) : (p.role || '—'); };
 
         // Credentials shown under the role: the personality's Starting Office and any corporate stake
         // ("70% Owner of <corp>"). Ownership is read from each corp's cap table (one source: the corp).
@@ -146,7 +139,7 @@
                     (r.starting_age != null ? '<span class="rage">Age ' + esc(r.starting_age) + '</span>' : '') +
                   '</div>' +
                 '</div>' +
-                '<div class="rr">' + esc(roleLabelOf(r)) + (ideologyOf(r) ? ' <span class="rideo">' + esc(ideologyOf(r)) + '</span>' : '') + '</div>' +
+                '<div class="rr">' + esc(roleLabelOf(r)) + (partyIdeology(r, parties) ? ' <span class="rideo">' + esc(partyIdeology(r, parties)) + '</span>' : '') + '</div>' +
                 (credsOf(r).length ? '<div class="rcreds">' + esc(credsOf(r).join(' · ')) + '</div>' : '') +
                 (r.description ? '<div class="rdesc">' + esc(r.description) + '</div>' : '') +
                 (takenByOther ? '' : '<button class="btn btn-solid rconfirm" type="button">' + (mine ? 'Enter' : 'Confirm') + ' &rarr;</button>') +

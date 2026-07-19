@@ -176,7 +176,7 @@
   <script type="module">
     import { supabase, isConfigured, logout } from '/supabase.js';
     import { mountGameDate } from '/gamedate.js';   // live game date (one source)
-    import { NV_STATS } from '/nationverse.js';      // the stat set (one source)
+    import { NV_STATS, partyOf, partyIdeology } from '/nationverse.js';   // stats + party/ideology (one source)
     import { esc } from '/util.js';
 
     document.getElementById('logout').addEventListener('click', logout);
@@ -691,9 +691,7 @@
           const parties = n.parties || [];
           const isPol = p.party || p.role === 'Politician' || /^Politician of Party \d+$/.test(p.role || '');
           const roleText = (p.office && p.office !== 'No Specific Office') ? p.office : (isPol ? 'Politician' : (p.role || ''));
-          let partyText = p.party || '', ideoText = '';
-          if (!partyText && isPol) { const m = /^Politician of Party (\d+)$/.exec(p.role || ''); if (m) partyText = (parties[+m[1] - 1] || {}).name || ''; }
-          if (partyText) { const pd = parties.find(x => x && x.name === partyText); ideoText = (pd && pd.ideology) || ''; }
+          const partyText = partyOf(p, parties) || '', ideoText = partyIdeology(p, parties);
           nhWho.innerHTML = '<b>' + esc(p.name || 'Unnamed') + '</b>' +
             (roleText ? SEP + esc(roleText) : '') + (partyText ? SEP + esc(partyText) : '') +
             (ideoText ? SEP + esc(ideoText) : '');
