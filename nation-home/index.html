@@ -114,6 +114,12 @@
   .conv-card .pav { width: 38px; height: 38px; border-radius: 19px; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; color: #0e0e16; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #000)); }
   .conv-card .cnm { font-weight: 700; font-size: 14.5px; }
   .conv-card .crl { color: var(--muted); font-size: 12.5px; }
+  /* Outbound pending request — awaiting the other player, with a Cancel Meeting option. */
+  .conv-pending { border: 1px dashed var(--line2, var(--line)); border-radius: 12px; background: var(--surface); padding: 13px 15px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; }
+  .conv-pending .cp-txt { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.45; color: var(--muted); }
+  .conv-pending .cp-txt b { color: var(--ink); font-weight: 700; }
+  .conv-pending .cp-txt i { font-style: italic; }
+  .conv-pending .cp-cancel { flex: none; }
   .chat { display: flex; flex-direction: column; height: calc(100vh - 200px); min-height: 380px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); overflow: hidden; }
   .chat-hd { display: flex; align-items: center; gap: 12px; padding: 12px 15px; border-bottom: 1px solid var(--line); }
   .chat-back { font-size: 13px; font-weight: 700; cursor: pointer; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 6px 11px; background: var(--bg); }
@@ -177,7 +183,7 @@
     import { supabase, isConfigured, logout } from '/supabase.js';
     import { mountGameDate } from '/gamedate.js';   // live game date (one source)
     import { NV_STATS, partyOf, partyIdeology } from '/nationverse.js';   // stats + party/ideology (one source)
-    import { esc } from '/util.js';
+    import { esc, tickToDate } from '/util.js';
 
     document.getElementById('logout').addEventListener('click', logout);
 
@@ -432,23 +438,49 @@
       const box = document.getElementById('convBox');
       if (!me) { box.innerHTML = '<div class="conv-empty">Sign in to see your conversations.</div>'; return; }
       try {
-        // Accepted (live) and ended (viewable) conversations, most recent activity first.
-        const { data: convs, error } = await supabase.from('nationverse_conversations')
-          .select('id, from_personality, to_personality, reason, status')
-          .in('status', ['accepted', 'ended'])
-          .order('last_message_at', { ascending: false, nullsFirst: false });
-        if (error) throw error;
-        if (!convs || !convs.length) { box.innerHTML = '<div class="conv-empty">No conversations yet. Accept a meeting request or send one from your Character page.</div>'; return; }
-        const byId = await peopleById(convs.map(c => c.from_personality === me.id ? c.to_personality : c.from_personality));
-        box.innerHTML = convs.map(c => {
+        // My still-pending outbound requests (top) + accepted/ended conversations (most recent first).
+        const [pendRes, convRes] = await Promise.all([
+          supabase.from('nationverse_conversations')
+            .select('id, to_personality, reason, created_tick').eq('from_personality', me.id)
+            .eq('kind', 'p2p').eq('status', 'pending').order('id', { ascending: false }),
+          supabase.from('nationverse_conversations')
+            .select('id, from_personality, to_personality, reason, status')
+            .in('status', ['accepted', 'ended']).order('last_message_at', { ascending: false, nullsFirst: false })
+        ]);
+        if (convRes.error) throw convRes.error;
+        const pend = (pendRes && pendRes.data) || [], convs = convRes.data || [];
+        if (!pend.length && !convs.length) { box.innerHTML = '<div class="conv-empty">No conversations yet. Accept a meeting request or send one from your Character page.</div>'; return; }
+        const byId = await peopleById([
+          ...pend.map(c => c.to_personality),
+          ...convs.map(c => c.from_personality === me.id ? c.to_personality : c.from_personality)
+        ]);
+        // Outbound pending requests — awaiting the other player, with a Cancel Meeting option.
+        const pendRows = pend.map(c => {
+          const p = byId[c.to_personality] || {}, role = roleLabelOf(p), name = p.name || 'a player';
+          return '<div class="conv-pending" data-id="' + esc(c.id) + '"><div class="cp-txt">' +
+            'Meeting requested with <b>' + (role ? esc(role) + ' ' : '') + esc(name) + '</b>' +
+            (c.reason ? ' regarding: <i>' + esc(c.reason) + '</i>' : '') + '.' +
+            (c.created_tick != null ? ' Meeting requested in ' + esc(tickToDate(c.created_tick)) + '.' : '') +
+            '</div><button class="ch-mini no cp-cancel" type="button">Cancel Meeting</button></div>';
+        }).join('');
+        const convRows = convs.map(c => {
           const otherId = c.from_personality === me.id ? c.to_personality : c.from_personality;
-          const p = byId[otherId] || {}; const role = roleLabelOf(p);
+          const p = byId[otherId] || {}, role = roleLabelOf(p);
           return '<div class="conv-card" data-id="' + esc(c.id) + '"><span class="pav">' + esc(initialsOf(p.name)) + '</span>' +
             '<div style="flex:1;min-width:0"><div class="cnm">' + esc(p.name || 'Unknown') + '</div>' +
             '<div class="crl">' + (role ? esc(role) : '') + (c.reason ? ' · ' + esc(c.reason) : '') + '</div></div>' +
             (c.status === 'ended' ? '<span class="conv-tag">Ended</span>' : '') + '</div>';
         }).join('');
+        box.innerHTML = pendRows + convRows;
         box.querySelectorAll('.conv-card').forEach(card => card.addEventListener('click', () => openChat(card.dataset.id)));
+        box.querySelectorAll('.conv-pending .cp-cancel').forEach(btn =>
+          btn.addEventListener('click', () => guard(btn, async () => {
+            try {
+              const { error } = await supabase.rpc('nationverse_cancel_meeting', { p_conv: btn.closest('.conv-pending').dataset.id });
+              if (error) throw error;
+              renderConversationsView();
+            } catch (e) { alert('Could not cancel the meeting.'); }
+          })));
       } catch (e) { box.innerHTML = '<div class="conv-empty">Couldn’t load conversations.</div>'; }
     }
 
