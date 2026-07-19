@@ -30,7 +30,21 @@
   .nhsep { color: var(--line2, var(--line)); font-weight: 400; }
   .nhtbtn { padding: 8px 13px; font-size: 13px; }
 
-  .wrap4 { padding: 30px 22px 80px; }
+  /* Body = left sidebar + main. CHARACTER is the current page; other sections are placeholders for now. */
+  .nhbody { display: flex; align-items: stretch; min-height: calc(100vh - 66px); }
+  .nhside { width: 216px; flex: none; border-right: 1px solid var(--line); background: var(--surface); padding: 16px 12px; }
+  .nhnav { display: block; padding: 11px 14px; margin-bottom: 4px; border-radius: 10px; font-size: 13px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); text-decoration: none; cursor: pointer; }
+  .nhnav:hover { background: var(--bg); color: var(--ink); }
+  .nhnav.active { background: var(--bg); color: var(--ink); box-shadow: inset 3px 0 0 var(--accent); }
+  .nhnav.soon { opacity: .5; cursor: default; }
+  .nhnav.soon:hover { background: transparent; color: var(--muted); }
+  .nhmain { flex: 1; min-width: 0; padding: 30px 24px 80px; }
+  @media (max-width: 720px) {
+    .nhbody { flex-direction: column; }
+    .nhside { width: auto; border-right: none; border-bottom: 1px solid var(--line); display: flex; gap: 6px; overflow-x: auto; padding: 10px 12px; }
+    .nhnav { margin-bottom: 0; white-space: nowrap; }
+    .nhnav.active { box-shadow: inset 0 -3px 0 var(--accent); }
+  }
   .empty { padding: 48px 24px; border: 1px dashed var(--line); border-radius: 14px; text-align: center; color: var(--muted); font-size: 14.5px; }
 </style>
 </head>
@@ -51,9 +65,19 @@
     </div>
   </header>
 
-  <main class="wrap4">
-    <div id="content"><div class="empty">Loading…</div></div>
-  </main>
+  <div class="nhbody">
+    <aside class="nhside">
+      <span class="nhnav active" aria-current="page">Character</span>
+      <span class="nhnav soon" title="Coming soon">Conversations</span>
+      <span class="nhnav soon" title="Coming soon">Nation</span>
+      <span class="nhnav soon" title="Coming soon">Legislature</span>
+      <span class="nhnav soon" title="Coming soon">Conflict</span>
+      <span class="nhnav soon" title="Coming soon">Wiki</span>
+    </aside>
+    <main class="nhmain">
+      <div id="content"><div class="empty">Loading…</div></div>
+    </main>
+  </div>
 
   <script type="module">
     import { supabase, isConfigured, logout } from '/supabase.js';
