@@ -228,10 +228,39 @@
     function initialsOf(name) {
       return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
     }
+    // Resolve personalities by id → { id: {name, role, office, party} } (one source for every list/chat lookup).
+    async function peopleById(ids) {
+      const byId = {}, list = [...new Set(ids)].filter(Boolean);
+      if (!list.length) return byId;
+      const { data } = await supabase.from('nationverse_personalities').select('id, name, role, office, party').in('id', list);
+      (data || []).forEach(p => { byId[p.id] = p; });
+      return byId;
+    }
 
     let me = null, nation = null;        // the signed-in character + their nation (set on load)
     let pollTimer = null;                // active chat poll, cleared on every view change
     const stopPolling = () => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } };
+
+    // ---- Modal + double-fire helpers (one source, shared by every dialog and DB write) ----
+    let modalEl = null;                  // at most one modal open at a time
+    function closeModal() { if (modalEl) { modalEl.remove(); modalEl = null; } }
+    function openModal(html) {           // backdrop + body + click-outside-to-close
+      closeModal();
+      modalEl = document.createElement('div');
+      modalEl.className = 'modal-back';
+      modalEl.innerHTML = html;
+      document.body.appendChild(modalEl);
+      modalEl.addEventListener('click', e => { if (e.target === modalEl) closeModal(); });
+      return modalEl;
+    }
+    // Disable a button while its async action runs — protects every DB write from a double-click
+    // (money can't be sent twice, promises can't double-post, a request can't duplicate).
+    async function guard(btn, fn) {
+      if (!btn || btn.disabled) return;
+      btn.disabled = true;
+      try { await fn(); } finally { if (btn.isConnected) btn.disabled = false; }
+    }
+    let navBusy = false;                  // re-entrancy lock for actions that navigate/re-render
 
     // The Character home screen. Every panel starts empty except The Nation (live stats); the Actions card
     // holds the player's action buttons and Requires Your Attention shows incoming meeting requests.
@@ -293,12 +322,7 @@
           box.innerHTML = '<div class="ch-empty">Nothing needs your attention right now.</div>';
           if (count) count.textContent = ''; return;
         }
-        const ids = [...new Set(reqs.map(c => c.from_personality))];
-        const byId = {};
-        if (ids.length) {
-          const { data: people } = await supabase.from('nationverse_personalities').select('id, name, role, office, party').in('id', ids);
-          (people || []).forEach(p => { byId[p.id] = p; });
-        }
+        const byId = await peopleById(reqs.map(c => c.from_personality));
         const reqRows = reqs.map(c => {
           const p = byId[c.from_personality] || {};
           const role = roleLabelOf(p), name = p.name || 'Someone';
@@ -333,40 +357,38 @@
     }
 
     async function markReady(convId) {
+      if (navBusy) return; navBusy = true;
       try {
         const { data, error } = await supabase.rpc('nationverse_mark_ready', { p_conv: convId });
         if (error) throw error;
-        if (data === 'accepted') { showView('conversations'); openChat(convId); }   // both ready → the situation opens
-        else loadPendingRequests();                                                  // waiting on the other player
+        if (data === 'accepted') openChat(convId);   // both ready → the situation opens (openChat sets the nav)
+        else loadPendingRequests();                  // waiting on the other player
       } catch (e) { alert('Could not mark ready. Try again shortly.'); }
+      finally { navBusy = false; }
     }
 
     async function respondMeeting(convId, accept) {
+      if (navBusy) return; navBusy = true;
       try {
         const { error } = await supabase.rpc('nationverse_respond_meeting', { p_conv: convId, p_accept: accept });
         if (error) throw error;
-        if (accept) { showView('conversations'); openChat(convId); }   // accepted → jump into the chat
+        if (accept) openChat(convId);   // accepted → jump into the chat (openChat sets the nav)
         else loadPendingRequests();
       } catch (e) { alert('Could not respond to the request. Try again shortly.'); }
+      finally { navBusy = false; }
     }
 
     // ---- Request Meeting modal ----
-    let modalEl = null;
-    function closeModal() { if (modalEl) { modalEl.remove(); modalEl = null; } }
     async function openRequestMeeting() {
       if (!me) return;
-      modalEl = document.createElement('div');
-      modalEl.className = 'modal-back';
-      modalEl.innerHTML =
+      openModal(
         '<div class="modal"><h2>Request a Meeting</h2>' +
         '<p class="msub">Choose who to meet with and why.</p>' +
         '<div class="plist" id="rmPlist"><div class="ch-empty">Loading players…</div></div>' +
         '<label>Regarding:</label><input type="text" id="rmReason" maxlength="64" autocomplete="off" placeholder="e.g. the banking affair">' +
         '<div class="mnote" id="rmNote"></div>' +
         '<div class="modal-foot"><button class="ch-mini" id="rmCancel">Cancel</button>' +
-        '<button class="ch-actbtn" id="rmSubmit">Submit</button></div></div>';
-      document.body.appendChild(modalEl);
-      modalEl.addEventListener('click', e => { if (e.target === modalEl) closeModal(); });
+        '<button class="ch-actbtn" id="rmSubmit">Submit</button></div></div>');
       document.getElementById('rmCancel').addEventListener('click', closeModal);
 
       let selected = null;
@@ -374,7 +396,7 @@
       try {
         // Other players = personalities claimed by someone, excluding me.
         const { data, error } = await supabase.from('nationverse_personalities')
-          .select('id, name, role, office, party, nation_id').not('claimed_by', 'is', null).order('name', { ascending: true });
+          .select('id, name, role, office, party').not('claimed_by', 'is', null).order('name', { ascending: true });
         if (error) throw error;
         const others = (data || []).filter(p => p.id !== me.id);
         if (!others.length) { list.innerHTML = '<div class="ch-empty">No other players to meet with yet.</div>'; return; }
@@ -390,7 +412,8 @@
         }));
       } catch (e) { list.innerHTML = '<div class="ch-empty">Couldn’t load players.</div>'; }
 
-      document.getElementById('rmSubmit').addEventListener('click', async () => {
+      const submitBtn = document.getElementById('rmSubmit');
+      submitBtn.addEventListener('click', () => guard(submitBtn, async () => {
         if (!selected) { note.textContent = 'Pick who you want to meet.'; note.className = 'mnote error'; return; }
         const reason = document.getElementById('rmReason').value.trim();
         note.textContent = 'Sending…'; note.className = 'mnote';
@@ -399,7 +422,7 @@
           if (error) throw error;
           closeModal();
         } catch (e) { note.textContent = 'Could not send the request. Try again.'; note.className = 'mnote error'; }
-      });
+      }));
     }
 
     // ---- Conversations view (list of accepted chats) ----
@@ -411,14 +434,12 @@
       try {
         // Accepted (live) and ended (viewable) conversations, most recent activity first.
         const { data: convs, error } = await supabase.from('nationverse_conversations')
-          .select('id, from_personality, to_personality, reason, status, created_at, last_message_at')
+          .select('id, from_personality, to_personality, reason, status')
           .in('status', ['accepted', 'ended'])
           .order('last_message_at', { ascending: false, nullsFirst: false });
         if (error) throw error;
         if (!convs || !convs.length) { box.innerHTML = '<div class="conv-empty">No conversations yet. Accept a meeting request or send one from your Character page.</div>'; return; }
-        const others = [...new Set(convs.map(c => c.from_personality === me.id ? c.to_personality : c.from_personality))];
-        const { data: people } = await supabase.from('nationverse_personalities').select('id, name, role, office, party').in('id', others);
-        const byId = {}; (people || []).forEach(p => { byId[p.id] = p; });
+        const byId = await peopleById(convs.map(c => c.from_personality === me.id ? c.to_personality : c.from_personality));
         box.innerHTML = convs.map(c => {
           const otherId = c.from_personality === me.id ? c.to_personality : c.from_personality;
           const p = byId[otherId] || {}; const role = roleLabelOf(p);
@@ -432,7 +453,6 @@
     }
 
     // ---- Chat (a single conversation). Accepted → live (input + actions); ended → read-only. ----
-    let curConv = null;   // the open conversation {id, other, status}
     async function openChat(convId) {
       stopPolling();
       setActiveNav('conversations');
@@ -445,10 +465,8 @@
         conv = data;
         if (!conv || (conv.status !== 'accepted' && conv.status !== 'ended')) { content.innerHTML = '<div class="conv-empty">That conversation isn’t available.</div>'; return; }
         const otherId = conv.from_personality === me.id ? conv.to_personality : conv.from_personality;
-        const { data: p } = await supabase.from('nationverse_personalities').select('id, name, role, office, party').eq('id', otherId).maybeSingle();
-        other = p || {};
+        other = (await peopleById([otherId]))[otherId] || {};
       } catch (e) { content.innerHTML = '<div class="conv-empty">Couldn’t open that conversation.</div>'; return; }
-      curConv = { id: convId, other, status: conv.status };
       const role = roleLabelOf(other), live = conv.status === 'accepted';
       const foot = live
         ? '<div class="chat-tools"><button class="chat-tool" id="tPromise" type="button">Promise</button>' +
@@ -478,10 +496,13 @@
         input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
         document.getElementById('tPromise').addEventListener('click', () => openPromise(convId, scroll));
         document.getElementById('tExchange').addEventListener('click', () => openExchange(convId, other, scroll));
-        document.getElementById('tEnd').addEventListener('click', async () => {
+        const endBtn = document.getElementById('tEnd');
+        endBtn.addEventListener('click', () => {
           if (!window.confirm('End this meeting? It can’t be continued afterwards.')) return;
-          try { const { error } = await supabase.rpc('nationverse_end_meeting', { p_conv: convId }); if (error) throw error; openChat(convId); }
-          catch (e) { alert('Could not end the meeting.'); }
+          guard(endBtn, async () => {
+            try { const { error } = await supabase.rpc('nationverse_end_meeting', { p_conv: convId }); if (error) throw error; openChat(convId); }
+            catch (e) { alert('Could not end the meeting.'); }
+          });
         });
         pollTimer = setInterval(() => loadMessages(convId, scroll, false), 4000);   // live-ish refresh
       }
@@ -508,18 +529,15 @@
 
     // ---- Promise modal ----
     function openPromise(convId, scroll) {
-      modalEl = document.createElement('div');
-      modalEl.className = 'modal-back';
-      modalEl.innerHTML = '<div class="modal"><h2>Make a Promise</h2>' +
+      openModal('<div class="modal"><h2>Make a Promise</h2>' +
         '<p class="msub">A recorded pledge both of you will see in the transcript.</p>' +
         '<label>I promise…</label><input type="text" id="prText" maxlength="240" autocomplete="off" placeholder="e.g. to vote for your bill next week">' +
         '<div class="mnote" id="prNote"></div>' +
         '<div class="modal-foot"><button class="ch-mini" id="prCancel">Cancel</button>' +
-        '<button class="ch-actbtn" id="prSubmit">Make Promise</button></div></div>';
-      document.body.appendChild(modalEl);
-      modalEl.addEventListener('click', e => { if (e.target === modalEl) closeModal(); });
+        '<button class="ch-actbtn" id="prSubmit">Make Promise</button></div></div>');
       document.getElementById('prCancel').addEventListener('click', closeModal);
-      document.getElementById('prSubmit').addEventListener('click', async () => {
+      const submitBtn = document.getElementById('prSubmit');
+      submitBtn.addEventListener('click', () => guard(submitBtn, async () => {
         const text = document.getElementById('prText').value.trim();
         const note = document.getElementById('prNote');
         if (!text) { note.textContent = 'Write what you promise.'; note.className = 'mnote error'; return; }
@@ -530,23 +548,19 @@
           note.textContent = 'Promise made.'; note.className = 'mnote';
           setTimeout(() => { closeModal(); loadMessages(convId, scroll, true); }, 650);
         } catch (e) { note.textContent = 'Could not record the promise.'; note.className = 'mnote error'; }
-      });
+      }));
     }
 
     // ---- Exchange Wealth modal (money or corporation shares) ----
     async function openExchange(convId, other, scroll) {
-      modalEl = document.createElement('div');
-      modalEl.className = 'modal-back';
-      modalEl.innerHTML = '<div class="modal"><h2>Exchange Wealth</h2>' +
+      openModal('<div class="modal"><h2>Exchange Wealth</h2>' +
         '<p class="msub">Send money or a stake in a corporation to ' + esc(other.name || 'the other player') + '.</p>' +
         '<div class="ch-actions" style="margin-bottom:4px"><button class="chat-tool" id="exMoneyTab" type="button">Money</button>' +
           '<button class="chat-tool" id="exSharesTab" type="button">Corporation shares</button></div>' +
         '<div id="exBody"></div>' +
         '<div class="mnote" id="exNote"></div>' +
         '<div class="modal-foot"><button class="ch-mini" id="exCancel">Cancel</button>' +
-        '<button class="ch-actbtn" id="exSubmit">Send</button></div></div>';
-      document.body.appendChild(modalEl);
-      modalEl.addEventListener('click', e => { if (e.target === modalEl) closeModal(); });
+        '<button class="ch-actbtn" id="exSubmit">Send</button></div></div>');
       document.getElementById('exCancel').addEventListener('click', closeModal);
       const body = document.getElementById('exBody'), note = document.getElementById('exNote');
       let mode = 'money', myCorps = [];
@@ -568,7 +582,7 @@
       const renderShares = () => {
         if (!myCorps.length) { body.innerHTML = '<p class="msub">You don’t hold shares in any corporation.</p>'; return; }
         body.innerHTML = '<label>Corporation</label><select id="exCorp" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:14px">' +
-          myCorps.map(c => '<option value="' + esc(c.id) + '" data-share="' + esc(c.share) + '">' + esc(c.name) + ' (you hold ' + esc(c.share) + '%)</option>').join('') + '</select>' +
+          myCorps.map(c => '<option value="' + esc(c.id) + '">' + esc(c.name) + ' (you hold ' + esc(c.share) + '%)</option>').join('') + '</select>' +
           '<label>Share % to transfer</label><input type="number" id="exAmt" min="0.1" step="0.1" placeholder="0">';
       };
       const setTab = m => {
@@ -581,7 +595,8 @@
       document.getElementById('exSharesTab').addEventListener('click', () => setTab('shares'));
       setTab('money');
 
-      document.getElementById('exSubmit').addEventListener('click', async () => {
+      const submitBtn = document.getElementById('exSubmit');
+      submitBtn.addEventListener('click', () => guard(submitBtn, async () => {
         const amt = Number((document.getElementById('exAmt') || {}).value);
         if (!isFinite(amt) || amt <= 0) { note.textContent = 'Enter an amount.'; note.className = 'mnote error'; return; }
         const corp = mode === 'shares' ? (document.getElementById('exCorp') || {}).value : null;
@@ -595,7 +610,7 @@
           const msg = (e && e.message || '').includes('insufficient') ? 'You don’t have that much to send.' : 'Could not complete the exchange.';
           note.textContent = msg; note.className = 'mnote error';
         }
-      });
+      }));
     }
 
     // ---- View switching ----
