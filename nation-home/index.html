@@ -11,24 +11,24 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
 
   /* Full-width, two-row top bar: [flag] [nation | economy] over [current date] · Next Elections (centre) · character (right). */
-  .nhtop { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px 24px;
-    padding: 13px 24px; border-bottom: 1px solid var(--line); background: var(--surface); }
+  .nhtop { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 15px 30px;
+    padding: 17px 30px; border-bottom: 1px solid var(--line); background: var(--surface); }
   @media (max-width: 900px) { .nhtop { grid-template-columns: 1fr; justify-items: start; } }
-  .nhleft { display: flex; align-items: center; gap: 12px; min-width: 0; justify-self: start; }
-  .nhleftcol { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  .nhline1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .nhright { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-self: end; }
-  .nhmid { justify-self: center; text-align: center; color: var(--muted); font-size: 13px; font-weight: 600; }
+  .nhleft { display: flex; align-items: center; gap: 15px; min-width: 0; justify-self: start; }
+  .nhleftcol { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .nhline1 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .nhright { display: flex; align-items: center; gap: 13px; flex-wrap: wrap; justify-self: end; }
+  .nhmid { justify-self: center; text-align: center; color: var(--muted); font-size: 17px; font-weight: 600; }
   .nhmid b { color: var(--ink); font-weight: 700; }
-  .nhflag { width: 44px; height: 30px; border: 1px solid var(--line); border-radius: 6px; object-fit: cover; flex: none; background: var(--bg); }
-  .nhflag.ph { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-  .nhname { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap; }
-  .nhecon, .nhwho { color: var(--muted); font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .nhflag { width: 57px; height: 39px; border: 1px solid var(--line); border-radius: 7px; object-fit: cover; flex: none; background: var(--bg); }
+  .nhflag.ph { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .nhname { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap; }
+  .nhecon, .nhwho { color: var(--muted); font-size: 17px; font-weight: 600; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .nhecon b, .nhwho b { color: var(--ink); font-weight: 700; }
-  .nhdate { color: var(--muted); font-size: 12.5px; font-weight: 600; }
+  .nhdate { color: var(--muted); font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .nhdate b { color: var(--ink); font-weight: 700; }
   .nhsep { color: var(--line2, var(--line)); font-weight: 400; }
-  .nhtbtn { padding: 8px 13px; font-size: 13px; }
+  .nhtbtn { padding: 10px 17px; font-size: 17px; }
 
   /* Body = left sidebar + main. CHARACTER is the current page; other sections are placeholders for now. */
   .nhbody { display: flex; align-items: stretch; min-height: calc(100vh - 66px); }
@@ -100,6 +100,21 @@
     const nationId = params.get('nation'), roleId = params.get('role');
     const SEP = ' <span class="nhsep">|</span> ';
 
+    // Countdown to the next game tick. game_state has no tick timestamp, so this counts to the next
+    // 6-hour UTC boundary (00/06/12/18) — the assumed tick cadence. Anchor to a real last-tick time later.
+    function startTickCountdown(el) {
+      const TICK_H = 6, pad = n => String(n).padStart(2, '0');
+      const render = () => {
+        const now = new Date();
+        const nb = (Math.floor(now.getUTCHours() / TICK_H) + 1) * TICK_H;
+        const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), nb, 0, 0, 0);
+        const s = Math.max(0, Math.floor((next - now.getTime()) / 1000));
+        el.textContent = pad(Math.floor(s / 3600)) + ':' + pad(Math.floor(s % 3600 / 60)) + ':' + pad(s % 60);
+      };
+      render();
+      setInterval(render, 1000);
+    }
+
     (async () => {
       if (!isConfigured) { content.innerHTML = '<div class="empty">Nation data isn’t connected yet.</div>'; return; }
       if (!nationId) { content.innerHTML = '<div class="empty">No nation selected. <a href="/nations/">Choose one.</a></div>'; return; }
@@ -136,8 +151,9 @@
             (roleText ? SEP + esc(roleText) : '') + (partyText ? SEP + esc(partyText) : '');
         }
 
-        nhDate.innerHTML = 'Current Date: <b id="gamedate">…</b>';
+        nhDate.innerHTML = 'Current Date: <b id="gamedate">…</b>' + SEP + 'Next tick: <b id="nhtick">…</b>';
         mountGameDate(document.getElementById('gamedate'));
+        startTickCountdown(document.getElementById('nhtick'));
         content.innerHTML = '';   // game area (to be built)
       } catch (e) { content.innerHTML = '<div class="empty">Couldn’t load your nation. Try again shortly.</div>'; }
     })();
