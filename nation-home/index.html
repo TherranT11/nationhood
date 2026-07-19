@@ -68,6 +68,7 @@
   <div class="nhbody">
     <aside class="nhside">
       <span class="nhnav active" aria-current="page">Character</span>
+      <span class="nhnav soon" title="Coming soon">Agenda</span>
       <span class="nhnav soon" title="Coming soon">Conversations</span>
       <span class="nhnav soon" title="Coming soon">Nation</span>
       <span class="nhnav soon" title="Coming soon">Legislature</span>
@@ -117,24 +118,42 @@
 
     (async () => {
       if (!isConfigured) { content.innerHTML = '<div class="empty">Nation data isn’t connected yet.</div>'; return; }
-      if (!nationId) { content.innerHTML = '<div class="empty">No nation selected. <a href="/nations/">Choose one.</a></div>'; return; }
       try {
-        const [natRes, persRes] = await Promise.all([
-          supabase.from('nationverse_nations').select('id, name, flag, stats, parties').eq('id', nationId).maybeSingle(),
-          roleId ? supabase.from('nationverse_personalities').select('name, role, party, office, wealth').eq('id', roleId).maybeSingle() : Promise.resolve({ data: null })
-        ]);
-        if (natRes.error) throw natRes.error;
-        const n = natRes.data;
+        // AUTHORITATIVE: a player inhabits ONLY the character they have claimed — derived from claimed_by
+        // (the signed-in user), never from the URL, so nobody can inhabit a role by editing the address.
+        let p = null, n = null, legacy = false;
+        const { data: u } = await supabase.auth.getUser();
+        const myId = u && u.user ? u.user.id : null;
+        if (myId) {
+          const meRes = await supabase.from('nationverse_personalities').select('*').eq('claimed_by', myId).maybeSingle();
+          if (meRes.error) legacy = true;   // claimed_by column not present yet (migrations 279+ pending)
+          else p = meRes.data;              // this user's claimed character (or null)
+        } else { legacy = true; }           // not signed in → can't verify ownership; fall back to URL
+
+        if (!legacy) {
+          if (!p) { window.location.replace('/nations/'); return; }   // no character yet → go choose one
+          const natRes = await supabase.from('nationverse_nations').select('id, name, flag, stats, parties').eq('id', p.nation_id).maybeSingle();
+          if (natRes.error) throw natRes.error;
+          n = natRes.data;
+        } else {
+          if (!nationId) { content.innerHTML = '<div class="empty">No nation selected. <a href="/nations/">Choose one.</a></div>'; return; }
+          const [natRes, persRes] = await Promise.all([
+            supabase.from('nationverse_nations').select('id, name, flag, stats, parties').eq('id', nationId).maybeSingle(),
+            roleId ? supabase.from('nationverse_personalities').select('*').eq('id', roleId).maybeSingle() : Promise.resolve({ data: null })
+          ]);
+          if (natRes.error) throw natRes.error;
+          n = natRes.data; p = (persRes && persRes.data) ? persRes.data : null;
+        }
         if (!n) { content.innerHTML = '<div class="empty">That nation no longer exists. <a href="/nations/">Choose another.</a></div>'; return; }
 
         // Top bar left: flag + name + economy readouts (economy growth, budget from the nation's stats;
-        // personal wealth from the chosen personality).
+        // personal wealth from the character).
         nhName.textContent = n.name || 'Unknown';
         nhFlag.innerHTML = n.flag
           ? '<img class="nhflag" alt="Flag" src="' + esc(n.flag) + '">'
           : '<span class="nhflag ph">' + esc((n.name || '?').slice(0, 3)) + '</span>';
 
-        const stats = n.stats || {}, p = (persRes && persRes.data) ? persRes.data : null;
+        const stats = n.stats || {};
         const growth = stats.economic_growth != null ? stats.economic_growth : '—';
         const budget = stats.budget != null ? stats.budget : '—';
         const wealth = (p && p.wealth != null) ? p.wealth : 0;
