@@ -172,8 +172,11 @@
             try {
               const { data, error } = await supabase.rpc('nationverse_claim_role', { p_personality: card.dataset.id });
               if (error) throw error;
-              if (data === true) go();
-              else { alert('That role was just claimed by someone else.'); location.reload(); }
+              // The RPC returns a status string (boolean is the pre-281 fallback).
+              if (data === 'claimed' || data === true) { go(); return; }
+              if (data === 'has_character') { alert('You already have a character and are locked to it — taking you to your nation.'); location.reload(); return; }
+              if (data === 'unauthenticated') { alert('Please sign in before choosing a role.'); confirmBtn.disabled = false; return; }
+              alert('That role has already been taken by another player.'); location.reload();   // 'taken' or legacy false
             } catch (e) { confirmBtn.disabled = false; alert('Could not claim that role — try again.'); }
           });
         });
