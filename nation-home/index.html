@@ -68,6 +68,63 @@
   .ch-subrow { display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding: 3px 0; }
   .ch-subrow .k { color: var(--muted); }
   .ch-subrow .v { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* Action buttons in the Actions card */
+  .ch-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+  .ch-actbtn { font-size: 13px; font-weight: 700; border-radius: 10px; padding: 10px 15px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .ch-actbtn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Requires-Your-Attention notification rows (incoming meeting requests) */
+  .ch-notif { border-top: 1px solid var(--line); padding: 12px 0 4px; }
+  .ch-notif:first-of-type { border-top: none; }
+  .ch-notif .txt { font-size: 13.5px; line-height: 1.45; }
+  .ch-notif .txt b { font-weight: 800; }
+  .ch-notif .txt i { color: var(--muted); font-style: italic; }
+  .ch-notifbtns { display: flex; gap: 8px; margin-top: 9px; }
+  .ch-mini { font-size: 12px; font-weight: 700; border-radius: 8px; padding: 6px 13px; cursor: pointer; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .ch-mini.ok { border-color: #3ecf8e88; color: #2ba46a; }
+  .ch-mini.ok:hover { background: #3ecf8e18; }
+  .ch-mini.no:hover { border-color: var(--err); color: var(--err); }
+  .ch-count { font-size: 10px; font-weight: 800; color: var(--muted); }
+
+  /* Modal (Request Meeting) */
+  .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 50; }
+  .modal { width: 100%; max-width: 460px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px; max-height: 88vh; display: flex; flex-direction: column; }
+  .modal h2 { margin: 0 0 4px; font-size: 18px; font-weight: 800; }
+  .modal .msub { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+  .plist { border: 1px solid var(--line); border-radius: 12px; overflow-y: auto; max-height: 40vh; }
+  .prow { display: flex; align-items: center; gap: 11px; padding: 11px 13px; border-top: 1px solid var(--line); cursor: pointer; }
+  .prow:first-child { border-top: none; }
+  .prow:hover { background: var(--bg); }
+  .prow.sel { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .prow .pav { width: 34px; height: 34px; border-radius: 17px; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; color: #fff; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #000)); }
+  .prow .pnm { font-weight: 700; font-size: 14px; }
+  .prow .prl { color: var(--muted); font-size: 12px; }
+  .modal label { display: block; font-size: 13px; font-weight: 700; margin: 15px 0 5px; }
+  .modal input[type=text] { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 14px; }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 9px; margin-top: 16px; }
+  .mnote { font-size: 12.5px; margin-top: 10px; min-height: 16px; }
+  .mnote.error { color: var(--err); }
+
+  /* Conversations list + chat */
+  .conv-empty { padding: 40px 24px; text-align: center; color: var(--muted); }
+  .conv-card { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 13px 15px; margin-bottom: 10px; cursor: pointer; display: flex; align-items: center; gap: 12px; }
+  .conv-card:hover { border-color: var(--accent); }
+  .conv-card .pav { width: 38px; height: 38px; border-radius: 19px; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; color: #0e0e16; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #000)); }
+  .conv-card .cnm { font-weight: 700; font-size: 14.5px; }
+  .conv-card .crl { color: var(--muted); font-size: 12.5px; }
+  .chat { display: flex; flex-direction: column; height: calc(100vh - 200px); min-height: 380px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); overflow: hidden; }
+  .chat-hd { display: flex; align-items: center; gap: 12px; padding: 12px 15px; border-bottom: 1px solid var(--line); }
+  .chat-back { font-size: 13px; font-weight: 700; cursor: pointer; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 6px 11px; background: var(--bg); }
+  .chat-back:hover { color: var(--accent); border-color: var(--accent); }
+  .chat-title b { font-size: 14.5px; } .chat-title span { color: var(--muted); font-size: 12.5px; }
+  .chat-scroll { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .bub { max-width: 75%; padding: 9px 13px; border-radius: 14px; font-size: 13.5px; line-height: 1.4; }
+  .bub.me { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 5px; }
+  .bub.them { align-self: flex-start; background: var(--bg); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
+  .chat-foot { display: flex; gap: 9px; padding: 12px 14px; border-top: 1px solid var(--line); }
+  .chat-foot input { flex: 1; padding: 10px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 14px; }
 </style>
 </head>
 <body>
@@ -89,8 +146,8 @@
 
   <div class="nhbody">
     <aside class="nhside">
-      <span class="nhnav active" aria-current="page">Character</span>
-      <span class="nhnav soon" title="Coming soon">Conversations</span>
+      <span class="nhnav active" data-view="character" aria-current="page">Character</span>
+      <span class="nhnav" data-view="conversations">Conversations</span>
       <span class="nhnav soon" title="Coming soon">Agenda</span>
       <span class="nhnav soon" title="Coming soon">Nation</span>
       <span class="nhnav soon" title="Coming soon">Legislature</span>
@@ -146,9 +203,26 @@
       return out;
     }
 
-    // The Character home screen. Every panel starts empty except The Nation, which reads live stats.
-    function renderCharacterPage(n) {
-      const stats = n.stats || {};
+    // ---- Shared player helpers (one source for how a character reads across the page) ----
+    // A short role label for a personality: their office if any, else Politician / their fixed role.
+    function roleLabelOf(p) {
+      if (!p) return '';
+      if (p.office && p.office !== 'No Specific Office') return p.office;
+      const isPol = p.party || p.role === 'Politician' || /^Politician of Party \d+$/.test(p.role || '');
+      return isPol ? 'Politician' : (p.role || '');
+    }
+    function initialsOf(name) {
+      return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
+    }
+
+    let me = null, nation = null;        // the signed-in character + their nation (set on load)
+    let pollTimer = null;                // active chat poll, cleared on every view change
+    const stopPolling = () => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } };
+
+    // The Character home screen. Every panel starts empty except The Nation (live stats); the Actions card
+    // holds the player's action buttons and Requires Your Attention shows incoming meeting requests.
+    function renderCharacterPage() {
+      const stats = (nation && nation.stats) || {};
       const rows = NV_STATS.map(([key, label]) => {
         const v = stats[key];
         return '<div class="ch-row"><span class="ch-lbl">' + esc(label) + '</span>' +
@@ -157,10 +231,11 @@
       content.innerHTML =
         '<div class="ch-wrap">' +
           '<div class="ch-col ch-main">' +
-            '<div class="ch-card"><div class="ch-hd"><span class="ch-micro">Requires Your Attention</span></div>' +
-              '<div class="ch-empty">Nothing needs your attention right now.</div></div>' +
+            '<div class="ch-card"><div class="ch-hd"><span class="ch-micro">Requires Your Attention</span>' +
+              '<span class="ch-count" id="attnCount"></span></div>' +
+              '<div id="attnBox"><div class="ch-empty">Nothing needs your attention right now.</div></div></div>' +
             '<div class="ch-card"><div class="ch-hd"><span class="ch-micro">Actions</span></div>' +
-              '<div class="ch-empty">No actions available yet.</div></div>' +
+              '<div class="ch-actions"><button class="ch-actbtn" id="actRequestMeeting" type="button">Request Meeting</button></div></div>' +
             '<div class="ch-card"><div class="ch-hd"><span class="ch-micro">The Papers</span></div>' +
               '<div class="ch-empty">No headlines yet.</div></div>' +
           '</div>' +
@@ -178,7 +253,200 @@
               '<div class="ch-empty">Nothing scheduled.</div></div>' +
           '</div>' +
         '</div>';
+      const rmBtn = document.getElementById('actRequestMeeting');
+      if (rmBtn) rmBtn.addEventListener('click', openRequestMeeting);
+      if (me) loadPendingRequests();   // incoming meeting requests → Requires Your Attention
     }
+
+    // ---- Requires Your Attention: incoming (pending) meeting requests ----
+    async function loadPendingRequests() {
+      const box = document.getElementById('attnBox'), count = document.getElementById('attnCount');
+      if (!box) return;
+      try {
+        const { data: convs, error } = await supabase.from('nationverse_conversations')
+          .select('id, from_personality, reason, created_at').eq('to_personality', me.id)
+          .eq('status', 'pending').order('created_at', { ascending: true });
+        if (error) throw error;
+        if (!convs || !convs.length) {
+          box.innerHTML = '<div class="ch-empty">Nothing needs your attention right now.</div>';
+          if (count) count.textContent = ''; return;
+        }
+        // Resolve the requesters' names + roles.
+        const ids = [...new Set(convs.map(c => c.from_personality))];
+        const { data: people } = await supabase.from('nationverse_personalities').select('id, name, role, office, party').in('id', ids);
+        const byId = {}; (people || []).forEach(p => { byId[p.id] = p; });
+        box.innerHTML = convs.map(c => {
+          const p = byId[c.from_personality] || {};
+          const role = roleLabelOf(p), name = p.name || 'Someone';
+          return '<div class="ch-notif" data-id="' + esc(c.id) + '"><div class="txt">' +
+            (role ? '<b>' + esc(role) + ' ' + esc(name) + '</b>' : '<b>' + esc(name) + '</b>') +
+            ' is requesting to meet with you' +
+            (c.reason ? ' regarding <i>' + esc(c.reason) + '</i>' : '') + '.</div>' +
+            '<div class="ch-notifbtns"><button class="ch-mini ok" data-act="accept">Accept</button>' +
+            '<button class="ch-mini no" data-act="decline">Decline</button></div></div>';
+        }).join('');
+        if (count) count.textContent = convs.length + ' item' + (convs.length === 1 ? '' : 's');
+        box.querySelectorAll('.ch-notif').forEach(row => {
+          const id = row.dataset.id;
+          row.querySelector('[data-act=accept]').addEventListener('click', () => respondMeeting(id, true));
+          row.querySelector('[data-act=decline]').addEventListener('click', () => respondMeeting(id, false));
+        });
+      } catch (e) { box.innerHTML = '<div class="ch-empty">Couldn’t load your requests.</div>'; }
+    }
+
+    async function respondMeeting(convId, accept) {
+      try {
+        const { error } = await supabase.rpc('nationverse_respond_meeting', { p_conv: convId, p_accept: accept });
+        if (error) throw error;
+        if (accept) { showView('conversations'); openChat(convId); }   // accepted → jump into the chat
+        else loadPendingRequests();
+      } catch (e) { alert('Could not respond to the request. Try again shortly.'); }
+    }
+
+    // ---- Request Meeting modal ----
+    let modalEl = null;
+    function closeModal() { if (modalEl) { modalEl.remove(); modalEl = null; } }
+    async function openRequestMeeting() {
+      if (!me) return;
+      modalEl = document.createElement('div');
+      modalEl.className = 'modal-back';
+      modalEl.innerHTML =
+        '<div class="modal"><h2>Request a Meeting</h2>' +
+        '<p class="msub">Choose who to meet with and why.</p>' +
+        '<div class="plist" id="rmPlist"><div class="ch-empty">Loading players…</div></div>' +
+        '<label>Regarding:</label><input type="text" id="rmReason" maxlength="64" autocomplete="off" placeholder="e.g. the banking affair">' +
+        '<div class="mnote" id="rmNote"></div>' +
+        '<div class="modal-foot"><button class="ch-mini" id="rmCancel">Cancel</button>' +
+        '<button class="ch-actbtn" id="rmSubmit">Submit</button></div></div>';
+      document.body.appendChild(modalEl);
+      modalEl.addEventListener('click', e => { if (e.target === modalEl) closeModal(); });
+      document.getElementById('rmCancel').addEventListener('click', closeModal);
+
+      let selected = null;
+      const list = document.getElementById('rmPlist'), note = document.getElementById('rmNote');
+      try {
+        // Other players = personalities claimed by someone, excluding me.
+        const { data, error } = await supabase.from('nationverse_personalities')
+          .select('id, name, role, office, party, nation_id').not('claimed_by', 'is', null).order('name', { ascending: true });
+        if (error) throw error;
+        const others = (data || []).filter(p => p.id !== me.id);
+        if (!others.length) { list.innerHTML = '<div class="ch-empty">No other players to meet with yet.</div>'; return; }
+        list.innerHTML = others.map(p => {
+          const role = roleLabelOf(p);
+          return '<div class="prow" data-id="' + esc(p.id) + '"><span class="pav">' + esc(initialsOf(p.name)) + '</span>' +
+            '<div><div class="pnm">' + esc(p.name || 'Unnamed') + '</div>' +
+            (role ? '<div class="prl">' + esc(role) + '</div>' : '') + '</div></div>';
+        }).join('');
+        list.querySelectorAll('.prow').forEach(row => row.addEventListener('click', () => {
+          selected = row.dataset.id;
+          list.querySelectorAll('.prow').forEach(r => r.classList.toggle('sel', r === row));
+        }));
+      } catch (e) { list.innerHTML = '<div class="ch-empty">Couldn’t load players.</div>'; }
+
+      document.getElementById('rmSubmit').addEventListener('click', async () => {
+        if (!selected) { note.textContent = 'Pick who you want to meet.'; note.className = 'mnote error'; return; }
+        const reason = document.getElementById('rmReason').value.trim();
+        note.textContent = 'Sending…'; note.className = 'mnote';
+        try {
+          const { error } = await supabase.rpc('nationverse_request_meeting', { p_to: selected, p_reason: reason });
+          if (error) throw error;
+          closeModal();
+        } catch (e) { note.textContent = 'Could not send the request. Try again.'; note.className = 'mnote error'; }
+      });
+    }
+
+    // ---- Conversations view (list of accepted chats) ----
+    async function renderConversationsView() {
+      content.innerHTML = '<div class="ch-card"><div class="ch-hd"><span class="ch-micro">Conversations</span></div>' +
+        '<div id="convBox"><div class="conv-empty">Loading…</div></div></div>';
+      const box = document.getElementById('convBox');
+      if (!me) { box.innerHTML = '<div class="conv-empty">Sign in to see your conversations.</div>'; return; }
+      try {
+        const { data: convs, error } = await supabase.from('nationverse_conversations')
+          .select('id, from_personality, to_personality, reason, created_at').eq('status', 'accepted')
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        if (!convs || !convs.length) { box.innerHTML = '<div class="conv-empty">No conversations yet. Accept a meeting request or send one from your Character page.</div>'; return; }
+        const others = [...new Set(convs.map(c => c.from_personality === me.id ? c.to_personality : c.from_personality))];
+        const { data: people } = await supabase.from('nationverse_personalities').select('id, name, role, office, party').in('id', others);
+        const byId = {}; (people || []).forEach(p => { byId[p.id] = p; });
+        box.innerHTML = convs.map(c => {
+          const otherId = c.from_personality === me.id ? c.to_personality : c.from_personality;
+          const p = byId[otherId] || {}; const role = roleLabelOf(p);
+          return '<div class="conv-card" data-id="' + esc(c.id) + '"><span class="pav">' + esc(initialsOf(p.name)) + '</span>' +
+            '<div style="flex:1;min-width:0"><div class="cnm">' + esc(p.name || 'Unknown') + '</div>' +
+            '<div class="crl">' + (role ? esc(role) : '') + (c.reason ? ' · ' + esc(c.reason) : '') + '</div></div></div>';
+        }).join('');
+        box.querySelectorAll('.conv-card').forEach(card => card.addEventListener('click', () => openChat(card.dataset.id)));
+      } catch (e) { box.innerHTML = '<div class="conv-empty">Couldn’t load conversations.</div>'; }
+    }
+
+    // ---- Chat (a single accepted conversation) ----
+    async function openChat(convId) {
+      stopPolling();
+      setActiveNav('conversations');
+      content.innerHTML = '<div class="conv-empty">Loading…</div>';
+      let other = {};
+      try {
+        const { data: conv, error } = await supabase.from('nationverse_conversations')
+          .select('id, from_personality, to_personality, reason, status').eq('id', convId).maybeSingle();
+        if (error) throw error;
+        if (!conv || conv.status !== 'accepted') { content.innerHTML = '<div class="conv-empty">That conversation isn’t available.</div>'; return; }
+        const otherId = conv.from_personality === me.id ? conv.to_personality : conv.from_personality;
+        const { data: p } = await supabase.from('nationverse_personalities').select('id, name, role, office, party').eq('id', otherId).maybeSingle();
+        other = p || {};
+      } catch (e) { content.innerHTML = '<div class="conv-empty">Couldn’t open that conversation.</div>'; return; }
+      const role = roleLabelOf(other);
+      content.innerHTML =
+        '<div class="chat"><div class="chat-hd"><button class="chat-back" id="chatBack">← Conversations</button>' +
+          '<div class="chat-title"><b>' + esc(other.name || 'Unknown') + '</b>' + (role ? ' <span>· ' + esc(role) + '</span>' : '') + '</div></div>' +
+          '<div class="chat-scroll" id="chatScroll"><div class="conv-empty">Loading messages…</div></div>' +
+          '<div class="chat-foot"><input type="text" id="chatInput" placeholder="Write a message…" maxlength="2000" autocomplete="off">' +
+          '<button class="ch-actbtn" id="chatSend">Send</button></div></div>';
+      document.getElementById('chatBack').addEventListener('click', () => showView('conversations'));
+      const input = document.getElementById('chatInput'), scroll = document.getElementById('chatScroll');
+      const send = async () => {
+        const body = input.value.trim(); if (!body) return;
+        input.value = '';
+        try {
+          const { error } = await supabase.rpc('nationverse_send_message', { p_conv: convId, p_body: body });
+          if (error) throw error;
+          await loadMessages(convId, scroll, true);
+        } catch (e) { input.value = body; alert('Could not send. Try again.'); }
+      };
+      document.getElementById('chatSend').addEventListener('click', send);
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
+      await loadMessages(convId, scroll, true);
+      pollTimer = setInterval(() => loadMessages(convId, scroll, false), 4000);   // live-ish refresh
+    }
+
+    async function loadMessages(convId, scroll, forceScroll) {
+      try {
+        const { data, error } = await supabase.from('nationverse_messages')
+          .select('id, sender_personality, body, created_at').eq('conversation_id', convId).order('created_at', { ascending: true });
+        if (error) throw error;
+        const msgs = data || [];
+        const atBottom = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 60;
+        scroll.innerHTML = msgs.length
+          ? msgs.map(m => '<div class="bub ' + (m.sender_personality === me.id ? 'me' : 'them') + '">' + esc(m.body) + '</div>').join('')
+          : '<div class="conv-empty">No messages yet — say hello.</div>';
+        if (forceScroll || atBottom) scroll.scrollTop = scroll.scrollHeight;
+      } catch (e) { /* keep the last render on a transient error */ }
+    }
+
+    // ---- View switching ----
+    function setActiveNav(view) {
+      document.querySelectorAll('.nhnav[data-view]').forEach(el =>
+        el.classList.toggle('active', el.dataset.view === view));
+    }
+    function showView(view) {
+      stopPolling();
+      setActiveNav(view);
+      if (view === 'conversations') renderConversationsView();
+      else renderCharacterPage();
+    }
+    document.querySelectorAll('.nhnav[data-view]').forEach(el =>
+      el.addEventListener('click', () => showView(el.dataset.view)));
 
     // Countdown to the next game tick. The tick runs on pg_cron '0 */6 * * *' (00/06/12/18 UTC — see
     // schema/60), so counting to the next 6-hour UTC boundary is anchored to the actual schedule.
@@ -252,7 +520,12 @@
         nhDate.innerHTML = 'Current Date: <b id="gamedate">…</b>' + SEP + 'Next tick: <b id="nhtick">…</b>';
         mountGameDate(document.getElementById('gamedate'));
         startTickCountdown(document.getElementById('nhtick'));
-        renderCharacterPage(n);   // Character home screen (Nation stats live; other panels empty for now)
+
+        // Expose the signed-in character + nation to the views. Only a verified (non-legacy) claim gives a
+        // real `me` — the conversation feature needs the authoritative claimed personality.
+        nation = n;
+        me = (!legacy && p) ? p : null;
+        showView('character');   // Character home screen (Nation stats live; requests + actions wired)
       } catch (e) { content.innerHTML = '<div class="empty">Couldn’t load your nation. Try again shortly.</div>'; }
     })();
   </script>
