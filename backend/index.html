@@ -171,6 +171,7 @@
         <button class="vtab" data-tab="corporations" type="button">Corporations</button>
         <button class="vtab" data-tab="story" type="button">Story Bills</button>
         <button class="vtab" data-tab="narratives" type="button">Narratives</button>
+        <button class="vtab" data-tab="agendas" type="button">Agendas</button>
         <button class="vtab" data-tab="claims" type="button">Role Claims</button>
       </nav>
       <div class="panel">
@@ -405,6 +406,69 @@
           </div>
         </div>
         </div><!-- /tabpanel narratives -->
+
+        <div class="tabpanel" data-panel="agendas" hidden>
+        <div class="card">
+          <h2 id="agTitle">Agenda Creator</h2>
+          <p class="lead">A node in a progression tree. The tree builds itself from each agenda's Parent (children are derived — no separate edge list). Requirements, Hidden Requirements and Failures reuse the shared condition builder; Rewards reuse the shared effect builder.</p>
+
+          <div id="agList" class="natlist"></div>
+
+          <div class="statshd">Basic Information</div>
+          <div class="f"><label>Agenda Name</label><input id="ag-name" type="text" autocomplete="off"></div>
+          <div class="f"><label>Internal ID <span class="hint">optional · e.g. expand_welfare_state</span></label><input id="ag-slug" type="text" autocomplete="off" style="max-width:320px"></div>
+          <div class="f"><label>Nation</label><select id="ag-nation"></select></div>
+          <div class="f"><label>Eligible Roles <span class="hint">optional · comma-separated · e.g. Head of Government, Opposition Leader</span></label><input id="ag-roles" type="text" autocomplete="off"></div>
+          <div class="f"><label>Eligible Parties <span class="hint">optional · comma-separated · e.g. Left, Center</span></label><input id="ag-parties" type="text" autocomplete="off"></div>
+          <div class="f"><label>Description</label><textarea id="ag-desc"></textarea></div>
+
+          <div class="statshd">Tree Position</div>
+          <div class="f"><label>Parent Agenda <span class="hint">the agenda that unlocks this one (None = a root)</span></label><select id="ag-parent"></select></div>
+          <div class="f" style="display:flex;gap:18px;flex-wrap:wrap">
+            <span><label>Tier <span class="hint">layout only</span></label><input id="ag-tier" type="number" min="1" step="1" value="1" style="max-width:110px"></span>
+            <span><label>Display Order <span class="hint">left→right</span></label><input id="ag-order" type="number" step="1" value="0" style="max-width:110px"></span>
+          </div>
+
+          <div class="statshd">Requirements <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">what the player must achieve</span></div>
+          <div id="agReqList"></div>
+          <button class="btn btn-ghost" id="agAddReq" type="button" style="margin-top:2px">+ Add Requirement</button>
+          <div class="f" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
+            <span><label>Completion Rule</label><select id="ag-comprule"><option>ALL</option><option>ANY</option></select></span>
+            <span id="ag-count-fld" hidden><label>How many <span class="hint">for ANY</span></label><input id="ag-count" type="number" min="1" step="1" value="1" style="max-width:110px"></span>
+          </div>
+
+          <div class="statshd">Rewards <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">granted on completion</span></div>
+          <div id="agRewList"></div>
+          <button class="btn btn-ghost" id="agAddRew" type="button" style="margin-top:2px">+ Add Reward</button>
+
+          <div class="statshd">Hidden Requirements <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">unseen by the player</span></div>
+          <div id="agHidList"></div>
+          <button class="btn btn-ghost" id="agAddHid" type="button" style="margin-top:2px">+ Add Hidden Requirement</button>
+
+          <div class="statshd">Failure Conditions <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">any one of these fails the agenda for good</span></div>
+          <div id="agFailList"></div>
+          <button class="btn btn-ghost" id="agAddFail" type="button" style="margin-top:2px">+ Add Failure Condition</button>
+
+          <div class="statshd">Availability</div>
+          <div class="f"><label>Unlock Condition <span class="hint">how this agenda becomes available</span></label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <select id="ag-unlock-type" style="max-width:260px"></select>
+              <input id="ag-unlock-target" type="text" placeholder="target (narrative / bill / modifier / event)" style="flex:1;min-width:200px">
+            </div>
+          </div>
+          <div class="f" style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end">
+            <span><label>Visible Immediately</label><select id="ag-visible"><option value="yes">Yes</option><option value="no">No — hidden until unlocked</option></select></span>
+            <span><label>Expiration <span class="hint">months · blank = no limit</span></label><input id="ag-expire" type="number" min="1" step="1" placeholder="No limit" style="max-width:140px"></span>
+            <span><label>AI Weight <span class="hint">0–100</span></label><input id="ag-weight" type="number" min="0" max="100" step="1" value="50" style="max-width:110px"></span>
+          </div>
+
+          <div class="actions">
+            <button class="btn btn-solid" id="saveAg" type="button">Save Agenda</button>
+            <button class="btn btn-ghost" id="cancelAg" type="button" hidden>Cancel</button>
+            <span class="note" id="agNote" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+        </div><!-- /tabpanel agendas -->
 
         <div class="tabpanel" data-panel="claims" hidden>
         <div class="card">
@@ -768,6 +832,7 @@
       if (tab === 'corporations') loadCorpRefs().then(loadCorpList);
       if (tab === 'story') loadStoryRefs().then(loadStoryList);
       if (tab === 'narratives') { loadNarrativeRefs().then(loadNarrativeList); loadLaunchRefs(); }
+      if (tab === 'agendas') loadAgendaRefs().then(loadAgendaList);
       if (tab === 'claims') loadClaims();
     }
     vtabs.forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
@@ -1744,6 +1809,149 @@
       } catch (e) { narListBox.innerHTML = '<div class="empty">Couldn’t load narratives.</div>'; }
     }
     resetNarrativeForm();   // initial blank state
+
+    // ---- Agendas (progression tree; reuses the shared condition + effect builders) ----
+    const agNatSel = document.getElementById('ag-nation'), agParentSel = document.getElementById('ag-parent');
+    const agReqBox = document.getElementById('agReqList'), agHidBox = document.getElementById('agHidList'),
+      agFailBox = document.getElementById('agFailList'), agRewBox = document.getElementById('agRewList');
+    const agNote = document.getElementById('agNote'), agTitle = document.getElementById('agTitle'),
+      saveAgBtn = document.getElementById('saveAg'), cancelAgBtn = document.getElementById('cancelAg');
+    const agRuleSel = document.getElementById('ag-comprule'), agCountFld = document.getElementById('ag-count-fld');
+    const AG_UNLOCK_TYPES = ['Parent Completed', 'Narrative Completed', 'Story Bill Passed', 'Modifier Active', 'Event'];
+    let agAll = [], agNatNames = {}, agBusy = false, editingAgId = null;
+
+    // Requirements / Hidden / Failures reuse the condition builder; Rewards reuse the effect builder.
+    wireTrigBox(agReqBox); wireTrigBox(agHidBox); wireTrigBox(agFailBox); wireEffectBox(agRewBox);
+    document.getElementById('agAddReq').addEventListener('click', () => addTrig(agReqBox));
+    document.getElementById('agAddHid').addEventListener('click', () => addTrig(agHidBox));
+    document.getElementById('agAddFail').addEventListener('click', () => addTrig(agFailBox));
+    document.getElementById('agAddRew').addEventListener('click', () => addEffect(agRewBox));
+    document.getElementById('ag-unlock-type').innerHTML = opts(AG_UNLOCK_TYPES);
+    agRuleSel.addEventListener('change', () => { agCountFld.hidden = agRuleSel.value !== 'ANY'; });
+
+    const csvToArr = s => (s || '').split(',').map(x => x.trim()).filter(Boolean);
+
+    function populateParent(excludeId, selectedId) {
+      agParentSel.innerHTML = '<option value="">None</option>' +
+        agAll.filter(a => a.id !== excludeId).map(a =>
+          '<option value="' + esc(a.id) + '"' + (a.id === selectedId ? ' selected' : '') + '>' + esc(a.name || 'Untitled') + '</option>').join('');
+    }
+
+    async function loadAgendaRefs() {
+      const rows = await loadNationOptions(agNatSel, { global: true });   // shared nation-options source (Global + nations)
+      agNatNames = {}; (rows || []).forEach(n => { agNatNames[n.id] = n.name; });
+    }
+
+    function resetAgendaForm() {
+      editingAgId = null; agTitle.textContent = 'Agenda Creator'; saveAgBtn.textContent = 'Save Agenda'; cancelAgBtn.hidden = true;
+      ['ag-name', 'ag-slug', 'ag-roles', 'ag-parties', 'ag-desc', 'ag-unlock-target', 'ag-expire'].forEach(id => { document.getElementById(id).value = ''; });
+      agNatSel.value = ''; document.getElementById('ag-tier').value = 1; document.getElementById('ag-order').value = 0;
+      document.getElementById('ag-weight').value = 50; document.getElementById('ag-visible').value = 'yes';
+      document.getElementById('ag-unlock-type').selectedIndex = 0;
+      agRuleSel.value = 'ALL'; agCountFld.hidden = true; document.getElementById('ag-count').value = 1;
+      setTriggers(agReqBox, []); setTriggers(agHidBox, []); setTriggers(agFailBox, []); setEffects(agRewBox, []);
+      populateParent(null, '');
+    }
+
+    function editAgenda(a) {
+      editingAgId = a.id; agTitle.textContent = 'Edit Agenda'; saveAgBtn.textContent = 'Save changes'; cancelAgBtn.hidden = false;
+      document.getElementById('ag-name').value = a.name || '';
+      document.getElementById('ag-slug').value = a.internal_id || '';
+      agNatSel.value = a.nation_id || '';
+      document.getElementById('ag-roles').value = (a.eligible_roles || []).join(', ');
+      document.getElementById('ag-parties').value = (a.eligible_parties || []).join(', ');
+      document.getElementById('ag-desc').value = a.description || '';
+      document.getElementById('ag-tier').value = a.tier != null ? a.tier : 1;
+      document.getElementById('ag-order').value = a.display_order != null ? a.display_order : 0;
+      setTriggers(agReqBox, a.requirements); setTriggers(agHidBox, a.hidden_requirements);
+      setTriggers(agFailBox, a.failures); setEffects(agRewBox, a.rewards);
+      agRuleSel.value = a.completion_rule === 'ANY' ? 'ANY' : 'ALL'; agCountFld.hidden = agRuleSel.value !== 'ANY';
+      document.getElementById('ag-count').value = a.completion_count != null ? a.completion_count : 1;
+      const uc = a.unlock_condition || {};
+      document.getElementById('ag-unlock-type').value = uc.type || AG_UNLOCK_TYPES[0];
+      document.getElementById('ag-unlock-target').value = uc.target || '';
+      document.getElementById('ag-visible').value = a.visible_immediately === false ? 'no' : 'yes';
+      document.getElementById('ag-expire').value = a.expiration_months != null ? a.expiration_months : '';
+      document.getElementById('ag-weight').value = a.ai_weight != null ? a.ai_weight : 50;
+      populateParent(a.id, a.parent_id || '');   // a node can't be its own parent
+      window.scrollTo(0, 0);
+    }
+    cancelAgBtn.addEventListener('click', () => { resetAgendaForm(); agNote.textContent = ''; agNote.className = 'note'; });
+
+    saveAgBtn.addEventListener('click', async () => {
+      if (agBusy) return;
+      const name = document.getElementById('ag-name').value.trim();
+      if (!name) { agNote.textContent = 'An agenda name is required.'; agNote.className = 'note error'; return; }
+      const rule = agRuleSel.value;
+      const row = {
+        name,
+        internal_id: document.getElementById('ag-slug').value.trim() || null,
+        nation_id: agNatSel.value || null,
+        eligible_roles: csvToArr(document.getElementById('ag-roles').value),
+        eligible_parties: csvToArr(document.getElementById('ag-parties').value),
+        description: document.getElementById('ag-desc').value.trim() || null,
+        parent_id: agParentSel.value || null,
+        tier: Math.max(1, Math.round(Number(document.getElementById('ag-tier').value) || 1)),
+        display_order: Math.round(Number(document.getElementById('ag-order').value) || 0),
+        requirements: collectTriggers(agReqBox),
+        completion_rule: rule,
+        completion_count: rule === 'ANY' ? Math.max(1, Math.round(Number(document.getElementById('ag-count').value) || 1)) : null,
+        rewards: collectEffects(agRewBox),
+        failures: collectTriggers(agFailBox),
+        hidden_requirements: collectTriggers(agHidBox),
+        unlock_condition: { type: document.getElementById('ag-unlock-type').value, target: document.getElementById('ag-unlock-target').value.trim() || null },
+        visible_immediately: document.getElementById('ag-visible').value === 'yes',
+        expiration_months: document.getElementById('ag-expire').value.trim() === '' ? null : Math.max(1, Math.round(Number(document.getElementById('ag-expire').value) || 1)),
+        ai_weight: Math.max(0, Math.min(100, Math.round(Number(document.getElementById('ag-weight').value) || 0)))
+      };
+      agBusy = true; saveAgBtn.disabled = true; agNote.textContent = 'Saving…'; agNote.className = 'note';
+      try {
+        const { error } = editingAgId
+          ? await supabase.from('nationverse_agendas').update(row).eq('id', editingAgId)
+          : await supabase.from('nationverse_agendas').insert(row);
+        if (error) throw error;
+        agNote.textContent = editingAgId ? 'Saved changes to “' + name + '”.' : 'Added “' + name + '”.'; agNote.className = 'note ok';
+        resetAgendaForm(); loadAgendaList();
+      } catch (e) { agNote.textContent = e.message || 'Could not save the agenda.'; agNote.className = 'note error'; }
+      finally { agBusy = false; saveAgBtn.disabled = false; }
+    });
+
+    const agListBox = document.getElementById('agList');
+    async function loadAgendaList() {
+      agListBox.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        const { data, error } = await supabase.from('nationverse_agendas').select('*')
+          .order('tier', { ascending: true }).order('display_order', { ascending: true });
+        if (error) throw error;
+        agAll = data || [];
+        populateParent(editingAgId, agParentSel.value);   // keep the parent picker in sync with the list
+        if (!agAll.length) { agListBox.innerHTML = '<div class="empty">No agendas yet — create one below.</div>'; return; }
+        const nameById = {}; agAll.forEach(a => { nameById[a.id] = a.name || 'Untitled'; });
+        agListBox.innerHTML = agAll.map(a => {
+          const scope = a.nation_id ? esc(agNatNames[a.nation_id] || 'Nation') : 'Global';
+          const kids = agAll.filter(x => x.parent_id === a.id).map(x => esc(x.name || 'Untitled'));
+          const sub = [scope, 'tier ' + (a.tier != null ? a.tier : 1),
+            a.parent_id ? 'parent: ' + esc(nameById[a.parent_id] || '—') : 'root',
+            (a.requirements || []).length + ' req', (a.rewards || []).length + ' reward' + ((a.rewards || []).length === 1 ? '' : 's')].join(' · ');
+          return '<div class="natcard" data-id="' + esc(a.id) + '">' +
+            '<div class="natcard-hd"><div class="natmeta"><div class="natnm">' + esc(a.name || 'Untitled') + (a.visible_immediately === false ? ' <span class="hint">· hidden</span>' : '') + '</div>' +
+            '<div class="natsub">' + sub + '</div></div>' +
+            '<div class="natbtns"><button class="btn btn-ghost ag-edit" type="button">Edit</button><button class="del ag-del" type="button">Delete</button></div></div>' +
+            (kids.length ? '<div class="natdesc">Unlocks: ' + kids.join(', ') + '</div>' : '') +
+          '</div>';
+        }).join('');
+        agListBox.querySelectorAll('.natcard').forEach(card => {
+          const a = agAll.find(x => x.id === card.dataset.id); if (!a) return;
+          card.querySelector('.ag-edit').addEventListener('click', () => editAgenda(a));
+          card.querySelector('.ag-del').addEventListener('click', async () => {
+            if (!window.confirm('Delete “' + (a.name || 'this agenda') + '”? Any child agendas will become roots.')) return;
+            try { const { error } = await supabase.from('nationverse_agendas').delete().eq('id', a.id); if (error) throw error; if (editingAgId === a.id) resetAgendaForm(); loadAgendaList(); }
+            catch (e) { alert(e.message || 'Could not delete the agenda.'); }
+          });
+        });
+      } catch (e) { agListBox.innerHTML = '<div class="empty">Couldn’t load agendas.</div>'; }
+    }
+    resetAgendaForm();   // initial blank state
 
     // ---- Role Claims (admin view + release) ----
     const claimListBox = document.getElementById('claimList');
