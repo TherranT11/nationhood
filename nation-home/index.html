@@ -685,15 +685,18 @@
         const wealth = (p && p.wealth != null) ? p.wealth : 0;
         nhEcon.innerHTML = SEP + 'Economy: <b>' + esc(economy) + '</b>' + SEP + 'Budget: <b>' + esc(budget) + '</b>' + SEP + 'Personal Wealth: <b>' + esc(wealth) + '</b>';
 
-        // Top bar right: character name | role | party (party resolved for legacy politician records too).
+        // Top bar right: character name | role | party | ideology (party + ideology resolved from the
+        // nation's party list; legacy "Politician of Party N" records resolve by slot too).
         if (p) {
           const parties = n.parties || [];
           const isPol = p.party || p.role === 'Politician' || /^Politician of Party \d+$/.test(p.role || '');
           const roleText = (p.office && p.office !== 'No Specific Office') ? p.office : (isPol ? 'Politician' : (p.role || ''));
-          let partyText = p.party || '';
+          let partyText = p.party || '', ideoText = '';
           if (!partyText && isPol) { const m = /^Politician of Party (\d+)$/.exec(p.role || ''); if (m) partyText = (parties[+m[1] - 1] || {}).name || ''; }
+          if (partyText) { const pd = parties.find(x => x && x.name === partyText); ideoText = (pd && pd.ideology) || ''; }
           nhWho.innerHTML = '<b>' + esc(p.name || 'Unnamed') + '</b>' +
-            (roleText ? SEP + esc(roleText) : '') + (partyText ? SEP + esc(partyText) : '');
+            (roleText ? SEP + esc(roleText) : '') + (partyText ? SEP + esc(partyText) : '') +
+            (ideoText ? SEP + esc(ideoText) : '');
         }
 
         nhDate.innerHTML = 'Current Date: <b id="gamedate">…</b>' + SEP + 'Next tick: <b id="nhtick">…</b>';
