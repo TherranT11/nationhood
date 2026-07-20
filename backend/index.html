@@ -897,7 +897,7 @@
     // other category → free text (those target systems — groups, policies, roles, situations — don't
     // exist in the new universe yet).
     function targetControlHTML(cat, val) {
-      if (cat === 'National Statistic') return '<select class="eff-target">' + opts(STAT_NAMES, val) + '</select>';
+      if (cat === 'National Statistic') return '<select class="eff-target">' + STATS.map(s => '<option value="' + esc(s[0]) + '"' + (s[0] === val ? ' selected' : '') + '>' + esc(s[1]) + '</option>').join('') + '</select>';
       if (cat === 'Corporate Stat')     return '<select class="eff-target">' + opts(CORP_STATS, val) + '</select>';
       return '<input class="eff-target" type="text" placeholder="e.g. Banking &amp; Finance, Economic policies, Economic Minister" value="' + esc(val || '') + '">';
     }
@@ -1584,7 +1584,7 @@
       c = c || {};
       return '<div class="effrow2 nrstat"><div class="effrow2-hd"><span></span><button class="del nrst-del" type="button">Remove</button></div>' +
         '<div class="effgrid" style="align-items:end">' +
-          '<div class="fld"><label>Stat</label><select class="nrst-stat">' + opts(STAT_NAMES, c.stat) + '</select></div>' +
+          '<div class="fld"><label>Stat</label><select class="nrst-stat">' + STATS.map(s => '<option value="' + esc(s[0]) + '"' + (s[0] === c.stat ? ' selected' : '') + '>' + esc(s[1]) + '</option>').join('') + '</select></div>' +
           '<div class="fld"><label>Is</label><input class="nrst-val" type="number" step="1" placeholder="value" value="' + esc(c.value != null ? c.value : '') + '"></div>' +
           '<div class="fld"><label>&nbsp;</label><select class="nrst-dir">' + opts(NR_DIRS, c.dir === 'lower' ? 'or lower' : 'or higher') + '</select></div>' +
         '</div></div>';

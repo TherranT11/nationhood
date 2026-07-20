@@ -140,6 +140,17 @@
   .bub.promise { align-self: stretch; max-width: 100%; background: rgba(232,181,74,.10); border: 1px solid #e8b54a66; color: var(--ink); border-radius: 12px; }
   .bub.promise .plabel { display: block; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #b98a17; margin-bottom: 3px; }
   .sysline { align-self: center; text-align: center; color: var(--muted); font-size: 12px; padding: 4px 10px; }
+  /* Narrative conversation player */
+  .nrplay { max-width: 580px; display: flex; flex-direction: column; max-height: 82vh; }
+  .nrplay-scroll { overflow-y: auto; display: flex; flex-direction: column; gap: 11px; padding: 2px; }
+  .nrp-action { font-style: italic; color: var(--muted); line-height: 1.55; }
+  .nrp-speech { line-height: 1.55; }
+  .nrp-speech b { color: var(--accent); }
+  .nrp-resp { line-height: 1.55; }
+  .nrp-you { align-self: flex-end; background: var(--accent); color: #fff; padding: 8px 13px; border-radius: 14px; max-width: 80%; }
+  .nrp-prompt { font-weight: 700; margin-top: 4px; }
+  .nrplay-foot { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .nrp-choice { background: var(--bg); }
   .conv-tag { margin-left: auto; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; }
 </style>
 </head>
@@ -196,6 +207,7 @@
     const params = new URLSearchParams(location.search);
     const nationId = params.get('nation'), roleId = params.get('role');
     const SEP = ' <span class="nhsep">|</span> ';
+    const NATION_SELECT = 'id, name, flag, stats, parties';   // one source for the nation columns this page reads
 
     // Economic Growth (0–20 stat) shown as a word rating on the top bar, in paired bands:
     // 1–2 Depression … 19–20 Booming. Band index = floor((v−1)/2), clamped to the 10 labels.
@@ -240,6 +252,7 @@
     }
 
     let me = null, nation = null;        // the signed-in character + their nation (set on load)
+    let nrRuns = {};                     // runId → narrative content, for launched narratives in Requires Your Attention
     let pollTimer = null;                // active chat poll, cleared on every view change
     const stopPolling = () => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } };
 
@@ -308,32 +321,63 @@
       const box = document.getElementById('attnBox'), count = document.getElementById('attnCount');
       if (!box) return;
       try {
-        const { data, error } = await supabase.from('nationverse_conversations')
-          .select('id, from_personality, reason').eq('to_personality', me.id)
-          .eq('kind', 'p2p').eq('status', 'pending').order('created_at', { ascending: true });
-        if (error) throw error;
-        const reqs = data || [];
-        if (!reqs.length) {
+        // (a) incoming p2p meeting requests; (b) narratives launched to me (a World Master wants to speak).
+        const [reqRes, runRes] = await Promise.all([
+          supabase.from('nationverse_conversations')
+            .select('id, from_personality, reason').eq('to_personality', me.id)
+            .eq('kind', 'p2p').eq('status', 'pending').order('created_at', { ascending: true }),
+          supabase.from('nationverse_narrative_runs')
+            .select('id, narrative_id').eq('personality_id', me.id).eq('status', 'assigned').order('created_at', { ascending: true })
+        ]);
+        if (reqRes.error) throw reqRes.error;
+        const reqs = reqRes.data || [], runs = (runRes && runRes.data) || [];
+        if (!reqs.length && !runs.length) {
           box.innerHTML = '<div class="ch-empty">Nothing needs your attention right now.</div>';
           if (count) count.textContent = ''; return;
         }
         const byId = await peopleById(reqs.map(c => c.from_personality));
-        box.innerHTML = reqs.map(c => {
+        const reqRows = reqs.map(c => {
           const p = byId[c.from_personality] || {};
           const role = roleLabelOf(p), name = p.name || 'Someone';
-          return '<div class="ch-notif" data-id="' + esc(c.id) + '"><div class="txt">' +
+          return '<div class="ch-notif" data-id="' + esc(c.id) + '" data-t="req"><div class="txt">' +
             (role ? '<b>' + esc(role) + ' ' + esc(name) + '</b>' : '<b>' + esc(name) + '</b>') +
             ' is requesting to meet with you' +
             (c.reason ? ' regarding <i>' + esc(c.reason) + '</i>' : '') + '.</div>' +
             '<div class="ch-notifbtns"><button class="ch-mini ok" data-act="accept">Accept</button>' +
             '<button class="ch-mini no" data-act="decline">Decline</button></div></div>';
         }).join('');
-        if (count) count.textContent = reqs.length + ' item' + (reqs.length === 1 ? '' : 's');
-        box.querySelectorAll('.ch-notif').forEach(row => {
+        // Resolve narrative content + the speaker's role (if the speaker is a personality in this nation).
+        nrRuns = {};
+        let narrRows = '';
+        if (runs.length) {
+          const { data: narrs } = await supabase.from('nationverse_narratives').select('id, name, sequence, decision').in('id', runs.map(r => r.narrative_id));
+          const nById = {}; (narrs || []).forEach(n => { nById[n.id] = n; });
+          const roleByName = {};
+          if (nation) {
+            const { data: pp } = await supabase.from('nationverse_personalities').select('name, role, office, party').eq('nation_id', nation.id);
+            (pp || []).forEach(p => { if (p.name) roleByName[p.name] = roleLabelOf(p); });
+          }
+          narrRows = runs.map(run => {
+            const n = nById[run.narrative_id]; if (!n) return '';
+            nrRuns[run.id] = n;
+            const spk = (n.sequence || []).find(s => s.speaker);
+            const speaker = spk ? spk.speaker : (n.name || 'Someone');
+            const role = roleByName[speaker];
+            return '<div class="ch-notif" data-run="' + esc(run.id) + '" data-t="narr"><div class="txt"><b>' +
+              esc(speaker) + (role ? ' (' + esc(role) + ')' : '') + '</b> wishes to speak to you.</div>' +
+              '<div class="ch-notifbtns"><button class="ch-mini ok" data-act="enter">Enter Conversation</button></div></div>';
+          }).join('');
+        }
+        box.innerHTML = reqRows + narrRows;
+        const total = reqs.length + runs.length;
+        if (count) count.textContent = total + ' item' + (total === 1 ? '' : 's');
+        box.querySelectorAll('.ch-notif[data-t=req]').forEach(row => {
           const id = row.dataset.id;
           row.querySelector('[data-act=accept]').addEventListener('click', () => respondMeeting(id, true));
           row.querySelector('[data-act=decline]').addEventListener('click', () => respondMeeting(id, false));
         });
+        box.querySelectorAll('.ch-notif[data-t=narr] [data-act=enter]').forEach(btn =>
+          btn.addEventListener('click', () => enterConversation(btn.closest('.ch-notif').dataset.run)));
       } catch (e) { box.innerHTML = '<div class="ch-empty">Couldn’t load your requests.</div>'; }
     }
 
@@ -346,6 +390,78 @@
         else loadPendingRequests();
       } catch (e) { alert('Could not respond to the request. Try again shortly.'); }
       finally { navBusy = false; }
+    }
+
+    // ---- Narrative conversation player (first runtime slice: plays the authored sequence, then the
+    // decision. Decision effects are applied server-side later; here it just records the run as done). ----
+    function enterConversation(runId) {
+      const n = nrRuns[runId]; if (!n) return;
+      const steps = (n.sequence || []).filter(s => s && (s.text || s.speaker || (s.replies && s.replies.length)));
+      const dec = n.decision || {};
+      let i = 0;
+      openModal('<div class="modal nrplay"><div class="nrplay-scroll" id="nrpScroll"></div><div class="nrplay-foot" id="nrpFoot"></div></div>');
+      const scroll = document.getElementById('nrpScroll'), foot = document.getElementById('nrpFoot');
+      const append = html => { scroll.insertAdjacentHTML('beforeend', html); scroll.scrollTop = scroll.scrollHeight; };
+      const lineHTML = s => s.kind === 'speech'
+        ? '<div class="nrp-speech">' + (s.speaker ? '<b>' + esc(s.speaker) + ':</b> ' : '') + '“' + esc(s.text || '') + '”</div>'
+        : '<div class="nrp-action">' + esc(s.text || '') + '</div>';
+      function showStep() {
+        if (i >= steps.length) return showDecision();
+        const s = steps[i];
+        if (s.text || s.speaker) append(lineHTML(s));
+        foot.innerHTML = '';
+        const replies = s.replies || [];
+        if (replies.length) {
+          replies.forEach(r => {
+            const label = (typeof r === 'string' ? r : (r && r.text)) || '…';
+            const resp = (r && typeof r === 'object') ? r.response : '';
+            const b = document.createElement('button');
+            b.className = 'ch-actbtn nrp-choice'; b.textContent = label;
+            b.addEventListener('click', () => {
+              foot.querySelectorAll('button').forEach(x => x.disabled = true);
+              append('<div class="nrp-you">' + esc(label) + '</div>');
+              if (resp) append('<div class="nrp-resp">' + esc(resp) + '</div>');
+              i++; showStep();
+            });
+            foot.appendChild(b);
+          });
+        } else {
+          const b = document.createElement('button');
+          b.className = 'ch-actbtn'; b.textContent = 'Continue →';
+          b.addEventListener('click', () => { i++; showStep(); });
+          foot.appendChild(b);
+        }
+      }
+      function showDecision() {
+        if (dec.prompt) append('<div class="nrp-prompt">' + esc(dec.prompt) + '</div>');
+        foot.innerHTML = '';
+        // Keep each option's ORIGINAL index so the server applies the right option's effects.
+        const withLabels = (dec.options || []).map((o, idx) => ({ o, idx })).filter(x => x.o && x.o.label);
+        if (!withLabels.length) {
+          const b = document.createElement('button'); b.className = 'ch-actbtn'; b.textContent = 'End';
+          b.addEventListener('click', () => { b.disabled = true; finish(null, null); });
+          foot.appendChild(b); return;
+        }
+        withLabels.forEach(({ o, idx }) => {
+          const b = document.createElement('button'); b.className = 'ch-actbtn nrp-choice'; b.textContent = o.label;
+          b.addEventListener('click', () => { foot.querySelectorAll('button').forEach(x => x.disabled = true); finish(idx, o.label); });
+          foot.appendChild(b);
+        });
+      }
+      async function finish(optionIndex, choiceLabel) {
+        if (choiceLabel) append('<div class="nrp-you">' + esc(choiceLabel) + '</div>');
+        try { await supabase.rpc('nationverse_resolve_run', { p_run: runId, p_option: optionIndex }); } catch (e) { /* close gracefully either way */ }
+        closeModal();
+        // Reflect any decision stat changes: re-fetch this nation, then re-render (also reloads attention).
+        try {
+          if (nation) {
+            const { data } = await supabase.from('nationverse_nations').select(NATION_SELECT).eq('id', nation.id).maybeSingle();
+            if (data) nation = data;
+          }
+        } catch (e) { /* keep the last-known nation on a transient error */ }
+        showView('character');
+      }
+      showStep();
     }
 
     // ---- Request Meeting modal ----
@@ -653,13 +769,13 @@
 
         if (!legacy) {
           if (!p) { window.location.replace('/nations/'); return; }   // no character yet → go choose one
-          const natRes = await supabase.from('nationverse_nations').select('id, name, flag, stats, parties').eq('id', p.nation_id).maybeSingle();
+          const natRes = await supabase.from('nationverse_nations').select(NATION_SELECT).eq('id', p.nation_id).maybeSingle();
           if (natRes.error) throw natRes.error;
           n = natRes.data;
         } else {
           if (!nationId) { content.innerHTML = '<div class="empty">No nation selected. <a href="/nations/">Choose one.</a></div>'; return; }
           const [natRes, persRes] = await Promise.all([
-            supabase.from('nationverse_nations').select('id, name, flag, stats, parties').eq('id', nationId).maybeSingle(),
+            supabase.from('nationverse_nations').select(NATION_SELECT).eq('id', nationId).maybeSingle(),
             roleId ? supabase.from('nationverse_personalities').select('*').eq('id', roleId).maybeSingle() : Promise.resolve({ data: null })
           ]);
           if (natRes.error) throw natRes.error;
