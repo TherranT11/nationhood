@@ -329,6 +329,7 @@
           <div class="f"><label>Internal ID <span class="hint">optional · e.g. freedoms_act</span></label><input id="sb-slug" type="text" autocomplete="off" style="max-width:280px"></div>
           <div class="f"><label>Nation</label><select id="sb-nation"></select></div>
           <div class="f"><label>Presented By <span class="hint">optional</span></label><input id="sb-presenter" type="text" autocomplete="off" placeholder="e.g. Interior Minister, Chief Justice, Prime Minister"></div>
+          <div class="f"><label>Tag <span class="hint">optional · reform family, for agenda requirements</span></label><select id="sb-tag"></select></div>
           <div class="f"><label>Flavor Text</label><textarea id="sb-flavor"></textarea></div>
 
           <div class="statshd">Trigger Conditions <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">optional · all must hold for the bill to appear</span></div>
@@ -892,6 +893,10 @@
     const FREQUENCIES = ['Continuous', 'Per Turn', 'Per Year', 'One-time'];
     const STAT_NAMES = STATS.map(s => s[1]);   // the nation stat labels (one source; opts() defined at top)
     const CORP_STATS = ['Capital', 'Growth', 'Reputation'];   // the editable corporation stats (one source with the Corporation Creator)
+    // Reform families for Story Bills. ONE source, shared by the Story Bill "Tag" dropdown AND the agenda
+    // "Reforms Enacted" requirement's tag dropdown, so an agenda can require "Enact N {Tag} Reforms" and the
+    // two sides can never drift. Matches nationverse_story_bills.tag (schema/297).
+    const REFORM_TAGS = ['Labor', 'Economic', 'Social', 'Environmental', 'Security', 'Institutional', 'Foreign'];
 
     // Per-category target control: National Statistic / Corporate Stat → a stat dropdown; Modifier → a
     // dropdown of real modifiers; everything else → free text (Interest-Group Opinion is matched by group
@@ -1413,13 +1418,13 @@
     // ---- Story Bills (first slice: define name/scope/presenter/flavor, triggers from conditions that
     // exist today, and Sign/Veto choices whose effects reuse the shared effect builder above) ----
     // Shared, container-parameterised trigger builder (one source), used by Story Bills AND Narratives.
-    const TRIG_TYPES = ['Statistic', 'Modifier', 'Party', 'Role', 'Previous Narrative'];
+    const TRIG_TYPES = ['Statistic', 'Modifier', 'Party', 'Role', 'Previous Narrative', 'Reforms Enacted'];
     const TRIG_STAT_OPS = ['≥', '≤', '=', '>', '<'];
     const TRIG_MOD_STATES = ['Active', 'Not Active'];
     const TRIG_ALIGNMENTS = ['Government', 'Coalition', 'Confidence-and-Supply', 'Opposition'];
     const TRIG_ROLE_STATES = ['Exists', 'Absent'];
     const TRIG_NARR_STATES = ['Completed', 'Not Completed'];
-    const TRIG_KEY_TYPE = { stat: 'Statistic', modifier: 'Modifier', party: 'Party', role: 'Role', narrative: 'Previous Narrative' };
+    const TRIG_KEY_TYPE = { stat: 'Statistic', modifier: 'Modifier', party: 'Party', role: 'Role', narrative: 'Previous Narrative', bills_passed: 'Reforms Enacted' };
 
     // The controls shown for a condition depend on its type — all reuse conditions that exist today, plus
     // Role (a role/office present or absent) and Previous Narrative (completed or not).
@@ -1438,6 +1443,11 @@
       if (type === 'Previous Narrative')
         return '<input class="tg-narr" type="text" placeholder="Narrative name or internal id" value="' + esc(t.name || '') + '">' +
                '<select class="tg-nstate">' + opts(TRIG_NARR_STATES, t.state) + '</select>';
+      if (type === 'Reforms Enacted')   // "Enact N {Tag} Reforms" — counts passed Story Bills of that tag
+        return '<span class="tg-mid">Enact</span>' +
+               '<input class="tg-count" type="number" min="1" step="1" placeholder="count" value="' + esc(t.count != null ? t.count : '') + '">' +
+               '<select class="tg-tag">' + opts(REFORM_TAGS, t.tag) + '</select>' +
+               '<span class="tg-mid">Reforms</span>';
       return '<select class="tg-stat">' + opts(STAT_NAMES, t.stat) + '</select>' +               // Statistic
              '<select class="tg-op">' + opts(TRIG_STAT_OPS, t.op) + '</select>' +
              '<input class="tg-num" type="number" step="1" placeholder="value" value="' + esc(t.value != null ? t.value : '') + '">';
@@ -1465,6 +1475,7 @@
         else if (type === 'Party') { const party = r.querySelector('.tg-party').value.trim(); if (party) out.push({ type: 'party', alignment: r.querySelector('.tg-align').value, party }); }
         else if (type === 'Role') { const role = r.querySelector('.tg-role').value.trim(); if (role) out.push({ type: 'role', role, state: r.querySelector('.tg-rstate').value }); }
         else if (type === 'Previous Narrative') { const name = r.querySelector('.tg-narr').value.trim(); if (name) out.push({ type: 'narrative', name, state: r.querySelector('.tg-nstate').value }); }
+        else if (type === 'Reforms Enacted') { const count = r.querySelector('.tg-count').value.trim(); if (count !== '') out.push({ type: 'bills_passed', tag: r.querySelector('.tg-tag').value, count: Number(count) }); }
         else { const num = r.querySelector('.tg-num').value.trim(); if (num !== '') out.push({ type: 'stat', stat: r.querySelector('.tg-stat').value, op: r.querySelector('.tg-op').value, value: Number(num) }); }
       });
       return out;
@@ -1486,6 +1497,7 @@
     document.getElementById('addVetoEff').addEventListener('click', () => addEffect(sbVetoBox));
 
     const sbNatSel = document.getElementById('sb-nation');
+    document.getElementById('sb-tag').innerHTML = '<option value="">— None —</option>' + opts(REFORM_TAGS);   // reform family (one source: REFORM_TAGS)
     let sbNatNames = {};
     async function loadStoryRefs() {
       const rows = await loadNationOptions(sbNatSel, { global: true });   // shared nation-options source
@@ -1498,7 +1510,7 @@
 
     function resetBillForm() {
       editingBillId = null; sbTitle.textContent = 'Story Bill Creator'; saveBillBtn.textContent = 'Save Story Bill'; cancelBillBtn.hidden = true;
-      ['sb-name', 'sb-slug', 'sb-presenter', 'sb-flavor'].forEach(id => { document.getElementById(id).value = ''; });
+      ['sb-name', 'sb-slug', 'sb-presenter', 'sb-flavor', 'sb-tag'].forEach(id => { document.getElementById(id).value = ''; });
       sbNatSel.value = '';
       sbTrigBox.innerHTML = '';
       sbSignBox.innerHTML = ''; addEffect(sbSignBox);
@@ -1510,6 +1522,7 @@
       document.getElementById('sb-slug').value = b.internal_id || '';
       sbNatSel.value = b.nation_id || '';
       document.getElementById('sb-presenter').value = b.presented_by || '';
+      document.getElementById('sb-tag').value = b.tag || '';
       document.getElementById('sb-flavor').value = b.flavor || '';
       setTriggers(sbTrigBox, b.triggers);
       const choices = b.choices || [];
@@ -1530,6 +1543,7 @@
         internal_id: document.getElementById('sb-slug').value.trim() || null,
         nation_id: sbNatSel.value || null,
         presented_by: document.getElementById('sb-presenter').value.trim() || null,
+        tag: document.getElementById('sb-tag').value || null,
         flavor: document.getElementById('sb-flavor').value.trim() || null,
         triggers: collectTriggers(sbTrigBox),
         choices: [
@@ -1562,7 +1576,7 @@
         sbListBox.innerHTML = rows.map(b => {
           const scope = b.nation_id ? esc(sbNatNames[b.nation_id] || 'Nation') : 'Global';
           const nTrig = (b.triggers || []).length, nEff = (b.choices || []).reduce((a, c) => a + ((c.effects || []).length), 0);
-          const sub = [scope, b.presented_by ? 'by ' + esc(b.presented_by) : '', nTrig + ' condition' + (nTrig === 1 ? '' : 's'), nEff + ' effect' + (nEff === 1 ? '' : 's')].filter(Boolean).join(' · ');
+          const sub = [scope, b.tag ? esc(b.tag) + ' Reform' : '', b.presented_by ? 'by ' + esc(b.presented_by) : '', nTrig + ' condition' + (nTrig === 1 ? '' : 's'), nEff + ' effect' + (nEff === 1 ? '' : 's')].filter(Boolean).join(' · ');
           return '<div class="natcard" data-id="' + esc(b.id) + '">' +
             '<div class="natcard-hd"><div class="natmeta"><div class="natnm">' + esc(b.name || 'Untitled') + '</div>' +
             '<div class="natsub">' + sub + '</div></div>' +
