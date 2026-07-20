@@ -171,6 +171,7 @@
         <button class="vtab" data-tab="corporations" type="button">Corporations</button>
         <button class="vtab" data-tab="story" type="button">Story Bills</button>
         <button class="vtab" data-tab="narratives" type="button">Narratives</button>
+        <button class="vtab" data-tab="agendas" type="button">Agendas</button>
         <button class="vtab" data-tab="claims" type="button">Role Claims</button>
       </nav>
       <div class="panel">
@@ -348,21 +349,20 @@
 
         <div class="tabpanel" data-panel="narratives" hidden>
         <div class="card">
-          <h2>Launch a Narrative Conversation</h2>
-          <p class="lead">Interim World-Master tool: open a narrative as a two-player conversation now. (Automatic, trigger-driven launch is coming later.) Both players get a Ready to Begin prompt; once both are ready the narrative's opening lines play into their chat.</p>
+          <h2>Launch a Narrative</h2>
+          <p class="lead">Interim World-Master tool: assign a narrative to a player now. (Automatic, trigger-driven launch is coming later; the player-facing runtime that plays the sequence is a separate step.)</p>
           <div class="f" style="display:flex;gap:18px;flex-wrap:wrap">
-            <span style="flex:1 1 220px"><label>Narrative</label><select id="ln-narr"></select></span>
-            <span style="flex:1 1 180px"><label>Player A</label><select id="ln-a"></select></span>
-            <span style="flex:1 1 180px"><label>Player B</label><select id="ln-b"></select></span>
+            <span style="flex:1 1 260px"><label>Narrative</label><select id="ln-narr"></select></span>
+            <span style="flex:1 1 220px"><label>Player</label><select id="ln-a"></select></span>
           </div>
           <div class="row">
-            <button class="btn btn-solid" id="ln-launch" type="button">Launch to Players</button>
+            <button class="btn btn-solid" id="ln-launch" type="button">Launch to Player</button>
             <span class="note" id="ln-note" role="status" aria-live="polite"></span>
           </div>
         </div>
         <div class="card">
           <h2 id="narTitle">Narrative Creator</h2>
-          <p class="lead">A triggered story: an opening conversation, player choices (each with a response), then a decision whose options carry effects. Triggers and effects use the shared builders; a decision option can Create a Story Bill or Unlock another Narrative via its effect category.</p>
+          <p class="lead">A single-player story: a Conversation Sequence (Action narration + Speech from named characters, interleaved with optional flavor replies), then a Decision whose options carry effects. Triggers and effects use the shared builders; a decision option can Create a Story Bill or Unlock another Narrative via its effect category.</p>
 
           <div id="narList" class="natlist"></div>
 
@@ -375,25 +375,21 @@
             <span><label>Priority <span class="hint">0–100 · higher interrupts lower</span></label><input id="nr-priority" type="number" min="0" max="100" step="1" value="0" style="max-width:110px"></span>
           </div>
 
-          <div class="statshd">Trigger Conditions <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">optional · all must hold for the narrative to start</span></div>
-          <div id="nrTrigList"></div>
-          <button class="btn btn-ghost" id="nrAddTrig" type="button" style="margin-top:2px">+ Add Condition</button>
-
-          <div class="statshd">Opening Conversation</div>
-          <div class="f" style="display:flex;gap:18px;flex-wrap:wrap">
-            <span style="flex:1;min-width:220px"><label>Speaker</label><input id="nr-speaker" type="text" autocomplete="off" placeholder="e.g. John Smith" style="width:100%;box-sizing:border-box"></span>
-            <span style="flex:1;min-width:220px"><label>Role <span class="hint">or personality</span></label><input id="nr-role" type="text" autocomplete="off" placeholder="e.g. Deputy Economic Minister" style="width:100%;box-sizing:border-box"></span>
-          </div>
-          <div class="f"><label>Dialogue Lines <span class="hint">shown one at a time; the player clicks Continue through each before the choices appear</span></label>
-            <div id="nrDialogue"></div>
-            <button class="btn btn-ghost" id="nrAddLine" type="button" style="margin-top:6px">+ Add Dialogue Line</button>
+          <div class="statshd">When Does This Trigger</div>
+          <div class="f nrtrig">
+            <label class="nrtm"><input type="radio" name="nrtm" value="immediate" checked> Immediately</label>
+            <label class="nrtm"><input type="radio" name="nrtm" value="date"> On date:
+              <select id="nr-tmonth"></select> <input id="nr-tyear" type="number" placeholder="Year" style="max-width:110px"></label>
+            <label class="nrtm"><input type="radio" name="nrtm" value="stats"> When these stat conditions are met <span class="hint">all must hold</span></label>
+            <div id="nrStatTrigs" style="margin-top:6px"></div>
+            <button class="btn btn-ghost" id="nrAddStat" type="button" style="margin-top:4px">+ Add Stat Condition</button>
           </div>
 
-          <div class="statshd">Player Choices <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">how the player continues the conversation; each leads to a short response</span></div>
-          <div id="nrChoices"></div>
-          <button class="btn btn-ghost" id="nrAddChoice" type="button" style="margin-top:2px">+ Add Choice</button>
+          <div class="statshd">Conversation Sequence <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">plays in order · Action = italic narration · Speech = a named speaker, shown in quotes · the player clicks Continue through each</span></div>
+          <div id="nrSeq"></div>
+          <button class="btn btn-ghost" id="nrAddStep" type="button" style="margin-top:6px">+ Add Line</button>
 
-          <div class="statshd">Decision</div>
+          <div class="statshd">Decision <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">the final reply · each option carries effects</span></div>
           <div class="f"><label>Prompt <span class="hint">optional</span></label><textarea id="nr-decprompt" placeholder="The framing shown before the options."></textarea></div>
           <div id="nrDecOptions"></div>
           <button class="btn btn-ghost" id="nrAddOption" type="button" style="margin-top:2px">+ Add Decision Option</button>
@@ -405,6 +401,69 @@
           </div>
         </div>
         </div><!-- /tabpanel narratives -->
+
+        <div class="tabpanel" data-panel="agendas" hidden>
+        <div class="card">
+          <h2 id="agTitle">Agenda Creator</h2>
+          <p class="lead">A node in a progression tree. The tree builds itself from each agenda's Parent (children are derived — no separate edge list). Requirements, Hidden Requirements and Failures reuse the shared condition builder; Rewards reuse the shared effect builder.</p>
+
+          <div id="agList" class="natlist"></div>
+
+          <div class="statshd">Basic Information</div>
+          <div class="f"><label>Agenda Name</label><input id="ag-name" type="text" autocomplete="off"></div>
+          <div class="f"><label>Internal ID <span class="hint">optional · e.g. expand_welfare_state</span></label><input id="ag-slug" type="text" autocomplete="off" style="max-width:320px"></div>
+          <div class="f"><label>Nation</label><select id="ag-nation"></select></div>
+          <div class="f"><label>Eligible Roles <span class="hint">optional · comma-separated · e.g. Head of Government, Opposition Leader</span></label><input id="ag-roles" type="text" autocomplete="off"></div>
+          <div class="f"><label>Eligible Parties <span class="hint">optional · comma-separated · e.g. Left, Center</span></label><input id="ag-parties" type="text" autocomplete="off"></div>
+          <div class="f"><label>Description</label><textarea id="ag-desc"></textarea></div>
+
+          <div class="statshd">Tree Position</div>
+          <div class="f"><label>Parent Agenda <span class="hint">the agenda that unlocks this one (None = a root)</span></label><select id="ag-parent"></select></div>
+          <div class="f" style="display:flex;gap:18px;flex-wrap:wrap">
+            <span><label>Tier <span class="hint">layout only</span></label><input id="ag-tier" type="number" min="1" step="1" value="1" style="max-width:110px"></span>
+            <span><label>Display Order <span class="hint">left→right</span></label><input id="ag-order" type="number" step="1" value="0" style="max-width:110px"></span>
+          </div>
+
+          <div class="statshd">Requirements <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">what the player must achieve</span></div>
+          <div id="agReqList"></div>
+          <button class="btn btn-ghost" id="agAddReq" type="button" style="margin-top:2px">+ Add Requirement</button>
+          <div class="f" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
+            <span><label>Completion Rule</label><select id="ag-comprule"><option>ALL</option><option>ANY</option></select></span>
+            <span id="ag-count-fld" hidden><label>How many <span class="hint">for ANY</span></label><input id="ag-count" type="number" min="1" step="1" value="1" style="max-width:110px"></span>
+          </div>
+
+          <div class="statshd">Rewards <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">granted on completion</span></div>
+          <div id="agRewList"></div>
+          <button class="btn btn-ghost" id="agAddRew" type="button" style="margin-top:2px">+ Add Reward</button>
+
+          <div class="statshd">Hidden Requirements <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">unseen by the player</span></div>
+          <div id="agHidList"></div>
+          <button class="btn btn-ghost" id="agAddHid" type="button" style="margin-top:2px">+ Add Hidden Requirement</button>
+
+          <div class="statshd">Failure Conditions <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">any one of these fails the agenda for good</span></div>
+          <div id="agFailList"></div>
+          <button class="btn btn-ghost" id="agAddFail" type="button" style="margin-top:2px">+ Add Failure Condition</button>
+
+          <div class="statshd">Availability</div>
+          <div class="f"><label>Unlock Condition <span class="hint">how this agenda becomes available</span></label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <select id="ag-unlock-type" style="max-width:260px"></select>
+              <input id="ag-unlock-target" type="text" placeholder="target (narrative / bill / modifier / event)" style="flex:1;min-width:200px">
+            </div>
+          </div>
+          <div class="f" style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end">
+            <span><label>Visible Immediately</label><select id="ag-visible"><option value="yes">Yes</option><option value="no">No — hidden until unlocked</option></select></span>
+            <span><label>Expiration <span class="hint">months · blank = no limit</span></label><input id="ag-expire" type="number" min="1" step="1" placeholder="No limit" style="max-width:140px"></span>
+            <span><label>AI Weight <span class="hint">0–100</span></label><input id="ag-weight" type="number" min="0" max="100" step="1" value="50" style="max-width:110px"></span>
+          </div>
+
+          <div class="actions">
+            <button class="btn btn-solid" id="saveAg" type="button">Save Agenda</button>
+            <button class="btn btn-ghost" id="cancelAg" type="button" hidden>Cancel</button>
+            <span class="note" id="agNote" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+        </div><!-- /tabpanel agendas -->
 
         <div class="tabpanel" data-panel="claims" hidden>
         <div class="card">
@@ -768,6 +827,7 @@
       if (tab === 'corporations') loadCorpRefs().then(loadCorpList);
       if (tab === 'story') loadStoryRefs().then(loadStoryList);
       if (tab === 'narratives') { loadNarrativeRefs().then(loadNarrativeList); loadLaunchRefs(); }
+      if (tab === 'agendas') loadAgendaRefs().then(loadAgendaList);
       if (tab === 'claims') loadClaims();
     }
     vtabs.forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
@@ -1511,50 +1571,95 @@
     const NARR_CATEGORIES = ['Economy', 'Politics', 'Military', 'Foreign Affairs', 'Labor', 'Religion', 'Judiciary', 'Election', 'Crisis', 'Corporation', 'Intelligence'];
     document.getElementById('nr-cat').innerHTML = opts(NARR_CATEGORIES);
 
-    const nrTrigBox = document.getElementById('nrTrigList');
-    wireTrigBox(nrTrigBox);
-    document.getElementById('nrAddTrig').addEventListener('click', () => addTrig(nrTrigBox));
-
-    // Opening dialogue: an ordered list of lines the player clicks Continue through before the choices.
-    const nrDlgBox = document.getElementById('nrDialogue');
-    function lineRowHTML(text) {
-      return '<div class="effrow2 nrline">' +
-        '<div class="effrow2-hd"><span class="lnum"></span><button class="del nrl-del" type="button">Remove</button></div>' +
-        '<div class="effgrid"><div class="fld wide"><textarea class="nrl-text" placeholder="A line of dialogue the player clicks Continue past.">' + esc(text || '') + '</textarea></div></div>' +
-      '</div>';
-    }
-    function renumberLines() { nrDlgBox.querySelectorAll('.nrline .lnum').forEach((el, i) => { el.textContent = 'Line ' + (i + 1); }); }
-    function addLine(text) { nrDlgBox.insertAdjacentHTML('beforeend', lineRowHTML(text)); renumberLines(); }
-    nrDlgBox.addEventListener('click', e => { if (e.target.classList.contains('nrl-del')) { e.target.closest('.nrline').remove(); renumberLines(); } });
-    document.getElementById('nrAddLine').addEventListener('click', () => addLine());
-    function collectLines() { const out = []; nrDlgBox.querySelectorAll('.nrl-text').forEach(t => { const v = t.value.trim(); if (v) out.push(v); }); return out; }
-    function setLines(list) { nrDlgBox.innerHTML = ''; (list && list.length ? list : ['']).forEach(addLine); renumberLines(); }
-
-    // Player choices: a label + a short response conversation.
-    const nrChoicesBox = document.getElementById('nrChoices');
-    function choiceRowHTML(c) {
+    // "When does this trigger": Immediately, On a game date, or When stat thresholds are met.
+    const NR_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    document.getElementById('nr-tmonth').innerHTML = NR_MONTHS.map((m, i) => '<option value="' + (i + 1) + '">' + m + '</option>').join('');
+    const nrStatBox = document.getElementById('nrStatTrigs'), nrDateRow = document.getElementById('nr-tmonth').closest('.nrtm');
+    const NR_DIRS = ['or higher', 'or lower'];
+    function statTrigRowHTML(c) {
       c = c || {};
-      return '<div class="effrow2 nrchoice">' +
-        '<div class="effrow2-hd"><span class="cnum"></span><button class="del nrc-del" type="button">Remove</button></div>' +
+      return '<div class="effrow2 nrstat"><div class="effrow2-hd"><span></span><button class="del nrst-del" type="button">Remove</button></div>' +
+        '<div class="effgrid" style="align-items:end">' +
+          '<div class="fld"><label>Stat</label><select class="nrst-stat">' + opts(STAT_NAMES, c.stat) + '</select></div>' +
+          '<div class="fld"><label>Is</label><input class="nrst-val" type="number" step="1" placeholder="value" value="' + esc(c.value != null ? c.value : '') + '"></div>' +
+          '<div class="fld"><label>&nbsp;</label><select class="nrst-dir">' + opts(NR_DIRS, c.dir === 'lower' ? 'or lower' : 'or higher') + '</select></div>' +
+        '</div></div>';
+    }
+    function addStatTrig(c) { nrStatBox.insertAdjacentHTML('beforeend', statTrigRowHTML(c)); }
+    nrStatBox.addEventListener('click', e => { if (e.target.classList.contains('nrst-del')) e.target.closest('.nrstat').remove(); });
+    document.getElementById('nrAddStat').addEventListener('click', () => { setTrigMode('stats'); addStatTrig(); });
+    function setTrigMode(mode) {
+      const r = document.querySelector('input[name=nrtm][value=' + mode + ']'); if (r) r.checked = true;
+      nrDateRow.style.opacity = mode === 'date' ? '1' : '.5';
+      nrStatBox.style.opacity = document.getElementById('nrAddStat').style.opacity = mode === 'stats' ? '1' : '.5';
+    }
+    document.querySelectorAll('input[name=nrtm]').forEach(r => r.addEventListener('change', () => setTrigMode(r.value)));
+    function collectTrigger() {
+      const mode = (document.querySelector('input[name=nrtm]:checked') || {}).value || 'immediate';
+      if (mode === 'date') return { mode, month: Number(document.getElementById('nr-tmonth').value) || 1, year: Number(document.getElementById('nr-tyear').value) || null };
+      if (mode === 'stats') {
+        const stats = [];
+        nrStatBox.querySelectorAll('.nrstat').forEach(r => {
+          const v = r.querySelector('.nrst-val').value.trim();
+          if (v !== '') stats.push({ stat: r.querySelector('.nrst-stat').value, value: Number(v), dir: r.querySelector('.nrst-dir').value === 'or lower' ? 'lower' : 'higher' });
+        });
+        return { mode, stats };
+      }
+      return { mode: 'immediate' };
+    }
+    function setTrigger(t) {
+      t = t || {}; const mode = t.mode || 'immediate';
+      document.getElementById('nr-tmonth').value = t.month || 1;
+      document.getElementById('nr-tyear').value = t.year != null ? t.year : '';
+      nrStatBox.innerHTML = ''; (t.stats || []).forEach(addStatTrig);
+      setTrigMode(mode);
+    }
+
+    // Conversation sequence: an ordered list of steps the player clicks Continue through. Each step is an
+    // Action (italic narration) or Speech (a named speaker, shown in quotes), with optional flavor replies.
+    const nrSeqBox = document.getElementById('nrSeq');
+    function stepRowHTML(s) {
+      s = s || {};
+      const kind = s.kind === 'speech' ? 'Speech' : 'Action', isSpeech = kind === 'Speech';
+      return '<div class="effrow2 nrstep">' +
+        '<div class="effrow2-hd"><span class="snum"></span><button class="del nrs-del" type="button">Remove</button></div>' +
         '<div class="effgrid">' +
-          '<div class="fld wide"><label>Choice label</label><input class="nrc-label" type="text" placeholder="e.g. Tell me more about reform." value="' + esc(c.label || '') + '"></div>' +
-          '<div class="fld wide"><label>Response conversation</label><textarea class="nrc-response" placeholder="What the speaker replies when this choice is picked.">' + esc(c.response || '') + '</textarea></div>' +
+          '<div class="fld"><label>Type</label><select class="nrs-kind">' + opts(['Action', 'Speech'], kind) + '</select></div>' +
+          '<div class="fld nrs-spk-fld"' + (isSpeech ? '' : ' hidden') + '><label>Speaker</label><input class="nrs-spk" type="text" placeholder="e.g. Gus Manger" value="' + esc(s.speaker || '') + '"></div>' +
+          '<div class="fld wide"><label>Text <span class="hint">' + (isSpeech ? 'shown in quotes' : 'shown in italics') + '</span></label><textarea class="nrs-text" placeholder="' + (isSpeech ? 'What they say.' : 'Narration — may name characters.') + '">' + esc(s.text || '') + '</textarea></div>' +
+          '<div class="fld wide"><label>Player replies <span class="hint">optional · one per line · flavor</span></label><textarea class="nrs-replies" placeholder="Optional replies the player can pick.">' + esc((s.replies || []).join('\n')) + '</textarea></div>' +
         '</div>' +
       '</div>';
     }
-    function renumberChoices() { nrChoicesBox.querySelectorAll('.nrchoice .cnum').forEach((el, i) => { el.textContent = 'Choice ' + (i + 1); }); }
-    function addChoice(c) { nrChoicesBox.insertAdjacentHTML('beforeend', choiceRowHTML(c)); renumberChoices(); }
-    nrChoicesBox.addEventListener('click', e => { if (e.target.classList.contains('nrc-del')) { e.target.closest('.nrchoice').remove(); renumberChoices(); } });
-    document.getElementById('nrAddChoice').addEventListener('click', () => addChoice());
-    function collectChoices() {
+    function renumberSteps() { nrSeqBox.querySelectorAll('.nrstep .snum').forEach((el, i) => { el.textContent = 'Line ' + (i + 1); }); }
+    function addStep(s) { nrSeqBox.insertAdjacentHTML('beforeend', stepRowHTML(s)); renumberSteps(); }
+    nrSeqBox.addEventListener('click', e => { if (e.target.classList.contains('nrs-del')) { e.target.closest('.nrstep').remove(); renumberSteps(); } });
+    nrSeqBox.addEventListener('change', e => {
+      if (e.target.classList.contains('nrs-kind')) {
+        e.target.closest('.nrstep').querySelector('.nrs-spk-fld').hidden = e.target.value !== 'Speech';
+      }
+    });
+    document.getElementById('nrAddStep').addEventListener('click', () => addStep());
+    function collectSequence() {
       const out = [];
-      nrChoicesBox.querySelectorAll('.nrchoice').forEach(r => {
-        const label = r.querySelector('.nrc-label').value.trim(), response = r.querySelector('.nrc-response').value.trim();
-        if (label || response) out.push({ label, response: response || null });
+      nrSeqBox.querySelectorAll('.nrstep').forEach(r => {
+        const kind = r.querySelector('.nrs-kind').value === 'Speech' ? 'speech' : 'action';
+        const text = r.querySelector('.nrs-text').value.trim();
+        const speaker = r.querySelector('.nrs-spk').value.trim();
+        const replies = r.querySelector('.nrs-replies').value.split('\n').map(x => x.trim()).filter(Boolean);
+        if (!text && !speaker && !replies.length) return;   // skip an untouched step
+        const step = { kind, text };
+        if (kind === 'speech' && speaker) step.speaker = speaker;
+        if (replies.length) step.replies = replies;
+        out.push(step);
       });
       return out;
     }
-    function setChoices(list) { nrChoicesBox.innerHTML = ''; (list || []).forEach(addChoice); renumberChoices(); }
+    function setSequence(list) {
+      nrSeqBox.innerHTML = '';
+      (list && list.length ? list : [{}]).forEach(addStep);
+      renumberSteps();
+    }
 
     // Decision options: a label + its own effect list (shared effect builder). "Create Story Bill" /
     // "Unlock Narrative" / "Hidden Variable" are effect categories, so chaining needs no separate system.
@@ -1617,9 +1722,9 @@
       await loadNarrativePersonalities(nrNatSel.value);   // personalities for the initially-selected nation
     }
 
-    // ---- Launch a Narrative Conversation (interim World-Master tool) ----
+    // ---- Launch a Narrative to one player (interim World-Master tool) ----
     const lnNarr = document.getElementById('ln-narr'), lnA = document.getElementById('ln-a'),
-      lnB = document.getElementById('ln-b'), lnNote = document.getElementById('ln-note'), lnLaunch = document.getElementById('ln-launch');
+      lnNote = document.getElementById('ln-note'), lnLaunch = document.getElementById('ln-launch');
     async function loadLaunchRefs() {
       try {
         const [nRes, pRes] = await Promise.all([
@@ -1628,20 +1733,20 @@
         ]);
         lnNarr.innerHTML = (nRes.data || []).map(n => '<option value="' + esc(n.id) + '">' + esc(n.name || 'Untitled') + '</option>').join('')
           || '<option value="">No narratives yet</option>';
-        const playerOpts = (pRes.data || []).map(p => '<option value="' + esc(p.id) + '">' + esc(p.name || 'Unnamed') + '</option>').join('');
-        lnA.innerHTML = playerOpts || '<option value="">No claimed players</option>';
-        lnB.innerHTML = playerOpts || '<option value="">No claimed players</option>';
+        lnA.innerHTML = (pRes.data || []).map(p => '<option value="' + esc(p.id) + '">' + esc(p.name || 'Unnamed') + '</option>').join('')
+          || '<option value="">No claimed players</option>';
       } catch (e) { lnNote.textContent = 'Couldn’t load launch options.'; lnNote.className = 'note error'; }
     }
     lnLaunch.addEventListener('click', async () => {
-      const narr = lnNarr.value, a = lnA.value, b = lnB.value;
+      if (lnLaunch.disabled) return;
+      const narr = lnNarr.value, player = lnA.value;
       if (!narr) { lnNote.textContent = 'Pick a narrative.'; lnNote.className = 'note error'; return; }
-      if (!a || !b || a === b) { lnNote.textContent = 'Pick two different players.'; lnNote.className = 'note error'; return; }
+      if (!player) { lnNote.textContent = 'Pick a player.'; lnNote.className = 'note error'; return; }
       lnLaunch.disabled = true; lnNote.textContent = 'Launching…'; lnNote.className = 'note';
       try {
-        const { error } = await supabase.rpc('nationverse_launch_narrative', { p_narrative: narr, p_a: a, p_b: b });
+        const { error } = await supabase.rpc('nationverse_launch_narrative', { p_narrative: narr, p_player: player });
         if (error) throw error;
-        lnNote.textContent = 'Launched — both players now see a Ready to Begin prompt.'; lnNote.className = 'note ok';
+        lnNote.textContent = 'Launched — assigned to the player.'; lnNote.className = 'note ok';
       } catch (e) { lnNote.textContent = e.message || 'Could not launch.'; lnNote.className = 'note error'; }
       finally { lnLaunch.disabled = false; }
     });
@@ -1652,11 +1757,19 @@
 
     function resetNarrativeForm() {
       editingNarId = null; narTitle.textContent = 'Narrative Creator'; saveNarBtn.textContent = 'Save Narrative'; cancelNarBtn.hidden = true;
-      ['nr-name', 'nr-slug', 'nr-speaker', 'nr-role', 'nr-decprompt'].forEach(id => { document.getElementById(id).value = ''; });
+      ['nr-name', 'nr-slug', 'nr-decprompt'].forEach(id => { document.getElementById(id).value = ''; });
       nrNatSel.value = ''; document.getElementById('nr-cat').selectedIndex = 0; document.getElementById('nr-priority').value = 0;
       nrPersSel.innerHTML = '<option value="">— No specific personality —</option>';
-      nrTrigBox.innerHTML = '';
-      setLines([]); setChoices([]); setDecision({});
+      setTrigger({});
+      setSequence([]); setDecision({});
+    }
+    // Legacy narratives stored opening.lines (+ a top-level speaker); map them to Action steps so old
+    // records still open in the new Sequence builder.
+    function sequenceOf(n) {
+      if (n.sequence && n.sequence.length) return n.sequence;
+      const o = n.opening || {};
+      const lines = o.lines || (o.dialogue ? [o.dialogue] : []);
+      return lines.map(t => ({ kind: 'action', text: t }));
     }
     async function editNarrative(n) {
       editingNarId = n.id; narTitle.textContent = 'Edit Narrative'; saveNarBtn.textContent = 'Save changes'; cancelNarBtn.hidden = false;
@@ -1666,12 +1779,8 @@
       await loadNarrativePersonalities(n.nation_id, n.personality_id);   // fill + select the assigned personality
       document.getElementById('nr-cat').value = n.category || NARR_CATEGORIES[0];
       document.getElementById('nr-priority').value = n.priority != null ? n.priority : 0;
-      setTriggers(nrTrigBox, n.triggers);
-      const o = n.opening || {};
-      document.getElementById('nr-speaker').value = o.speaker || '';
-      document.getElementById('nr-role').value = o.role || '';
-      setLines(o.lines || (o.dialogue ? [o.dialogue] : []));   // supports legacy single-dialogue records
-      setChoices(n.choices);
+      setTrigger(n.trigger);
+      setSequence(sequenceOf(n));
       setDecision(n.decision);
       // Already on the Narratives tab — don't re-run showTab (would rebuild the nation select).
       window.scrollTo(0, 0);
@@ -1690,13 +1799,8 @@
         personality_id: nrPersSel.value || null,
         category: document.getElementById('nr-cat').value,
         priority: Math.max(0, Math.min(100, Math.round(Number(pr) || 0))),
-        triggers: collectTriggers(nrTrigBox),
-        opening: {
-          speaker: document.getElementById('nr-speaker').value.trim() || null,
-          role: document.getElementById('nr-role').value.trim() || null,
-          lines: collectLines()
-        },
-        choices: collectChoices(),
+        trigger: collectTrigger(),
+        sequence: collectSequence(),
         decision: collectDecision()
       };
       narBusy = true; saveNarBtn.disabled = true; narNote.textContent = 'Saving…'; narNote.className = 'note';
@@ -1723,13 +1827,14 @@
         if (!rows.length) { narListBox.innerHTML = '<div class="empty">No narratives yet — create one below.</div>'; return; }
         narListBox.innerHTML = rows.map(n => {
           const scope = n.nation_id ? esc(narNatNames[n.nation_id] || 'Nation') : 'Global';
-          const nOpt = (n.decision && n.decision.options ? n.decision.options.length : 0), nCh = (n.choices || []).length;
-          const sub = [scope, n.category ? esc(n.category) : '', 'priority ' + (n.priority != null ? n.priority : 0), nCh + ' choice' + (nCh === 1 ? '' : 's'), nOpt + ' option' + (nOpt === 1 ? '' : 's')].filter(Boolean).join(' · ');
+          const seq = sequenceOf(n), nOpt = (n.decision && n.decision.options ? n.decision.options.length : 0);
+          const sub = [scope, n.category ? esc(n.category) : '', 'priority ' + (n.priority != null ? n.priority : 0), seq.length + ' line' + (seq.length === 1 ? '' : 's'), nOpt + ' option' + (nOpt === 1 ? '' : 's')].filter(Boolean).join(' · ');
+          const preview = seq.find(s => s.text) ;
           return '<div class="natcard" data-id="' + esc(n.id) + '">' +
             '<div class="natcard-hd"><div class="natmeta"><div class="natnm">' + esc(n.name || 'Untitled') + '</div>' +
             '<div class="natsub">' + sub + '</div></div>' +
             '<div class="natbtns"><button class="btn btn-ghost nar-edit" type="button">Edit</button><button class="del nar-del" type="button">Delete</button></div></div>' +
-            (n.opening && ((n.opening.lines && n.opening.lines[0]) || n.opening.dialogue) ? '<div class="natdesc">' + esc((n.opening.lines && n.opening.lines[0]) || n.opening.dialogue) + '</div>' : '') +
+            (preview ? '<div class="natdesc">' + esc(preview.text) + '</div>' : '') +
           '</div>';
         }).join('');
         narListBox.querySelectorAll('.natcard').forEach(card => {
@@ -1744,6 +1849,152 @@
       } catch (e) { narListBox.innerHTML = '<div class="empty">Couldn’t load narratives.</div>'; }
     }
     resetNarrativeForm();   // initial blank state
+
+    // ---- Agendas (progression tree; reuses the shared condition + effect builders) ----
+    const agNatSel = document.getElementById('ag-nation'), agParentSel = document.getElementById('ag-parent');
+    const agReqBox = document.getElementById('agReqList'), agHidBox = document.getElementById('agHidList'),
+      agFailBox = document.getElementById('agFailList'), agRewBox = document.getElementById('agRewList');
+    const agNote = document.getElementById('agNote'), agTitle = document.getElementById('agTitle'),
+      saveAgBtn = document.getElementById('saveAg'), cancelAgBtn = document.getElementById('cancelAg');
+    const agRuleSel = document.getElementById('ag-comprule'), agCountFld = document.getElementById('ag-count-fld');
+    const AG_UNLOCK_TYPES = ['Parent Completed', 'Narrative Completed', 'Story Bill Passed', 'Modifier Active', 'Event'];
+    let agAll = [], agNatNames = {}, agBusy = false, editingAgId = null;
+
+    // Requirements / Hidden / Failures reuse the condition builder; Rewards reuse the effect builder.
+    wireTrigBox(agReqBox); wireTrigBox(agHidBox); wireTrigBox(agFailBox); wireEffectBox(agRewBox);
+    document.getElementById('agAddReq').addEventListener('click', () => addTrig(agReqBox));
+    document.getElementById('agAddHid').addEventListener('click', () => addTrig(agHidBox));
+    document.getElementById('agAddFail').addEventListener('click', () => addTrig(agFailBox));
+    document.getElementById('agAddRew').addEventListener('click', () => addEffect(agRewBox));
+    document.getElementById('ag-unlock-type').innerHTML = opts(AG_UNLOCK_TYPES);
+    agRuleSel.addEventListener('change', () => { agCountFld.hidden = agRuleSel.value !== 'ANY'; });
+
+    const csvToArr = s => (s || '').split(',').map(x => x.trim()).filter(Boolean);
+
+    // Parent options exclude self (a node can't be its own parent). Deeper cycles (picking a descendant as
+    // parent) aren't prevented — the list only renders direct children so it can't loop; the future runtime
+    // should treat the tree defensively. Admin authoring tool, so this is left to admin discipline.
+    function populateParent(excludeId, selectedId) {
+      agParentSel.innerHTML = '<option value="">None</option>' +
+        agAll.filter(a => a.id !== excludeId).map(a =>
+          '<option value="' + esc(a.id) + '"' + (a.id === selectedId ? ' selected' : '') + '>' + esc(a.name || 'Untitled') + '</option>').join('');
+    }
+
+    async function loadAgendaRefs() {
+      const rows = await loadNationOptions(agNatSel, { global: true });   // shared nation-options source (Global + nations)
+      agNatNames = {}; (rows || []).forEach(n => { agNatNames[n.id] = n.name; });
+    }
+
+    function resetAgendaForm() {
+      editingAgId = null; agTitle.textContent = 'Agenda Creator'; saveAgBtn.textContent = 'Save Agenda'; cancelAgBtn.hidden = true;
+      ['ag-name', 'ag-slug', 'ag-roles', 'ag-parties', 'ag-desc', 'ag-unlock-target', 'ag-expire'].forEach(id => { document.getElementById(id).value = ''; });
+      agNatSel.value = ''; document.getElementById('ag-tier').value = 1; document.getElementById('ag-order').value = 0;
+      document.getElementById('ag-weight').value = 50; document.getElementById('ag-visible').value = 'yes';
+      document.getElementById('ag-unlock-type').selectedIndex = 0;
+      agRuleSel.value = 'ALL'; agCountFld.hidden = true; document.getElementById('ag-count').value = 1;
+      setTriggers(agReqBox, []); setTriggers(agHidBox, []); setTriggers(agFailBox, []); setEffects(agRewBox, []);
+      populateParent(null, '');
+    }
+
+    function editAgenda(a) {
+      editingAgId = a.id; agTitle.textContent = 'Edit Agenda'; saveAgBtn.textContent = 'Save changes'; cancelAgBtn.hidden = false;
+      document.getElementById('ag-name').value = a.name || '';
+      document.getElementById('ag-slug').value = a.internal_id || '';
+      agNatSel.value = a.nation_id || '';
+      document.getElementById('ag-roles').value = (a.eligible_roles || []).join(', ');
+      document.getElementById('ag-parties').value = (a.eligible_parties || []).join(', ');
+      document.getElementById('ag-desc').value = a.description || '';
+      document.getElementById('ag-tier').value = a.tier != null ? a.tier : 1;
+      document.getElementById('ag-order').value = a.display_order != null ? a.display_order : 0;
+      setTriggers(agReqBox, a.requirements); setTriggers(agHidBox, a.hidden_requirements);
+      setTriggers(agFailBox, a.failures); setEffects(agRewBox, a.rewards);
+      agRuleSel.value = a.completion_rule === 'ANY' ? 'ANY' : 'ALL'; agCountFld.hidden = agRuleSel.value !== 'ANY';
+      document.getElementById('ag-count').value = a.completion_count != null ? a.completion_count : 1;
+      const uc = a.unlock_condition || {};
+      document.getElementById('ag-unlock-type').value = uc.type || AG_UNLOCK_TYPES[0];
+      document.getElementById('ag-unlock-target').value = uc.target || '';
+      document.getElementById('ag-visible').value = a.visible_immediately === false ? 'no' : 'yes';
+      document.getElementById('ag-expire').value = a.expiration_months != null ? a.expiration_months : '';
+      document.getElementById('ag-weight').value = a.ai_weight != null ? a.ai_weight : 50;
+      populateParent(a.id, a.parent_id || '');   // a node can't be its own parent
+      window.scrollTo(0, 0);
+    }
+    cancelAgBtn.addEventListener('click', () => { resetAgendaForm(); agNote.textContent = ''; agNote.className = 'note'; });
+
+    saveAgBtn.addEventListener('click', async () => {
+      if (agBusy) return;
+      const name = document.getElementById('ag-name').value.trim();
+      if (!name) { agNote.textContent = 'An agenda name is required.'; agNote.className = 'note error'; return; }
+      const rule = agRuleSel.value;
+      const row = {
+        name,
+        internal_id: document.getElementById('ag-slug').value.trim() || null,
+        nation_id: agNatSel.value || null,
+        eligible_roles: csvToArr(document.getElementById('ag-roles').value),
+        eligible_parties: csvToArr(document.getElementById('ag-parties').value),
+        description: document.getElementById('ag-desc').value.trim() || null,
+        parent_id: agParentSel.value || null,
+        tier: Math.max(1, Math.round(Number(document.getElementById('ag-tier').value) || 1)),
+        display_order: Math.round(Number(document.getElementById('ag-order').value) || 0),
+        requirements: collectTriggers(agReqBox),
+        completion_rule: rule,
+        completion_count: rule === 'ANY' ? Math.max(1, Math.round(Number(document.getElementById('ag-count').value) || 1)) : null,
+        rewards: collectEffects(agRewBox),
+        failures: collectTriggers(agFailBox),
+        hidden_requirements: collectTriggers(agHidBox),
+        unlock_condition: { type: document.getElementById('ag-unlock-type').value, target: document.getElementById('ag-unlock-target').value.trim() || null },
+        visible_immediately: document.getElementById('ag-visible').value === 'yes',
+        expiration_months: document.getElementById('ag-expire').value.trim() === '' ? null : Math.max(1, Math.round(Number(document.getElementById('ag-expire').value) || 1)),
+        ai_weight: Math.max(0, Math.min(100, Math.round(Number(document.getElementById('ag-weight').value) || 0)))
+      };
+      agBusy = true; saveAgBtn.disabled = true; agNote.textContent = 'Saving…'; agNote.className = 'note';
+      try {
+        const { error } = editingAgId
+          ? await supabase.from('nationverse_agendas').update(row).eq('id', editingAgId)
+          : await supabase.from('nationverse_agendas').insert(row);
+        if (error) throw error;
+        agNote.textContent = editingAgId ? 'Saved changes to “' + name + '”.' : 'Added “' + name + '”.'; agNote.className = 'note ok';
+        resetAgendaForm(); loadAgendaList();
+      } catch (e) { agNote.textContent = e.message || 'Could not save the agenda.'; agNote.className = 'note error'; }
+      finally { agBusy = false; saveAgBtn.disabled = false; }
+    });
+
+    const agListBox = document.getElementById('agList');
+    async function loadAgendaList() {
+      agListBox.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        const { data, error } = await supabase.from('nationverse_agendas').select('*')
+          .order('tier', { ascending: true }).order('display_order', { ascending: true });
+        if (error) throw error;
+        agAll = data || [];
+        populateParent(editingAgId, agParentSel.value);   // keep the parent picker in sync with the list
+        if (!agAll.length) { agListBox.innerHTML = '<div class="empty">No agendas yet — create one below.</div>'; return; }
+        const nameById = {}; agAll.forEach(a => { nameById[a.id] = a.name || 'Untitled'; });
+        agListBox.innerHTML = agAll.map(a => {
+          const scope = a.nation_id ? esc(agNatNames[a.nation_id] || 'Nation') : 'Global';
+          const kids = agAll.filter(x => x.parent_id === a.id).map(x => esc(x.name || 'Untitled'));
+          const sub = [scope, 'tier ' + (a.tier != null ? a.tier : 1),
+            a.parent_id ? 'parent: ' + esc(nameById[a.parent_id] || '—') : 'root',
+            (a.requirements || []).length + ' req', (a.rewards || []).length + ' reward' + ((a.rewards || []).length === 1 ? '' : 's')].join(' · ');
+          return '<div class="natcard" data-id="' + esc(a.id) + '">' +
+            '<div class="natcard-hd"><div class="natmeta"><div class="natnm">' + esc(a.name || 'Untitled') + (a.visible_immediately === false ? ' <span class="hint">· hidden</span>' : '') + '</div>' +
+            '<div class="natsub">' + sub + '</div></div>' +
+            '<div class="natbtns"><button class="btn btn-ghost ag-edit" type="button">Edit</button><button class="del ag-del" type="button">Delete</button></div></div>' +
+            (kids.length ? '<div class="natdesc">Unlocks: ' + kids.join(', ') + '</div>' : '') +
+          '</div>';
+        }).join('');
+        agListBox.querySelectorAll('.natcard').forEach(card => {
+          const a = agAll.find(x => x.id === card.dataset.id); if (!a) return;
+          card.querySelector('.ag-edit').addEventListener('click', () => editAgenda(a));
+          card.querySelector('.ag-del').addEventListener('click', async () => {
+            if (!window.confirm('Delete “' + (a.name || 'this agenda') + '”? Any child agendas will become roots.')) return;
+            try { const { error } = await supabase.from('nationverse_agendas').delete().eq('id', a.id); if (error) throw error; if (editingAgId === a.id) resetAgendaForm(); loadAgendaList(); }
+            catch (e) { alert(e.message || 'Could not delete the agenda.'); }
+          });
+        });
+      } catch (e) { agListBox.innerHTML = '<div class="empty">Couldn’t load agendas.</div>'; }
+    }
+    resetAgendaForm();   // initial blank state
 
     // ---- Role Claims (admin view + release) ----
     const claimListBox = document.getElementById('claimList');
