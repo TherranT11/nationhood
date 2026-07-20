@@ -141,16 +141,29 @@
   .bub.promise .plabel { display: block; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #b98a17; margin-bottom: 3px; }
   .sysline { align-self: center; text-align: center; color: var(--muted); font-size: 12px; padding: 4px 10px; }
   /* Narrative conversation player */
-  .nrplay { max-width: 580px; display: flex; flex-direction: column; max-height: 82vh; }
-  .nrplay-scroll { overflow-y: auto; display: flex; flex-direction: column; gap: 11px; padding: 2px; }
-  .nrp-action { font-style: italic; color: var(--muted); line-height: 1.55; }
-  .nrp-speech { line-height: 1.55; }
-  .nrp-speech b { color: var(--accent); }
-  .nrp-resp { line-height: 1.55; }
-  .nrp-you { align-self: flex-end; background: var(--accent); color: #fff; padding: 8px 13px; border-radius: 14px; max-width: 80%; }
-  .nrp-prompt { font-weight: 700; margin-top: 4px; }
-  .nrplay-foot { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-  .nrp-choice { background: var(--bg); }
+  /* Narrative conversation player — typographic registers: serif italic narration, serif speech with a
+     speaker avatar + name, rounded accent player bubbles, numbered pill choices. */
+  .nrplay { max-width: 620px; width: 100%; display: flex; flex-direction: column; max-height: 86vh; padding: 18px 20px; }
+  .nrp-serif { font-family: Georgia, 'Times New Roman', serif; }
+  .nrp-chip { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .nrp-scene { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 9.5px; font-weight: 700; letter-spacing: .12em; color: var(--muted); border: 1px solid var(--line); border-radius: 7px; padding: 4px 10px; text-transform: uppercase; }
+  .nrp-exit { margin-left: auto; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 9.5px; letter-spacing: .1em; color: var(--muted); cursor: pointer; background: none; border: none; text-transform: uppercase; }
+  .nrp-exit:hover { color: var(--ink); }
+  .nrplay-scroll { overflow-y: auto; display: flex; flex-direction: column; padding: 2px; }
+  .nrp-narr { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 15px; line-height: 1.7; color: var(--muted); margin: 0 0 18px; max-width: 92%; }
+  .nrp-npc { display: flex; gap: 10px; margin: 0 0 18px; max-width: 94%; }
+  .nrp-av { width: 28px; height: 28px; border-radius: 14px; flex: none; margin-top: 2px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 10.5px; color: #fff; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 45%, #000)); }
+  .nrp-name { font-weight: 800; font-size: 13px; color: var(--accent); margin-bottom: 1px; }
+  .nrp-line { font-family: Georgia, 'Times New Roman', serif; font-size: 15.5px; line-height: 1.65; color: var(--ink); }
+  .nrp-yourow { display: flex; justify-content: flex-end; margin: 0 0 18px; }
+  .nrp-you { background: var(--accent); color: #fff; font-weight: 600; font-size: 14.5px; line-height: 1.5; border-radius: 16px 16px 4px 16px; padding: 9px 15px; max-width: 75%; }
+  .nrp-prompt { font-weight: 800; font-size: 15px; margin: 4px 0 6px; }
+  .nrplay-foot { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .nrp-pill { display: flex; align-items: center; gap: 10px; border: 1.5px solid var(--line); background: var(--bg); border-radius: 12px; padding: 10px 15px; cursor: pointer; font-family: Georgia, 'Times New Roman', serif; font-size: 14.5px; font-weight: 600; color: var(--ink); text-align: left; }
+  .nrp-pill:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .nrp-pill:disabled { opacity: .5; cursor: default; }
+  .nrp-num { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; font-weight: 700; color: var(--accent); flex: none; }
+  .nrp-hint { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 8.5px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; text-align: center; margin-top: 10px; }
   .conv-tag { margin-left: auto; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; }
 </style>
 </head>
@@ -399,12 +412,27 @@
       const steps = (n.sequence || []).filter(s => s && (s.text || s.speaker || (s.replies && s.replies.length)));
       const dec = n.decision || {};
       let i = 0;
-      openModal('<div class="modal nrplay"><div class="nrplay-scroll" id="nrpScroll"></div><div class="nrplay-foot" id="nrpFoot"></div></div>');
+      const gd = (document.getElementById('gamedate') || {}).textContent || '';
+      const scene = ((nation && nation.name) ? nation.name : 'Nationverse') + (gd ? ' · ' + gd : '');
+      openModal('<div class="modal nrplay">' +
+        '<div class="nrp-chip"><span class="nrp-scene">' + esc(scene) + '</span><button class="nrp-exit" id="nrpExit" type="button">Exit →</button></div>' +
+        '<div class="nrplay-scroll" id="nrpScroll"></div>' +
+        '<div class="nrplay-foot" id="nrpFoot"></div>' +
+        '<div class="nrp-hint">Your reply becomes your bubble</div></div>');
+      document.getElementById('nrpExit').addEventListener('click', closeModal);   // leave without resolving; stays in your attention
       const scroll = document.getElementById('nrpScroll'), foot = document.getElementById('nrpFoot');
       const append = html => { scroll.insertAdjacentHTML('beforeend', html); scroll.scrollTop = scroll.scrollHeight; };
-      const lineHTML = s => s.kind === 'speech'
-        ? '<div class="nrp-speech">' + (s.speaker ? '<b>' + esc(s.speaker) + ':</b> ' : '') + '“' + esc(s.text || '') + '”</div>'
-        : '<div class="nrp-action">' + esc(s.text || '') + '</div>';
+      const npcHTML = (speaker, text) => '<div class="nrp-npc"><span class="nrp-av">' + esc(initialsOf(speaker)) + '</span>' +
+        '<div><div class="nrp-name">' + esc(speaker || 'Speaker') + '</div><div class="nrp-line">“' + esc(text || '') + '”</div></div></div>';
+      const lineHTML = s => s.kind === 'speech' ? npcHTML(s.speaker, s.text) : '<p class="nrp-narr">' + esc(s.text || '') + '</p>';
+      const youHTML = t => '<div class="nrp-yourow"><div class="nrp-you">' + esc(t) + '</div></div>';
+      function pill(num, text, onClick) {
+        const b = document.createElement('button');
+        b.className = 'nrp-pill'; b.type = 'button';
+        b.innerHTML = '<span class="nrp-num">' + esc(num) + '</span><span>' + esc(text) + '</span>';
+        b.addEventListener('click', onClick);
+        return b;
+      }
       function showStep() {
         if (i >= steps.length) return showDecision();
         const s = steps[i];
@@ -412,24 +440,18 @@
         foot.innerHTML = '';
         const replies = s.replies || [];
         if (replies.length) {
-          replies.forEach(r => {
+          replies.forEach((r, idx) => {
             const label = (typeof r === 'string' ? r : (r && r.text)) || '…';
             const resp = (r && typeof r === 'object') ? r.response : '';
-            const b = document.createElement('button');
-            b.className = 'ch-actbtn nrp-choice'; b.textContent = label;
-            b.addEventListener('click', () => {
+            foot.appendChild(pill(idx + 1, label, () => {
               foot.querySelectorAll('button').forEach(x => x.disabled = true);
-              append('<div class="nrp-you">' + esc(label) + '</div>');
-              if (resp) append('<div class="nrp-resp">' + esc(resp) + '</div>');
+              append(youHTML(label));
+              if (resp) append(s.speaker ? npcHTML(s.speaker, resp) : '<p class="nrp-narr">“' + esc(resp) + '”</p>');
               i++; showStep();
-            });
-            foot.appendChild(b);
+            }));
           });
         } else {
-          const b = document.createElement('button');
-          b.className = 'ch-actbtn'; b.textContent = 'Continue →';
-          b.addEventListener('click', () => { i++; showStep(); });
-          foot.appendChild(b);
+          foot.appendChild(pill('▸', 'Continue', () => { i++; showStep(); }));
         }
       }
       function showDecision() {
@@ -437,15 +459,9 @@
         foot.innerHTML = '';
         // Keep each option's ORIGINAL index so the server applies the right option's effects.
         const withLabels = (dec.options || []).map((o, idx) => ({ o, idx })).filter(x => x.o && x.o.label);
-        if (!withLabels.length) {
-          const b = document.createElement('button'); b.className = 'ch-actbtn'; b.textContent = 'End';
-          b.addEventListener('click', () => { b.disabled = true; finish(null, null); });
-          foot.appendChild(b); return;
-        }
-        withLabels.forEach(({ o, idx }) => {
-          const b = document.createElement('button'); b.className = 'ch-actbtn nrp-choice'; b.textContent = o.label;
-          b.addEventListener('click', () => { foot.querySelectorAll('button').forEach(x => x.disabled = true); finish(idx, o.label); });
-          foot.appendChild(b);
+        if (!withLabels.length) { foot.appendChild(pill('▸', 'End', () => { finish(null, null); })); return; }
+        withLabels.forEach(({ o, idx }, n) => {
+          foot.appendChild(pill(n + 1, o.label, () => { foot.querySelectorAll('button').forEach(x => x.disabled = true); finish(idx, o.label); }));
         });
       }
       async function finish(optionIndex, choiceLabel) {
