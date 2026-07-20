@@ -255,10 +255,19 @@
       } catch (e) { alert('Could not resign the character. Try again shortly.'); }
     });
 
-    // Delete Account: destructive + cross-app, not enabled yet — pending a decision on scope/cascade.
-    document.getElementById('miDelete').addEventListener('click', () => {
+    // Delete Account: permanently deletes the whole account (all games). Irreversible → typed confirmation.
+    let deleting = false;
+    document.getElementById('miDelete').addEventListener('click', async () => {
       openGear(false);
-      alert('Account deletion isn’t enabled yet. To close your account, please contact us for now.');
+      if (deleting) return;
+      const typed = window.prompt('This permanently deletes your ENTIRE account and ALL your data across the game. This cannot be undone.\n\nType DELETE to confirm.');
+      if (typed !== 'DELETE') return;
+      deleting = true;
+      try {
+        const { error } = await supabase.rpc('delete_my_account');
+        if (error) throw error;
+        await logout();   // signs out the now-deleted session and returns to the landing page
+      } catch (e) { deleting = false; alert('Could not delete your account. Try again shortly.'); }
     });
 
     const nhName = document.getElementById('nhname'), nhFlag = document.getElementById('nhflag');
