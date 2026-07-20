@@ -91,6 +91,10 @@
   .natbtns { display: flex; gap: 8px; flex: none; }
   .natbtns .btn { padding: 7px 14px; font-size: 13px; }
   .natdesc { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 12px 0 0; }
+  .ln-details:not(:empty) { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 4px 0 14px; background: var(--surface); }
+  .ln-details .ld-row { display: flex; gap: 8px; font-size: 13.5px; padding: 3px 0; }
+  .ln-details .ld-k { color: var(--muted); min-width: 110px; flex: none; }
+  .ln-details .ld-v { color: var(--ink); font-weight: 600; }
   .natstatgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin-top: 14px; }
   .natstat { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; }
   .natstat .k { color: var(--muted); }
@@ -355,6 +359,7 @@
             <span style="flex:1 1 260px"><label>Narrative</label><select id="ln-narr"></select></span>
             <span style="flex:1 1 220px"><label>Player</label><select id="ln-a"></select></span>
           </div>
+          <div id="ln-details" class="ln-details"></div>
           <div class="row">
             <button class="btn btn-solid" id="ln-launch" type="button">Launch to Player</button>
             <span class="note" id="ln-note" role="status" aria-live="polite"></span>
@@ -478,7 +483,7 @@
 
   <script type="module">
     import { supabase, isConfigured } from '/supabase.js';
-    import { esc } from '/util.js';   // shared HTML-escape (one source)
+    import { esc, MONTHS } from '/util.js';   // shared HTML-escape + month names (one source)
     import { NV_STATS } from '/nationverse.js';   // the 13 Nationverse stats (one source)
     import { uploadToStorage } from '/upload.js';                          // ONE image-upload path
     import { getAdminState, adminSignIn, adminSignOut } from '/admin-auth.js';  // ONE admin gate
@@ -1572,8 +1577,7 @@
     document.getElementById('nr-cat').innerHTML = opts(NARR_CATEGORIES);
 
     // "When does this trigger": Immediately, On a game date, or When stat thresholds are met.
-    const NR_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    document.getElementById('nr-tmonth').innerHTML = NR_MONTHS.map((m, i) => '<option value="' + (i + 1) + '">' + m + '</option>').join('');
+    document.getElementById('nr-tmonth').innerHTML = MONTHS.map((m, i) => '<option value="' + (i + 1) + '">' + m + '</option>').join('');
     const nrStatBox = document.getElementById('nrStatTrigs'), nrDateRow = document.getElementById('nr-tmonth').closest('.nrtm');
     const NR_DIRS = ['or higher', 'or lower'];
     function statTrigRowHTML(c) {
@@ -1616,8 +1620,17 @@
     }
 
     // Conversation sequence: an ordered list of steps the player clicks Continue through. Each step is an
-    // Action (italic narration) or Speech (a named speaker, shown in quotes), with optional flavor replies.
+    // Action (italic narration) or Speech (a named speaker, shown in quotes). A step may offer player
+    // replies; each reply is paired with the narrative's response, then the sequence continues (no branching).
     const nrSeqBox = document.getElementById('nrSeq');
+    function replyRowHTML(r) {
+      r = (typeof r === 'string') ? { text: r } : (r || {});   // legacy: a reply used to be a plain string
+      return '<div class="nrs-rep" style="display:flex;gap:8px;align-items:center;margin-bottom:6px">' +
+        '<input class="nrs-rep-text" type="text" placeholder="Player picks…" value="' + esc(r.text || '') + '" style="flex:1">' +
+        '<span style="color:var(--muted);flex:none">→</span>' +
+        '<input class="nrs-rep-resp" type="text" placeholder="Narrative responds…" value="' + esc(r.response || '') + '" style="flex:1.4">' +
+        '<button class="del nrs-rep-del" type="button" style="flex:none">×</button></div>';
+    }
     function stepRowHTML(s) {
       s = s || {};
       const kind = s.kind === 'speech' ? 'Speech' : 'Action', isSpeech = kind === 'Speech';
@@ -1627,13 +1640,19 @@
           '<div class="fld"><label>Type</label><select class="nrs-kind">' + opts(['Action', 'Speech'], kind) + '</select></div>' +
           '<div class="fld nrs-spk-fld"' + (isSpeech ? '' : ' hidden') + '><label>Speaker</label><input class="nrs-spk" type="text" placeholder="e.g. Gus Manger" value="' + esc(s.speaker || '') + '"></div>' +
           '<div class="fld wide"><label>Text <span class="hint">' + (isSpeech ? 'shown in quotes' : 'shown in italics') + '</span></label><textarea class="nrs-text" placeholder="' + (isSpeech ? 'What they say.' : 'Narration — may name characters.') + '">' + esc(s.text || '') + '</textarea></div>' +
-          '<div class="fld wide"><label>Player replies <span class="hint">optional · one per line · flavor</span></label><textarea class="nrs-replies" placeholder="Optional replies the player can pick.">' + esc((s.replies || []).join('\n')) + '</textarea></div>' +
+          '<div class="fld wide"><label>Player replies <span class="hint">optional · each reply → the narrative\'s response back</span></label>' +
+            '<div class="nrs-reps">' + (s.replies || []).map(replyRowHTML).join('') + '</div>' +
+            '<button class="btn btn-ghost nrs-addrep" type="button" style="margin-top:4px">+ Add Reply</button></div>' +
         '</div>' +
       '</div>';
     }
     function renumberSteps() { nrSeqBox.querySelectorAll('.nrstep .snum').forEach((el, i) => { el.textContent = 'Line ' + (i + 1); }); }
     function addStep(s) { nrSeqBox.insertAdjacentHTML('beforeend', stepRowHTML(s)); renumberSteps(); }
-    nrSeqBox.addEventListener('click', e => { if (e.target.classList.contains('nrs-del')) { e.target.closest('.nrstep').remove(); renumberSteps(); } });
+    nrSeqBox.addEventListener('click', e => {
+      if (e.target.classList.contains('nrs-del')) { e.target.closest('.nrstep').remove(); renumberSteps(); }
+      else if (e.target.classList.contains('nrs-rep-del')) e.target.closest('.nrs-rep').remove();
+      else if (e.target.classList.contains('nrs-addrep')) e.target.closest('.fld').querySelector('.nrs-reps').insertAdjacentHTML('beforeend', replyRowHTML());
+    });
     nrSeqBox.addEventListener('change', e => {
       if (e.target.classList.contains('nrs-kind')) {
         e.target.closest('.nrstep').querySelector('.nrs-spk-fld').hidden = e.target.value !== 'Speech';
@@ -1646,7 +1665,12 @@
         const kind = r.querySelector('.nrs-kind').value === 'Speech' ? 'speech' : 'action';
         const text = r.querySelector('.nrs-text').value.trim();
         const speaker = r.querySelector('.nrs-spk').value.trim();
-        const replies = r.querySelector('.nrs-replies').value.split('\n').map(x => x.trim()).filter(Boolean);
+        const replies = [];
+        r.querySelectorAll('.nrs-rep').forEach(rr => {
+          const t = rr.querySelector('.nrs-rep-text').value.trim();
+          const resp = rr.querySelector('.nrs-rep-resp').value.trim();
+          if (t) replies.push(resp ? { text: t, response: resp } : { text: t });   // response optional (flavor)
+        });
         if (!text && !speaker && !replies.length) return;   // skip an untouched step
         const step = { kind, text };
         if (kind === 'speech' && speaker) step.speaker = speaker;
@@ -1724,19 +1748,49 @@
 
     // ---- Launch a Narrative to one player (interim World-Master tool) ----
     const lnNarr = document.getElementById('ln-narr'), lnA = document.getElementById('ln-a'),
-      lnNote = document.getElementById('ln-note'), lnLaunch = document.getElementById('ln-launch');
+      lnNote = document.getElementById('ln-note'), lnLaunch = document.getElementById('ln-launch'),
+      lnDetails = document.getElementById('ln-details');
+    let lnPeople = {}, lnNatNames = {}, lnCorpsByOwner = {};
     async function loadLaunchRefs() {
       try {
-        const [nRes, pRes] = await Promise.all([
+        const [nRes, pRes, cRes, natRes] = await Promise.all([
           supabase.from('nationverse_narratives').select('id, name').order('name', { ascending: true }),
-          supabase.from('nationverse_personalities').select('id, name').not('claimed_by', 'is', null).order('name', { ascending: true })
+          supabase.from('nationverse_personalities').select('id, name, nation_id, starting_age, role, party, office').not('claimed_by', 'is', null).order('name', { ascending: true }),
+          supabase.from('nationverse_corporations').select('name, ownership'),
+          supabase.from('nationverse_nations').select('id, name')
         ]);
         lnNarr.innerHTML = (nRes.data || []).map(n => '<option value="' + esc(n.id) + '">' + esc(n.name || 'Untitled') + '</option>').join('')
           || '<option value="">No narratives yet</option>';
-        lnA.innerHTML = (pRes.data || []).map(p => '<option value="' + esc(p.id) + '">' + esc(p.name || 'Unnamed') + '</option>').join('')
+        const people = pRes.data || [];
+        lnPeople = {}; people.forEach(p => { lnPeople[p.id] = p; });
+        lnA.innerHTML = people.map(p => '<option value="' + esc(p.id) + '">' + esc(p.name || 'Unnamed') + '</option>').join('')
           || '<option value="">No claimed players</option>';
+        lnNatNames = {}; (natRes.data || []).forEach(n => { lnNatNames[n.id] = n.name; });
+        lnCorpsByOwner = {};   // personality id → their corporate stakes (one source: each corp's cap table)
+        (cRes.data || []).forEach(c => (c.ownership || []).forEach(o => {
+          if (o.type === 'personality' && o.id) (lnCorpsByOwner[o.id] = lnCorpsByOwner[o.id] || []).push({ name: c.name, share: o.share });
+        }));
+        renderLaunchDetails(lnA.value);
       } catch (e) { lnNote.textContent = 'Couldn’t load launch options.'; lnNote.className = 'note error'; }
     }
+    // Show the selected player's nation, age, role, party, office and corporate holdings.
+    function renderLaunchDetails(id) {
+      const p = lnPeople[id];
+      if (!p) { lnDetails.innerHTML = ''; return; }
+      const isPol = p.party || p.role === 'Politician' || /^Politician of Party \d+$/.test(p.role || '');
+      const roleText = isPol ? 'Politician' : (p.role || '—');
+      const corps = (lnCorpsByOwner[id] || []).map(c => (c.share != null ? c.share + '% of ' : '') + (c.name || 'a corporation')).join(', ');
+      const office = (p.office && p.office !== 'No Specific Office') ? p.office : '—';
+      const row = (k, v) => '<div class="ld-row"><span class="ld-k">' + k + '</span><span class="ld-v">' + esc(v) + '</span></div>';
+      lnDetails.innerHTML =
+        row('Nation', lnNatNames[p.nation_id] || '—') +
+        row('Age', p.starting_age != null ? p.starting_age : '—') +
+        row('Role', roleText) +
+        row('Party', p.party || '—') +
+        row('Office', office) +
+        row('Corporations', corps || '—');
+    }
+    lnA.addEventListener('change', () => renderLaunchDetails(lnA.value));
     lnLaunch.addEventListener('click', async () => {
       if (lnLaunch.disabled) return;
       const narr = lnNarr.value, player = lnA.value;

@@ -85,10 +85,10 @@ export function daysIdle(ts) {
 // turning a tick number into its display date (e.g. 5 → "May, 1980"). MIRRORED by
 // public.current_game_date() in schema/40_events.sql (which stamps events from the
 // tick) — keep the two in sync if the calendar ever changes.
+export const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 export function tickToDate(tick) {
-  var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   var n = Math.max(1, Math.round(Number(tick) || 1));
-  return months[(n - 1) % 12] + ', ' + (1980 + Math.floor((n - 1) / 12));
+  return MONTHS[(n - 1) % 12] + ', ' + (1980 + Math.floor((n - 1) / 12));
 }
 
 // ms from `now` (a Date) to the next tick boundary — the next TICK_PERIOD_MS mark past UTC midnight.
