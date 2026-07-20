@@ -478,7 +478,7 @@
 
   <script type="module">
     import { supabase, isConfigured } from '/supabase.js';
-    import { esc } from '/util.js';   // shared HTML-escape (one source)
+    import { esc, MONTHS } from '/util.js';   // shared HTML-escape + month names (one source)
     import { NV_STATS } from '/nationverse.js';   // the 13 Nationverse stats (one source)
     import { uploadToStorage } from '/upload.js';                          // ONE image-upload path
     import { getAdminState, adminSignIn, adminSignOut } from '/admin-auth.js';  // ONE admin gate
@@ -1572,8 +1572,7 @@
     document.getElementById('nr-cat').innerHTML = opts(NARR_CATEGORIES);
 
     // "When does this trigger": Immediately, On a game date, or When stat thresholds are met.
-    const NR_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    document.getElementById('nr-tmonth').innerHTML = NR_MONTHS.map((m, i) => '<option value="' + (i + 1) + '">' + m + '</option>').join('');
+    document.getElementById('nr-tmonth').innerHTML = MONTHS.map((m, i) => '<option value="' + (i + 1) + '">' + m + '</option>').join('');
     const nrStatBox = document.getElementById('nrStatTrigs'), nrDateRow = document.getElementById('nr-tmonth').closest('.nrtm');
     const NR_DIRS = ['or higher', 'or lower'];
     function statTrigRowHTML(c) {
