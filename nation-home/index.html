@@ -162,6 +162,10 @@
   .nrp-pill { display: flex; align-items: center; gap: 10px; border: 1.5px solid var(--line); background: var(--bg); border-radius: 12px; padding: 10px 15px; cursor: pointer; font-family: Georgia, 'Times New Roman', serif; font-size: 14.5px; font-weight: 600; color: var(--ink); text-align: left; }
   .nrp-pill:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
   .nrp-pill:disabled { opacity: .5; cursor: default; }
+  .nrp-pill.locked { opacity: .6; cursor: not-allowed; }
+  .nrp-pill.locked:hover { border-color: var(--line); background: var(--bg); }
+  .nrp-pill.locked .nrp-num { color: var(--muted); }
+  .nrp-lock { margin-left: auto; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 8.5px; font-weight: 800; letter-spacing: .05em; color: var(--err); border: 1px solid color-mix(in srgb, var(--err) 40%, transparent); border-radius: 5px; padding: 2px 7px; white-space: nowrap; flex: none; }
   .nrp-num { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; font-weight: 700; color: var(--accent); flex: none; }
   .nrp-hint { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 8.5px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; text-align: center; margin-top: 10px; }
   .conv-tag { margin-left: auto; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; }
@@ -266,6 +270,25 @@
 
     let me = null, nation = null;        // the signed-in character + their nation (set on load)
     let nrRuns = {};                     // runId → narrative content, for launched narratives in Requires Your Attention
+
+    // Decision-option requirements (Personal Wealth / Influence / National Stat, at least / at most). The
+    // player's current value is read from `me` + `nation`; the server enforces the same on resolve.
+    const STAT_LABEL = {}; NV_STATS.forEach(([k, l]) => { STAT_LABEL[k] = l; });
+    function reqActual(r) {
+      if (r.type === 'influence') return (me && me.influence != null) ? me.influence : 0;
+      if (r.type === 'stat') return ((nation && nation.stats) || {})[r.stat];
+      return (me && me.wealth != null) ? me.wealth : 0;   // wealth
+    }
+    function reqMet(r) {
+      const v = Number(reqActual(r)); if (!isFinite(v)) return false;
+      const need = Number(r.value) || 0;
+      return r.dir === 'lower' ? v <= need : v >= need;
+    }
+    function reqLabel(r) {
+      const name = r.type === 'influence' ? 'INFLUENCE' : r.type === 'stat' ? (STAT_LABEL[r.stat] || r.stat || 'STAT').toUpperCase() : 'WEALTH';
+      const have = reqActual(r), haveStr = (have == null || !isFinite(Number(have))) ? '—' : have;
+      return name + ' ' + (r.dir === 'lower' ? '≤' : '') + (r.value != null ? r.value : '') + ' — YOU HAVE ' + haveStr;
+    }
     let pollTimer = null;                // active chat poll, cleared on every view change
     const stopPolling = () => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } };
 
@@ -461,7 +484,16 @@
         const withLabels = (dec.options || []).map((o, idx) => ({ o, idx })).filter(x => x.o && x.o.label);
         if (!withLabels.length) { foot.appendChild(pill('▸', 'End', () => { finish(null, null); })); return; }
         withLabels.forEach(({ o, idx }, n) => {
-          foot.appendChild(pill(n + 1, o.label, () => { foot.querySelectorAll('button').forEach(x => x.disabled = true); finish(idx, o.label); }));
+          const unmet = (o.requires || []).find(r => !reqMet(r));
+          if (unmet) {   // locked: shown greyed with the reason, not selectable
+            const b = document.createElement('button');
+            b.className = 'nrp-pill locked'; b.type = 'button'; b.disabled = true;
+            b.innerHTML = '<span class="nrp-num">' + (n + 1) + '</span><span>' + esc(o.label) + '</span>' +
+              '<span class="nrp-lock">⊘ ' + esc(reqLabel(unmet)) + '</span>';
+            foot.appendChild(b);
+          } else {
+            foot.appendChild(pill(n + 1, o.label, () => { foot.querySelectorAll('button').forEach(x => x.disabled = true); finish(idx, o.label); }));
+          }
         });
       }
       async function finish(optionIndex, choiceLabel) {

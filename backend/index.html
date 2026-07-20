@@ -1688,11 +1688,43 @@
     // Decision options: a label + its own effect list (shared effect builder). "Create Story Bill" /
     // "Unlock Narrative" / "Hidden Variable" are effect categories, so chaining needs no separate system.
     const nrDecBox = document.getElementById('nrDecOptions');
+    // Decision-option requirements: gate an option behind the player's Personal Wealth, Influence, or a
+    // National Stat (at least / at most). Checked at play time; unmet options are shown locked.
+    const REQ_TYPES = ['Personal Wealth', 'Influence', 'National Stat'];
+    const REQ_DIRS = ['at least', 'at most'];
+    const REQ_TYPE_KEY = { 'Personal Wealth': 'wealth', 'Influence': 'influence', 'National Stat': 'stat' };
+    function reqRowHTML(r) {
+      r = r || {};
+      const typeLabel = r.type === 'influence' ? 'Influence' : r.type === 'stat' ? 'National Stat' : 'Personal Wealth';
+      const isStat = typeLabel === 'National Stat';
+      return '<div class="nro-reqrow" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:6px">' +
+        '<span class="fld"><label>Requires</label><select class="rq-type">' + opts(REQ_TYPES, typeLabel) + '</select></span>' +
+        '<span class="fld rq-stat-fld"' + (isStat ? '' : ' hidden') + '><label>Stat</label><select class="rq-stat">' +
+          STATS.map(s => '<option value="' + esc(s[0]) + '"' + (s[0] === r.stat ? ' selected' : '') + '>' + esc(s[1]) + '</option>').join('') + '</select></span>' +
+        '<span class="fld"><label>&nbsp;</label><select class="rq-dir">' + opts(REQ_DIRS, r.dir === 'lower' ? 'at most' : 'at least') + '</select></span>' +
+        '<span class="fld"><label>Value</label><input class="rq-val" type="number" step="1" value="' + esc(r.value != null ? r.value : '') + '" style="max-width:90px"></span>' +
+        '<button class="del rq-del" type="button">×</button></div>';
+    }
+    function collectReqs(box) {
+      const out = [];
+      box.querySelectorAll('.nro-reqrow').forEach(r => {
+        const val = r.querySelector('.rq-val').value.trim(); if (val === '') return;
+        const typeLabel = r.querySelector('.rq-type').value;
+        const req = { type: REQ_TYPE_KEY[typeLabel] || 'wealth', dir: r.querySelector('.rq-dir').value === 'at most' ? 'lower' : 'higher', value: Number(val) };
+        if (typeLabel === 'National Stat') req.stat = r.querySelector('.rq-stat').value;
+        out.push(req);
+      });
+      return out;
+    }
+    function setReqs(box, list) { box.innerHTML = ''; (list || []).forEach(r => box.insertAdjacentHTML('beforeend', reqRowHTML(r))); }
+
     function decOptionHTML(o) {
       o = o || {};
       return '<div class="effrow2 nropt">' +
         '<div class="effrow2-hd"><span class="onum"></span><button class="del nro-del" type="button">Remove Option</button></div>' +
         '<div class="effgrid"><div class="fld wide"><label>Option label</label><input class="nro-label" type="text" placeholder="e.g. Introduce the Financial Transparency Act." value="' + esc(o.label || '') + '"></div></div>' +
+        '<div class="fld" style="margin-top:10px"><label style="font-size:12px;font-weight:700;color:var(--muted)">Requirements <span class="hint" style="text-transform:none;letter-spacing:0">optional · the option is locked until met</span></label><div class="nro-req"></div>' +
+        '<button class="btn btn-ghost nro-addreq" type="button" style="margin-top:6px">+ Add Requirement</button></div>' +
         '<div class="fld" style="margin-top:10px"><label style="font-size:12px;font-weight:700;color:var(--muted)">Effects</label><div class="nro-eff"></div>' +
         '<button class="btn btn-ghost nro-addeff" type="button" style="margin-top:6px">+ Add Effect</button></div>' +
       '</div>';
@@ -1703,11 +1735,17 @@
       const row = nrDecBox.lastElementChild, box = row.querySelector('.nro-eff');
       wireEffectBox(box);
       if (o && o.effects && o.effects.length) setEffects(box, o.effects); else addEffect(box);
+      setReqs(row.querySelector('.nro-req'), o && o.requires);
       renumberOptions();
     }
     nrDecBox.addEventListener('click', e => {
       if (e.target.classList.contains('nro-del')) { e.target.closest('.nropt').remove(); renumberOptions(); }
       else if (e.target.classList.contains('nro-addeff')) addEffect(e.target.closest('.nropt').querySelector('.nro-eff'));
+      else if (e.target.classList.contains('nro-addreq')) e.target.closest('.nropt').querySelector('.nro-req').insertAdjacentHTML('beforeend', reqRowHTML());
+      else if (e.target.classList.contains('rq-del')) e.target.closest('.nro-reqrow').remove();
+    });
+    nrDecBox.addEventListener('change', e => {
+      if (e.target.classList.contains('rq-type')) e.target.closest('.nro-reqrow').querySelector('.rq-stat-fld').hidden = e.target.value !== 'National Stat';
     });
     document.getElementById('nrAddOption').addEventListener('click', () => addOption());
     function collectDecision() {
@@ -1715,7 +1753,8 @@
       nrDecBox.querySelectorAll('.nropt').forEach(r => {
         const label = r.querySelector('.nro-label').value.trim();
         const effects = collectEffects(r.querySelector('.nro-eff'));
-        if (label || effects.length) options.push({ label, effects });
+        const requires = collectReqs(r.querySelector('.nro-req'));
+        if (label || effects.length || requires.length) options.push({ label, effects, requires });
       });
       return { prompt: document.getElementById('nr-decprompt').value.trim() || null, options };
     }
