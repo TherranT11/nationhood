@@ -61,7 +61,7 @@ begin
 
       if v_cat = 'National Statistic' and v_nation is not null then
         v_key := v_target;
-        v_num := nullif(regexp_replace(coalesce(e->>'value', ''), '[^0-9.\-]', '', 'g'), '')::numeric;
+        v_num := public.nationverse_parse_num(e->>'value');
         if v_key is not null and v_num is not null then
           select stats into v_stats from public.nationverse_nations where id = v_nation;
           v_cur := coalesce((v_stats->>v_key)::numeric, 0);
@@ -76,7 +76,7 @@ begin
 
       elsif v_cat = 'Interest-Group Opinion' and v_nation is not null then
         -- Move the player's OWN party's approval within the named demographic group.
-        v_num := nullif(regexp_replace(coalesce(e->>'value', ''), '[^0-9.\-]', '', 'g'), '')::numeric;
+        v_num := public.nationverse_parse_num(e->>'value');
         select party, role into v_pname, v_prole from public.nationverse_personalities where id = v_me;
         if v_pname is null then
           v_slot := nullif(substring(coalesce(v_prole, '') from 'Politician of Party (\d+)'), '')::int;
@@ -104,8 +104,9 @@ begin
           end if;
         end if;
 
-      elsif v_cat = 'Modifier' and v_nation is not null and v_target is not null then
-        -- Activate/Deactivate the named modifier on the player's nation (target = modifier id).
+      elsif v_cat = 'Modifier' and v_nation is not null and coalesce(v_target, '') <> '' then
+        -- Activate/Deactivate the named modifier on the player's nation (target = modifier id). The empty-id
+        -- guard keeps a blank "No modifiers yet" selection out of active_modifiers (the sweep skips non-uuids too).
         if v_op in ('Activate', 'Enable', 'Unlock') then
           update public.nationverse_nations
              set active_modifiers = case

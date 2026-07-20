@@ -893,9 +893,9 @@
     const STAT_NAMES = STATS.map(s => s[1]);   // the nation stat labels (one source; opts() defined at top)
     const CORP_STATS = ['Capital', 'Growth', 'Reputation'];   // the editable corporation stats (one source with the Corporation Creator)
 
-    // National Statistic → a dropdown of the real nation stats; Corporate Stat → the corp stats; every
-    // other category → free text (those target systems — groups, policies, roles, situations — don't
-    // exist in the new universe yet).
+    // Per-category target control: National Statistic / Corporate Stat → a stat dropdown; Modifier → a
+    // dropdown of real modifiers; everything else → free text (Interest-Group Opinion is matched by group
+    // name at runtime; the remaining categories are inert until the new universe models those systems).
     // Modifier options (id → name) for the "Modifier" effect target, loaded from nationverse_modifiers so an
     // author picks a real modifier to Activate/Deactivate. One source; refreshed when the Narratives refs load.
     let MOD_OPTS = [];

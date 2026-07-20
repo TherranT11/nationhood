@@ -7,8 +7,9 @@
 -- modifier (wired in 296), and this migration's applier turns an active modifier's ongoing National-Statistic
 -- effects into a real per-tick pressure on the nation's stats.
 --
--- Also adds nationverse_apply_op(op, cur, num) — ONE source for the effect operation math, shared by the
--- applier here and by nationverse_resolve_run (296), so stat/approval maths can never drift between them.
+-- Also adds two ONE-source helpers shared with nationverse_resolve_run (296) so their maths can't drift:
+--   nationverse_apply_op(op, cur, num)  — the effect operation math (Add/Subtract/Set/…)
+--   nationverse_parse_num(text)         — pull a signed number out of an authored value string ("+2", "25%")
 --
 -- Scope (V1): the applier evaluates only category = 'National Statistic' effects whose timing is
 -- 'While Modifier Is Active' (the modifier's ongoing force). Other categories/timings are inert here — they
@@ -39,6 +40,16 @@ as $$
     else null end;
 $$;
 
+-- One source for reading an authored value string ("+2", "25%", "-1") as a number. Null when it holds no
+-- digits (so the caller skips the effect rather than treating it as zero).
+create or replace function public.nationverse_parse_num(p_val text)
+returns numeric
+language sql
+immutable
+as $$
+  select nullif(regexp_replace(coalesce(p_val, ''), '[^0-9.\-]', '', 'g'), '')::numeric;
+$$;
+
 -- Apply every active modifier's ongoing National-Statistic effects to its nation's stats (clamped 0–20).
 -- Runs each tick, so a "While Modifier Is Active" effect is an ongoing force, not a one-shot. Safe to run
 -- repeatedly (each run is one tick's worth of pressure).
@@ -49,21 +60,21 @@ security definer
 set search_path = public
 as $$
 declare
-  nn record; mid jsonb; e jsonb; v_stats jsonb; v_key text; v_op text; v_num numeric;
+  nn record; v_mid text; e jsonb; v_stats jsonb; v_key text; v_op text; v_num numeric;
   v_cur numeric; v_new numeric; v_touched int := 0;
 begin
   for nn in select id, stats, active_modifiers from public.nationverse_nations
             where jsonb_array_length(coalesce(active_modifiers, '[]'::jsonb)) > 0 loop
     v_stats := coalesce(nn.stats, '{}'::jsonb);
-    for mid in select value from jsonb_array_elements(nn.active_modifiers) loop
+    for v_mid in select value from jsonb_array_elements_text(nn.active_modifiers) loop
+      continue when v_mid !~ '^[0-9a-fA-F-]{36}$';   -- skip anything that isn't a modifier uuid (never abort the sweep)
       for e in select value from jsonb_array_elements(
-                 coalesce((select effects from public.nationverse_modifiers
-                            where id = (mid #>> '{}')::uuid), '[]'::jsonb)) loop
+                 coalesce((select effects from public.nationverse_modifiers where id = v_mid::uuid), '[]'::jsonb)) loop
         continue when e->>'category' is distinct from 'National Statistic';
         continue when coalesce(e->>'timing', 'While Modifier Is Active') <> 'While Modifier Is Active';
         v_key := e->>'target';
         v_op  := e->>'operation';
-        v_num := nullif(regexp_replace(coalesce(e->>'value', ''), '[^0-9.\-]', '', 'g'), '')::numeric;
+        v_num := public.nationverse_parse_num(e->>'value');
         if v_key is null or v_num is null then continue; end if;
         v_cur := coalesce((v_stats->>v_key)::numeric, 0);
         v_new := public.nationverse_apply_op(v_op, v_cur, v_num);
