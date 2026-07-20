@@ -111,6 +111,8 @@
   .conv-empty { padding: 40px 24px; text-align: center; color: var(--muted); }
   .conv-card { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 13px 15px; margin-bottom: 10px; cursor: pointer; display: flex; align-items: center; gap: 12px; }
   .conv-card:hover { border-color: var(--accent); }
+  .conv-card.conv-static { cursor: default; }
+  .conv-card.conv-static:hover { border-color: var(--line); }
   .conv-card .pav { width: 38px; height: 38px; border-radius: 19px; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; color: #0e0e16; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #000)); }
   .conv-card .cnm { font-weight: 700; font-size: 14.5px; }
   .conv-card .crl { color: var(--muted); font-size: 12.5px; }
@@ -258,6 +260,12 @@
     function initialsOf(name) {
       return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
     }
+    // The narrative's speaker = the first named speaker in its sequence, else its title (one source for
+    // "Requires Your Attention" and the completed-conversation list).
+    function speakerOf(n) {
+      const spk = ((n && n.sequence) || []).find(s => s && s.speaker);
+      return spk ? spk.speaker : ((n && n.name) || 'Someone');
+    }
     // Resolve personalities by id → { id: {name, role, office, party} } (one source for every list/chat lookup).
     async function peopleById(ids) {
       const byId = {}, list = [...new Set(ids)].filter(Boolean);
@@ -395,8 +403,7 @@
           narrRows = runs.map(run => {
             const n = nById[run.narrative_id]; if (!n) return '';
             nrRuns[run.id] = n;
-            const spk = (n.sequence || []).find(s => s.speaker);
-            const speaker = spk ? spk.speaker : (n.name || 'Someone');
+            const speaker = speakerOf(n);
             const role = roleByName[speaker];
             return '<div class="ch-notif" data-run="' + esc(run.id) + '" data-t="narr"><div class="txt"><b>' +
               esc(speaker) + (role ? ' (' + esc(role) + ')' : '') + '</b> wishes to speak to you.</div>' +
@@ -565,18 +572,22 @@
       const box = document.getElementById('convBox');
       if (!me) { box.innerHTML = '<div class="conv-empty">Sign in to see your conversations.</div>'; return; }
       try {
-        // My still-pending outbound requests (top) + accepted/ended conversations (most recent first).
-        const [pendRes, convRes] = await Promise.all([
+        // My still-pending outbound requests (top) + accepted/ended p2p conversations + completed narrative
+        // events (all most recent first).
+        const [pendRes, convRes, doneRes] = await Promise.all([
           supabase.from('nationverse_conversations')
             .select('id, to_personality, reason, created_tick').eq('from_personality', me.id)
             .eq('kind', 'p2p').eq('status', 'pending').order('id', { ascending: false }),
           supabase.from('nationverse_conversations')
             .select('id, from_personality, to_personality, reason, status')
-            .in('status', ['accepted', 'ended']).order('last_message_at', { ascending: false, nullsFirst: false })
+            .in('status', ['accepted', 'ended']).order('last_message_at', { ascending: false, nullsFirst: false }),
+          supabase.from('nationverse_narrative_runs')
+            .select('id, narrative_id, created_tick').eq('personality_id', me.id)
+            .eq('status', 'done').order('created_tick', { ascending: false })
         ]);
         if (convRes.error) throw convRes.error;
-        const pend = (pendRes && pendRes.data) || [], convs = convRes.data || [];
-        if (!pend.length && !convs.length) { box.innerHTML = '<div class="conv-empty">No conversations yet. Accept a meeting request or send one from your Character page.</div>'; return; }
+        const pend = (pendRes && pendRes.data) || [], convs = convRes.data || [], done = (doneRes && doneRes.data) || [];
+        if (!pend.length && !convs.length && !done.length) { box.innerHTML = '<div class="conv-empty">No conversations yet. Accept a meeting request or send one from your Character page.</div>'; return; }
         const byId = await peopleById([
           ...pend.map(c => c.to_personality),
           ...convs.map(c => c.from_personality === me.id ? c.to_personality : c.from_personality)
@@ -598,8 +609,22 @@
             '<div class="crl">' + (role ? esc(role) : '') + (c.reason ? ' · ' + esc(c.reason) : '') + '</div></div>' +
             (c.status === 'ended' ? '<span class="conv-tag">Ended</span>' : '') + '</div>';
         }).join('');
-        box.innerHTML = pendRows + convRows;
-        box.querySelectorAll('.conv-card').forEach(card => card.addEventListener('click', () => openChat(card.dataset.id)));
+        // Completed narrative events — "Conversation with {speaker}, on {Month}, {Year}." view-only.
+        let doneRows = '';
+        if (done.length) {
+          const { data: narrs } = await supabase.from('nationverse_narratives').select('id, name, sequence').in('id', done.map(r => r.narrative_id));
+          const nById = {}; (narrs || []).forEach(n => { nById[n.id] = n; });
+          doneRows = done.map(run => {
+            const n = nById[run.narrative_id]; if (!n) return '';
+            const speaker = speakerOf(n), when = run.created_tick != null ? tickToDate(run.created_tick) : '';
+            return '<div class="conv-card conv-static"><span class="pav">' + esc(initialsOf(speaker)) + '</span>' +
+              '<div style="flex:1;min-width:0"><div class="cnm">Conversation with ' + esc(speaker) + '</div>' +
+              '<div class="crl">' + (when ? 'on ' + esc(when) : '') + '</div></div>' +
+              '<span class="conv-tag">Completed</span></div>';
+          }).join('');
+        }
+        box.innerHTML = pendRows + convRows + doneRows;
+        box.querySelectorAll('.conv-card:not(.conv-static)').forEach(card => card.addEventListener('click', () => openChat(card.dataset.id)));
         box.querySelectorAll('.conv-pending .cp-cancel').forEach(btn =>
           btn.addEventListener('click', () => guard(btn, async () => {
             try {
