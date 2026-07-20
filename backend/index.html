@@ -1418,13 +1418,13 @@
     // ---- Story Bills (first slice: define name/scope/presenter/flavor, triggers from conditions that
     // exist today, and Sign/Veto choices whose effects reuse the shared effect builder above) ----
     // Shared, container-parameterised trigger builder (one source), used by Story Bills AND Narratives.
-    const TRIG_TYPES = ['Statistic', 'Modifier', 'Party', 'Role', 'Previous Narrative', 'Reforms Enacted'];
+    const TRIG_TYPES = ['Statistic', 'Modifier', 'Party', 'Role', 'Previous Narrative', 'Reforms Enacted', 'Group Opinion'];
     const TRIG_STAT_OPS = ['≥', '≤', '=', '>', '<'];
     const TRIG_MOD_STATES = ['Active', 'Not Active'];
     const TRIG_ALIGNMENTS = ['Government', 'Coalition', 'Confidence-and-Supply', 'Opposition'];
     const TRIG_ROLE_STATES = ['Exists', 'Absent'];
     const TRIG_NARR_STATES = ['Completed', 'Not Completed'];
-    const TRIG_KEY_TYPE = { stat: 'Statistic', modifier: 'Modifier', party: 'Party', role: 'Role', narrative: 'Previous Narrative', bills_passed: 'Reforms Enacted' };
+    const TRIG_KEY_TYPE = { stat: 'Statistic', modifier: 'Modifier', party: 'Party', role: 'Role', narrative: 'Previous Narrative', bills_passed: 'Reforms Enacted', group_opinion: 'Group Opinion' };
 
     // The controls shown for a condition depend on its type — all reuse conditions that exist today, plus
     // Role (a role/office present or absent) and Previous Narrative (completed or not).
@@ -1448,6 +1448,11 @@
                '<input class="tg-count" type="number" min="1" step="1" placeholder="count" value="' + esc(t.count != null ? t.count : '') + '">' +
                '<select class="tg-tag">' + opts(REFORM_TAGS, t.tag) + '</select>' +
                '<span class="tg-mid">Reforms</span>';
+      if (type === 'Group Opinion')   // "{Group} opinion of your party {op} {value}" — the group's approval of the player's own party (0–100)
+        return '<input class="tg-group" type="text" placeholder="Group name, e.g. Workers" value="' + esc(t.group || '') + '">' +
+               '<span class="tg-mid">opinion of your party</span>' +
+               '<select class="tg-gop">' + opts(TRIG_STAT_OPS, t.op) + '</select>' +
+               '<input class="tg-gval" type="number" step="1" placeholder="value" value="' + esc(t.value != null ? t.value : '') + '">';
       return '<select class="tg-stat">' + opts(STAT_NAMES, t.stat) + '</select>' +               // Statistic
              '<select class="tg-op">' + opts(TRIG_STAT_OPS, t.op) + '</select>' +
              '<input class="tg-num" type="number" step="1" placeholder="value" value="' + esc(t.value != null ? t.value : '') + '">';
@@ -1476,6 +1481,7 @@
         else if (type === 'Role') { const role = r.querySelector('.tg-role').value.trim(); if (role) out.push({ type: 'role', role, state: r.querySelector('.tg-rstate').value }); }
         else if (type === 'Previous Narrative') { const name = r.querySelector('.tg-narr').value.trim(); if (name) out.push({ type: 'narrative', name, state: r.querySelector('.tg-nstate').value }); }
         else if (type === 'Reforms Enacted') { const count = r.querySelector('.tg-count').value.trim(); if (count !== '') out.push({ type: 'bills_passed', tag: r.querySelector('.tg-tag').value, count: Number(count) }); }
+        else if (type === 'Group Opinion') { const group = r.querySelector('.tg-group').value.trim(), val = r.querySelector('.tg-gval').value.trim(); if (group && val !== '') out.push({ type: 'group_opinion', group, op: r.querySelector('.tg-gop').value, value: Number(val) }); }
         else { const num = r.querySelector('.tg-num').value.trim(); if (num !== '') out.push({ type: 'stat', stat: r.querySelector('.tg-stat').value, op: r.querySelector('.tg-op').value, value: Number(num) }); }
       });
       return out;
