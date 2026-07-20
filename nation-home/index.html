@@ -207,6 +207,7 @@
     const params = new URLSearchParams(location.search);
     const nationId = params.get('nation'), roleId = params.get('role');
     const SEP = ' <span class="nhsep">|</span> ';
+    const NATION_SELECT = 'id, name, flag, stats, parties';   // one source for the nation columns this page reads
 
     // Economic Growth (0–20 stat) shown as a word rating on the top bar, in paired bands:
     // 1–2 Depression … 19–20 Booming. Band index = floor((v−1)/2), clamped to the 10 labels.
@@ -454,7 +455,7 @@
         // Reflect any decision stat changes: re-fetch this nation, then re-render (also reloads attention).
         try {
           if (nation) {
-            const { data } = await supabase.from('nationverse_nations').select('id, name, flag, stats, parties').eq('id', nation.id).maybeSingle();
+            const { data } = await supabase.from('nationverse_nations').select(NATION_SELECT).eq('id', nation.id).maybeSingle();
             if (data) nation = data;
           }
         } catch (e) { /* keep the last-known nation on a transient error */ }
@@ -768,13 +769,13 @@
 
         if (!legacy) {
           if (!p) { window.location.replace('/nations/'); return; }   // no character yet → go choose one
-          const natRes = await supabase.from('nationverse_nations').select('id, name, flag, stats, parties').eq('id', p.nation_id).maybeSingle();
+          const natRes = await supabase.from('nationverse_nations').select(NATION_SELECT).eq('id', p.nation_id).maybeSingle();
           if (natRes.error) throw natRes.error;
           n = natRes.data;
         } else {
           if (!nationId) { content.innerHTML = '<div class="empty">No nation selected. <a href="/nations/">Choose one.</a></div>'; return; }
           const [natRes, persRes] = await Promise.all([
-            supabase.from('nationverse_nations').select('id, name, flag, stats, parties').eq('id', nationId).maybeSingle(),
+            supabase.from('nationverse_nations').select(NATION_SELECT).eq('id', nationId).maybeSingle(),
             roleId ? supabase.from('nationverse_personalities').select('*').eq('id', roleId).maybeSingle() : Promise.resolve({ data: null })
           ]);
           if (natRes.error) throw natRes.error;

@@ -28,8 +28,11 @@ declare
 begin
   v_me := public.nationverse_my_personality();
   if v_me is null then raise exception 'no_character'; end if;
-  select narrative_id into v_narr from public.nationverse_narrative_runs
-   where id = p_run and personality_id = v_me and status = 'assigned';
+  -- Claim the run atomically: only one call can flip assigned→done, so effects apply exactly once even if
+  -- resolve is fired twice (double-click / two tabs). A second call finds no assigned row and rolls back.
+  update public.nationverse_narrative_runs set status = 'done'
+   where id = p_run and personality_id = v_me and status = 'assigned'
+  returning narrative_id into v_narr;
   if v_narr is null then raise exception 'not_your_run'; end if;
   select nation_id into v_nation from public.nationverse_personalities where id = v_me;
 
