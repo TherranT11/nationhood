@@ -432,24 +432,33 @@
         }
       }
       function showDecision() {
-        const opts = (dec.options || []).filter(o => o && o.label);
         if (dec.prompt) append('<div class="nrp-prompt">' + esc(dec.prompt) + '</div>');
         foot.innerHTML = '';
-        if (!opts.length) {
+        // Keep each option's ORIGINAL index so the server applies the right option's effects.
+        const withLabels = (dec.options || []).map((o, idx) => ({ o, idx })).filter(x => x.o && x.o.label);
+        if (!withLabels.length) {
           const b = document.createElement('button'); b.className = 'ch-actbtn'; b.textContent = 'End';
-          b.addEventListener('click', () => { b.disabled = true; finish(); });
+          b.addEventListener('click', () => { b.disabled = true; finish(null, null); });
           foot.appendChild(b); return;
         }
-        opts.forEach(o => {
+        withLabels.forEach(({ o, idx }) => {
           const b = document.createElement('button'); b.className = 'ch-actbtn nrp-choice'; b.textContent = o.label;
-          b.addEventListener('click', () => { foot.querySelectorAll('button').forEach(x => x.disabled = true); finish(o.label); });
+          b.addEventListener('click', () => { foot.querySelectorAll('button').forEach(x => x.disabled = true); finish(idx, o.label); });
           foot.appendChild(b);
         });
       }
-      async function finish(choiceLabel) {
+      async function finish(optionIndex, choiceLabel) {
         if (choiceLabel) append('<div class="nrp-you">' + esc(choiceLabel) + '</div>');
-        try { await supabase.rpc('nationverse_complete_run', { p_run: runId }); } catch (e) { /* close gracefully either way */ }
-        closeModal(); loadPendingRequests();
+        try { await supabase.rpc('nationverse_resolve_run', { p_run: runId, p_option: optionIndex }); } catch (e) { /* close gracefully either way */ }
+        closeModal();
+        // Reflect any decision stat changes: re-fetch this nation, then re-render (also reloads attention).
+        try {
+          if (nation) {
+            const { data } = await supabase.from('nationverse_nations').select('id, name, flag, stats, parties').eq('id', nation.id).maybeSingle();
+            if (data) nation = data;
+          }
+        } catch (e) { /* keep the last-known nation on a transient error */ }
+        showView('character');
       }
       showStep();
     }
