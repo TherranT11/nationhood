@@ -884,9 +884,9 @@
     }
 
     // ---- Modifiers Creator (one reusable effect builder for every modifier) ----
-    const EFFECT_CATEGORIES = ['National Statistic', 'Corporate Stat', 'Interest-Group Opinion', 'Party Approval', 'Policy', 'Situation / Event', 'Role Action', 'Restriction', 'Create Story Bill', 'Unlock Narrative', 'Hidden Variable'];
+    const EFFECT_CATEGORIES = ['National Statistic', 'Corporate Stat', 'Interest-Group Opinion', 'Party Approval', 'Policy', 'Situation / Event', 'Role Action', 'Restriction', 'Create Story Bill', 'Unlock Narrative', 'Modifier', 'Hidden Variable'];
     const OPERATIONS = ['Add', 'Subtract', 'Set', 'Multiply', 'Divide', 'Increase by %', 'Decrease by %', 'Set minimum', 'Set maximum',
-      'Unlock', 'Lock', 'Enable', 'Disable', 'Add requirement', 'Remove requirement', 'Add immunity', 'Remove immunity', 'Replace', 'Redirect',
+      'Activate', 'Deactivate', 'Unlock', 'Lock', 'Enable', 'Disable', 'Add requirement', 'Remove requirement', 'Add immunity', 'Remove immunity', 'Replace', 'Redirect',
       'Delay', 'Accelerate', 'Pause', 'Trigger', 'Prevent', 'Reveal', 'Hide', 'Increase weight', 'Decrease weight', 'Increase chance', 'Decrease chance'];
     const TIMINGS = ['While Modifier Is Active', 'Permanent', 'Temporary'];
     const FREQUENCIES = ['Continuous', 'Per Turn', 'Per Year', 'One-time'];
@@ -896,10 +896,21 @@
     // National Statistic → a dropdown of the real nation stats; Corporate Stat → the corp stats; every
     // other category → free text (those target systems — groups, policies, roles, situations — don't
     // exist in the new universe yet).
+    // Modifier options (id → name) for the "Modifier" effect target, loaded from nationverse_modifiers so an
+    // author picks a real modifier to Activate/Deactivate. One source; refreshed when the Narratives refs load.
+    let MOD_OPTS = [];
+    async function loadModifierOptions() {
+      try { const { data } = await supabase.from('nationverse_modifiers').select('id, name').order('name', { ascending: true }); MOD_OPTS = data || []; }
+      catch (e) { MOD_OPTS = []; }
+    }
     function targetControlHTML(cat, val) {
       if (cat === 'National Statistic') return '<select class="eff-target">' + STATS.map(s => '<option value="' + esc(s[0]) + '"' + (s[0] === val ? ' selected' : '') + '>' + esc(s[1]) + '</option>').join('') + '</select>';
       if (cat === 'Corporate Stat')     return '<select class="eff-target">' + opts(CORP_STATS, val) + '</select>';
-      return '<input class="eff-target" type="text" placeholder="e.g. Banking &amp; Finance, Economic policies, Economic Minister" value="' + esc(val || '') + '">';
+      if (cat === 'Modifier')           return '<select class="eff-target">' + (MOD_OPTS.length ? MOD_OPTS.map(m => '<option value="' + esc(m.id) + '"' + (m.id === val ? ' selected' : '') + '>' + esc(m.name || 'Untitled') + '</option>').join('') : '<option value="">No modifiers yet — create one first</option>') + '</select>';
+      // Interest-Group Opinion → the group's name (matched against the nation's demographics at runtime; the
+      // player's own party's approval within that group moves). Other categories → free-text target.
+      const ph = cat === 'Interest-Group Opinion' ? 'e.g. Workers, Farmers, Urban Middle Class' : 'e.g. Banking &amp; Finance, Economic policies, Economic Minister';
+      return '<input class="eff-target" type="text" placeholder="' + ph + '" value="' + esc(val || '') + '">';
     }
     function effectRowHTML() {
       return '<div class="effrow2">' +
@@ -1039,6 +1050,7 @@
       } catch (e) { modListBox.innerHTML = '<div class="empty">Couldn’t load modifiers. Try again.</div>'; }
     }
     addEffect(effListBox);   // start with one effect row
+    loadModifierOptions();   // populate the "Modifier" effect target dropdown (one source; refreshed on Narratives load)
 
     // ---- Personalities (CRUD against an existing Nationverse nation) ----
     // Non-party roles (the party-politician entries are built per-nation from that nation's parties).
@@ -1782,6 +1794,7 @@
     async function loadNarrativeRefs() {
       const rows = await loadNationOptions(nrNatSel, { global: true });   // shared nation-options source
       narNatNames = {}; rows.forEach(n => { narNatNames[n.id] = n.name; });
+      await loadModifierOptions();   // refresh the Modifier effect target with any newly-authored modifiers
       await loadNarrativePersonalities(nrNatSel.value);   // personalities for the initially-selected nation
     }
 
