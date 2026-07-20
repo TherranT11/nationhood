@@ -29,6 +29,18 @@
   .nhdate b { color: var(--ink); font-weight: 700; }
   .nhsep { color: var(--line2, var(--line)); font-weight: 400; }
   .nhtbtn { padding: 10px 17px; font-size: 17px; }
+  /* Settings gear + dropdown (replaces the standalone Theme + Log out buttons). */
+  .nhgear { position: relative; }
+  .nhgear-btn { padding: 8px 12px; font-size: 20px; line-height: 1; }
+  .nhgear-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 50; min-width: 200px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 6px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.28); display: flex; flex-direction: column; }
+  .nhgear-menu[hidden] { display: none; }
+  .nhgear-item { text-align: left; background: none; border: 0; color: var(--ink); font: inherit; font-size: 15px;
+    padding: 10px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+  .nhgear-item:hover { background: var(--bg); }
+  .nhgear-item.danger { color: var(--err, #d64545); }
+  .nhgear-sep { height: 1px; background: var(--line); margin: 5px 4px; }
 
   /* Body = left sidebar + main. CHARACTER is the current page; other sections are placeholders for now. */
   .nhbody { display: flex; align-items: stretch; min-height: calc(100vh - 66px); }
@@ -184,8 +196,16 @@
     <div class="nhmid">Next Elections: <b>—</b></div>
     <div class="nhright">
       <span class="nhwho" id="nhwho"></span>
-      <button class="btn btn-ghost nhtbtn" id="themeToggle" type="button">Theme</button>
-      <button class="btn btn-ghost nhtbtn" id="logout" type="button">Log out</button>
+      <div class="nhgear">
+        <button class="btn btn-ghost nhtbtn nhgear-btn" id="gearBtn" type="button" aria-label="Settings" aria-haspopup="true" aria-expanded="false">⚙</button>
+        <div class="nhgear-menu" id="gearMenu" hidden role="menu">
+          <button class="nhgear-item" id="miTheme" type="button" role="menuitem">☾ Dark Mode</button>
+          <button class="nhgear-item" id="miResign" type="button" role="menuitem">Resign Character</button>
+          <div class="nhgear-sep"></div>
+          <button class="nhgear-item danger" id="miDelete" type="button" role="menuitem">Delete Account</button>
+          <button class="nhgear-item" id="miSignout" type="button" role="menuitem">Sign Out</button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -210,13 +230,36 @@
     import { NV_STATS, partyOf, partyIdeology } from '/nationverse.js';   // stats + party/ideology (one source)
     import { esc, tickToDate } from '/util.js';
 
-    document.getElementById('logout').addEventListener('click', logout);
+    // Settings gear: one menu for theme + character/account actions (replaces the standalone buttons).
+    const gearBtn = document.getElementById('gearBtn'), gearMenu = document.getElementById('gearMenu');
+    const openGear = (open) => { gearMenu.hidden = !open; gearBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); };
+    gearBtn.addEventListener('click', e => { e.stopPropagation(); openGear(gearMenu.hidden); });
+    document.addEventListener('click', e => { if (!gearMenu.hidden && !e.target.closest('.nhgear')) openGear(false); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') openGear(false); });
 
     // Light/Dark toggle reuses theme.js (one source); the label shows the mode it will switch to.
-    const themeBtn = document.getElementById('themeToggle');
-    const syncThemeLabel = () => { themeBtn.textContent = (window.NHTheme && window.NHTheme.current === 'dark') ? '☀ Light' : '☾ Dark'; };
+    const miTheme = document.getElementById('miTheme');
+    const syncThemeLabel = () => { miTheme.textContent = (window.NHTheme && window.NHTheme.current === 'dark') ? '☀ Light Mode' : '☾ Dark Mode'; };
     syncThemeLabel();
-    themeBtn.addEventListener('click', () => { if (window.NHTheme) window.NHTheme.toggle(); syncThemeLabel(); });
+    miTheme.addEventListener('click', () => { if (window.NHTheme) window.NHTheme.toggle(); syncThemeLabel(); });
+
+    document.getElementById('miSignout').addEventListener('click', logout);
+
+    // Resign Character: release your claim on this personality (server-side), then back to the roster.
+    document.getElementById('miResign').addEventListener('click', async () => {
+      if (!window.confirm('Resign this character? You’ll give up this role and return to the nation roster to choose another.')) return;
+      try {
+        const { error } = await supabase.rpc('nationverse_resign_character');
+        if (error) throw error;
+        window.location.href = '/nations/';
+      } catch (e) { alert('Could not resign the character. Try again shortly.'); }
+    });
+
+    // Delete Account: destructive + cross-app, not enabled yet — pending a decision on scope/cascade.
+    document.getElementById('miDelete').addEventListener('click', () => {
+      openGear(false);
+      alert('Account deletion isn’t enabled yet. To close your account, please contact us for now.');
+    });
 
     const nhName = document.getElementById('nhname'), nhFlag = document.getElementById('nhflag');
     const nhEcon = document.getElementById('nhecon'), nhWho = document.getElementById('nhwho');
