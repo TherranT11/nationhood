@@ -91,6 +91,10 @@
   .natbtns { display: flex; gap: 8px; flex: none; }
   .natbtns .btn { padding: 7px 14px; font-size: 13px; }
   .natdesc { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 12px 0 0; }
+  .ln-details:not(:empty) { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 4px 0 14px; background: var(--surface); }
+  .ln-details .ld-row { display: flex; gap: 8px; font-size: 13.5px; padding: 3px 0; }
+  .ln-details .ld-k { color: var(--muted); min-width: 110px; flex: none; }
+  .ln-details .ld-v { color: var(--ink); font-weight: 600; }
   .natstatgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin-top: 14px; }
   .natstat { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; }
   .natstat .k { color: var(--muted); }
@@ -355,6 +359,7 @@
             <span style="flex:1 1 260px"><label>Narrative</label><select id="ln-narr"></select></span>
             <span style="flex:1 1 220px"><label>Player</label><select id="ln-a"></select></span>
           </div>
+          <div id="ln-details" class="ln-details"></div>
           <div class="row">
             <button class="btn btn-solid" id="ln-launch" type="button">Launch to Player</button>
             <span class="note" id="ln-note" role="status" aria-live="polite"></span>
@@ -1723,19 +1728,49 @@
 
     // ---- Launch a Narrative to one player (interim World-Master tool) ----
     const lnNarr = document.getElementById('ln-narr'), lnA = document.getElementById('ln-a'),
-      lnNote = document.getElementById('ln-note'), lnLaunch = document.getElementById('ln-launch');
+      lnNote = document.getElementById('ln-note'), lnLaunch = document.getElementById('ln-launch'),
+      lnDetails = document.getElementById('ln-details');
+    let lnPeople = {}, lnNatNames = {}, lnCorpsByOwner = {};
     async function loadLaunchRefs() {
       try {
-        const [nRes, pRes] = await Promise.all([
+        const [nRes, pRes, cRes, natRes] = await Promise.all([
           supabase.from('nationverse_narratives').select('id, name').order('name', { ascending: true }),
-          supabase.from('nationverse_personalities').select('id, name').not('claimed_by', 'is', null).order('name', { ascending: true })
+          supabase.from('nationverse_personalities').select('id, name, nation_id, starting_age, role, party, office').not('claimed_by', 'is', null).order('name', { ascending: true }),
+          supabase.from('nationverse_corporations').select('name, ownership'),
+          supabase.from('nationverse_nations').select('id, name')
         ]);
         lnNarr.innerHTML = (nRes.data || []).map(n => '<option value="' + esc(n.id) + '">' + esc(n.name || 'Untitled') + '</option>').join('')
           || '<option value="">No narratives yet</option>';
-        lnA.innerHTML = (pRes.data || []).map(p => '<option value="' + esc(p.id) + '">' + esc(p.name || 'Unnamed') + '</option>').join('')
+        const people = pRes.data || [];
+        lnPeople = {}; people.forEach(p => { lnPeople[p.id] = p; });
+        lnA.innerHTML = people.map(p => '<option value="' + esc(p.id) + '">' + esc(p.name || 'Unnamed') + '</option>').join('')
           || '<option value="">No claimed players</option>';
+        lnNatNames = {}; (natRes.data || []).forEach(n => { lnNatNames[n.id] = n.name; });
+        lnCorpsByOwner = {};   // personality id → their corporate stakes (one source: each corp's cap table)
+        (cRes.data || []).forEach(c => (c.ownership || []).forEach(o => {
+          if (o.type === 'personality' && o.id) (lnCorpsByOwner[o.id] = lnCorpsByOwner[o.id] || []).push({ name: c.name, share: o.share });
+        }));
+        renderLaunchDetails(lnA.value);
       } catch (e) { lnNote.textContent = 'Couldn’t load launch options.'; lnNote.className = 'note error'; }
     }
+    // Show the selected player's nation, age, role, party, office and corporate holdings.
+    function renderLaunchDetails(id) {
+      const p = lnPeople[id];
+      if (!p) { lnDetails.innerHTML = ''; return; }
+      const isPol = p.party || p.role === 'Politician' || /^Politician of Party \d+$/.test(p.role || '');
+      const roleText = isPol ? 'Politician' : (p.role || '—');
+      const corps = (lnCorpsByOwner[id] || []).map(c => (c.share != null ? c.share + '% of ' : '') + (c.name || 'a corporation')).join(', ');
+      const office = (p.office && p.office !== 'No Specific Office') ? p.office : '—';
+      const row = (k, v) => '<div class="ld-row"><span class="ld-k">' + k + '</span><span class="ld-v">' + esc(v) + '</span></div>';
+      lnDetails.innerHTML =
+        row('Nation', lnNatNames[p.nation_id] || '—') +
+        row('Age', p.starting_age != null ? p.starting_age : '—') +
+        row('Role', roleText) +
+        row('Party', p.party || '—') +
+        row('Office', office) +
+        row('Corporations', corps || '—');
+    }
+    lnA.addEventListener('change', () => renderLaunchDetails(lnA.value));
     lnLaunch.addEventListener('click', async () => {
       if (lnLaunch.disabled) return;
       const narr = lnNarr.value, player = lnA.value;
