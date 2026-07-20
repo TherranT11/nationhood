@@ -67,6 +67,7 @@
 
   <script type="module">
     import { supabase, isConfigured, currentParty } from '/supabase.js';
+    import { redirectToMyCharacter } from '/nationverse.js';   // one-character routing (one source)
 
     const form = document.getElementById('login-form');
     const btn = document.getElementById('submit-btn');
@@ -107,7 +108,9 @@
           btn.disabled = false;
           return;
         }
-        // Returning player with a party → their Home; otherwise the menu.
+        // Nationverse player with a claimed character → straight to their Character screen.
+        if (await redirectToMyCharacter(supabase)) return;
+        // Otherwise: returning main-game player with a party → their Home; else the menu.
         const party = await currentParty();
         window.location.href = party ? '/play/home2/' : '/home/';
       } catch (err) {
