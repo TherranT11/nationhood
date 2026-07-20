@@ -375,9 +375,15 @@
             <span><label>Priority <span class="hint">0–100 · higher interrupts lower</span></label><input id="nr-priority" type="number" min="0" max="100" step="1" value="0" style="max-width:110px"></span>
           </div>
 
-          <div class="statshd">Trigger Conditions <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">optional · all must hold for the narrative to start</span></div>
-          <div id="nrTrigList"></div>
-          <button class="btn btn-ghost" id="nrAddTrig" type="button" style="margin-top:2px">+ Add Condition</button>
+          <div class="statshd">When Does This Trigger</div>
+          <div class="f nrtrig">
+            <label class="nrtm"><input type="radio" name="nrtm" value="immediate" checked> Immediately</label>
+            <label class="nrtm"><input type="radio" name="nrtm" value="date"> On date:
+              <select id="nr-tmonth"></select> <input id="nr-tyear" type="number" placeholder="Year" style="max-width:110px"></label>
+            <label class="nrtm"><input type="radio" name="nrtm" value="stats"> When these stat conditions are met <span class="hint">all must hold</span></label>
+            <div id="nrStatTrigs" style="margin-top:6px"></div>
+            <button class="btn btn-ghost" id="nrAddStat" type="button" style="margin-top:4px">+ Add Stat Condition</button>
+          </div>
 
           <div class="statshd">Conversation Sequence <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">plays in order · Action = italic narration · Speech = a named speaker, shown in quotes · the player clicks Continue through each</span></div>
           <div id="nrSeq"></div>
@@ -1565,9 +1571,49 @@
     const NARR_CATEGORIES = ['Economy', 'Politics', 'Military', 'Foreign Affairs', 'Labor', 'Religion', 'Judiciary', 'Election', 'Crisis', 'Corporation', 'Intelligence'];
     document.getElementById('nr-cat').innerHTML = opts(NARR_CATEGORIES);
 
-    const nrTrigBox = document.getElementById('nrTrigList');
-    wireTrigBox(nrTrigBox);
-    document.getElementById('nrAddTrig').addEventListener('click', () => addTrig(nrTrigBox));
+    // "When does this trigger": Immediately, On a game date, or When stat thresholds are met.
+    const NR_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    document.getElementById('nr-tmonth').innerHTML = NR_MONTHS.map((m, i) => '<option value="' + (i + 1) + '">' + m + '</option>').join('');
+    const nrStatBox = document.getElementById('nrStatTrigs'), nrDateRow = document.getElementById('nr-tmonth').closest('.nrtm');
+    const NR_DIRS = ['or higher', 'or lower'];
+    function statTrigRowHTML(c) {
+      c = c || {};
+      return '<div class="effrow2 nrstat"><div class="effrow2-hd"><span></span><button class="del nrst-del" type="button">Remove</button></div>' +
+        '<div class="effgrid" style="align-items:end">' +
+          '<div class="fld"><label>Stat</label><select class="nrst-stat">' + opts(STAT_NAMES, c.stat) + '</select></div>' +
+          '<div class="fld"><label>Is</label><input class="nrst-val" type="number" step="1" placeholder="value" value="' + esc(c.value != null ? c.value : '') + '"></div>' +
+          '<div class="fld"><label>&nbsp;</label><select class="nrst-dir">' + opts(NR_DIRS, c.dir === 'lower' ? 'or lower' : 'or higher') + '</select></div>' +
+        '</div></div>';
+    }
+    function addStatTrig(c) { nrStatBox.insertAdjacentHTML('beforeend', statTrigRowHTML(c)); }
+    nrStatBox.addEventListener('click', e => { if (e.target.classList.contains('nrst-del')) e.target.closest('.nrstat').remove(); });
+    document.getElementById('nrAddStat').addEventListener('click', () => { setTrigMode('stats'); addStatTrig(); });
+    function setTrigMode(mode) {
+      const r = document.querySelector('input[name=nrtm][value=' + mode + ']'); if (r) r.checked = true;
+      nrDateRow.style.opacity = mode === 'date' ? '1' : '.5';
+      nrStatBox.style.opacity = document.getElementById('nrAddStat').style.opacity = mode === 'stats' ? '1' : '.5';
+    }
+    document.querySelectorAll('input[name=nrtm]').forEach(r => r.addEventListener('change', () => setTrigMode(r.value)));
+    function collectTrigger() {
+      const mode = (document.querySelector('input[name=nrtm]:checked') || {}).value || 'immediate';
+      if (mode === 'date') return { mode, month: Number(document.getElementById('nr-tmonth').value) || 1, year: Number(document.getElementById('nr-tyear').value) || null };
+      if (mode === 'stats') {
+        const stats = [];
+        nrStatBox.querySelectorAll('.nrstat').forEach(r => {
+          const v = r.querySelector('.nrst-val').value.trim();
+          if (v !== '') stats.push({ stat: r.querySelector('.nrst-stat').value, value: Number(v), dir: r.querySelector('.nrst-dir').value === 'or lower' ? 'lower' : 'higher' });
+        });
+        return { mode, stats };
+      }
+      return { mode: 'immediate' };
+    }
+    function setTrigger(t) {
+      t = t || {}; const mode = t.mode || 'immediate';
+      document.getElementById('nr-tmonth').value = t.month || 1;
+      document.getElementById('nr-tyear').value = t.year != null ? t.year : '';
+      nrStatBox.innerHTML = ''; (t.stats || []).forEach(addStatTrig);
+      setTrigMode(mode);
+    }
 
     // Conversation sequence: an ordered list of steps the player clicks Continue through. Each step is an
     // Action (italic narration) or Speech (a named speaker, shown in quotes), with optional flavor replies.
@@ -1714,7 +1760,7 @@
       ['nr-name', 'nr-slug', 'nr-decprompt'].forEach(id => { document.getElementById(id).value = ''; });
       nrNatSel.value = ''; document.getElementById('nr-cat').selectedIndex = 0; document.getElementById('nr-priority').value = 0;
       nrPersSel.innerHTML = '<option value="">— No specific personality —</option>';
-      nrTrigBox.innerHTML = '';
+      setTrigger({});
       setSequence([]); setDecision({});
     }
     // Legacy narratives stored opening.lines (+ a top-level speaker); map them to Action steps so old
@@ -1733,7 +1779,7 @@
       await loadNarrativePersonalities(n.nation_id, n.personality_id);   // fill + select the assigned personality
       document.getElementById('nr-cat').value = n.category || NARR_CATEGORIES[0];
       document.getElementById('nr-priority').value = n.priority != null ? n.priority : 0;
-      setTriggers(nrTrigBox, n.triggers);
+      setTrigger(n.trigger);
       setSequence(sequenceOf(n));
       setDecision(n.decision);
       // Already on the Narratives tab — don't re-run showTab (would rebuild the nation select).
@@ -1753,7 +1799,7 @@
         personality_id: nrPersSel.value || null,
         category: document.getElementById('nr-cat').value,
         priority: Math.max(0, Math.min(100, Math.round(Number(pr) || 0))),
-        triggers: collectTriggers(nrTrigBox),
+        trigger: collectTrigger(),
         sequence: collectSequence(),
         decision: collectDecision()
       };
