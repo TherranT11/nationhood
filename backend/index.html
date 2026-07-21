@@ -375,7 +375,7 @@
           <div class="f"><label>Narrative Name</label><input id="nr-name" type="text" autocomplete="off"></div>
           <div class="f"><label>Internal ID <span class="hint">optional · e.g. police_reform_debate</span></label><input id="nr-slug" type="text" autocomplete="off" style="max-width:320px"></div>
           <div class="f"><label>Nation</label><select id="nr-nation"></select></div>
-          <div class="f"><label>Assigned Personality <span class="hint">optional · who this narrative is for</span></label><select id="nr-personality"></select></div>
+          <div class="f"><label>Role <span class="hint">who this narrative is for — resolves to whoever holds it in the nation at launch</span></label><select id="nr-role"></select></div>
           <div class="f" style="display:flex;gap:18px;flex-wrap:wrap">
             <span><label>Category</label><select id="nr-cat"></select></span>
             <span><label>Priority <span class="hint">0–100 · higher interrupts lower</span></label><input id="nr-priority" type="number" min="0" max="100" step="1" value="0" style="max-width:110px"></span>
@@ -1834,19 +1834,12 @@
       if (!nrDecBox.children.length) addOption();
     }
 
-    const nrNatSel = document.getElementById('nr-nation'), nrPersSel = document.getElementById('nr-personality');
+    const nrNatSel = document.getElementById('nr-nation'), nrRoleSel = document.getElementById('nr-role');
     let narNatNames = {};
-    // The Assigned Personality options follow the selected nation (empty when Global / no nation).
-    async function loadNarrativePersonalities(nationId, selectedId) {
-      if (!nationId) { nrPersSel.innerHTML = '<option value="">— No specific personality —</option>'; return; }
-      try {
-        const { data, error } = await supabase.from('nationverse_personalities').select('id, name').eq('nation_id', nationId).order('name', { ascending: true });
-        if (error) throw error;
-        nrPersSel.innerHTML = '<option value="">— No specific personality —</option>' +
-          (data || []).map(p => '<option value="' + esc(p.id) + '"' + (p.id === selectedId ? ' selected' : '') + '>' + esc(p.name || 'Unnamed') + '</option>').join('');
-      } catch (e) { nrPersSel.innerHTML = '<option value="">— No specific personality —</option>'; }
-    }
-    nrNatSel.addEventListener('change', () => loadNarrativePersonalities(nrNatSel.value));
+    // A narrative targets a ROLE within its nation (resolved to whoever holds it at launch), not a fixed
+    // person. The role list is one source with the personality office/role dropdowns.
+    const NARR_ROLES = [...GOV_OFFICES, ...OPP_OFFICES, 'Politician', ...NON_PARTY_ROLES];
+    nrRoleSel.innerHTML = '<option value="">— No specific role —</option>' + NARR_ROLES.map(r => '<option value="' + esc(r) + '">' + esc(r) + '</option>').join('');
     // Other narratives, for the "After this narrative has fired" prerequisite dropdown (excludes self).
     let NARR_OPTS = [];
     function populateAfterOptions(selectedId) {
@@ -1859,7 +1852,6 @@
       const rows = await loadNationOptions(nrNatSel, { global: true });   // shared nation-options source
       narNatNames = {}; rows.forEach(n => { narNatNames[n.id] = n.name; });
       await loadModifierOptions();   // refresh the Modifier effect target with any newly-authored modifiers
-      await loadNarrativePersonalities(nrNatSel.value);   // personalities for the initially-selected nation
       // NARR_OPTS (the "after" prerequisite dropdown) is populated by loadNarrativeList — the one place that
       // already fetches the narratives — so there's a single narratives query per tab load, not two.
     }
@@ -1930,8 +1922,7 @@
     function resetNarrativeForm() {
       editingNarId = null; narTitle.textContent = 'Narrative Creator'; saveNarBtn.textContent = 'Save Narrative'; cancelNarBtn.hidden = true;
       ['nr-name', 'nr-slug', 'nr-decprompt'].forEach(id => { document.getElementById(id).value = ''; });
-      nrNatSel.value = ''; document.getElementById('nr-cat').selectedIndex = 0; document.getElementById('nr-priority').value = 0;
-      nrPersSel.innerHTML = '<option value="">— No specific personality —</option>';
+      nrNatSel.value = ''; nrRoleSel.value = ''; document.getElementById('nr-cat').selectedIndex = 0; document.getElementById('nr-priority').value = 0;
       setTrigger({});
       setSequence([]); setDecision({});
     }
@@ -1948,7 +1939,7 @@
       document.getElementById('nr-name').value = n.name || '';
       document.getElementById('nr-slug').value = n.internal_id || '';
       nrNatSel.value = n.nation_id || '';
-      await loadNarrativePersonalities(n.nation_id, n.personality_id);   // fill + select the assigned personality
+      nrRoleSel.value = n.role || '';   // the targeted role (resolved to whoever holds it at launch)
       document.getElementById('nr-cat').value = n.category || NARR_CATEGORIES[0];
       document.getElementById('nr-priority').value = n.priority != null ? n.priority : 0;
       setTrigger(n.trigger);
@@ -1968,7 +1959,7 @@
         name,
         internal_id: document.getElementById('nr-slug').value.trim() || null,
         nation_id: nrNatSel.value || null,
-        personality_id: nrPersSel.value || null,
+        role: nrRoleSel.value || null,
         category: document.getElementById('nr-cat').value,
         priority: Math.max(0, Math.min(100, Math.round(Number(pr) || 0))),
         trigger: collectTrigger(),
@@ -2002,7 +1993,7 @@
         narListBox.innerHTML = rows.map(n => {
           const scope = n.nation_id ? esc(narNatNames[n.nation_id] || 'Nation') : 'Global';
           const seq = sequenceOf(n), nOpt = (n.decision && n.decision.options ? n.decision.options.length : 0);
-          const sub = [scope, n.category ? esc(n.category) : '', 'priority ' + (n.priority != null ? n.priority : 0), seq.length + ' line' + (seq.length === 1 ? '' : 's'), nOpt + ' option' + (nOpt === 1 ? '' : 's')].filter(Boolean).join(' · ');
+          const sub = [scope, n.role ? esc(n.role) : '', n.category ? esc(n.category) : '', 'priority ' + (n.priority != null ? n.priority : 0), seq.length + ' line' + (seq.length === 1 ? '' : 's'), nOpt + ' option' + (nOpt === 1 ? '' : 's')].filter(Boolean).join(' · ');
           const preview = seq.find(s => s.text) ;
           return '<div class="natcard" data-id="' + esc(n.id) + '">' +
             '<div class="natcard-hd"><div class="natmeta"><div class="natnm">' + esc(n.name || 'Untitled') + '</div>' +
