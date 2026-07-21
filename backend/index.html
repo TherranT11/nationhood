@@ -1960,6 +1960,7 @@
         internal_id: document.getElementById('nr-slug').value.trim() || null,
         nation_id: nrNatSel.value || null,
         role: nrRoleSel.value || null,
+        personality_id: null,   // narratives target a role now; clear any legacy personality target on save
         category: document.getElementById('nr-cat').value,
         priority: Math.max(0, Math.min(100, Math.round(Number(pr) || 0))),
         trigger: collectTrigger(),
