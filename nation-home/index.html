@@ -247,6 +247,7 @@
 
     // Resign Character: release your claim on this personality (server-side), then back to the roster.
     document.getElementById('miResign').addEventListener('click', async () => {
+      openGear(false);
       if (!window.confirm('Resign this character? You’ll give up this role and return to the nation roster to choose another.')) return;
       try {
         const { error } = await supabase.rpc('nationverse_resign_character');

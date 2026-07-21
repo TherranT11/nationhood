@@ -912,10 +912,16 @@
       try { const { data } = await supabase.from('nationverse_modifiers').select('id, name').order('name', { ascending: true }); MOD_OPTS = data || []; }
       catch (e) { MOD_OPTS = []; }
     }
+    // <option> list for a modifier <select> (one source: the effect target AND the narrative modifier condition).
+    function modifierOptions(selectedId) {
+      return MOD_OPTS.length
+        ? MOD_OPTS.map(m => '<option value="' + esc(m.id) + '"' + (m.id === selectedId ? ' selected' : '') + '>' + esc(m.name || 'Untitled') + '</option>').join('')
+        : '<option value="">No modifiers yet — create one first</option>';
+    }
     function targetControlHTML(cat, val) {
       if (cat === 'National Statistic') return '<select class="eff-target">' + STATS.map(s => '<option value="' + esc(s[0]) + '"' + (s[0] === val ? ' selected' : '') + '>' + esc(s[1]) + '</option>').join('') + '</select>';
       if (cat === 'Corporate Stat')     return '<select class="eff-target">' + opts(CORP_STATS, val) + '</select>';
-      if (cat === 'Modifier')           return '<select class="eff-target">' + (MOD_OPTS.length ? MOD_OPTS.map(m => '<option value="' + esc(m.id) + '"' + (m.id === val ? ' selected' : '') + '>' + esc(m.name || 'Untitled') + '</option>').join('') : '<option value="">No modifiers yet — create one first</option>') + '</select>';
+      if (cat === 'Modifier')           return '<select class="eff-target">' + modifierOptions(val) + '</select>';
       // Interest-Group Opinion → the group's name (matched against the nation's demographics at runtime; the
       // player's own party's approval within that group moves). Other categories → free-text target.
       const ph = cat === 'Interest-Group Opinion' ? 'e.g. Workers, Farmers, Urban Middle Class' : 'e.g. Banking &amp; Finance, Economic policies, Economic Minister';
@@ -1632,12 +1638,9 @@
     const nrModBox = document.getElementById('nrModTrigs');
     function modTrigRowHTML(c) {
       c = c || {};
-      const modOpts = MOD_OPTS.length
-        ? MOD_OPTS.map(m => '<option value="' + esc(m.id) + '"' + (m.id === c.modifier ? ' selected' : '') + '>' + esc(m.name || 'Untitled') + '</option>').join('')
-        : '<option value="">No modifiers yet — create one first</option>';
       return '<div class="effrow2 nrmod"><div class="effrow2-hd"><span></span><button class="del nrmd-del" type="button">Remove</button></div>' +
         '<div class="effgrid" style="align-items:end">' +
-          '<div class="fld wide"><label>Modifier</label><select class="nrmd-id">' + modOpts + '</select></div>' +
+          '<div class="fld wide"><label>Modifier</label><select class="nrmd-id">' + modifierOptions(c.modifier) + '</select></div>' +
           '<div class="fld"><label>State</label><select class="nrmd-state">' + opts(['Active', 'Not Active'], c.state === 'inactive' ? 'Not Active' : 'Active') + '</select></div>' +
         '</div></div>';
     }
@@ -1856,9 +1859,9 @@
       const rows = await loadNationOptions(nrNatSel, { global: true });   // shared nation-options source
       narNatNames = {}; rows.forEach(n => { narNatNames[n.id] = n.name; });
       await loadModifierOptions();   // refresh the Modifier effect target with any newly-authored modifiers
-      try { const { data } = await supabase.from('nationverse_narratives').select('id, name').order('name', { ascending: true }); NARR_OPTS = data || []; } catch (e) { NARR_OPTS = []; }
-      populateAfterOptions(document.getElementById('nr-after').value);   // keep any current selection
       await loadNarrativePersonalities(nrNatSel.value);   // personalities for the initially-selected nation
+      // NARR_OPTS (the "after" prerequisite dropdown) is populated by loadNarrativeList — the one place that
+      // already fetches the narratives — so there's a single narratives query per tab load, not two.
     }
 
     // ---- Launch a Narrative to one player (interim World-Master tool) ----
@@ -1993,6 +1996,8 @@
         const { data, error } = await supabase.from('nationverse_narratives').select('*').order('priority', { ascending: false });
         if (error) throw error;
         const rows = data || [];
+        NARR_OPTS = rows.map(n => ({ id: n.id, name: n.name }));   // one source for the "after" prerequisite dropdown
+        populateAfterOptions(document.getElementById('nr-after').value);
         if (!rows.length) { narListBox.innerHTML = '<div class="empty">No narratives yet — create one below.</div>'; return; }
         narListBox.innerHTML = rows.map(n => {
           const scope = n.nation_id ? esc(narNatNames[n.nation_id] || 'Nation') : 'Global';
