@@ -386,9 +386,13 @@
             <label class="nrtm"><input type="radio" name="nrtm" value="immediate" checked> Immediately</label>
             <label class="nrtm"><input type="radio" name="nrtm" value="date"> On date:
               <select id="nr-tmonth"></select> <input id="nr-tyear" type="number" placeholder="Year" style="max-width:110px"></label>
-            <label class="nrtm"><input type="radio" name="nrtm" value="stats"> When these stat conditions are met <span class="hint">all must hold</span></label>
+            <label class="nrtm"><input type="radio" name="nrtm" value="stats"> When these conditions are met <span class="hint">all must hold · stats and/or modifiers</span></label>
             <div id="nrStatTrigs" style="margin-top:6px"></div>
             <button class="btn btn-ghost" id="nrAddStat" type="button" style="margin-top:4px">+ Add Stat Condition</button>
+            <div id="nrModTrigs" style="margin-top:6px"></div>
+            <button class="btn btn-ghost" id="nrAddMod" type="button" style="margin-top:4px">+ Add Modifier Condition</button>
+            <label class="nrtm" style="margin-top:10px;display:block">After this narrative has fired <span class="hint">optional · won't launch until the chosen event is completed — keeps a sequence in order</span></label>
+            <select id="nr-after" style="max-width:340px"></select>
           </div>
 
           <div class="statshd">Conversation Sequence <span style="text-transform:none;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0">plays in order · Action = italic narration · Speech = a named speaker, shown in quotes · the player clicks Continue through each</span></div>
@@ -908,10 +912,16 @@
       try { const { data } = await supabase.from('nationverse_modifiers').select('id, name').order('name', { ascending: true }); MOD_OPTS = data || []; }
       catch (e) { MOD_OPTS = []; }
     }
+    // <option> list for a modifier <select> (one source: the effect target AND the narrative modifier condition).
+    function modifierOptions(selectedId) {
+      return MOD_OPTS.length
+        ? MOD_OPTS.map(m => '<option value="' + esc(m.id) + '"' + (m.id === selectedId ? ' selected' : '') + '>' + esc(m.name || 'Untitled') + '</option>').join('')
+        : '<option value="">No modifiers yet — create one first</option>';
+    }
     function targetControlHTML(cat, val) {
       if (cat === 'National Statistic') return '<select class="eff-target">' + STATS.map(s => '<option value="' + esc(s[0]) + '"' + (s[0] === val ? ' selected' : '') + '>' + esc(s[1]) + '</option>').join('') + '</select>';
       if (cat === 'Corporate Stat')     return '<select class="eff-target">' + opts(CORP_STATS, val) + '</select>';
-      if (cat === 'Modifier')           return '<select class="eff-target">' + (MOD_OPTS.length ? MOD_OPTS.map(m => '<option value="' + esc(m.id) + '"' + (m.id === val ? ' selected' : '') + '>' + esc(m.name || 'Untitled') + '</option>').join('') : '<option value="">No modifiers yet — create one first</option>') + '</select>';
+      if (cat === 'Modifier')           return '<select class="eff-target">' + modifierOptions(val) + '</select>';
       // Interest-Group Opinion → the group's name (matched against the nation's demographics at runtime; the
       // player's own party's approval within that group moves). Other categories → free-text target.
       const ph = cat === 'Interest-Group Opinion' ? 'e.g. Workers, Farmers, Urban Middle Class' : 'e.g. Banking &amp; Finance, Economic policies, Economic Minister';
@@ -1418,13 +1428,13 @@
     // ---- Story Bills (first slice: define name/scope/presenter/flavor, triggers from conditions that
     // exist today, and Sign/Veto choices whose effects reuse the shared effect builder above) ----
     // Shared, container-parameterised trigger builder (one source), used by Story Bills AND Narratives.
-    const TRIG_TYPES = ['Statistic', 'Modifier', 'Party', 'Role', 'Previous Narrative', 'Reforms Enacted'];
+    const TRIG_TYPES = ['Statistic', 'Modifier', 'Party', 'Role', 'Previous Narrative', 'Reforms Enacted', 'Group Opinion'];
     const TRIG_STAT_OPS = ['≥', '≤', '=', '>', '<'];
     const TRIG_MOD_STATES = ['Active', 'Not Active'];
     const TRIG_ALIGNMENTS = ['Government', 'Coalition', 'Confidence-and-Supply', 'Opposition'];
     const TRIG_ROLE_STATES = ['Exists', 'Absent'];
     const TRIG_NARR_STATES = ['Completed', 'Not Completed'];
-    const TRIG_KEY_TYPE = { stat: 'Statistic', modifier: 'Modifier', party: 'Party', role: 'Role', narrative: 'Previous Narrative', bills_passed: 'Reforms Enacted' };
+    const TRIG_KEY_TYPE = { stat: 'Statistic', modifier: 'Modifier', party: 'Party', role: 'Role', narrative: 'Previous Narrative', bills_passed: 'Reforms Enacted', group_opinion: 'Group Opinion' };
 
     // The controls shown for a condition depend on its type — all reuse conditions that exist today, plus
     // Role (a role/office present or absent) and Previous Narrative (completed or not).
@@ -1448,6 +1458,11 @@
                '<input class="tg-count" type="number" min="1" step="1" placeholder="count" value="' + esc(t.count != null ? t.count : '') + '">' +
                '<select class="tg-tag">' + opts(REFORM_TAGS, t.tag) + '</select>' +
                '<span class="tg-mid">Reforms</span>';
+      if (type === 'Group Opinion')   // "{Group} opinion of your party {op} {value}" — the group's approval of the player's own party (0–100)
+        return '<input class="tg-group" type="text" placeholder="Group name, e.g. Workers" value="' + esc(t.group || '') + '">' +
+               '<span class="tg-mid">opinion of your party</span>' +
+               '<select class="tg-gop">' + opts(TRIG_STAT_OPS, t.op) + '</select>' +
+               '<input class="tg-gval" type="number" step="1" placeholder="value" value="' + esc(t.value != null ? t.value : '') + '">';
       return '<select class="tg-stat">' + opts(STAT_NAMES, t.stat) + '</select>' +               // Statistic
              '<select class="tg-op">' + opts(TRIG_STAT_OPS, t.op) + '</select>' +
              '<input class="tg-num" type="number" step="1" placeholder="value" value="' + esc(t.value != null ? t.value : '') + '">';
@@ -1476,6 +1491,7 @@
         else if (type === 'Role') { const role = r.querySelector('.tg-role').value.trim(); if (role) out.push({ type: 'role', role, state: r.querySelector('.tg-rstate').value }); }
         else if (type === 'Previous Narrative') { const name = r.querySelector('.tg-narr').value.trim(); if (name) out.push({ type: 'narrative', name, state: r.querySelector('.tg-nstate').value }); }
         else if (type === 'Reforms Enacted') { const count = r.querySelector('.tg-count').value.trim(); if (count !== '') out.push({ type: 'bills_passed', tag: r.querySelector('.tg-tag').value, count: Number(count) }); }
+        else if (type === 'Group Opinion') { const group = r.querySelector('.tg-group').value.trim(), val = r.querySelector('.tg-gval').value.trim(); if (group && val !== '') out.push({ type: 'group_opinion', group, op: r.querySelector('.tg-gop').value, value: Number(val) }); }
         else { const num = r.querySelector('.tg-num').value.trim(); if (num !== '') out.push({ type: 'stat', stat: r.querySelector('.tg-stat').value, op: r.querySelector('.tg-op').value, value: Number(num) }); }
       });
       return out;
@@ -1618,30 +1634,56 @@
     function addStatTrig(c) { nrStatBox.insertAdjacentHTML('beforeend', statTrigRowHTML(c)); }
     nrStatBox.addEventListener('click', e => { if (e.target.classList.contains('nrst-del')) e.target.closest('.nrstat').remove(); });
     document.getElementById('nrAddStat').addEventListener('click', () => { setTrigMode('stats'); addStatTrig(); });
+    // Modifier conditions ("IF <Modifier> is Active / Not Active") — reuse MOD_OPTS (one source).
+    const nrModBox = document.getElementById('nrModTrigs');
+    function modTrigRowHTML(c) {
+      c = c || {};
+      return '<div class="effrow2 nrmod"><div class="effrow2-hd"><span></span><button class="del nrmd-del" type="button">Remove</button></div>' +
+        '<div class="effgrid" style="align-items:end">' +
+          '<div class="fld wide"><label>Modifier</label><select class="nrmd-id">' + modifierOptions(c.modifier) + '</select></div>' +
+          '<div class="fld"><label>State</label><select class="nrmd-state">' + opts(['Active', 'Not Active'], c.state === 'inactive' ? 'Not Active' : 'Active') + '</select></div>' +
+        '</div></div>';
+    }
+    function addModTrig(c) { nrModBox.insertAdjacentHTML('beforeend', modTrigRowHTML(c)); }
+    nrModBox.addEventListener('click', e => { if (e.target.classList.contains('nrmd-del')) e.target.closest('.nrmod').remove(); });
+    document.getElementById('nrAddMod').addEventListener('click', () => { setTrigMode('stats'); addModTrig(); });
     function setTrigMode(mode) {
       const r = document.querySelector('input[name=nrtm][value=' + mode + ']'); if (r) r.checked = true;
       nrDateRow.style.opacity = mode === 'date' ? '1' : '.5';
-      nrStatBox.style.opacity = document.getElementById('nrAddStat').style.opacity = mode === 'stats' ? '1' : '.5';
+      const condOp = mode === 'stats' ? '1' : '.5';
+      nrStatBox.style.opacity = document.getElementById('nrAddStat').style.opacity = condOp;
+      nrModBox.style.opacity = document.getElementById('nrAddMod').style.opacity = condOp;
     }
     document.querySelectorAll('input[name=nrtm]').forEach(r => r.addEventListener('change', () => setTrigMode(r.value)));
     function collectTrigger() {
       const mode = (document.querySelector('input[name=nrtm]:checked') || {}).value || 'immediate';
-      if (mode === 'date') return { mode, month: Number(document.getElementById('nr-tmonth').value) || 1, year: Number(document.getElementById('nr-tyear').value) || null };
-      if (mode === 'stats') {
+      const after = document.getElementById('nr-after').value || null;   // prerequisite narrative (composes with the mode)
+      let t;
+      if (mode === 'date') t = { mode, month: Number(document.getElementById('nr-tmonth').value) || 1, year: Number(document.getElementById('nr-tyear').value) || null };
+      else if (mode === 'stats') {
         const stats = [];
         nrStatBox.querySelectorAll('.nrstat').forEach(r => {
           const v = r.querySelector('.nrst-val').value.trim();
           if (v !== '') stats.push({ stat: r.querySelector('.nrst-stat').value, value: Number(v), dir: r.querySelector('.nrst-dir').value === 'or lower' ? 'lower' : 'higher' });
         });
-        return { mode, stats };
-      }
-      return { mode: 'immediate' };
+        const modifiers = [];
+        nrModBox.querySelectorAll('.nrmod').forEach(r => {
+          const id = r.querySelector('.nrmd-id').value;
+          if (id) modifiers.push({ modifier: id, state: r.querySelector('.nrmd-state').value === 'Not Active' ? 'inactive' : 'active' });
+        });
+        t = { mode, stats };
+        if (modifiers.length) t.modifiers = modifiers;
+      } else t = { mode: 'immediate' };
+      if (after) t.after = after;
+      return t;
     }
     function setTrigger(t) {
       t = t || {}; const mode = t.mode || 'immediate';
       document.getElementById('nr-tmonth').value = t.month || 1;
       document.getElementById('nr-tyear').value = t.year != null ? t.year : '';
       nrStatBox.innerHTML = ''; (t.stats || []).forEach(addStatTrig);
+      nrModBox.innerHTML = ''; (t.modifiers || []).forEach(addModTrig);
+      populateAfterOptions(t.after || '');
       setTrigMode(mode);
     }
 
@@ -1805,11 +1847,21 @@
       } catch (e) { nrPersSel.innerHTML = '<option value="">— No specific personality —</option>'; }
     }
     nrNatSel.addEventListener('change', () => loadNarrativePersonalities(nrNatSel.value));
+    // Other narratives, for the "After this narrative has fired" prerequisite dropdown (excludes self).
+    let NARR_OPTS = [];
+    function populateAfterOptions(selectedId) {
+      const sel = document.getElementById('nr-after');
+      const list = NARR_OPTS.filter(n => n.id !== editingNarId);   // can't depend on itself
+      sel.innerHTML = '<option value="">— None (no prerequisite) —</option>' +
+        list.map(n => '<option value="' + esc(n.id) + '"' + (n.id === selectedId ? ' selected' : '') + '>' + esc(n.name || 'Untitled') + '</option>').join('');
+    }
     async function loadNarrativeRefs() {
       const rows = await loadNationOptions(nrNatSel, { global: true });   // shared nation-options source
       narNatNames = {}; rows.forEach(n => { narNatNames[n.id] = n.name; });
       await loadModifierOptions();   // refresh the Modifier effect target with any newly-authored modifiers
       await loadNarrativePersonalities(nrNatSel.value);   // personalities for the initially-selected nation
+      // NARR_OPTS (the "after" prerequisite dropdown) is populated by loadNarrativeList — the one place that
+      // already fetches the narratives — so there's a single narratives query per tab load, not two.
     }
 
     // ---- Launch a Narrative to one player (interim World-Master tool) ----
@@ -1944,6 +1996,8 @@
         const { data, error } = await supabase.from('nationverse_narratives').select('*').order('priority', { ascending: false });
         if (error) throw error;
         const rows = data || [];
+        NARR_OPTS = rows.map(n => ({ id: n.id, name: n.name }));   // one source for the "after" prerequisite dropdown
+        populateAfterOptions(document.getElementById('nr-after').value);
         if (!rows.length) { narListBox.innerHTML = '<div class="empty">No narratives yet — create one below.</div>'; return; }
         narListBox.innerHTML = rows.map(n => {
           const scope = n.nation_id ? esc(narNatNames[n.nation_id] || 'Nation') : 'Global';
