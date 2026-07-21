@@ -386,9 +386,11 @@
             <label class="nrtm"><input type="radio" name="nrtm" value="immediate" checked> Immediately</label>
             <label class="nrtm"><input type="radio" name="nrtm" value="date"> On date:
               <select id="nr-tmonth"></select> <input id="nr-tyear" type="number" placeholder="Year" style="max-width:110px"></label>
-            <label class="nrtm"><input type="radio" name="nrtm" value="stats"> When these stat conditions are met <span class="hint">all must hold</span></label>
+            <label class="nrtm"><input type="radio" name="nrtm" value="stats"> When these conditions are met <span class="hint">all must hold · stats and/or modifiers</span></label>
             <div id="nrStatTrigs" style="margin-top:6px"></div>
             <button class="btn btn-ghost" id="nrAddStat" type="button" style="margin-top:4px">+ Add Stat Condition</button>
+            <div id="nrModTrigs" style="margin-top:6px"></div>
+            <button class="btn btn-ghost" id="nrAddMod" type="button" style="margin-top:4px">+ Add Modifier Condition</button>
             <label class="nrtm" style="margin-top:10px;display:block">After this narrative has fired <span class="hint">optional · won't launch until the chosen event is completed — keeps a sequence in order</span></label>
             <select id="nr-after" style="max-width:340px"></select>
           </div>
@@ -1626,10 +1628,28 @@
     function addStatTrig(c) { nrStatBox.insertAdjacentHTML('beforeend', statTrigRowHTML(c)); }
     nrStatBox.addEventListener('click', e => { if (e.target.classList.contains('nrst-del')) e.target.closest('.nrstat').remove(); });
     document.getElementById('nrAddStat').addEventListener('click', () => { setTrigMode('stats'); addStatTrig(); });
+    // Modifier conditions ("IF <Modifier> is Active / Not Active") — reuse MOD_OPTS (one source).
+    const nrModBox = document.getElementById('nrModTrigs');
+    function modTrigRowHTML(c) {
+      c = c || {};
+      const modOpts = MOD_OPTS.length
+        ? MOD_OPTS.map(m => '<option value="' + esc(m.id) + '"' + (m.id === c.modifier ? ' selected' : '') + '>' + esc(m.name || 'Untitled') + '</option>').join('')
+        : '<option value="">No modifiers yet — create one first</option>';
+      return '<div class="effrow2 nrmod"><div class="effrow2-hd"><span></span><button class="del nrmd-del" type="button">Remove</button></div>' +
+        '<div class="effgrid" style="align-items:end">' +
+          '<div class="fld wide"><label>Modifier</label><select class="nrmd-id">' + modOpts + '</select></div>' +
+          '<div class="fld"><label>State</label><select class="nrmd-state">' + opts(['Active', 'Not Active'], c.state === 'inactive' ? 'Not Active' : 'Active') + '</select></div>' +
+        '</div></div>';
+    }
+    function addModTrig(c) { nrModBox.insertAdjacentHTML('beforeend', modTrigRowHTML(c)); }
+    nrModBox.addEventListener('click', e => { if (e.target.classList.contains('nrmd-del')) e.target.closest('.nrmod').remove(); });
+    document.getElementById('nrAddMod').addEventListener('click', () => { setTrigMode('stats'); addModTrig(); });
     function setTrigMode(mode) {
       const r = document.querySelector('input[name=nrtm][value=' + mode + ']'); if (r) r.checked = true;
       nrDateRow.style.opacity = mode === 'date' ? '1' : '.5';
-      nrStatBox.style.opacity = document.getElementById('nrAddStat').style.opacity = mode === 'stats' ? '1' : '.5';
+      const condOp = mode === 'stats' ? '1' : '.5';
+      nrStatBox.style.opacity = document.getElementById('nrAddStat').style.opacity = condOp;
+      nrModBox.style.opacity = document.getElementById('nrAddMod').style.opacity = condOp;
     }
     document.querySelectorAll('input[name=nrtm]').forEach(r => r.addEventListener('change', () => setTrigMode(r.value)));
     function collectTrigger() {
@@ -1643,7 +1663,13 @@
           const v = r.querySelector('.nrst-val').value.trim();
           if (v !== '') stats.push({ stat: r.querySelector('.nrst-stat').value, value: Number(v), dir: r.querySelector('.nrst-dir').value === 'or lower' ? 'lower' : 'higher' });
         });
+        const modifiers = [];
+        nrModBox.querySelectorAll('.nrmod').forEach(r => {
+          const id = r.querySelector('.nrmd-id').value;
+          if (id) modifiers.push({ modifier: id, state: r.querySelector('.nrmd-state').value === 'Not Active' ? 'inactive' : 'active' });
+        });
         t = { mode, stats };
+        if (modifiers.length) t.modifiers = modifiers;
       } else t = { mode: 'immediate' };
       if (after) t.after = after;
       return t;
@@ -1653,6 +1679,7 @@
       document.getElementById('nr-tmonth').value = t.month || 1;
       document.getElementById('nr-tyear').value = t.year != null ? t.year : '';
       nrStatBox.innerHTML = ''; (t.stats || []).forEach(addStatTrig);
+      nrModBox.innerHTML = ''; (t.modifiers || []).forEach(addModTrig);
       populateAfterOptions(t.after || '');
       setTrigMode(mode);
     }
