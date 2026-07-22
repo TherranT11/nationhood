@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kingdoms — UI Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Alegreya:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0d0e11;          /* page background — cold near-black */
+    --steel: #1a1d24;        /* raised panels */
+    --steel-edge: #2e333f;   /* panel borders / hairlines */
+    --bone: #d8d2c4;         /* primary text */
+    --bone-dim: #8f8a7e;     /* secondary text */
+    --gold: #b99653;         /* interactive accent — tarnished gold */
+    --gold-bright: #d9b56a;  /* accent hover */
+    --blood: #7a2e2a;        /* danger accent */
+    --blood-bright: #9c3c36;
+    --display: 'Cinzel', serif;
+    --body: 'Alegreya', serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--ink);
+    color: var(--bone);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+
+  /* ---- ambient background: vignette + slow drifting glow ---- */
+  .atmosphere {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 30%, rgba(185,150,83,0.06), transparent 70%),
+      radial-gradient(ellipse 120% 90% at 50% 110%, rgba(0,0,0,0.85), transparent 60%);
+    z-index: 0;
+  }
+  .ember {
+    position: fixed;
+    top: 20%;
+    left: 50%;
+    width: 60vmin;
+    height: 60vmin;
+    transform: translateX(-50%);
+    background: radial-gradient(circle, rgba(185,150,83,0.05), transparent 60%);
+    animation: breathe 9s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 0;
+  }
+  @keyframes breathe {
+    0%, 100% { opacity: 0.6; transform: translateX(-50%) scale(1); }
+    50%      { opacity: 1;   transform: translateX(-50%) scale(1.12); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ember { animation: none; }
+    * { transition: none !important; }
+  }
+
+  /* ---- screen management ---- */
+  .screen {
+    position: fixed;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    z-index: 1;
+    overflow-y: auto;
+  }
+  .screen.active { display: flex; }
+
+  /* ---- sigil (invented heraldic mark) ---- */
+  .sigil { display: block; margin: 0 auto 1.5rem; opacity: 0.9; }
+
+  /* ---- title block ---- */
+  .wordmark {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(3rem, 9vw, 5.5rem);
+    letter-spacing: 0.28em;
+    text-indent: 0.28em; /* recenters tracked-out caps */
+    color: var(--bone);
+    text-align: center;
+    line-height: 1.1;
+  }
+  .tagline {
+    font-style: italic;
+    color: var(--bone-dim);
+    text-align: center;
+    max-width: 34ch;
+    margin: 0.75rem auto 0;
+  }
+  .rule {
+    width: 220px;
+    height: 1px;
+    margin: 1.75rem auto;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    position: relative;
+  }
+  .rule::after {
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 7px; height: 7px;
+    transform: translate(-50%, -50%) rotate(45deg);
+    background: var(--gold);
+  }
+  .world-status {
+    font-family: var(--display);
+    font-size: 0.72rem;
+    font-weight: 400;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+    text-align: center;
+    margin-bottom: 3rem;
+  }
+  .world-status .lit { color: var(--gold); }
+
+  /* ---- banner-cut buttons: the signature element ---- */
+  .menu { display: flex; flex-direction: column; gap: 1rem; align-items: center; }
+
+  .btn {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 0.95rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--bone);
+    background: var(--steel);
+    border: none;
+    cursor: pointer;
+    width: 320px;
+    max-width: 82vw;
+    padding: 1.05rem 2rem;
+    clip-path: polygon(16px 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 16px 100%, 0 50%);
+    position: relative;
+    transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+  }
+  .btn:hover, .btn:focus-visible { background: #22262f; transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+  .btn-primary { background: var(--gold); color: #16130b; }
+  .btn-primary:hover, .btn-primary:focus-visible { background: var(--gold-bright); }
+
+  .btn-danger { color: #c9a09b; }
+  .btn-danger:hover, .btn-danger:focus-visible { background: var(--blood); color: var(--bone); }
+
+  .btn-small { width: auto; min-width: 180px; font-size: 0.8rem; padding: 0.8rem 2.2rem; }
+
+  /* ---- generic panel screens (settings, join, login) ---- */
+  .panel {
+    width: min(560px, 94vw);
+    background: var(--steel);
+    border: 1px solid var(--steel-edge);
+    padding: 2.5rem 2.75rem 2.75rem;
+    position: relative;
+    z-index: 1;
+  }
+  .panel::before, .panel::after {
+    content: "";
+    position: absolute;
+    width: 14px; height: 14px;
+    border: 1px solid var(--gold);
+    opacity: 0.55;
+  }
+  .panel::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+  .panel::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+  .panel-title {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 1.35rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 0.4rem;
+  }
+  .panel-sub {
+    text-align: center;
+    color: var(--bone-dim);
+    font-style: italic;
+    margin-bottom: 2rem;
+  }
+
+  /* ---- settings rows ---- */
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding: 0.9rem 0;
+    border-bottom: 1px solid var(--steel-edge);
+  }
+  .setting-row:last-of-type { border-bottom: none; }
+  .setting-label { color: var(--bone); }
+  .setting-note { display: block; font-size: 0.82rem; color: var(--bone-dim); font-style: italic; }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 150px;
+    height: 2px;
+    background: var(--steel-edge);
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px; height: 12px;
+    background: var(--gold);
+    transform: rotate(45deg);
+    cursor: pointer;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 12px; height: 12px;
+    background: var(--gold);
+    border: none;
+    transform: rotate(45deg);
+    cursor: pointer;
+  }
+  input[type="range"]:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
+
+  .toggle {
+    width: 46px; height: 24px;
+    background: var(--steel-edge);
+    border: 1px solid #3a4050;
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: background 0.2s ease;
+  }
+  .toggle::after {
+    content: "";
+    position: absolute;
+    top: 4px; left: 4px;
+    width: 14px; height: 14px;
+    background: var(--bone-dim);
+    transition: transform 0.2s ease, background 0.2s ease;
+  }
+  .toggle[aria-pressed="true"] { background: #3d3212; }
+  .toggle[aria-pressed="true"]::after { transform: translateX(22px); background: var(--gold); }
+  .toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+  select {
+    font-family: var(--body);
+    font-size: 0.95rem;
+    color: var(--bone);
+    background: var(--ink);
+    border: 1px solid var(--steel-edge);
+    padding: 0.45rem 0.75rem;
+    cursor: pointer;
+  }
+  select:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  .panel-actions {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 2.25rem;
+    flex-wrap: wrap;
+  }
+
+  /* ---- leader selection ---- */
+  .leader-list { display: flex; flex-direction: column; gap: 0.85rem; }
+  .leader-card {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+    width: 100%;
+    text-align: left;
+    background: var(--ink);
+    border: 1px solid var(--steel-edge);
+    padding: 1rem 1.25rem;
+    cursor: pointer;
+    font-family: var(--body);
+    color: var(--bone);
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+  .leader-card:hover, .leader-card:focus-visible { border-color: var(--gold); background: #121419; }
+  .leader-card:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .leader-shield {
+    width: 44px; height: 50px;
+    flex-shrink: 0;
+    clip-path: polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 1.1rem;
+  }
+  .leader-name { font-family: var(--display); font-weight: 600; font-size: 1rem; letter-spacing: 0.08em; }
+  .leader-meta { font-size: 0.85rem; color: var(--bone-dim); font-style: italic; }
+  .leader-card.new-leader { border-style: dashed; justify-content: center; color: var(--bone-dim); }
+  .leader-card.new-leader:hover, .leader-card.new-leader:focus-visible { color: var(--gold); }
+
+  /* ---- heritage selection (lord setup) ---- */
+  .heritage-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+  }
+  .heritage-card {
+    text-align: left;
+    background: var(--ink);
+    border: 1px solid var(--steel-edge);
+    padding: 1.2rem 1.3rem 1.1rem;
+    cursor: pointer;
+    font-family: var(--body);
+    color: var(--bone);
+    position: relative;
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+  .heritage-card:hover, .heritage-card:focus-visible { border-color: var(--gold); background: #121419; }
+  .heritage-card:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .heritage-card.selected { border-color: var(--gold); background: #15130c; }
+  .heritage-card.selected::after {
+    content: "";
+    position: absolute;
+    top: 8px; right: 8px;
+    width: 8px; height: 8px;
+    transform: rotate(45deg);
+    background: var(--gold);
+  }
+  .heritage-card.locked {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .heritage-card.locked:hover { border-color: var(--steel-edge); background: var(--ink); }
+  .locked-tag {
+    font-family: var(--display);
+    font-size: 0.62rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+  }
+  .heritage-head {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    margin-bottom: 0.7rem;
+  }
+  .heritage-name { font-family: var(--display); font-weight: 600; font-size: 0.98rem; letter-spacing: 0.06em; line-height: 1.3; }
+  .heritage-demonym { font-size: 0.83rem; color: var(--bone-dim); font-style: italic; }
+  .heritage-desc { font-size: 0.9rem; color: var(--bone); line-height: 1.55; margin-bottom: 0.8rem; }
+  .heritage-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+    border-top: 1px solid var(--steel-edge);
+    padding-top: 0.65rem;
+    flex-wrap: wrap;
+  }
+  .heritage-analog {
+    font-family: var(--display);
+    font-size: 0.62rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+  }
+  .heritage-players { font-size: 0.83rem; color: var(--gold); }
+  .setup-hint { text-align: center; color: var(--bone-dim); font-style: italic; font-size: 0.9rem; margin-top: 1.25rem; min-height: 1.4em; }
+
+  /* ---- house setup ---- */
+  .house-name-row { display: flex; gap: 0.75rem; align-items: stretch; margin-bottom: 2rem; }
+  .house-name-row input {
+    flex: 1;
+    font-family: var(--display);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    font-size: 1.05rem;
+    color: var(--bone);
+    background: var(--ink);
+    border: 1px solid var(--steel-edge);
+    padding: 0.7rem 1rem;
+    min-width: 0;
+  }
+  .house-name-row input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .btn-randomize {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold);
+    background: var(--steel);
+    border: 1px solid var(--steel-edge);
+    padding: 0 1.1rem;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease;
+  }
+  .btn-randomize:hover, .btn-randomize:focus-visible { border-color: var(--gold); color: var(--gold-bright); }
+  .btn-randomize:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  .priority-note { text-align: center; color: var(--bone-dim); font-style: italic; font-size: 0.9rem; margin-bottom: 1.25rem; }
+  .attr-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 0.9rem;
+  }
+  .attr-card {
+    text-align: left;
+    background: var(--ink);
+    border: 1px solid var(--steel-edge);
+    padding: 1rem 1.1rem;
+    cursor: pointer;
+    font-family: var(--body);
+    color: var(--bone);
+    position: relative;
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+  .attr-card:hover, .attr-card:focus-visible { border-color: var(--gold); background: #121419; }
+  .attr-card:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .attr-card.ranked { border-color: var(--gold); background: #15130c; }
+  .attr-name {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 0.88rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 0.35rem;
+    padding-right: 2rem;
+  }
+  .attr-desc { font-size: 0.86rem; color: var(--bone-dim); line-height: 1.5; }
+  .rank-badge {
+    position: absolute;
+    top: 0.7rem; right: 0.8rem;
+    width: 24px; height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #16130b;
+    background: var(--gold);
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .attr-card.ranked .rank-badge { opacity: 1; }
+
+  /* ---- login stub ---- */
+  .field { margin-bottom: 1.25rem; }
+  .field label {
+    display: block;
+    font-family: var(--display);
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+    margin-bottom: 0.4rem;
+  }
+  .field input {
+    width: 100%;
+    font-family: var(--body);
+    font-size: 1rem;
+    color: var(--bone);
+    background: var(--ink);
+    border: 1px solid var(--steel-edge);
+    padding: 0.7rem 0.9rem;
+  }
+  .field input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  /* ---- logout modal ---- */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(6,7,9,0.75);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    width: min(420px, 90vw);
+    background: var(--steel);
+    border: 1px solid var(--blood);
+    padding: 2.25rem 2.5rem;
+    text-align: center;
+  }
+  .modal .panel-title { font-size: 1.1rem; }
+
+  /* ---- transitions between screens ---- */
+  .screen.active > * { animation: rise 0.45s ease both; }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .footnote {
+    position: fixed;
+    bottom: 1rem;
+    left: 0; right: 0;
+    text-align: center;
+    font-size: 0.72rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-family: var(--display);
+    color: #4a4a44;
+    z-index: 1;
+  }
+</style>
+</head>
+<body>
+
+<div class="atmosphere" aria-hidden="true"></div>
+<div class="ember" aria-hidden="true"></div>
+
+<!-- ============ HOME ============ -->
+<section class="screen active" id="screen-home" aria-label="Home">
+  <div>
+    <svg class="sigil" width="72" height="84" viewBox="0 0 72 84" aria-hidden="true">
+      <polygon points="36,2 70,16 70,52 36,82 2,52 2,16" fill="none" stroke="#b99653" stroke-width="1.5"/>
+      <polygon points="36,14 58,23 58,48 36,68 14,48 14,23" fill="none" stroke="#b99653" stroke-width="0.75" opacity="0.5"/>
+      <path d="M36 26 L44 42 L36 58 L28 42 Z" fill="#b99653"/>
+    </svg>
+    <h1 class="wordmark">Kingdoms</h1>
+    <p class="tagline">An online, persistent multiplayer game about the rise and fall of kingdoms.</p>
+    <div class="rule" aria-hidden="true"></div>
+    <p class="world-status">The world of <span class="lit">Vael</span> &middot; Year 312 &middot; <span class="lit">1,204</span> leaders online</p>
+    <nav class="menu" aria-label="Main menu">
+      <button class="btn btn-primary" onclick="joinWorld()">Join the World</button>
+      <button class="btn" onclick="go('screen-settings')">Settings</button>
+      <button class="btn btn-danger" onclick="openLogout()">Logout</button>
+    </nav>
+  </div>
+</section>
+
+<!-- ============ JOIN THE WORLD ============ -->
+<section class="screen" id="screen-join" aria-label="Join the world">
+  <div class="panel">
+    <h2 class="panel-title">Choose Your Leader</h2>
+    <p class="panel-sub">Who will answer the call this day?</p>
+    <div class="leader-list">
+      <button class="leader-card" onclick="alert('This would load into the world as Maerwen — gameplay screen to be designed next.')">
+        <span class="leader-shield" style="background:#2c3a55; color:#9db4e0;">M</span>
+        <span>
+          <span class="leader-name">Maerwen of the Hollow Coast</span><br>
+          <span class="leader-meta">Baroness &middot; 340 followers &middot; at peace</span>
+        </span>
+      </button>
+      <button class="leader-card" onclick="alert('This would load into the world as Dherak — gameplay screen to be designed next.')">
+        <span class="leader-shield" style="background:#4a2a2a; color:#d99a90;">D</span>
+        <span>
+          <span class="leader-name">Dherak the Unpaid</span><br>
+          <span class="leader-meta">Sellsword &middot; 12 followers &middot; at war</span>
+        </span>
+      </button>
+      <button class="leader-card new-leader" onclick="go('screen-lord-setup')">
+        + Forge a new leader
+      </button>
+    </div>
+    <div class="panel-actions">
+      <button class="btn btn-small" onclick="go('screen-home')">Back</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LORD SETUP: HERITAGE ============ -->
+<section class="screen" id="screen-lord-setup" aria-label="Lord setup">
+  <div class="panel" style="width:min(760px,94vw);">
+    <h2 class="panel-title">Lord Setup</h2>
+    <p class="panel-sub">Choose the heritage of your character.</p>
+
+    <div class="heritage-grid" role="radiogroup" aria-label="Heritage">
+      <button class="heritage-card" role="radio" aria-checked="false" data-heritage="Aldric" onclick="chooseAldren(this)">
+        <span class="heritage-head">
+          <span class="leader-shield" style="background:#2c3a55; color:#9db4e0;">A</span>
+          <span>
+            <span class="heritage-name">Kingdom of Aldren</span><br>
+            <span class="heritage-demonym">the Aldric</span>
+          </span>
+        </span>
+        <span class="heritage-desc">A realm of oaths and stone. Aldric lords rule from keep and cathedral, bound by charter and wardship, and settle their quarrels with heavy horse and heavier law.</span>
+        <span class="heritage-foot">
+          <span class="heritage-analog">Analogous: Anglo-Norman / Britannic</span>
+          <span class="heritage-players">431 active lords</span>
+        </span>
+      </button>
+
+      <button class="heritage-card locked" disabled aria-disabled="true" data-heritage="Skjornic">
+        <span class="heritage-head">
+          <span class="leader-shield" style="background:#24424a; color:#93c4cf;">S</span>
+          <span>
+            <span class="heritage-name">Jarldoms of Skjorn</span><br>
+            <span class="heritage-demonym">the Skjornic</span>
+          </span>
+        </span>
+        <span class="heritage-desc">Sea-split jarldoms where renown is the only lasting coin. Skjornic captains raid far coasts in shallow ships, and answer to no crown &mdash; only to the assembly and the feud.</span>
+        <span class="heritage-foot">
+          <span class="heritage-analog">Analogous: Norse / Viking</span>
+          <span class="heritage-players">356 active lords</span>
+        </span>
+      </button>
+
+      <button class="heritage-card locked" disabled aria-disabled="true" data-heritage="Orduun">
+        <span class="heritage-head">
+          <span class="leader-shield" style="background:#553a1f; color:#dcb27e;">O</span>
+          <span>
+            <span class="heritage-name">Khaganate of Orduun</span><br>
+            <span class="heritage-demonym">the Orduun</span>
+          </span>
+        </span>
+        <span class="heritage-desc">Lords of the open grass, sworn beneath the endless sky. Orduun hosts ride where walls cannot follow, and a khagan's word travels faster than any army sent to test it.</span>
+        <span class="heritage-foot">
+          <span class="heritage-analog">Analogous: Mongol / Steppe</span>
+          <span class="heritage-players">247 active lords</span>
+        </span>
+      </button>
+
+      <button class="heritage-card locked" disabled aria-disabled="true" data-heritage="Varosi">
+        <span class="heritage-head">
+          <span class="leader-shield" style="background:#2f4630; color:#a4cba0;">V</span>
+          <span>
+            <span class="heritage-name">Kingdom of Varos</span><br>
+            <span class="heritage-demonym">the Varosi</span>
+          </span>
+        </span>
+        <span class="heritage-desc">A crowned frontier between mountain and plain. Varosi nobles guard the passes with swift riders and shrewd marriages, holding the border where older empires broke.</span>
+        <span class="heritage-foot">
+          <span class="heritage-analog">Analogous: Hungarian / Carpathian</span>
+          <span class="heritage-players">302 active lords</span>
+        </span>
+      </button>
+    </div>
+
+    <p class="setup-hint" id="setup-hint"></p>
+
+    <div class="panel-actions" style="margin-top:1rem;">
+      <button class="btn btn-small" onclick="go('screen-home')">Back</button>
+      <button class="btn btn-small btn-primary" onclick="nextFromHeritage()">Next</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LORD SETUP: HOUSE ============ -->
+<section class="screen" id="screen-house-setup" aria-label="House setup">
+  <div class="panel" style="width:min(760px,94vw);">
+    <h2 class="panel-title">Found Your House</h2>
+    <p class="panel-sub">An Aldric house rises. Give it a name, and choose what it holds dear.</p>
+
+    <div class="house-name-row">
+      <input type="text" id="house-name" placeholder="Name of House" aria-label="Name of house">
+      <button class="btn-randomize" onclick="randomHouseName()">Randomize</button>
+    </div>
+
+    <p class="priority-note">Priority &mdash; click one to give it priority #1, then click the next to give it priority #2. Click again to unrank.</p>
+
+    <div class="attr-grid">
+      <button class="attr-card" data-attr="Wealth" onclick="togglePriority(this)">
+        <span class="rank-badge" aria-hidden="true"></span>
+        <span class="attr-name">Wealth</span>
+        <span class="attr-desc">Coin in the coffers. Begin with a fuller treasury, standing trade, and creditors who return your letters.</span>
+      </button>
+      <button class="attr-card" data-attr="Land" onclick="togglePriority(this)">
+        <span class="rank-badge" aria-hidden="true"></span>
+        <span class="attr-name">Land</span>
+        <span class="attr-desc">Acres under your seal. Begin with broader estates and the rents, timber, and harvests they yield.</span>
+      </button>
+      <button class="attr-card" data-attr="People" onclick="togglePriority(this)">
+        <span class="rank-badge" aria-hidden="true"></span>
+        <span class="attr-name">People</span>
+        <span class="attr-desc">Hands and hearts sworn to you. Begin with more followers, and a household that holds through hard seasons.</span>
+      </button>
+      <button class="attr-card" data-attr="Ambition" onclick="togglePriority(this)">
+        <span class="rank-badge" aria-hidden="true"></span>
+        <span class="attr-name">Ambition</span>
+        <span class="attr-desc">A name meant to rise. Begin with claims, useful connections, and the ear of greater courts.</span>
+      </button>
+      <button class="attr-card" data-attr="Administration" onclick="togglePriority(this)">
+        <span class="rank-badge" aria-hidden="true"></span>
+        <span class="attr-name">Administration</span>
+        <span class="attr-desc">Order in the ledgers. Begin with abler stewards, cleaner taxes, and less lost to rot and graft.</span>
+      </button>
+      <button class="attr-card" data-attr="Prowess" onclick="togglePriority(this)">
+        <span class="rank-badge" aria-hidden="true"></span>
+        <span class="attr-name">Prowess</span>
+        <span class="attr-desc">Steel and the skill to use it. Begin with seasoned men-at-arms and a name that carries in the field.</span>
+      </button>
+    </div>
+
+    <p class="setup-hint" id="house-hint"></p>
+
+    <div class="panel-actions" style="margin-top:1rem;">
+      <button class="btn btn-small" onclick="go('screen-lord-setup')">Back</button>
+      <button class="btn btn-small btn-primary" onclick="nextFromHouse()">Next</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SETTINGS ============ -->
+<section class="screen" id="screen-settings" aria-label="Settings">
+  <div class="panel">
+    <h2 class="panel-title">Settings</h2>
+    <p class="panel-sub">Attend to the affairs of the realm.</p>
+
+    <div class="setting-row">
+      <span class="setting-label">Music volume</span>
+      <input type="range" min="0" max="100" value="70" aria-label="Music volume">
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">Effects volume</span>
+      <input type="range" min="0" max="100" value="85" aria-label="Effects volume">
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">Graphics quality</span>
+      <select aria-label="Graphics quality">
+        <option>Low</option>
+        <option selected>High</option>
+        <option>Highest</option>
+      </select>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">War notifications
+        <span class="setting-note">Be warned when your lands are attacked</span>
+      </span>
+      <button class="toggle" aria-pressed="true" aria-label="War notifications" onclick="flip(this)"></button>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">Envoy notifications
+        <span class="setting-note">Be told of alliance offers and messages</span>
+      </span>
+      <button class="toggle" aria-pressed="true" aria-label="Envoy notifications" onclick="flip(this)"></button>
+    </div>
+
+    <div class="panel-actions">
+      <button class="btn btn-small btn-primary" onclick="go('screen-home')">Save</button>
+      <button class="btn btn-small" onclick="go('screen-home')">Back</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LOGIN (post-logout) ============ -->
+<section class="screen" id="screen-login" aria-label="Login">
+  <div class="panel" style="width:min(440px,94vw);">
+    <h2 class="panel-title">Return to the Realm</h2>
+    <p class="panel-sub">The world of Vael turns without you.</p>
+    <div class="field">
+      <label for="login-name">Name</label>
+      <input id="login-name" type="text" autocomplete="username">
+    </div>
+    <div class="field">
+      <label for="login-pass">Password</label>
+      <input id="login-pass" type="password" autocomplete="current-password">
+    </div>
+    <div class="panel-actions">
+      <button class="btn btn-small btn-primary" onclick="go('screen-home')">Enter</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LOGOUT CONFIRM MODAL ============ -->
+<div class="modal-backdrop" id="logout-modal" role="dialog" aria-modal="true" aria-labelledby="logout-title">
+  <div class="modal">
+    <h2 class="panel-title" id="logout-title">Depart?</h2>
+    <p class="panel-sub" style="margin-bottom:1.5rem;">Your kingdom will endure in your absence &mdash; the world is persistent.</p>
+    <div class="panel-actions" style="margin-top:0;">
+      <button class="btn btn-small btn-danger" onclick="confirmLogout()">Logout</button>
+      <button class="btn btn-small" onclick="closeLogout()">Stay</button>
+    </div>
+  </div>
+</div>
+
+<p class="footnote">Kingdoms &middot; UI mockup</p>
+
+<script>
+  var hasActiveLord = false;
+  var selectedHeritage = null;
+
+  var heritageLines = {
+    'Aldric':   'The banners of Aldren stir. The chancery prepares your charter.',
+    'Skjornic': 'The jarls of Skjorn take notice. A ship waits at the quay.',
+    'Orduun':   'The Orduun hosts part to receive you. The sky is watching.',
+    'Varosi':   'Varos opens the mountain gate. The frontier has need of you.'
+  };
+
+  function go(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  }
+
+  function joinWorld() {
+    go(hasActiveLord ? 'screen-join' : 'screen-lord-setup');
+  }
+
+  function selectHeritage(card) {
+    document.querySelectorAll('.heritage-card').forEach(c => {
+      c.classList.remove('selected');
+      c.setAttribute('aria-checked', 'false');
+    });
+    card.classList.add('selected');
+    card.setAttribute('aria-checked', 'true');
+    selectedHeritage = card.dataset.heritage;
+    document.getElementById('setup-hint').textContent = heritageLines[selectedHeritage];
+  }
+
+  function nextFromHeritage() {
+    if (!selectedHeritage) {
+      document.getElementById('setup-hint').textContent = 'Choose a heritage to continue.';
+      return;
+    }
+    go('screen-house-setup');
+  }
+
+  function chooseAldren(card) {
+    selectHeritage(card);
+    go('screen-house-setup');
+  }
+
+  var houseNames = ['Draymoor', 'Coldbrook', 'Ashvale', 'Bellamont', 'Ombray', 'Ferrant', 'Malverne', 'Vexley', 'Harrowden', 'Crawsley', 'Denholt', 'Rousmont'];
+  function randomHouseName() {
+    var input = document.getElementById('house-name');
+    var pick;
+    do {
+      pick = houseNames[Math.floor(Math.random() * houseNames.length)];
+    } while ('House ' + pick === input.value);
+    input.value = 'House ' + pick;
+  }
+
+  var priorities = [];
+  function togglePriority(card) {
+    var key = card.dataset.attr;
+    var i = priorities.indexOf(key);
+    if (i >= 0) { priorities.splice(i, 1); } else { priorities.push(key); }
+    document.querySelectorAll('.attr-card').forEach(function (c) {
+      var idx = priorities.indexOf(c.dataset.attr);
+      var badge = c.querySelector('.rank-badge');
+      if (idx >= 0) {
+        c.classList.add('ranked');
+        badge.textContent = idx + 1;
+      } else {
+        c.classList.remove('ranked');
+        badge.textContent = '';
+      }
+    });
+    var hint = document.getElementById('house-hint');
+    hint.textContent = priorities.length === 6 ? 'The character of your house is set.' : '';
+  }
+
+  function nextFromHouse() {
+    var name = document.getElementById('house-name').value.trim();
+    if (!name) {
+      document.getElementById('house-hint').textContent = 'Your house must bear a name.';
+      return;
+    }
+    if (priorities.length < 6) {
+      document.getElementById('house-hint').textContent = 'Rank all six priorities to continue.';
+      return;
+    }
+    alert(name + ' is founded.\nPriorities: ' + priorities.join(' > ') + '\n\nNext step of lord setup to be designed.');
+  }
+  function flip(el) {
+    el.setAttribute('aria-pressed', el.getAttribute('aria-pressed') !== 'true');
+  }
+  function openLogout()  { document.getElementById('logout-modal').classList.add('open'); }
+  function closeLogout() { document.getElementById('logout-modal').classList.remove('open'); }
+  function confirmLogout() {
+    closeLogout();
+    go('screen-login');
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeLogout();
+  });
+</script>
+
+</body>
+</html>
