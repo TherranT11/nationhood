@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your House — Kingdoms</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Alegreya:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0d0e11;
+    --steel: #1a1d24;
+    --steel-edge: #2e333f;
+    --bone: #d8d2c4;
+    --bone-dim: #8f8a7e;
+    --gold: #b99653;
+    --display: 'Cinzel', serif;
+    --body: 'Alegreya', serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--ink);
+    color: var(--bone);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.6;
+  }
+
+  /* ---- top bar ---- */
+  .topbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0 1.5rem;
+    background: var(--steel);
+    border-bottom: 1px solid var(--steel-edge);
+    z-index: 10;
+  }
+  .topbar-house {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 0.95rem;
+    letter-spacing: 0.14em;
+    color: var(--bone);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .topbar-house .sep { color: var(--steel-edge); margin: 0 0.7rem; font-weight: 400; }
+  .topbar-house .era { color: var(--bone-dim); letter-spacing: 0.18em; }
+
+  /* ---- blank stage (the house home — UI to come) ---- */
+  .stage { padding-top: 56px; min-height: 100%; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <span class="topbar-house" id="house-label">&hellip;</span>
+</header>
+
+<main class="stage" id="stage"></main>
+
+<script type="module">
+  import { supabase, isConfigured } from '/supabase.js';
+  import { esc, houseLabel } from '/kingdoms.js';   // shared Kingdoms helpers (one source)
+
+  const setBar = house => {
+    document.getElementById('house-label').innerHTML =
+      esc(houseLabel(house)) + '<span class="sep">|</span><span class="era">Year 845 V.E.</span>';
+  };
+
+  (async () => {
+    if (!isConfigured) { setBar('—'); return; }
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      const uid = u && u.user ? u.user.id : null;
+      if (!uid) { window.location.replace('/kingdoms/'); return; }   // must be signed in
+      const { data, error } = await supabase.from('kingdoms_leaders')
+        .select('house_name').eq('user_id', uid)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (error) throw error;
+      if (!data) { window.location.replace('/kingdoms/'); return; }  // no house yet → go found one
+      setBar(data.house_name);
+    } catch (e) { window.location.replace('/kingdoms/'); }
+  })();
+</script>
+
+</body>
+</html>
