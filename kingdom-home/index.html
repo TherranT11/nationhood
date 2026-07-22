@@ -263,6 +263,7 @@
     if (!house) { stage.innerHTML = ''; return; }
     const name = esc(house.leader_name || 'Unknown') + ' of ' + esc(houseLabel(house.house_name));
     const culture = house.heritage === 'Aldren' ? 'Aldric' : esc(house.heritage || '—');
+    const holdings = (house.counties && house.counties.length) ? esc(house.counties.map(c => c.name).join(', ')) : null;
     stage.innerHTML =
       '<div class="home-wrap"><div class="hoh">' +
         '<div class="hoh-title">Head of House</div>' +
@@ -272,7 +273,7 @@
           kvRow('Name', name) +
           kvRow('Age', esc(house.leader_age != null ? house.leader_age : '—')) +
           kvRow('Title', esc(house.leader_title || 'Count')) +
-          kvRow('Holdings', '—', true) +
+          kvRow('Holdings', holdings || '—', !holdings) +
           kvRow('Culture', culture) +
           kvRow('Spouse', '—', true) +
           kvRow('Children', '—', true) +
@@ -337,6 +338,9 @@
       if (error) throw error;
       if (!data) { window.location.replace('/kingdoms/'); return; }  // no house yet → go found one
       house = data;
+      const { data: cs } = await supabase.from('kingdoms_counties')
+        .select('name').eq('held_by', house.id).order('name', { ascending: true });
+      house.counties = cs || [];   // the house's holdings
       setBar(house.house_name);
       setResources(house.resources);
       renderView('home');
