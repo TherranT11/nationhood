@@ -91,8 +91,50 @@
   .topbar-leave:hover, .topbar-leave:focus-visible { border-color: var(--gold); color: var(--gold); }
   .topbar-leave:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
-  /* ---- blank stage (the house home — UI to come) ---- */
-  .stage { padding-top: 56px; min-height: 100%; }
+  /* ---- left sidebar ---- */
+  .sidebar {
+    position: fixed;
+    left: 0; top: 56px; bottom: 0;
+    width: 190px;
+    background: var(--steel);
+    border-right: 1px solid var(--steel-edge);
+    padding: 1rem 0;
+    display: flex;
+    flex-direction: column;
+    z-index: 5;
+  }
+  .nav-item {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 0.78rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    text-align: left;
+    color: var(--bone-dim);
+    background: none;
+    border: none;
+    border-left: 3px solid transparent;
+    padding: 0.85rem 1.5rem;
+    cursor: pointer;
+    transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  }
+  .nav-item:hover { color: var(--bone); }
+  .nav-item.active { color: var(--gold); border-left-color: var(--gold); background: #15130c; }
+  .nav-item:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+
+  /* ---- stage (the selected hall — UI to come) ---- */
+  .stage { margin-left: 190px; padding-top: 56px; min-height: 100vh; }
+  .stage-empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: calc(100vh - 56px);
+    gap: 0.6rem;
+    color: var(--bone-dim);
+  }
+  .stage-empty h2 {
+    font-family: var(--display); font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--bone); font-size: 1.3rem;
+  }
+  .stage-empty p { font-style: italic; }
 </style>
 </head>
 <body>
@@ -102,6 +144,14 @@
   <div class="topbar-res" id="topbar-res"></div>
   <button class="topbar-leave" id="leave-btn" type="button">Leave World</button>
 </header>
+
+<aside class="sidebar" id="sidebar">
+  <button class="nav-item active" data-view="home" type="button">Home</button>
+  <button class="nav-item" data-view="dynasty" type="button">Dynasty</button>
+  <button class="nav-item" data-view="holdings" type="button">Holdings</button>
+  <button class="nav-item" data-view="court" type="button">Court</button>
+  <button class="nav-item" data-view="conflict" type="button">Conflict</button>
+</aside>
 
 <main class="stage" id="stage"></main>
 
@@ -121,6 +171,19 @@
   };
 
   document.getElementById('leave-btn').addEventListener('click', () => { window.location.href = '/kingdoms/'; });
+
+  // Sidebar navigation. Home is the base hall (blank for now); the others are stubs until each is built.
+  const VIEW_TITLES = { home: 'Home', dynasty: 'Dynasty', holdings: 'Holdings', court: 'Court', conflict: 'Conflict' };
+  const renderView = view => {
+    const stage = document.getElementById('stage');
+    stage.innerHTML = view === 'home' ? ''
+      : '<div class="stage-empty"><h2>' + esc(VIEW_TITLES[view] || view) + '</h2><p>This hall is not yet built.</p></div>';
+  };
+  document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderView(btn.dataset.view);
+  }));
 
   (async () => {
     if (!isConfigured) { setBar('—'); return; }
