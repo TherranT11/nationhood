@@ -310,16 +310,13 @@
     if (go) go.addEventListener('click', () => document.querySelector('.nav-item[data-view="holdings"]').click());
   }
 
-  // Holdings container: the house's counties, with the primary estate starred. Land/Population currently
-  // reflect the house's plots/population resources (the primary estate); per-county values come later.
+  // Holdings container: the house's counties (each with its own land/population), primary estate starred.
   function holdingsCard(counties) {
-    const res = house.resources || {};
-    const land = Number(res.plots || 0).toLocaleString();
-    const pop = Number(res.population || 0).toLocaleString();
     const rows = counties.length
       ? counties.map((c, i) =>
           '<tr><td class="hd-name">' + esc(c.name) + (i === 0 ? ' <span class="hd-star">*</span>' : '') + '</td>' +
-          '<td>' + land + '</td><td>' + pop + '</td>' +
+          '<td>' + Number(c.available_land || 0).toLocaleString() + '</td>' +
+          '<td>' + Number(c.population || 0).toLocaleString() + '</td>' +
           '<td>' + (i === 0 ? '<button class="hd-go" id="hd-go" type="button">Go to Holdings</button>' : '') + '</td></tr>').join('')
       : '<tr><td class="hd-name hd-empty" colspan="4">No holdings yet.</td></tr>';
     return '<div class="holdings"><div class="hoh-title">Holdings</div><div class="hd-body">' +
@@ -386,7 +383,7 @@
       if (!data) { window.location.replace('/kingdoms/'); return; }  // no house yet → go found one
       house = data;
       const { data: cs } = await supabase.from('kingdoms_counties')
-        .select('name').eq('held_by', house.id).order('name', { ascending: true });
+        .select('name, available_land, population').eq('held_by', house.id).order('name', { ascending: true });
       house.counties = cs || [];   // the house's holdings
       setBar(house.house_name);
       setResources(house.resources);
