@@ -163,6 +163,27 @@
   .kv-v { text-align: right; color: var(--bone); }
   .kv-v.dim { color: var(--bone-dim); font-style: italic; }
 
+  /* ---- Holdings container ---- */
+  .holdings { flex: 1; min-width: 340px; align-self: flex-start; background: var(--steel); border: 1px solid var(--steel-edge); }
+  .hd-body { padding: 0.3rem 1.1rem 1.1rem; }
+  .hd-table { width: 100%; border-collapse: collapse; }
+  .hd-table th {
+    font-family: var(--display); font-size: 0.6rem; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--bone-dim); font-weight: 600; text-align: right; padding: 0.7rem 0.75rem; border-bottom: 1px solid var(--steel-edge);
+  }
+  .hd-table th.hd-name { text-align: left; }
+  .hd-table td { padding: 0.85rem 0.75rem; border-bottom: 1px solid var(--steel-edge); text-align: right; color: var(--bone); }
+  .hd-table td.hd-name { text-align: left; font-family: var(--display); letter-spacing: 0.04em; }
+  .hd-table tr:last-child td { border-bottom: none; }
+  .hd-star { color: var(--gold); }
+  .hd-go {
+    font-family: var(--display); font-weight: 600; font-size: 0.62rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--bone); background: none; border: 1px solid var(--steel-edge); padding: 0.5rem 0.9rem; cursor: pointer; white-space: nowrap;
+  }
+  .hd-go:hover { border-color: var(--gold); color: var(--gold); }
+  .hd-empty { color: var(--bone-dim); font-style: italic; }
+  .hd-note { color: var(--bone-dim); font-style: italic; font-size: 0.8rem; padding: 0.8rem 0.75rem 0; }
+
   /* ---- banner upload modal ---- */
   .modal-back { position: fixed; inset: 0; background: rgba(6,7,9,0.75); display: none; align-items: center; justify-content: center; z-index: 20; }
   .modal-back.open { display: flex; }
@@ -263,24 +284,50 @@
     if (!house) { stage.innerHTML = ''; return; }
     const name = esc(house.leader_name || 'Unknown') + ' of ' + esc(houseLabel(house.house_name));
     const culture = house.heritage === 'Aldren' ? 'Aldric' : esc(house.heritage || '—');
-    const holdings = (house.counties && house.counties.length) ? esc(house.counties.map(c => c.name).join(', ')) : null;
+    const counties = house.counties || [];
+    const holdings = counties.length ? esc(counties.map(c => c.name).join(', ')) : null;
     stage.innerHTML =
-      '<div class="home-wrap"><div class="hoh">' +
-        '<div class="hoh-title">Head of House</div>' +
-        '<div class="hoh-banner" id="hoh-banner">' + bannerInner() +
-          '<button class="hoh-edit" id="banner-edit" type="button">Edit</button></div>' +
-        '<div class="kv">' +
-          kvRow('Name', name) +
-          kvRow('Age', esc(house.leader_age != null ? house.leader_age : '—')) +
-          kvRow('Title', esc(house.leader_title || 'Count')) +
-          kvRow('Holdings', holdings || '—', !holdings) +
-          kvRow('Culture', culture) +
-          kvRow('Spouse', '—', true) +
-          kvRow('Children', '—', true) +
-          kvRow('Liege', '—', true) +
+      '<div class="home-wrap">' +
+        '<div class="hoh">' +
+          '<div class="hoh-title">Head of House</div>' +
+          '<div class="hoh-banner" id="hoh-banner">' + bannerInner() +
+            '<button class="hoh-edit" id="banner-edit" type="button">Edit</button></div>' +
+          '<div class="kv">' +
+            kvRow('Name', name) +
+            kvRow('Age', esc(house.leader_age != null ? house.leader_age : '—')) +
+            kvRow('Title', esc(house.leader_title || 'Count')) +
+            kvRow('Holdings', holdings || '—', !holdings) +
+            kvRow('Culture', culture) +
+            kvRow('Spouse', '—', true) +
+            kvRow('Children', '—', true) +
+            kvRow('Liege', '—', true) +
+          '</div>' +
         '</div>' +
-      '</div></div>';
+        holdingsCard(counties) +
+      '</div>';
     document.getElementById('banner-edit').addEventListener('click', openBanner);
+    const go = document.getElementById('hd-go');
+    if (go) go.addEventListener('click', () => document.querySelector('.nav-item[data-view="holdings"]').click());
+  }
+
+  // Holdings container: the house's counties, with the primary estate starred. Land/Population currently
+  // reflect the house's plots/population resources (the primary estate); per-county values come later.
+  function holdingsCard(counties) {
+    const res = house.resources || {};
+    const land = Number(res.plots || 0).toLocaleString();
+    const pop = Number(res.population || 0).toLocaleString();
+    const rows = counties.length
+      ? counties.map((c, i) =>
+          '<tr><td class="hd-name">' + esc(c.name) + (i === 0 ? ' <span class="hd-star">*</span>' : '') + '</td>' +
+          '<td>' + land + '</td><td>' + pop + '</td>' +
+          '<td>' + (i === 0 ? '<button class="hd-go" id="hd-go" type="button">Go to Holdings</button>' : '') + '</td></tr>').join('')
+      : '<tr><td class="hd-name hd-empty" colspan="4">No holdings yet.</td></tr>';
+    return '<div class="holdings"><div class="hoh-title">Holdings</div><div class="hd-body">' +
+      '<table class="hd-table"><thead><tr>' +
+        '<th class="hd-name">Name</th><th>Available Land</th><th>Population</th><th></th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>' +
+      (counties.length ? '<p class="hd-note">* Primary Estate</p>' : '') +
+    '</div></div>';
   }
 
   // ---- banner upload modal ----
