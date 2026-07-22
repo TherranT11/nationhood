@@ -779,8 +779,7 @@
 
 <script type="module">
   import { supabase, isConfigured } from '/supabase.js';
-
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  import { esc, houseLabel } from '/kingdoms.js';   // shared Kingdoms helpers (one source)
 
   let currentUser = null;          // the signed-in account (null = not logged in)
   let selectedHeritage = null;
@@ -801,9 +800,6 @@
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById(id).classList.add('active');
   }
-
-  // Normalize a house name to "House X" (the top bar + review show it the same way; one source per page).
-  const houseLabel = name => 'House ' + String(name || '').replace(/^\s*House\s+/i, '').trim();
 
   // Join → sign in if needed, then Review your house (or Lord Setup if you have none).
   async function joinWorld() {

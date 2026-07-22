@@ -68,9 +68,8 @@
 
 <script type="module">
   import { supabase, isConfigured } from '/supabase.js';
+  import { esc, houseLabel } from '/kingdoms.js';   // shared Kingdoms helpers (one source)
 
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const houseLabel = name => 'House ' + String(name || '').replace(/^\s*House\s+/i, '').trim();
   const setBar = house => {
     document.getElementById('house-label').innerHTML =
       esc(houseLabel(house)) + '<span class="sep">|</span><span class="era">Year 845 V.E.</span>';
