@@ -13,7 +13,7 @@ export const houseLabel = name => 'House ' + String(name || '').replace(/^\s*Hou
 // (kingdoms_starting_resources) and stored on the house's `resources` jsonb — this is only how they show.
 export const RESOURCE_SPEC = [
   { key: 'gold',           label: 'Gold' },
-  { key: 'prestige',       label: 'Prestige' },        // from the Ambition priority
+  { key: 'ambition',       label: 'Ambition' },        // from the Ambition priority
   { key: 'population',     label: 'Population' },
   { key: 'plots',          label: 'Available Plots' },
   { key: 'prowess',        label: 'Prowess' },
