@@ -274,23 +274,40 @@
   }
 
   /* ---- leader selection ---- */
-  .leader-list { display: flex; flex-direction: column; gap: 0.85rem; }
-  .leader-card {
+  /* ---- review (kingdom / house / priorities) ---- */
+  .review-row {
     display: flex;
-    align-items: center;
-    gap: 1.1rem;
-    width: 100%;
-    text-align: left;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--steel-edge);
+  }
+  .review-row:last-child { border-bottom: none; }
+  .review-row.review-col { flex-direction: column; align-items: stretch; gap: 0.6rem; }
+  .review-k {
+    font-family: var(--display);
+    font-size: 0.72rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+    flex-shrink: 0;
+  }
+  .review-v { font-family: var(--display); font-weight: 600; letter-spacing: 0.06em; color: var(--bone); text-align: right; }
+  .review-prio { display: flex; flex-wrap: wrap; gap: 0.5rem; text-align: left; }
+  .review-prio .pill {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    color: var(--bone);
     background: var(--ink);
     border: 1px solid var(--steel-edge);
-    padding: 1rem 1.25rem;
-    cursor: pointer;
-    font-family: var(--body);
-    color: var(--bone);
-    transition: border-color 0.2s ease, background 0.2s ease;
+    padding: 0.35rem 0.7rem;
   }
-  .leader-card:hover, .leader-card:focus-visible { border-color: var(--gold); background: #121419; }
-  .leader-card:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .review-prio .pill b { color: var(--gold); font-weight: 700; margin-right: 0.35rem; }
+
+  /* heraldic shield — used by the heritage cards */
   .leader-shield {
     width: 44px; height: 50px;
     flex-shrink: 0;
@@ -302,10 +319,6 @@
     font-weight: 700;
     font-size: 1.1rem;
   }
-  .leader-name { font-family: var(--display); font-weight: 600; font-size: 1rem; letter-spacing: 0.08em; }
-  .leader-meta { font-size: 0.85rem; color: var(--bone-dim); font-style: italic; }
-  .leader-card.new-leader { border-style: dashed; justify-content: center; color: var(--bone-dim); }
-  .leader-card.new-leader:hover, .leader-card.new-leader:focus-visible { color: var(--gold); }
 
   /* ---- heritage selection (lord setup) ---- */
   .heritage-grid {
@@ -544,12 +557,13 @@
 </section>
 
 <!-- ============ JOIN THE WORLD ============ -->
-<section class="screen" id="screen-join" aria-label="Join the world">
+<section class="screen" id="screen-join" aria-label="Review">
   <div class="panel">
-    <h2 class="panel-title">Choose Your Leader</h2>
-    <p class="panel-sub">Who will answer the call this day?</p>
-    <div class="leader-list" id="leader-list"><!-- populated from your houses --></div>
+    <h2 class="panel-title">Review</h2>
+    <p class="panel-sub">Your house stands ready to enter the world.</p>
+    <div class="review-list" id="review-list"><!-- filled from your house --></div>
     <div class="panel-actions">
+      <button class="btn btn-small btn-primary" onclick="enterKingdomHome()">Join the World</button>
       <button class="btn btn-small" onclick="go('screen-home')">Back</button>
     </div>
   </div>
@@ -788,40 +802,36 @@
     document.getElementById(id).classList.add('active');
   }
 
-  // Join → sign in if needed, then show your houses (or straight to setup if you have none).
+  // Normalize a house name to "House X" (the top bar + review show it the same way; one source per page).
+  const houseLabel = name => 'House ' + String(name || '').replace(/^\s*House\s+/i, '').trim();
+
+  // Join → sign in if needed, then Review your house (or Lord Setup if you have none).
   async function joinWorld() {
     await loadUser();
     if (!currentUser) { document.getElementById('login-msg').textContent = ''; go('screen-login'); return; }
-    let leaders = [];
+    let house = null;
     try {
       const { data, error } = await supabase.from('kingdoms_leaders')
-        .select('id, house_name, heritage, created_at').eq('user_id', currentUser.id)
-        .order('created_at', { ascending: false });
+        .select('house_name, heritage, priorities, created_at').eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false }).limit(1);
       if (error) throw error;
-      leaders = data || [];
-    } catch (e) { leaders = []; }
-    if (leaders.length) { renderLeaders(leaders); go('screen-join'); }
+      house = (data && data[0]) || null;
+    } catch (e) { house = null; }
+    if (house) { renderReview(house); go('screen-join'); }
     else go('screen-lord-setup');
   }
 
-  function renderLeaders(leaders) {
-    const list = document.getElementById('leader-list');
-    const initial = h => ((h || '?').trim().charAt(0) || '?').toUpperCase();
-    list.innerHTML = leaders.map(l =>
-      '<button class="leader-card" data-id="' + esc(l.id) + '">' +
-        '<span class="leader-shield" style="background:#2c3a55; color:#9db4e0;">' + esc(initial(l.house_name)) + '</span>' +
-        '<span><span class="leader-name">' + esc(l.house_name) + '</span><br>' +
-        '<span class="leader-meta">' + esc(l.heritage) + ' &middot; your house</span></span>' +
-      '</button>').join('') +
-      '<button class="leader-card new-leader">+ Forge a new leader</button>';
-    list.querySelectorAll('.leader-card[data-id]').forEach(c =>
-      c.addEventListener('click', () => enterWorld(c.dataset.id)));
-    list.querySelector('.new-leader').addEventListener('click', () => go('screen-lord-setup'));
+  function renderReview(house) {
+    const kingdom = house.heritage === 'Aldren' ? 'Kingdom of Aldren' : (house.heritage || '—');
+    const prio = (house.priorities || []).map((p, i) =>
+      '<span class="pill"><b>' + (i + 1) + '</b>' + esc(p) + '</span>').join('');
+    document.getElementById('review-list').innerHTML =
+      '<div class="review-row"><span class="review-k">Kingdom</span><span class="review-v">' + esc(kingdom) + '</span></div>' +
+      '<div class="review-row"><span class="review-k">House</span><span class="review-v">' + esc(houseLabel(house.house_name)) + '</span></div>' +
+      '<div class="review-row review-col"><span class="review-k">Priorities</span><span class="review-v review-prio">' + (prio || '—') + '</span></div>';
   }
 
-  function enterWorld(id) {
-    alert('Entering the world with your house.\n\nThe in-world gameplay screen is the next thing to design.');
-  }
+  function enterKingdomHome() { window.location.href = '/kingdom-home/'; }
 
   function selectHeritage(card) {
     document.querySelectorAll('.heritage-card').forEach(c => {
@@ -913,7 +923,7 @@
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLogout(); });
 
   // Inline onclick handlers need these on window (module scope isn't global).
-  Object.assign(window, { go, joinWorld, chooseAldren, nextFromHeritage, randomHouseName, togglePriority, nextFromHouse, doLogin, flip, openLogout, closeLogout, confirmLogout });
+  Object.assign(window, { go, joinWorld, chooseAldren, nextFromHeritage, randomHouseName, togglePriority, nextFromHouse, enterKingdomHome, doLogin, flip, openLogout, closeLogout, confirmLogout });
 </script>
 
 </body>
