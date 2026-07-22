@@ -15,6 +15,7 @@
     --bone: #d8d2c4;
     --bone-dim: #8f8a7e;
     --gold: #b99653;
+    --gold-bright: #d9b56a;
     --display: 'Cinzel', serif;
     --body: 'Alegreya', serif;
   }
@@ -135,6 +136,56 @@
     color: var(--bone); font-size: 1.3rem;
   }
   .stage-empty p { font-style: italic; }
+
+  /* ---- Home hall: Head of House card ---- */
+  .home-wrap { padding: 1.5rem; display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
+  .hoh { width: 320px; max-width: 100%; background: var(--steel); border: 1px solid var(--steel-edge); }
+  .hoh-title {
+    font-family: var(--display); font-weight: 600; font-size: 0.8rem; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--bone); padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--steel-edge);
+  }
+  .hoh-banner {
+    position: relative; height: 130px; background: var(--ink); border-bottom: 1px solid var(--steel-edge);
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  .hoh-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hoh-banner .ph { font-family: var(--display); font-size: 0.62rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--bone-dim); }
+  .hoh-edit {
+    position: absolute; top: 8px; right: 8px;
+    font-family: var(--display); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--bone); background: rgba(13,14,17,0.78); border: 1px solid var(--steel-edge); padding: 0.35rem 0.7rem; cursor: pointer;
+  }
+  .hoh-edit:hover { border-color: var(--gold); color: var(--gold); }
+  .kv { padding: 0.4rem 1.1rem 1rem; }
+  .kv-row { display: flex; justify-content: space-between; gap: 1rem; padding: 0.55rem 0; border-bottom: 1px solid var(--steel-edge); }
+  .kv-row:last-child { border-bottom: none; }
+  .kv-k { font-family: var(--display); font-size: 0.62rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--bone-dim); flex: none; padding-top: 0.15rem; }
+  .kv-v { text-align: right; color: var(--bone); }
+  .kv-v.dim { color: var(--bone-dim); font-style: italic; }
+
+  /* ---- banner upload modal ---- */
+  .modal-back { position: fixed; inset: 0; background: rgba(6,7,9,0.75); display: none; align-items: center; justify-content: center; z-index: 20; }
+  .modal-back.open { display: flex; }
+  .modal { width: min(440px, 92vw); background: var(--steel); border: 1px solid var(--gold); padding: 1.75rem 1.75rem 1.5rem; }
+  .modal-title { font-family: var(--display); font-weight: 600; font-size: 0.95rem; letter-spacing: 0.18em; text-transform: uppercase; text-align: center; margin-bottom: 1.1rem; }
+  .modal-preview {
+    height: 140px; background: var(--ink); border: 1px dashed var(--steel-edge);
+    display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 1rem;
+    color: var(--bone-dim); font-size: 0.8rem; font-style: italic;
+  }
+  .modal-preview img { width: 100%; height: 100%; object-fit: cover; }
+  .modal input[type=file] { width: 100%; color: var(--bone-dim); font-family: var(--body); font-size: 0.85rem; }
+  .modal-note { color: var(--bone-dim); font-size: 0.78rem; font-style: italic; margin: 0.6rem 0 1.2rem; text-align: center; }
+  .modal-note.err { color: #cc9a90; }
+  .modal-actions { display: flex; justify-content: center; gap: 0.8rem; }
+  .mbtn {
+    font-family: var(--display); font-weight: 600; font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 0.6rem 1.4rem; cursor: pointer; background: none; border: 1px solid var(--steel-edge); color: var(--bone);
+  }
+  .mbtn:hover { border-color: var(--gold); color: var(--gold); }
+  .mbtn.primary { background: var(--gold); color: #16130b; border-color: var(--gold); }
+  .mbtn.primary:hover { background: var(--gold-bright); color: #16130b; }
+  .mbtn:disabled { opacity: 0.4; cursor: default; }
 </style>
 </head>
 <body>
@@ -155,13 +206,30 @@
 
 <main class="stage" id="stage"></main>
 
+<!-- Banner upload modal -->
+<div class="modal-back" id="banner-modal">
+  <div class="modal">
+    <div class="modal-title">House Banner</div>
+    <div class="modal-preview" id="banner-preview">No image chosen</div>
+    <input type="file" id="banner-file" accept="image/png,image/jpeg,image/webp,image/gif">
+    <p class="modal-note" id="banner-note">PNG, JPG, WebP or GIF · up to 2 MB · free</p>
+    <div class="modal-actions">
+      <button class="mbtn primary" id="banner-save" type="button" disabled>Save Banner</button>
+      <button class="mbtn" id="banner-cancel" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
   import { supabase, isConfigured } from '/supabase.js';
   import { esc, houseLabel, RESOURCE_SPEC } from '/kingdoms.js';   // shared Kingdoms helpers (one source)
+  import { uploadToStorage } from '/upload.js';                    // one image-upload path (2 MB cap)
 
-  const setBar = house => {
+  let house = null;   // the signed-in player's house
+
+  const setBar = name => {
     document.getElementById('house-label').innerHTML =
-      esc(houseLabel(house)) + '<span class="sep">|</span><span class="era">Year 845 V.E.</span>';
+      esc(houseLabel(name)) + '<span class="sep">|</span><span class="era">Year 845 V.E.</span>';
   };
   const setResources = res => {
     res = res || {};
@@ -172,19 +240,91 @@
 
   document.getElementById('leave-btn').addEventListener('click', () => { window.location.href = '/kingdoms/'; });
 
-  // Sidebar navigation. Home is the base hall (blank for now); the others are stubs until each is built.
+  // ---- sidebar navigation ----
   const VIEW_TITLES = { home: 'Home', dynasty: 'Dynasty', holdings: 'Holdings', court: 'Court', conflict: 'Conflict' };
-  const renderView = view => {
+  function renderView(view) {
     const stage = document.getElementById('stage');
-    stage.innerHTML = view === 'home' ? ''
-      : '<div class="stage-empty"><h2>' + esc(VIEW_TITLES[view] || view) + '</h2><p>This hall is not yet built.</p></div>';
-  };
+    if (view === 'home') { renderHome(stage); return; }
+    stage.innerHTML = '<div class="stage-empty"><h2>' + esc(VIEW_TITLES[view] || view) + '</h2><p>This hall is not yet built.</p></div>';
+  }
   document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     renderView(btn.dataset.view);
   }));
 
+  // ---- Home hall: Head of House ----
+  const bannerInner = () => house && house.banner_url
+    ? '<img alt="House banner" src="' + esc(house.banner_url) + '">'
+    : '<span class="ph">House banner</span>';
+  const kvRow = (k, v, dim) => '<div class="kv-row"><span class="kv-k">' + esc(k) + '</span><span class="kv-v' + (dim ? ' dim' : '') + '">' + v + '</span></div>';
+
+  function renderHome(stage) {
+    if (!house) { stage.innerHTML = ''; return; }
+    const name = esc(house.leader_name || 'Unknown') + ' of ' + esc(houseLabel(house.house_name));
+    const culture = house.heritage === 'Aldren' ? 'Aldric' : esc(house.heritage || '—');
+    stage.innerHTML =
+      '<div class="home-wrap"><div class="hoh">' +
+        '<div class="hoh-title">Head of House</div>' +
+        '<div class="hoh-banner" id="hoh-banner">' + bannerInner() +
+          '<button class="hoh-edit" id="banner-edit" type="button">Edit</button></div>' +
+        '<div class="kv">' +
+          kvRow('Name', name) +
+          kvRow('Age', esc(house.leader_age != null ? house.leader_age : '—')) +
+          kvRow('Title', esc(house.leader_title || 'Count')) +
+          kvRow('Holdings', '—', true) +
+          kvRow('Culture', culture) +
+          kvRow('Spouse', '—', true) +
+          kvRow('Children', '—', true) +
+          kvRow('Liege', '—', true) +
+        '</div>' +
+      '</div></div>';
+    document.getElementById('banner-edit').addEventListener('click', openBanner);
+  }
+
+  // ---- banner upload modal ----
+  const modal = document.getElementById('banner-modal');
+  const fileInput = document.getElementById('banner-file');
+  const preview = document.getElementById('banner-preview');
+  const note = document.getElementById('banner-note');
+  const saveBtn = document.getElementById('banner-save');
+  const NOTE_DEFAULT = 'PNG, JPG, WebP or GIF · up to 2 MB · free';
+  let chosenFile = null, uploading = false;
+
+  function openBanner() {
+    chosenFile = null; fileInput.value = ''; saveBtn.disabled = true;
+    note.textContent = NOTE_DEFAULT; note.className = 'modal-note';
+    preview.innerHTML = house && house.banner_url ? '<img alt="Current banner" src="' + esc(house.banner_url) + '">' : 'No image chosen';
+    modal.classList.add('open');
+  }
+  function closeBanner() { if (!uploading) modal.classList.remove('open'); }
+
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f) { chosenFile = null; saveBtn.disabled = true; return; }
+    if (f.size > 2 * 1024 * 1024) { note.textContent = 'That image is over 2 MB.'; note.className = 'modal-note err'; chosenFile = null; saveBtn.disabled = true; return; }
+    chosenFile = f; saveBtn.disabled = false;
+    note.textContent = NOTE_DEFAULT; note.className = 'modal-note';
+    preview.innerHTML = '<img alt="Preview" src="' + URL.createObjectURL(f) + '">';
+  });
+  saveBtn.addEventListener('click', async () => {
+    if (!chosenFile || uploading || !house) return;
+    uploading = true; saveBtn.disabled = true; note.textContent = 'Uploading…'; note.className = 'modal-note';
+    try {
+      const url = await uploadToStorage('kingdoms-banners', '', chosenFile, 2);
+      const { error } = await supabase.rpc('kingdoms_set_banner', { p_house: house.id, p_url: url });
+      if (error) throw error;
+      house.banner_url = url;
+      uploading = false;
+      closeBanner();
+      renderHome(document.getElementById('stage'));   // repaint the card with the new banner
+    } catch (e) { uploading = false; note.textContent = e.message || 'Upload failed. Try again.'; note.className = 'modal-note err'; saveBtn.disabled = false; }
+  });
+  document.getElementById('banner-cancel').addEventListener('click', closeBanner);
+  modal.addEventListener('click', e => { if (e.target === modal) closeBanner(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeBanner(); });
+
+  // ---- load ----
   (async () => {
     if (!isConfigured) { setBar('—'); return; }
     try {
@@ -192,12 +332,14 @@
       const uid = u && u.user ? u.user.id : null;
       if (!uid) { window.location.replace('/kingdoms/'); return; }   // must be signed in
       const { data, error } = await supabase.from('kingdoms_leaders')
-        .select('house_name, resources').eq('user_id', uid)
-        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+        .select('id, house_name, heritage, leader_name, leader_age, leader_title, banner_url, resources')
+        .eq('user_id', uid).order('created_at', { ascending: false }).limit(1).maybeSingle();
       if (error) throw error;
       if (!data) { window.location.replace('/kingdoms/'); return; }  // no house yet → go found one
-      setBar(data.house_name);
-      setResources(data.resources);
+      house = data;
+      setBar(house.house_name);
+      setResources(house.resources);
+      renderView('home');
     } catch (e) { window.location.replace('/kingdoms/'); }
   })();
 </script>
