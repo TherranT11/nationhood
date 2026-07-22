@@ -548,25 +548,7 @@
   <div class="panel">
     <h2 class="panel-title">Choose Your Leader</h2>
     <p class="panel-sub">Who will answer the call this day?</p>
-    <div class="leader-list">
-      <button class="leader-card" onclick="alert('This would load into the world as Maerwen — gameplay screen to be designed next.')">
-        <span class="leader-shield" style="background:#2c3a55; color:#9db4e0;">M</span>
-        <span>
-          <span class="leader-name">Maerwen of the Hollow Coast</span><br>
-          <span class="leader-meta">Baroness &middot; 340 followers &middot; at peace</span>
-        </span>
-      </button>
-      <button class="leader-card" onclick="alert('This would load into the world as Dherak — gameplay screen to be designed next.')">
-        <span class="leader-shield" style="background:#4a2a2a; color:#d99a90;">D</span>
-        <span>
-          <span class="leader-name">Dherak the Unpaid</span><br>
-          <span class="leader-meta">Sellsword &middot; 12 followers &middot; at war</span>
-        </span>
-      </button>
-      <button class="leader-card new-leader" onclick="go('screen-lord-setup')">
-        + Forge a new leader
-      </button>
-    </div>
+    <div class="leader-list" id="leader-list"><!-- populated from your houses --></div>
     <div class="panel-actions">
       <button class="btn btn-small" onclick="go('screen-home')">Back</button>
     </div>
@@ -580,7 +562,7 @@
     <p class="panel-sub">Choose the heritage of your character.</p>
 
     <div class="heritage-grid" role="radiogroup" aria-label="Heritage">
-      <button class="heritage-card" role="radio" aria-checked="false" data-heritage="Aldric" onclick="chooseAldren(this)">
+      <button class="heritage-card" role="radio" aria-checked="false" data-heritage="Aldren" onclick="chooseAldren(this)">
         <span class="heritage-head">
           <span class="leader-shield" style="background:#2c3a55; color:#9db4e0;">A</span>
           <span>
@@ -753,15 +735,16 @@
     <h2 class="panel-title">Return to the Realm</h2>
     <p class="panel-sub">The world of Vael turns without you.</p>
     <div class="field">
-      <label for="login-name">Name</label>
-      <input id="login-name" type="text" autocomplete="username">
+      <label for="login-name">E-mail</label>
+      <input id="login-name" type="email" autocomplete="username">
     </div>
     <div class="field">
       <label for="login-pass">Password</label>
       <input id="login-pass" type="password" autocomplete="current-password">
     </div>
+    <p class="setup-hint" id="login-msg"></p>
     <div class="panel-actions">
-      <button class="btn btn-small btn-primary" onclick="go('screen-home')">Enter</button>
+      <button class="btn btn-small btn-primary" onclick="doLogin()">Enter</button>
     </div>
   </div>
 </section>
@@ -780,24 +763,64 @@
 
 <p class="footnote">Kingdoms &middot; UI mockup</p>
 
-<script>
-  var hasActiveLord = false;
-  var selectedHeritage = null;
+<script type="module">
+  import { supabase, isConfigured } from '/supabase.js';
 
-  var heritageLines = {
-    'Aldric':   'The banners of Aldren stir. The chancery prepares your charter.',
-    'Skjornic': 'The jarls of Skjorn take notice. A ship waits at the quay.',
-    'Orduun':   'The Orduun hosts part to receive you. The sky is watching.',
-    'Varosi':   'Varos opens the mountain gate. The frontier has need of you.'
-  };
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  let currentUser = null;          // the signed-in account (null = not logged in)
+  let selectedHeritage = null;
+  let founding = false;            // guards the found-house RPC against a double-click
+
+  // Only Aldren is available for now — the other heritages are locked in the markup.
+  const heritageLines = { 'Aldren': 'The banners of Aldren stir. The chancery prepares your charter.' };
+
+  async function loadUser() {
+    if (!isConfigured) { currentUser = null; return null; }
+    try { const { data } = await supabase.auth.getUser(); currentUser = (data && data.user) || null; }
+    catch (e) { currentUser = null; }
+    return currentUser;
+  }
+  loadUser();
 
   function go(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById(id).classList.add('active');
   }
 
-  function joinWorld() {
-    go(hasActiveLord ? 'screen-join' : 'screen-lord-setup');
+  // Join → sign in if needed, then show your houses (or straight to setup if you have none).
+  async function joinWorld() {
+    await loadUser();
+    if (!currentUser) { document.getElementById('login-msg').textContent = ''; go('screen-login'); return; }
+    let leaders = [];
+    try {
+      const { data, error } = await supabase.from('kingdoms_leaders')
+        .select('id, house_name, heritage, created_at').eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      leaders = data || [];
+    } catch (e) { leaders = []; }
+    if (leaders.length) { renderLeaders(leaders); go('screen-join'); }
+    else go('screen-lord-setup');
+  }
+
+  function renderLeaders(leaders) {
+    const list = document.getElementById('leader-list');
+    const initial = h => ((h || '?').trim().charAt(0) || '?').toUpperCase();
+    list.innerHTML = leaders.map(l =>
+      '<button class="leader-card" data-id="' + esc(l.id) + '">' +
+        '<span class="leader-shield" style="background:#2c3a55; color:#9db4e0;">' + esc(initial(l.house_name)) + '</span>' +
+        '<span><span class="leader-name">' + esc(l.house_name) + '</span><br>' +
+        '<span class="leader-meta">' + esc(l.heritage) + ' &middot; your house</span></span>' +
+      '</button>').join('') +
+      '<button class="leader-card new-leader">+ Forge a new leader</button>';
+    list.querySelectorAll('.leader-card[data-id]').forEach(c =>
+      c.addEventListener('click', () => enterWorld(c.dataset.id)));
+    list.querySelector('.new-leader').addEventListener('click', () => go('screen-lord-setup'));
+  }
+
+  function enterWorld(id) {
+    alert('Entering the world with your house.\n\nThe in-world gameplay screen is the next thing to design.');
   }
 
   function selectHeritage(card) {
@@ -808,76 +831,89 @@
     card.classList.add('selected');
     card.setAttribute('aria-checked', 'true');
     selectedHeritage = card.dataset.heritage;
-    document.getElementById('setup-hint').textContent = heritageLines[selectedHeritage];
+    document.getElementById('setup-hint').textContent = heritageLines[selectedHeritage] || '';
   }
 
   function nextFromHeritage() {
-    if (!selectedHeritage) {
-      document.getElementById('setup-hint').textContent = 'Choose a heritage to continue.';
-      return;
-    }
+    if (!selectedHeritage) { document.getElementById('setup-hint').textContent = 'Choose a heritage to continue.'; return; }
     go('screen-house-setup');
   }
 
-  function chooseAldren(card) {
-    selectHeritage(card);
-    go('screen-house-setup');
-  }
+  function chooseAldren(card) { selectHeritage(card); go('screen-house-setup'); }
 
-  var houseNames = ['Draymoor', 'Coldbrook', 'Ashvale', 'Bellamont', 'Ombray', 'Ferrant', 'Malverne', 'Vexley', 'Harrowden', 'Crawsley', 'Denholt', 'Rousmont'];
+  const houseNames = ['Draymoor', 'Coldbrook', 'Ashvale', 'Bellamont', 'Ombray', 'Ferrant', 'Malverne', 'Vexley', 'Harrowden', 'Crawsley', 'Denholt', 'Rousmont'];
   function randomHouseName() {
-    var input = document.getElementById('house-name');
-    var pick;
-    do {
-      pick = houseNames[Math.floor(Math.random() * houseNames.length)];
-    } while ('House ' + pick === input.value);
+    const input = document.getElementById('house-name');
+    let pick;
+    do { pick = houseNames[Math.floor(Math.random() * houseNames.length)]; } while ('House ' + pick === input.value);
     input.value = 'House ' + pick;
   }
 
-  var priorities = [];
+  const priorities = [];
   function togglePriority(card) {
-    var key = card.dataset.attr;
-    var i = priorities.indexOf(key);
-    if (i >= 0) { priorities.splice(i, 1); } else { priorities.push(key); }
+    const key = card.dataset.attr;
+    const i = priorities.indexOf(key);
+    if (i >= 0) priorities.splice(i, 1); else priorities.push(key);
     document.querySelectorAll('.attr-card').forEach(function (c) {
-      var idx = priorities.indexOf(c.dataset.attr);
-      var badge = c.querySelector('.rank-badge');
-      if (idx >= 0) {
-        c.classList.add('ranked');
-        badge.textContent = idx + 1;
-      } else {
-        c.classList.remove('ranked');
-        badge.textContent = '';
-      }
+      const idx = priorities.indexOf(c.dataset.attr);
+      const badge = c.querySelector('.rank-badge');
+      if (idx >= 0) { c.classList.add('ranked'); badge.textContent = idx + 1; }
+      else { c.classList.remove('ranked'); badge.textContent = ''; }
     });
-    var hint = document.getElementById('house-hint');
-    hint.textContent = priorities.length === 6 ? 'The character of your house is set.' : '';
+    document.getElementById('house-hint').textContent = priorities.length === 6 ? 'The character of your house is set.' : '';
   }
 
-  function nextFromHouse() {
-    var name = document.getElementById('house-name').value.trim();
-    if (!name) {
-      document.getElementById('house-hint').textContent = 'Your house must bear a name.';
-      return;
-    }
-    if (priorities.length < 6) {
-      document.getElementById('house-hint').textContent = 'Rank all six priorities to continue.';
-      return;
-    }
-    alert(name + ' is founded.\nPriorities: ' + priorities.join(' > ') + '\n\nNext step of lord setup to be designed.');
+  // Found the house: persist heritage + name + priorities against the account, then show your houses.
+  async function nextFromHouse() {
+    const hint = document.getElementById('house-hint');
+    const name = document.getElementById('house-name').value.trim();
+    if (!name) { hint.textContent = 'Your house must bear a name.'; return; }
+    if (priorities.length < 6) { hint.textContent = 'Rank all six priorities to continue.'; return; }
+    if (founding) return;
+    if (!currentUser) { await loadUser(); if (!currentUser) { go('screen-login'); return; } }
+    founding = true; hint.textContent = 'Founding your house…';
+    try {
+      const { error } = await supabase.rpc('kingdoms_found_house', { p_heritage: 'Aldren', p_house_name: name, p_priorities: priorities.slice() });
+      if (error) throw error;
+      // Reset the setup form, then reload your houses.
+      priorities.length = 0;
+      document.querySelectorAll('.attr-card').forEach(c => { c.classList.remove('ranked'); c.querySelector('.rank-badge').textContent = ''; });
+      document.getElementById('house-name').value = '';
+      hint.textContent = '';
+      selectedHeritage = null;
+      await joinWorld();
+    } catch (e) { hint.textContent = 'Could not found your house. Try again shortly.'; }
+    finally { founding = false; }
   }
-  function flip(el) {
-    el.setAttribute('aria-pressed', el.getAttribute('aria-pressed') !== 'true');
+
+  async function doLogin() {
+    const msg = document.getElementById('login-msg');
+    const email = document.getElementById('login-name').value.trim();
+    const pass = document.getElementById('login-pass').value;
+    if (!email || !pass) { msg.textContent = 'Enter your e-mail and password.'; return; }
+    if (!isConfigured) { msg.textContent = 'Sign-in isn’t connected yet.'; return; }
+    msg.textContent = 'Signing you in…';
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
+      if (error) { msg.textContent = error.message; return; }
+      await loadUser();
+      joinWorld();
+    } catch (e) { msg.textContent = 'Something went wrong. Try again.'; }
   }
+
+  function flip(el) { el.setAttribute('aria-pressed', el.getAttribute('aria-pressed') !== 'true'); }
   function openLogout()  { document.getElementById('logout-modal').classList.add('open'); }
   function closeLogout() { document.getElementById('logout-modal').classList.remove('open'); }
-  function confirmLogout() {
+  async function confirmLogout() {
     closeLogout();
+    try { if (isConfigured) await supabase.auth.signOut(); } catch (e) { /* fall through */ }
+    currentUser = null;
     go('screen-login');
   }
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeLogout();
-  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLogout(); });
+
+  // Inline onclick handlers need these on window (module scope isn't global).
+  Object.assign(window, { go, joinWorld, chooseAldren, nextFromHeritage, randomHouseName, togglePriority, nextFromHouse, doLogin, flip, openLogout, closeLogout, confirmLogout });
 </script>
 
 </body>
