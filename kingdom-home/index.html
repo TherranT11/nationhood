@@ -16,6 +16,9 @@
     --bone-dim: #8f8a7e;
     --gold: #b99653;
     --gold-bright: #d9b56a;
+    --faint: #5c5a52;
+    --blood: #7a2e2a;
+    --green: #7d9a5c;
     --display: 'Cinzel', serif;
     --body: 'Alegreya', serif;
   }
@@ -201,6 +204,86 @@
   }
   .card-slot.filled { border-style: solid; border-color: var(--gold); color: var(--bone); }
 
+  /* ============================================================
+     Holdings view — collapsible holdings + build catalog
+     ============================================================ */
+  .holding { background: var(--steel); border: 1px solid var(--steel-edge); margin-bottom: 1rem; }
+  .holding-head {
+    display: flex; align-items: center; gap: 1.25rem; width: 100%;
+    background: none; border: none; cursor: pointer; text-align: left;
+    padding: 1.1rem 1.4rem; color: var(--bone); font-family: var(--body); transition: background .15s ease;
+  }
+  .holding-head:hover { background: #1e222b; }
+  .chev {
+    width: 9px; height: 9px; border-right: 1.5px solid var(--gold); border-bottom: 1.5px solid var(--gold);
+    transform: rotate(-45deg); transition: transform .2s ease; flex: none; margin-top: -3px;
+  }
+  .holding.open .chev { transform: rotate(45deg); margin-top: -6px; }
+  .holding-name { font-family: var(--display); font-weight: 600; font-size: .95rem; letter-spacing: .12em; text-transform: uppercase; }
+  .holding-name .star { color: var(--gold); }
+  .terrain { font-size: .8rem; font-style: italic; color: var(--faint); }
+
+  .head-stats { margin-left: auto; display: flex; gap: 2rem; align-items: center; flex-wrap: wrap; }
+  .hstat { text-align: right; }
+  .hstat .lbl { display: block; font-family: var(--display); font-size: .58rem; letter-spacing: .18em; text-transform: uppercase; color: var(--bone-dim); }
+  .hstat .val { font-family: var(--display); font-weight: 600; font-size: 1rem; }
+  .hstat .val.warn { color: #c9857f; }
+
+  .land-meter { width: 110px; }
+  .land-bar { height: 4px; background: var(--steel-edge); margin-top: .35rem; display: flex; gap: 2px; }
+  .land-pip { flex: 1; background: var(--steel-edge); }
+  .land-pip.used { background: var(--gold); }
+
+  .holding-body { display: none; border-top: 1px solid var(--steel-edge); padding: 1.5rem 1.4rem 1.75rem; }
+  .holding.open .holding-body { display: block; }
+
+  .sec-title { font-family: var(--display); font-weight: 600; font-size: .68rem; letter-spacing: .22em; text-transform: uppercase; color: var(--bone-dim); margin-bottom: .9rem; }
+  .sec-title .count { color: var(--faint); }
+
+  .built-list { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 2rem; }
+  .built-row {
+    display: flex; align-items: center; gap: 1rem; background: var(--ink);
+    border: 1px solid var(--steel-edge); border-left: 2px solid var(--gold); padding: .7rem 1rem;
+  }
+  .built-name { font-family: var(--display); font-weight: 600; font-size: .82rem; letter-spacing: .1em; text-transform: uppercase; min-width: 150px; }
+  .built-eff { font-size: .85rem; color: var(--bone-dim); flex: 1; }
+  .built-plot { font-family: var(--display); font-size: .58rem; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); white-space: nowrap; }
+  .raze {
+    background: none; border: 1px solid var(--steel-edge); color: var(--faint);
+    font-family: var(--display); font-size: .55rem; letter-spacing: .14em; text-transform: uppercase; padding: .35rem .7rem; cursor: pointer;
+  }
+  .raze:hover { border-color: var(--blood); color: #c9857f; }
+  .empty-note { font-size: .88rem; font-style: italic; color: var(--faint); padding: .5rem 0 1.5rem; }
+
+  .cat-block { margin-bottom: 1.5rem; }
+  .cat-name { font-family: var(--display); font-weight: 600; font-size: .62rem; letter-spacing: .24em; text-transform: uppercase; color: var(--gold); padding-bottom: .5rem; margin-bottom: .85rem; border-bottom: 1px solid var(--steel-edge); }
+  .bld-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: .8rem; }
+  .bld {
+    background: var(--ink); border: 1px solid var(--steel-edge); padding: .9rem 1rem 1rem;
+    display: flex; flex-direction: column; gap: .55rem; position: relative; transition: border-color .15s ease, transform .15s ease;
+  }
+  .bld.can:hover { border-color: var(--gold); transform: translateY(-2px); }
+  .bld-top { display: flex; align-items: baseline; gap: .5rem; }
+  .bld-num { font-family: var(--display); font-size: .62rem; color: var(--faint); }
+  .bld-name { font-family: var(--display); font-weight: 600; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; }
+  .bld-costs { display: flex; gap: .9rem; font-size: .78rem; }
+  .bld-costs .c-gold { color: var(--gold); font-family: var(--display); font-weight: 600; font-size: .7rem; letter-spacing: .08em; }
+  .bld-costs .c-up { color: #c9857f; font-family: var(--display); font-size: .7rem; letter-spacing: .08em; }
+  .bld-costs .c-land { color: var(--bone-dim); font-family: var(--display); font-size: .7rem; letter-spacing: .08em; }
+  .bld-eff { list-style: none; font-size: .83rem; color: var(--bone-dim); line-height: 1.5; }
+  .bld-eff li { padding-left: .85rem; position: relative; }
+  .bld-eff li::before { content: "\00b7"; position: absolute; left: .2rem; color: var(--gold); }
+  .bld-eff li.needs { color: var(--faint); font-style: italic; }
+  .bld-eff li.needs::before { color: var(--faint); }
+  .build-btn {
+    margin-top: auto; font-family: var(--display); font-weight: 600; font-size: .62rem; letter-spacing: .16em; text-transform: uppercase;
+    color: #16130b; background: var(--gold); border: none; padding: .5rem 0; cursor: pointer;
+  }
+  .build-btn:hover { background: var(--gold-bright); }
+  .bld.cant { opacity: .42; }
+  .bld.cant .build-btn { background: none; color: var(--faint); border: 1px solid var(--steel-edge); cursor: not-allowed; }
+  .lock-why { font-family: var(--display); font-size: .55rem; letter-spacing: .12em; text-transform: uppercase; color: #c9857f; text-align: center; }
+
   /* ---- Dynasty tree ---- */
   .view-wrap { padding: 1.5rem; }
   .panel { background: var(--steel); border: 1px solid var(--steel-edge); }
@@ -225,6 +308,63 @@
     text-transform: uppercase; color: var(--gold); margin-top: 0.25rem;
   }
   .dyn-sub { font-size: 0.85rem; font-style: italic; color: var(--bone-dim); margin-top: 0.15rem; }
+
+  /* ============================================================
+     Court view — sovereign + council (all seats start empty)
+     ============================================================ */
+  .court { width: min(1000px, 100%); margin: 0 auto; }
+  .court-title {
+    font-family: var(--display); font-weight: 600; font-size: .72rem; letter-spacing: .28em;
+    text-transform: uppercase; color: var(--bone-dim); text-align: center; margin-bottom: 1.5rem;
+  }
+  .sovereign {
+    background: var(--steel); border: 1px solid var(--gold); padding: 2rem 2rem 1.9rem;
+    text-align: center; position: relative; margin-bottom: 2.5rem;
+  }
+  .sovereign::before, .sovereign::after { content: ""; position: absolute; width: 14px; height: 14px; border: 1px solid var(--gold); opacity: .6; }
+  .sovereign::before { top: 6px; left: 6px; border-right: none; border-bottom: none; }
+  .sovereign::after { bottom: 6px; right: 6px; border-left: none; border-top: none; }
+  .crown { display: block; margin: 0 auto .9rem; }
+  .seat-label { font-family: var(--display); font-weight: 600; font-size: .62rem; letter-spacing: .26em; text-transform: uppercase; color: var(--gold); margin-bottom: .6rem; }
+  .council-title { font-family: var(--display); font-weight: 600; font-size: .66rem; letter-spacing: .26em; text-transform: uppercase; color: var(--bone-dim); text-align: center; margin-bottom: 1.25rem; }
+  .council { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 1rem; }
+  .seat {
+    background: var(--steel); border: 1px solid var(--steel-edge); border-top: 2px solid var(--gold);
+    padding: 1.2rem 1.3rem 1.15rem; text-align: center; transition: border-color .2s ease, background .2s ease;
+  }
+  .seat.vacant { border-top-color: var(--steel-edge); }
+  .seat.vacant .seat-label { color: var(--faint); }
+  .seat-vacant-text { font-style: italic; color: var(--faint); font-size: .92rem; }
+  .court-foot { margin-top: 2rem; text-align: center; font-size: .9rem; font-style: italic; color: var(--faint); }
+
+  /* ============================================================
+     Laws view — the realm's standing laws (no assembly, so no vote/debate UI)
+     ============================================================ */
+  .laws { width: min(1040px, 100%); margin: 0 auto; }
+  .laws-head { text-align: center; margin-bottom: 2rem; }
+  .laws-title { font-family: var(--display); font-weight: 600; font-size: .72rem; letter-spacing: .28em; text-transform: uppercase; color: var(--bone-dim); }
+  .laws-sub { font-style: italic; color: var(--faint); margin-top: .4rem; font-size: .92rem; }
+  .laws-voice { display: inline-flex; gap: 1.75rem; margin-top: 1.1rem; padding: .7rem 1.5rem; border: 1px solid var(--steel-edge); background: var(--steel); }
+  .voice-item { text-align: center; }
+  .voice-item .lbl { display: block; font-family: var(--display); font-size: .55rem; letter-spacing: .2em; text-transform: uppercase; color: var(--bone-dim); }
+  .voice-item .val { font-family: var(--display); font-weight: 600; font-size: .9rem; color: var(--gold); }
+  .group-title { font-family: var(--display); font-weight: 600; font-size: .62rem; letter-spacing: .24em; text-transform: uppercase; color: var(--gold); border-bottom: 1px solid var(--steel-edge); padding-bottom: .5rem; margin: 2rem 0 1rem; }
+  .law { background: var(--steel); border: 1px solid var(--steel-edge); padding: 1.3rem 1.4rem 1.4rem; margin-bottom: 1rem; }
+  .law-top { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .law-name { font-family: var(--display); font-weight: 600; font-size: .88rem; letter-spacing: .12em; text-transform: uppercase; }
+  .law-now { font-family: var(--display); font-weight: 600; font-size: .8rem; letter-spacing: .08em; color: var(--gold); margin-left: auto; }
+  .track { display: flex; gap: 3px; margin-bottom: .45rem; }
+  .tier { flex: 1; height: 5px; background: var(--steel-edge); }
+  .tier.below { background: #4a4433; }
+  .tier.at { background: var(--gold); }
+  .tier-names { display: flex; gap: 3px; margin-bottom: 1rem; }
+  .tier-name { flex: 1; font-family: var(--display); font-size: .55rem; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); text-align: center; line-height: 1.4; }
+  .tier-name.at { color: var(--bone); }
+  .law-eff { list-style: none; font-size: .9rem; color: var(--bone-dim); }
+  .law-eff li { padding-left: .9rem; position: relative; }
+  .law-eff li::before { content: "\00b7"; position: absolute; left: .2rem; color: var(--gold); }
+  .law-you { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--steel-edge); font-size: .9rem; color: var(--gold); }
+  .law-you .tag { font-family: var(--display); font-size: .55rem; letter-spacing: .18em; text-transform: uppercase; color: var(--bone-dim); margin-right: .6rem; }
 
   /* ---- banner upload modal ---- */
   .modal-back { position: fixed; inset: 0; background: rgba(6,7,9,0.75); display: none; align-items: center; justify-content: center; z-index: 20; }
@@ -266,6 +406,7 @@
   <button class="nav-item" data-view="dynasty" type="button">Dynasty</button>
   <button class="nav-item" data-view="holdings" type="button">Holdings</button>
   <button class="nav-item" data-view="court" type="button">Court</button>
+  <button class="nav-item" data-view="laws" type="button">Laws</button>
   <button class="nav-item" data-view="conflict" type="button">Conflict</button>
 </aside>
 
@@ -299,27 +440,38 @@
   import { esc, houseLabel, TREASURY_SPEC, LORD_STAT_SPEC } from '/kingdoms.js';   // shared Kingdoms helpers (one source)
   import { uploadToStorage } from '/upload.js';                    // one image-upload path (2 MB cap)
 
-  let house = null;   // the signed-in player's house
+  let house = null;         // the signed-in player's house
+  let catalog = [];         // building specs (from kingdoms_building_specs; one source)
+  const specByNum = {};     // num → spec
 
   const setBar = name => {
     document.getElementById('house-label').innerHTML =
       esc(houseLabel(name)) + '<span class="sep">|</span><span class="era">Year 845 V.E.</span>';
   };
-  const setResources = res => {
-    res = res || {};
-    document.getElementById('topbar-res').innerHTML = TREASURY_SPEC.map(s =>   // house Treasury only
-      '<span class="res"><b>' + Number(res[s.key] || 0).toLocaleString() + '</b>' + esc(s.label) + '</span>'
+  // Land used by the buildings standing in a county, and the plots left free — one source for both.
+  const usedLand = c => (c.buildings || []).reduce((s, b) => s + (specByNum[b.building_num] ? specByNum[b.building_num].land : 0), 0);
+  const freeLand = c => Math.max(0, (c.available_land || 0) - usedLand(c));
+  // The top bar shows the house Treasury: Gold + Population from resources, Available Plots = free land across holdings.
+  const updateTopbar = () => {
+    const res = house && house.resources ? house.resources : {};
+    const freePlots = (house && house.counties || []).reduce((s, c) => s + freeLand(c), 0);
+    const vals = { gold: res.gold || 0, population: res.population || 0, plots: freePlots };
+    document.getElementById('topbar-res').innerHTML = TREASURY_SPEC.map(s =>
+      '<span class="res"><b>' + Number(vals[s.key] || 0).toLocaleString() + '</b>' + esc(s.label) + '</span>'
     ).join('');
   };
 
   document.getElementById('leave-btn').addEventListener('click', () => { window.location.href = '/kingdoms/'; });
 
   // ---- sidebar navigation ----
-  const VIEW_TITLES = { home: 'Home', dynasty: 'Dynasty', holdings: 'Holdings', court: 'Court', conflict: 'Conflict' };
+  const VIEW_TITLES = { home: 'Home', dynasty: 'Dynasty', holdings: 'Holdings', court: 'Court', laws: 'Laws', conflict: 'Conflict' };
   function renderView(view) {
     const stage = document.getElementById('stage');
     if (view === 'home') { renderHome(stage); return; }
     if (view === 'dynasty') { renderDynasty(stage); return; }
+    if (view === 'holdings') { renderHoldings(stage); return; }
+    if (view === 'court') { renderCourt(stage); return; }
+    if (view === 'laws') { renderLaws(stage); return; }
     stage.innerHTML = '<div class="stage-empty"><h2>' + esc(VIEW_TITLES[view] || view) + '</h2><p>This hall is not yet built.</p></div>';
   }
   document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => {
@@ -403,6 +555,130 @@
     '</div>';
   }
 
+  // ---- Holdings hall: collapsible holdings + build catalog ----
+  const CAT_ORDER = ['Food', 'Economy', 'Military', 'Administration', 'Religion', 'Prestige'];
+  const holdingOpen = {};   // county id → expanded?
+
+  function renderHoldings(stage) {
+    if (!house) { stage.innerHTML = ''; return; }
+    const counties = house.counties || [];
+    if (!counties.length) {
+      stage.innerHTML = '<div class="view-wrap"><p class="empty-note">Your house holds no land yet.</p></div>';
+      return;
+    }
+    counties.forEach((c, i) => { if (holdingOpen[c.id] === undefined) holdingOpen[c.id] = (i === 0); });
+    stage.innerHTML = '<div class="view-wrap">' + counties.map((c, i) => holdingHTML(c, i === 0)).join('') + '</div>';
+
+    stage.querySelectorAll('[data-toggle]').forEach(el => el.addEventListener('click', () => {
+      const id = el.dataset.toggle; holdingOpen[id] = !holdingOpen[id]; renderHoldings(stage);
+    }));
+    stage.querySelectorAll('[data-build]').forEach(btn => btn.addEventListener('click', () => doBuild(btn.dataset.build, Number(btn.dataset.num))));
+    stage.querySelectorAll('[data-raze]').forEach(btn => btn.addEventListener('click', () => doRaze(btn.dataset.raze)));
+  }
+
+  function holdingHTML(h, primary) {
+    const used = usedLand(h), free = freeLand(h);
+    let pips = '';
+    for (let i = 0; i < (h.available_land || 0); i++) pips += '<span class="land-pip' + (i < used ? ' used' : '') + '"></span>';
+    const terrain = (h.terrain ? esc(h.terrain) : '') + (primary ? ' · Primary Estate' : '');
+    return '<section class="holding' + (holdingOpen[h.id] ? ' open' : '') + '">' +
+      '<button class="holding-head" type="button" aria-expanded="' + !!holdingOpen[h.id] + '" data-toggle="' + esc(h.id) + '">' +
+        '<span class="chev" aria-hidden="true"></span>' +
+        '<span>' +
+          '<span class="holding-name">' + esc(h.name) + (primary ? '<span class="star"> *</span>' : '') + '</span><br>' +
+          '<span class="terrain">' + terrain + '</span>' +
+        '</span>' +
+        '<span class="head-stats">' +
+          '<span class="hstat"><span class="lbl">Population</span><span class="val">' + Number(h.population || 0).toLocaleString() + '</span></span>' +
+          '<span class="hstat"><span class="lbl">Buildings</span><span class="val">' + (h.buildings || []).length + '</span></span>' +
+          '<span class="hstat land-meter">' +
+            '<span class="lbl">Available Land</span>' +
+            '<span class="val' + (free === 0 ? ' warn' : '') + '">' + free + ' <span style="color:var(--faint);font-size:.72rem;">/ ' + (h.available_land || 0) + '</span></span>' +
+            '<span class="land-bar">' + pips + '</span>' +
+          '</span>' +
+        '</span>' +
+      '</button>' +
+      '<div class="holding-body">' + holdingBodyHTML(h) + '</div>' +
+    '</section>';
+  }
+
+  function holdingBodyHTML(h) {
+    const built = h.buildings || [];
+    const free = freeLand(h);
+    const gold = house.resources ? (house.resources.gold || 0) : 0;
+    let out = '<h3 class="sec-title">Constructed <span class="count">&mdash; ' + built.length + '</span></h3>';
+
+    if (!built.length) {
+      out += '<p class="empty-note">No buildings stand here. The land is open.</p>';
+    } else {
+      out += '<div class="built-list">' + built.map(row => {
+        const b = specByNum[row.building_num]; if (!b) return '';
+        const eff = (b.eff || []).map(e => esc(e)).join(' · ');
+        return '<div class="built-row">' +
+          '<span class="built-name">' + esc(b.name) + '</span>' +
+          '<span class="built-eff">' + eff + '</span>' +
+          '<span class="built-plot">' + b.land + ' plot' + (b.land > 1 ? 's' : '') + (b.upkeep ? ' · ' + b.upkeep + ' upkeep' : '') + '</span>' +
+          '<button class="raze" type="button" data-raze="' + esc(row.id) + '">Raze</button>' +
+        '</div>';
+      }).join('') + '</div>';
+    }
+
+    out += '<h3 class="sec-title">Construct <span class="count">&mdash; ' + free + ' plot' + (free === 1 ? '' : 's') + ' free, ' + gold + ' gold</span></h3>';
+    out += CAT_ORDER.map(cat => {
+      const list = catalog.filter(b => b.category === cat);
+      if (!list.length) return '';
+      return '<div class="cat-block"><h4 class="cat-name">' + esc(cat) + '</h4><div class="bld-grid">' +
+        list.map(b => buildingCardHTML(h, b, free, gold)).join('') +
+      '</div></div>';
+    }).join('');
+    return out;
+  }
+
+  function buildingCardHTML(h, b, free, gold) {
+    const noTerrain = b.needs === 'hills' && !h.hills;
+    const noGold = b.cost > gold;
+    const noLand = b.land > free;
+    const can = !noTerrain && !noGold && !noLand;
+    const why = noTerrain ? (b.need_text || 'Terrain required') : noLand ? 'No room' : noGold ? 'Not enough gold' : '';
+    return '<div class="bld ' + (can ? 'can' : 'cant') + '">' +
+      '<div class="bld-top"><span class="bld-num">' + b.num + '</span><span class="bld-name">' + esc(b.name) + '</span></div>' +
+      '<div class="bld-costs">' +
+        '<span class="c-gold">' + b.cost + ' Gold</span>' +
+        (b.upkeep ? '<span class="c-up">' + b.upkeep + ' Upkeep</span>' : '') +
+        '<span class="c-land">' + b.land + ' Plot' + (b.land > 1 ? 's' : '') + '</span>' +
+      '</div>' +
+      '<ul class="bld-eff">' + (b.eff || []).map(e => '<li>' + esc(e) + '</li>').join('') +
+        (b.need_text ? '<li class="needs">' + esc(b.need_text) + '</li>' : '') +
+      '</ul>' +
+      (can
+        ? '<button class="build-btn" type="button" data-build="' + esc(h.id) + '" data-num="' + b.num + '">Build</button>'
+        : '<div class="lock-why">' + esc(why) + '</div>') +
+    '</div>';
+  }
+
+  // Build/raze share one guarded path: the lock blocks a second click before the first resolves, and the
+  // server (which enforces gold/land/terrain/ownership) is the authority — we always reload the true state.
+  let acting = false;
+  async function holdingAction(run) {
+    if (acting) return;
+    acting = true;
+    try {
+      const { error } = await run();
+      if (error) throw error;            // e.g. not_enough_gold / no_room / terrain_required (already gated in UI)
+    } catch (e) { /* fall through: the reload below shows the true server state */ }
+    try { await reloadHoldings(); } catch (e) { /* keep the current view rather than crash */ }
+    acting = false;
+  }
+  const doBuild = (countyId, num) => holdingAction(() => supabase.rpc('kingdoms_build', { p_county: countyId, p_building: num }));
+  const doRaze = (buildingId) => holdingAction(() => supabase.rpc('kingdoms_raze', { p_building: buildingId }));
+
+  // Re-fetch resources + holdings after a build/raze, then repaint the bar and the view.
+  async function reloadHoldings() {
+    await loadHouseData();
+    updateTopbar();
+    renderHoldings(document.getElementById('stage'));
+  }
+
   // ---- Dynasty hall: the house tree (new players hold only the head of house) ----
   // A dynasty member as a plain object → the tree card and the character popup read from the same shape.
   function headOfHouse() {
@@ -439,6 +715,111 @@
     const open = () => openCharacter(headOfHouse());
     card.addEventListener('click', open);
     card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+  }
+
+  // ---- Court hall: sovereign + council (every seat starts empty — no one is seated yet) ----
+  const COURT_SEATS = ['Steward', 'Master of Coin', 'Marshal of the Realm', 'Master of Laws', 'Master of Ships', 'Spymaster'];
+  const CROWN_SVG = '<svg class="crown" width="46" height="30" viewBox="0 0 46 30" aria-hidden="true">' +
+    '<path d="M4 26 L7 8 L15 17 L23 4 L31 17 L39 8 L42 26 Z" fill="none" stroke="#b99653" stroke-width="1.6" stroke-linejoin="round"/>' +
+    '<circle cx="23" cy="3" r="2" fill="#b99653"/><circle cx="7" cy="7" r="1.6" fill="#b99653"/><circle cx="39" cy="7" r="1.6" fill="#b99653"/></svg>';
+
+  function renderCourt(stage) {
+    if (!house) { stage.innerHTML = ''; return; }
+    const realm = house.heritage === 'Aldren' ? 'Aldren' : esc(house.heritage || 'the Realm');
+    const seats = COURT_SEATS.map(label =>
+      '<div class="seat vacant"><p class="seat-label">' + esc(label) + '</p>' +
+      '<p class="seat-vacant-text">The seat stands empty.</p></div>').join('');
+    stage.innerHTML =
+      '<div class="view-wrap"><div class="court">' +
+        '<h2 class="court-title">The Court of ' + esc(realm) + '</h2>' +
+        '<section class="sovereign">' + CROWN_SVG +
+          '<p class="seat-label">Sovereign</p>' +
+          '<p class="seat-vacant-text">The throne sits empty.</p>' +
+        '</section>' +
+        '<h3 class="council-title">The King’s Council</h3>' +
+        '<div class="council">' + seats + '</div>' +
+        '<p class="court-foot">' + esc(houseLabel(house.house_name)) + ' holds no seat at this court.</p>' +
+      '</div></div>';
+  }
+
+  // ---- Laws hall: the realm's standing laws. Crown-set; Aldren starts High on Crown Authority and holds no
+  // assembly, so there is no vote or debate — the tiers below simply show where each law stands. ----
+  const LAW_GROUPS = ['Crown', 'Coin', 'Sword', 'Justice'];
+  const LAWS = [
+    { group: 'Crown', name: 'Crown Authority', at: 3,
+      tiers: ['Minimal', 'Limited', 'Moderate', 'High', 'Absolute'],
+      eff: ['The Crown may revoke any vassal’s title at will',
+            'Vassals owe the greater share of their levies to the Crown',
+            'Royal justice overrides a lord’s own courts'],
+      you: () => 'The Crown’s word runs law in your halls; you hold your lands at its pleasure.' },
+    { group: 'Crown', name: 'Succession', at: 1,
+      tiers: ['Elective', 'Partition', 'Primogeniture', 'Ultimogeniture'],
+      eff: ['Holdings are divided among all trueborn sons on the lord’s death',
+            'Houses fracture quickly, but cadet branches multiply'],
+      you: () => 'With no children born, your holdings would pass to your nearest kin.' },
+    { group: 'Coin', name: 'Crown Taxation', at: 1,
+      tiers: ['None', 'Tithe — 1 in 10', 'Fifth — 1 in 5', 'Half'],
+      eff: ['Each vassal owes the Crown one tenth of gold raised in Taxation',
+            'Refusal earns a claim against your titles'],
+      you: () => 'For every 10 gold you raise in Taxation, 1 is owed to the Crown.' },
+    { group: 'Coin', name: 'Right of Toll', at: 1,
+      tiers: ['Forbidden', 'Granted', 'Crown Monopoly'],
+      eff: ['Lords may levy tolls on roads and rivers crossing their domain',
+            '+1 Gold per Market at Taxation'],
+      you: c => 'Build a Market in ' + (c.seat || 'your domain') + ' to claim the toll.' },
+    { group: 'Sword', name: 'Vassal Wars', at: 1,
+      tiers: ['Unrestricted', 'With Cause', 'Feuds Only', 'Forbidden'],
+      eff: ['A vassal may war upon another only with a recognised claim or grievance',
+            'War without cause brands you Oathbreaker — −2 Prestige, and the Crown may intervene'],
+      you: () => 'You hold no claims. You cannot lawfully war upon anyone.' },
+    { group: 'Sword', name: 'Levy Obligation', at: 1,
+      tiers: ['Voluntary', 'One in Ten', 'One in Five'],
+      eff: ['When the Crown calls its banners, each lord owes one man in ten',
+            'Failing the call costs 3 Prestige and the Crown’s favour'],
+      you: () => 'When the Crown calls its banners, you owe one man in ten of your levy.' },
+    { group: 'Justice', name: 'Right of Trial', at: 1,
+      tiers: ['Lord’s Judgment', 'Trial by Combat', 'Royal Courts'],
+      eff: ['The accused may demand a champion and settle the matter in arms',
+            'Prowess decides guilt as often as evidence'],
+      you: c => 'Your Prowess is ' + c.prowess + '. ' + (c.prowess > 0 ? 'Meet your accuser in the field if you must.' : 'Avoid accusation, or find a champion.') }
+  ];
+
+  function lawHTML(law, ctx) {
+    const track = law.tiers.map((t, i) => '<span class="tier' + (i < law.at ? ' below' : i === law.at ? ' at' : '') + '"></span>').join('');
+    const names = law.tiers.map((t, i) => '<span class="tier-name' + (i === law.at ? ' at' : '') + '">' + esc(t) + '</span>').join('');
+    const eff = law.eff.map(e => '<li>' + esc(e) + '</li>').join('');
+    return '<section class="law">' +
+      '<div class="law-top"><span class="law-name">' + esc(law.name) + '</span>' +
+        '<span class="law-now">' + esc(law.tiers[law.at]) + '</span></div>' +
+      '<div class="track">' + track + '</div>' +
+      '<div class="tier-names">' + names + '</div>' +
+      '<ul class="law-eff">' + eff + '</ul>' +
+      '<p class="law-you"><span class="tag">Your House</span>' + esc(law.you(ctx)) + '</p>' +
+    '</section>';
+  }
+
+  function renderLaws(stage) {
+    if (!house) { stage.innerHTML = ''; return; }
+    const res = house.resources || {};
+    const counties = house.counties || [];
+    const ctx = {
+      prowess: Number(res.prowess || 0),
+      seat: counties.length ? counties[0].name.replace(/^\s*County of\s+/i, '').trim() : ''
+    };
+    const realm = house.heritage === 'Aldren' ? 'Aldren' : (house.heritage || 'the Realm');
+    const groups = LAW_GROUPS.map(g => {
+      const laws = LAWS.filter(l => l.group === g);
+      return laws.length ? '<h3 class="group-title">' + esc(g) + '</h3>' + laws.map(l => lawHTML(l, ctx)).join('') : '';
+    }).join('');
+    stage.innerHTML =
+      '<div class="view-wrap"><div class="laws">' +
+        '<div class="laws-head">' +
+          '<h2 class="laws-title">The Laws of ' + esc(realm) + '</h2>' +
+          '<p class="laws-sub">Decreed by the Crown and binding on every vassal. This realm holds no assembly — the lords have no vote.</p>' +
+          '<div class="laws-voice"><span class="voice-item"><span class="lbl">Your Standing</span>' +
+            '<span class="val">' + esc(house.leader_title || 'Count') + '</span></span></div>' +
+        '</div>' + groups +
+      '</div></div>';
   }
 
   // ---- character popup ----
@@ -500,24 +881,50 @@
   modal.addEventListener('click', e => { if (e.target === modal) closeBanner(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); } });
 
-  // ---- load ----
+  // ---- data load ----
+  async function ensureCatalog() {
+    if (catalog.length) return;
+    const { data, error } = await supabase.from('kingdoms_building_specs')
+      .select('num, name, category, cost, land, upkeep, needs, eff, need_text').order('num', { ascending: true });
+    if (error) throw error;
+    catalog = data || [];
+    catalog.forEach(s => { specByNum[s.num] = s; });
+  }
+
+  // Load (or reload) the signed-in player's house: the leader row, its counties, and each county's buildings.
+  // Returns false if there is no signed-in user or no house (caller redirects).
+  async function loadHouseData() {
+    const { data: u } = await supabase.auth.getUser();
+    const uid = u && u.user ? u.user.id : null;
+    if (!uid) return false;
+    const { data, error } = await supabase.from('kingdoms_leaders')
+      .select('id, house_name, heritage, leader_name, leader_age, leader_title, banner_url, resources')
+      .eq('user_id', uid).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (error) throw error;
+    if (!data) return false;
+    house = data;
+    const { data: cs } = await supabase.from('kingdoms_counties')
+      .select('id, name, available_land, population, terrain, hills').eq('held_by', house.id).order('name', { ascending: true });
+    house.counties = cs || [];
+    const ids = house.counties.map(c => c.id);
+    let builds = [];
+    if (ids.length) {
+      const { data: bd } = await supabase.from('kingdoms_holding_buildings')
+        .select('id, county_id, building_num').in('county_id', ids).order('created_at', { ascending: true });
+      builds = bd || [];
+    }
+    house.counties.forEach(c => { c.buildings = builds.filter(b => b.county_id === c.id); });
+    return true;
+  }
+
   (async () => {
     if (!isConfigured) { setBar('—'); return; }
     try {
-      const { data: u } = await supabase.auth.getUser();
-      const uid = u && u.user ? u.user.id : null;
-      if (!uid) { window.location.replace('/kingdoms/'); return; }   // must be signed in
-      const { data, error } = await supabase.from('kingdoms_leaders')
-        .select('id, house_name, heritage, leader_name, leader_age, leader_title, banner_url, resources')
-        .eq('user_id', uid).order('created_at', { ascending: false }).limit(1).maybeSingle();
-      if (error) throw error;
-      if (!data) { window.location.replace('/kingdoms/'); return; }  // no house yet → go found one
-      house = data;
-      const { data: cs } = await supabase.from('kingdoms_counties')
-        .select('name, available_land, population').eq('held_by', house.id).order('name', { ascending: true });
-      house.counties = cs || [];   // the house's holdings
+      await ensureCatalog();                                     // building specs (one source, small, cached)
+      const ok = await loadHouseData();
+      if (!ok) { window.location.replace('/kingdoms/'); return; } // not signed in / no house yet
       setBar(house.house_name);
-      setResources(house.resources);
+      updateTopbar();
       renderView('home');
     } catch (e) { window.location.replace('/kingdoms/'); }
   })();
