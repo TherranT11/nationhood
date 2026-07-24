@@ -203,7 +203,29 @@
     display: flex; align-items: center; justify-content: center; text-align: center; padding: 0.5rem;
     font-family: var(--display); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--bone-dim);
   }
-  .card-slot.filled { border-style: solid; border-color: var(--gold); color: var(--bone); }
+  .card-slot.filled { border-style: solid; border-color: var(--gold); color: var(--bone); cursor: pointer; flex-direction: column; gap: .3rem; transition: transform .15s ease, border-color .15s ease; }
+  .card-slot.filled:hover { transform: translateY(-3px); border-color: var(--gold-bright); }
+  .card-slot .cs-top { font-family: var(--display); font-weight: 600; font-size: .78rem; letter-spacing: .1em; color: var(--bone); }
+  .card-slot .cs-div { color: var(--faint); }
+  .card-slot .cs-bot { font-family: var(--display); font-size: .68rem; letter-spacing: .1em; color: var(--bone-dim); }
+  .cards-draw { margin-left: auto; padding: .4rem 1rem; font-size: .6rem; }
+
+  /* ---- card play modal ---- */
+  .card-play { width: min(520px, 94vw); }
+  .pc-side { border: 1px solid var(--steel-edge); padding: 1rem 1.1rem 1.15rem; margin-bottom: .9rem; }
+  .pc-side.playable { border-color: var(--gold); }
+  .pc-head { display: flex; align-items: baseline; gap: .6rem; margin-bottom: .5rem; }
+  .pc-name { font-family: var(--display); font-weight: 600; font-size: .95rem; letter-spacing: .1em; text-transform: uppercase; }
+  .pc-which { font-family: var(--display); font-size: .55rem; letter-spacing: .18em; text-transform: uppercase; color: var(--faint); }
+  .pc-cost { font-family: var(--display); font-size: .62rem; letter-spacing: .08em; color: var(--gold); margin-bottom: .6rem; }
+  .pc-eff { list-style: none; font-size: .84rem; color: var(--bone-dim); line-height: 1.5; margin-bottom: .5rem; }
+  .pc-eff li { padding-left: .85rem; position: relative; }
+  .pc-eff li::before { content: "\00b7"; position: absolute; left: .2rem; color: var(--gold); }
+  .pc-note { font-size: .78rem; font-style: italic; color: var(--faint); margin-top: .4rem; padding-left: .1rem; }
+  .pc-play { margin-top: .7rem; font-family: var(--display); font-weight: 600; font-size: .62rem; letter-spacing: .16em; text-transform: uppercase; color: #16130b; background: var(--gold); border: none; padding: .5rem 1.4rem; cursor: pointer; }
+  .pc-play:hover { background: var(--gold-bright); }
+  .pc-play:disabled { background: none; color: var(--faint); border: 1px solid var(--steel-edge); cursor: not-allowed; }
+  .pc-why { margin-top: .6rem; font-family: var(--display); font-size: .55rem; letter-spacing: .12em; text-transform: uppercase; color: #c9857f; }
 
   /* ============================================================
      Holdings view — collapsible holdings + build catalog
@@ -461,6 +483,15 @@
   </div>
 </div>
 
+<!-- Card play popup (opened from a hand card): choose the top or bottom side and play it -->
+<div class="modal-back" id="card-modal">
+  <div class="modal card-play">
+    <div class="modal-title">Play a Card</div>
+    <div id="card-body"></div>
+    <div class="modal-actions"><button class="mbtn" id="card-close" type="button">Close</button></div>
+  </div>
+</div>
+
 <script type="module">
   import { supabase, isConfigured } from '/supabase.js';
   import { esc, houseLabel, TREASURY_SPEC, LORD_STAT_SPEC } from '/kingdoms.js';   // shared Kingdoms helpers (one source)
@@ -469,6 +500,8 @@
   let house = null;         // the signed-in player's house
   let catalog = [];         // building specs (from kingdoms_building_specs; one source)
   const specByNum = {};     // num → spec
+  let cardCatalog = [];     // card sides (from kingdoms_cards; one source)
+  const cardSides = {};     // `${card_key}:${side}` → row
 
   const setBar = name => {
     document.getElementById('house-label').innerHTML =
@@ -500,7 +533,7 @@
   const updateTopbar = () => {
     const res = house && house.resources ? house.resources : {};
     const freePlots = (house && house.counties || []).reduce((s, c) => s + freeLand(c), 0);
-    const vals = { gold: res.gold || 0, population: res.population || 0, plots: freePlots, prestige: res.prestige || 0 };
+    const vals = { gold: res.gold || 0, food: res.food || 0, population: res.population || 0, plots: freePlots, prestige: res.prestige || 0 };
     document.getElementById('topbar-res').innerHTML = TREASURY_SPEC.map(s =>
       '<span class="res"><b>' + Number(vals[s.key] || 0).toLocaleString() + '</b>' + esc(s.label) + '</span>'
     ).join('');
@@ -564,6 +597,13 @@
     document.getElementById('banner-edit').addEventListener('click', openBanner);
     const go = document.getElementById('hd-go');
     if (go) go.addEventListener('click', () => document.querySelector('.nav-item[data-view="holdings"]').click());
+    const draw = document.getElementById('draw-card');
+    if (draw) draw.addEventListener('click', drawCard);
+    stage.querySelectorAll('.card-slot.filled[data-hand]').forEach(el => {
+      const open = () => openCard(el.dataset.hand);
+      el.addEventListener('click', open);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    });
   }
 
   // Holdings container: the house's counties (each with its own land/population), primary estate starred.
@@ -586,22 +626,86 @@
   }
 
   // Cards container: the house's hand (up to HAND_MAX). Full width, below Head of House + Holdings.
+  // Each card has a top and a bottom (e.g. Feast / Feud); click one to choose a side and play it.
   const HAND_MAX = 5;
   function cardsCard() {
-    const hand = house.cards || [];
+    const hand = house.hand || [];
     const slots = [];
     for (let i = 0; i < HAND_MAX; i++) {
       const c = hand[i];
-      slots.push(c
-        ? '<div class="card-slot filled">' + esc(c.name || 'Card') + '</div>'
-        : '<div class="card-slot"><span>Empty</span></div>');
+      if (c) {
+        const top = cardSides[c.card_key + ':top'], bot = cardSides[c.card_key + ':bottom'];
+        slots.push('<div class="card-slot filled" role="button" tabindex="0" data-hand="' + esc(c.id) + '">' +
+          '<span class="cs-top">' + esc(top ? top.name : c.card_key) + '</span>' +
+          '<span class="cs-div">' + (bot ? '&mdash;' : '') + '</span>' +
+          '<span class="cs-bot">' + esc(bot ? bot.name : '') + '</span></div>');
+      } else {
+        slots.push('<div class="card-slot"><span>Empty</span></div>');
+      }
     }
+    const canDraw = hand.length < HAND_MAX;
     return '<div class="cards">' +
       '<div class="cards-head"><span class="cards-title">Cards</span>' +
-        '<span class="cards-count">( ' + hand.length + ' / ' + HAND_MAX + ' )</span></div>' +
+        '<span class="cards-count">( ' + hand.length + ' / ' + HAND_MAX + ' )</span>' +
+        '<button class="mbtn cards-draw" id="draw-card" type="button"' + (canDraw ? '' : ' disabled') + '>Draw a Card</button></div>' +
       '<div class="cards-body">' + slots.join('') + '</div>' +
     '</div>';
   }
+
+  // ---- card play: draw, open a card, choose a side, play it ----
+  const cardModal = document.getElementById('card-modal');
+  let carding = false;   // guards draw/play against double-fire
+
+  async function drawCard() {
+    if (carding) return;
+    carding = true;
+    try { const { error } = await supabase.rpc('kingdoms_draw'); if (error) throw error; } catch (e) {}
+    try { await loadHouseData(); renderHome(document.getElementById('stage')); } catch (e) {}
+    carding = false;
+  }
+
+  // The one side of a card as a block: name, cost, effects, notes, and a Play button gated by cost/playability.
+  function sideHTML(handId, key, side, which) {
+    const c = cardSides[key + ':' + side];
+    if (!c) return '';
+    const res = house.resources || {};
+    const affordable = (res.gold || 0) >= c.cost_gold && (res.food || 0) >= c.cost_food;
+    const can = c.playable && affordable;
+    const why = !c.playable ? 'Not yet available' : !affordable ? 'You cannot pay the cost' : '';
+    const eff = (c.effects || []).map(e => '<li>' + esc(e) + '</li>').join('');
+    const notes = (c.notes || []).map(n => '<p class="pc-note">' + esc(n) + '</p>').join('');
+    return '<div class="pc-side' + (can ? ' playable' : '') + '">' +
+      '<div class="pc-head"><span class="pc-name">' + esc(c.name) + '</span><span class="pc-which">' + esc(which) + '</span></div>' +
+      '<div class="pc-cost">Cost: ' + esc(c.cost_text || 'None') + '</div>' +
+      '<ul class="pc-eff">' + eff + '</ul>' + notes +
+      (can
+        ? '<button class="pc-play" type="button" data-play="' + esc(handId) + '" data-side="' + esc(side) + '">Play ' + esc(c.name) + '</button>'
+        : '<div class="pc-why">' + esc(why) + '</div>') +
+    '</div>';
+  }
+
+  function openCard(handId) {
+    const card = (house.hand || []).find(h => h.id === handId);
+    if (!card) return;
+    document.getElementById('card-body').innerHTML =
+      sideHTML(handId, card.card_key, 'top', 'Top') + sideHTML(handId, card.card_key, 'bottom', 'Bottom');
+    document.getElementById('card-body').querySelectorAll('[data-play]').forEach(btn =>
+      btn.addEventListener('click', () => playCard(btn.dataset.play, btn.dataset.side)));
+    cardModal.classList.add('open');
+  }
+  function closeCard() { cardModal.classList.remove('open'); }
+
+  async function playCard(handId, side) {
+    if (carding) return;
+    carding = true;
+    try { const { error } = await supabase.rpc('kingdoms_play_card', { p_hand_id: handId, p_side: side }); if (error) throw error; } catch (e) {}
+    closeCard();
+    try { await loadHouseData(); updateTopbar(); renderHome(document.getElementById('stage')); } catch (e) {}
+    carding = false;
+  }
+
+  document.getElementById('card-close').addEventListener('click', closeCard);
+  cardModal.addEventListener('click', e => { if (e.target === cardModal) closeCard(); });
 
   // ---- Holdings hall: collapsible holdings + build catalog ----
   const CAT_ORDER = ['Food', 'Economy', 'Military', 'Administration', 'Religion', 'Prestige'];
@@ -1001,7 +1105,7 @@
   });
   document.getElementById('banner-cancel').addEventListener('click', closeBanner);
   modal.addEventListener('click', e => { if (e.target === modal) closeBanner(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); closeCard(); } });
 
   // ---- data load ----
   async function ensureCatalog() {
@@ -1011,6 +1115,15 @@
     if (error) throw error;
     catalog = data || [];
     catalog.forEach(s => { specByNum[s.num] = s; });
+  }
+
+  async function ensureCards() {
+    if (cardCatalog.length) return;
+    const { data, error } = await supabase.from('kingdoms_cards')
+      .select('card_key, side, name, cost_text, cost_gold, cost_food, effects, notes, playable');
+    if (error) throw error;
+    cardCatalog = data || [];
+    cardCatalog.forEach(c => { cardSides[c.card_key + ':' + c.side] = c; });
   }
 
   // Load (or reload) the signed-in player's house: the leader row, its counties, and each county's buildings.
@@ -1041,6 +1154,9 @@
       .select('leader_name, house_name, leader_age').eq('heritage', house.heritage).eq('is_sovereign', true)
       .order('created_at', { ascending: true }).limit(1).maybeSingle();
     house.sovereign = sov || null;
+    const { data: hand } = await supabase.from('kingdoms_hand')
+      .select('id, card_key').eq('house_id', house.id).order('created_at', { ascending: true });
+    house.hand = hand || [];   // the cards currently in hand
     return true;
   }
 
@@ -1048,6 +1164,7 @@
     if (!isConfigured) { setBar('—'); return; }
     try {
       await ensureCatalog();                                     // building specs (one source, small, cached)
+      await ensureCards();                                       // card catalog (one source, small, cached)
       const ok = await loadHouseData();
       if (!ok) { window.location.replace('/kingdoms/'); return; } // not signed in / no house yet
       setBar(house.house_name);
