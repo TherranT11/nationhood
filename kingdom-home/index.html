@@ -226,6 +226,7 @@
   .pc-play:hover { background: var(--gold-bright); }
   .pc-play:disabled { background: none; color: var(--faint); border: 1px solid var(--steel-edge); cursor: not-allowed; }
   .pc-why { margin-top: .6rem; font-family: var(--display); font-size: .55rem; letter-spacing: .12em; text-transform: uppercase; color: #c9857f; }
+  .pc-result { font-size: .98rem; color: var(--bone); line-height: 1.6; padding: .4rem .1rem 1rem; }
 
   /* ============================================================
      Holdings view — collapsible holdings + build catalog
@@ -486,7 +487,7 @@
 <!-- Card play popup (opened from a hand card): choose the top or bottom side and play it -->
 <div class="modal-back" id="card-modal">
   <div class="modal card-play">
-    <div class="modal-title">Play a Card</div>
+    <div class="modal-title" id="card-title">Play a Card</div>
     <div id="card-body"></div>
     <div class="modal-actions"><button class="mbtn" id="card-close" type="button">Close</button></div>
   </div>
@@ -586,7 +587,7 @@
             lordStats +
             kvRow('Holdings', holdings || '—', !holdings) +
             kvRow('Culture', culture) +
-            kvRow('Spouse', '—', true) +
+            kvRow('Spouse', house.spouse_name ? esc(house.spouse_name) : '—', !house.spouse_name) +
             kvRow('Children', '—', true) +
             kvRow('Liege', '—', true) +
           '</div>' +
@@ -657,14 +658,33 @@
   let carding = false;   // guards draw/play against double-fire
 
   // One guarded path for draw and play: lock, run the RPC, then reload + repaint the Home hall.
+  // Returns the RPC outcome ({ data } | { error }) so play can narrate its result; null if it was locked.
   async function cardAction(run) {
-    if (carding) return;
+    if (carding) return null;
     carding = true;
-    try { const { error } = await run(); if (error) throw error; } catch (e) {}
+    let out;
+    try { const { data, error } = await run(); if (error) throw error; out = { data }; }
+    catch (e) { out = { error: e }; }
     try { await reloadThenRender(renderHome); } catch (e) {}
     carding = false;
+    return out;
   }
   const drawCard = () => cardAction(() => supabase.rpc('kingdoms_draw'));
+
+  // Friendly text for the errors the play RPC can raise (the affordable ones are already gated in the modal).
+  function friendlyCardError(e) {
+    const m = (e && e.message) || '';
+    if (m.includes('already_married')) return 'There is no unmarried Personality of your House to wed.';
+    if (m.includes('cannot_pay')) return 'You cannot pay the cost.';
+    if (m.includes('not_playable')) return 'That side cannot be played yet.';
+    if (m.includes('not_your_card')) return 'That card is no longer in your hand.';
+    return '';
+  }
+  function showCardResult(msg) {
+    document.getElementById('card-title').textContent = 'Result';
+    document.getElementById('card-body').innerHTML = '<p class="pc-result">' + esc(msg) + '</p>';
+    cardModal.classList.add('open');
+  }
 
   // The one side of a card as a block: name, cost, effects, notes, and a Play button gated by cost/playability.
   function sideHTML(handId, key, side, which) {
@@ -689,6 +709,7 @@
   function openCard(handId) {
     const card = (house.hand || []).find(h => h.id === handId);
     if (!card) return;
+    document.getElementById('card-title').textContent = 'Play a Card';
     document.getElementById('card-body').innerHTML =
       sideHTML(handId, card.card_key, 'top', 'Top') + sideHTML(handId, card.card_key, 'bottom', 'Bottom');
     document.getElementById('card-body').querySelectorAll('[data-play]').forEach(btn =>
@@ -697,9 +718,12 @@
   }
   function closeCard() { cardModal.classList.remove('open'); }
 
-  function playCard(handId, side) {
+  async function playCard(handId, side) {
     closeCard();   // the modal (and its Play button) closes first, so it can't be double-fired
-    return cardAction(() => supabase.rpc('kingdoms_play_card', { p_hand_id: handId, p_side: side }));
+    const r = await cardAction(() => supabase.rpc('kingdoms_play_card', { p_hand_id: handId, p_side: side }));
+    if (!r) return;                                                  // was locked
+    const msg = r.error ? friendlyCardError(r.error) : r.data;       // narrate the outcome (e.g. the Marry roll)
+    if (msg) showCardResult(msg);
   }
 
   document.getElementById('card-close').addEventListener('click', closeCard);
@@ -839,7 +863,7 @@
     return {
       name: house.leader_name || 'Unknown',
       age: house.leader_age,
-      spouse: null, children: null,   // new houses have neither yet
+      spouse: house.spouse_name || null, children: null,   // spouse set by the Marry card; children not yet modeled
       ambition: Number(res.ambition || 0),
       prowess: Number(res.prowess || 0),
       administration: Number(res.administration || 0)
@@ -1131,7 +1155,7 @@
     const uid = u && u.user ? u.user.id : null;
     if (!uid) return false;
     const { data, error } = await supabase.from('kingdoms_leaders')
-      .select('id, house_name, heritage, leader_name, leader_age, leader_title, banner_url, resources, is_sovereign')
+      .select('id, house_name, heritage, leader_name, leader_age, leader_title, banner_url, resources, is_sovereign, spouse_name')
       .eq('user_id', uid).order('created_at', { ascending: false }).limit(1).maybeSingle();
     if (error) throw error;
     if (!data) return false;
