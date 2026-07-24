@@ -490,6 +490,7 @@
   const nationName = () => 'Kingdom of ' + realmName();                          // "Kingdom of Aldren"
   const sovereignRank = () => SOVEREIGN_TITLE + ' of the ' + nationName();       // "King of the Kingdom of Aldren"
   const isSovereign = () => !!(house && house.is_sovereign);
+  const nameOfHouse = (name, houseName) => esc(name || 'Unknown') + ' of ' + esc(houseLabel(houseName));   // "Everard of House Ashvale"
   const fullRank = () => {                                                       // the head of house's rank, seat included
     const seat = primarySeat();
     const feudal = (house.leader_title || 'Count') + (seat ? ' of ' + seat : '');   // "Count of Amberfield"
@@ -533,7 +534,7 @@
 
   function renderHome(stage) {
     if (!house) { stage.innerHTML = ''; return; }
-    const name = esc(house.leader_name || 'Unknown') + ' of ' + esc(houseLabel(house.house_name));
+    const name = nameOfHouse(house.leader_name, house.house_name);
     const culture = house.heritage === 'Aldren' ? 'Aldric' : esc(house.heritage || '—');
     const counties = house.counties || [];
     const holdings = counties.length ? esc(counties.map(c => c.name).join(', ')) : null;
@@ -715,17 +716,18 @@
       const { error } = await run();
       if (error) throw error;            // e.g. not_enough_gold / no_room / terrain_required (already gated in UI)
     } catch (e) { /* fall through: the reload below shows the true server state */ }
-    try { await reloadHoldings(); } catch (e) { /* keep the current view rather than crash */ }
+    try { await reloadThenRender(renderHoldings); } catch (e) { /* keep the current view rather than crash */ }
     acting = false;
   }
   const doBuild = (countyId, num) => holdingAction(() => supabase.rpc('kingdoms_build', { p_county: countyId, p_building: num }));
   const doRaze = (buildingId) => holdingAction(() => supabase.rpc('kingdoms_raze', { p_building: buildingId }));
 
-  // Re-fetch resources + holdings after a build/raze, then repaint the bar and the view.
-  async function reloadHoldings() {
+  // Re-fetch the house after a server write, repaint the top bar, then re-render the given view.
+  // One reload path shared by build/raze and Claim the Throne.
+  async function reloadThenRender(render) {
     await loadHouseData();
     updateTopbar();
-    renderHoldings(document.getElementById('stage'));
+    render(document.getElementById('stage'));
   }
 
   // ---- Dynasty hall: the house tree (new players hold only the head of house) ----
@@ -783,7 +785,7 @@
       const yours = isSovereign() ? '<p class="yours-tag">Your House holds the throne</p>' : '';
       sovInner = CROWN_SVG +
         '<p class="seat-label">Sovereign</p>' +
-        '<p class="sov-name">' + esc(sov.leader_name || 'Unknown') + ' of ' + esc(houseLabel(sov.house_name)) + ',' + age + '</p>' +
+        '<p class="sov-name">' + nameOfHouse(sov.leader_name, sov.house_name) + ',' + age + '</p>' +
         '<p class="sov-reign">' + esc(sovereignRank()) + '</p>' + yours;
     } else {                                            // empty throne — offer the claim (only place, only at start)
       sovInner = CROWN_SVG +
@@ -818,7 +820,7 @@
       const { error } = await supabase.rpc('kingdoms_claim_throne');
       if (error) throw error;
     } catch (e) { /* fall through: the reload shows the true state (e.g. someone beat us to it) */ }
-    try { await loadHouseData(); updateTopbar(); renderCourt(document.getElementById('stage')); } catch (e) {}
+    try { await reloadThenRender(renderCourt); } catch (e) {}
     claiming = false;
   }
 
