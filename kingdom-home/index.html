@@ -390,12 +390,13 @@
     document.getElementById('house-label').innerHTML =
       esc(houseLabel(name)) + '<span class="sep">|</span><span class="era">Year 845 V.E.</span>';
   };
-  // Land used by the buildings standing in a county.
+  // Land used by the buildings standing in a county, and the plots left free — one source for both.
   const usedLand = c => (c.buildings || []).reduce((s, b) => s + (specByNum[b.building_num] ? specByNum[b.building_num].land : 0), 0);
+  const freeLand = c => Math.max(0, (c.available_land || 0) - usedLand(c));
   // The top bar shows the house Treasury: Gold + Population from resources, Available Plots = free land across holdings.
   const updateTopbar = () => {
     const res = house && house.resources ? house.resources : {};
-    const freePlots = (house && house.counties || []).reduce((s, c) => s + Math.max(0, (c.available_land || 0) - usedLand(c)), 0);
+    const freePlots = (house && house.counties || []).reduce((s, c) => s + freeLand(c), 0);
     const vals = { gold: res.gold || 0, population: res.population || 0, plots: freePlots };
     document.getElementById('topbar-res').innerHTML = TREASURY_SPEC.map(s =>
       '<span class="res"><b>' + Number(vals[s.key] || 0).toLocaleString() + '</b>' + esc(s.label) + '</span>'
@@ -516,7 +517,7 @@
   }
 
   function holdingHTML(h, primary) {
-    const used = usedLand(h), free = Math.max(0, (h.available_land || 0) - used);
+    const used = usedLand(h), free = freeLand(h);
     let pips = '';
     for (let i = 0; i < (h.available_land || 0); i++) pips += '<span class="land-pip' + (i < used ? ' used' : '') + '"></span>';
     const terrain = (h.terrain ? esc(h.terrain) : '') + (primary ? ' · Primary Estate' : '');
@@ -543,7 +544,7 @@
 
   function holdingBodyHTML(h) {
     const built = h.buildings || [];
-    const free = Math.max(0, (h.available_land || 0) - usedLand(h));
+    const free = freeLand(h);
     const gold = house.resources ? (house.resources.gold || 0) : 0;
     let out = '<h3 class="sec-title">Constructed <span class="count">&mdash; ' + built.length + '</span></h3>';
 
@@ -595,14 +596,22 @@
     '</div>';
   }
 
-  async function doBuild(countyId, num) {
-    try { await supabase.rpc('kingdoms_build', { p_county: countyId, p_building: num }); } catch (e) {}
-    await reloadHoldings();
+  // Build/raze share one guarded path: the lock blocks a second click before the first resolves, and the
+  // server (which enforces gold/land/terrain/ownership) is the authority — we always reload the true state.
+  let acting = false;
+  async function holdingAction(run) {
+    if (acting) return;
+    acting = true;
+    try {
+      const { error } = await run();
+      if (error) throw error;            // e.g. not_enough_gold / no_room / terrain_required (already gated in UI)
+    } catch (e) { /* fall through: the reload below shows the true server state */ }
+    try { await reloadHoldings(); } catch (e) { /* keep the current view rather than crash */ }
+    acting = false;
   }
-  async function doRaze(buildingId) {
-    try { await supabase.rpc('kingdoms_raze', { p_building: buildingId }); } catch (e) {}
-    await reloadHoldings();
-  }
+  const doBuild = (countyId, num) => holdingAction(() => supabase.rpc('kingdoms_build', { p_county: countyId, p_building: num }));
+  const doRaze = (buildingId) => holdingAction(() => supabase.rpc('kingdoms_raze', { p_building: buildingId }));
+
   // Re-fetch resources + holdings after a build/raze, then repaint the bar and the view.
   async function reloadHoldings() {
     await loadHouseData();
@@ -728,7 +737,6 @@
       .eq('user_id', uid).order('created_at', { ascending: false }).limit(1).maybeSingle();
     if (error) throw error;
     if (!data) return false;
-    data.counties = house && house.id === data.id ? (house.counties || []) : [];   // keep shape across reloads
     house = data;
     const { data: cs } = await supabase.from('kingdoms_counties')
       .select('id, name, available_land, population, terrain, hills').eq('held_by', house.id).order('name', { ascending: true });
