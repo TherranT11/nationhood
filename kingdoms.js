@@ -15,7 +15,8 @@ export const houseLabel = name => 'House ' + String(name || '').replace(/^\s*Hou
 export const TREASURY_SPEC = [
   { key: 'gold',       label: 'Gold' },
   { key: 'population', label: 'Population' },
-  { key: 'plots',      label: 'Available Plots' }
+  { key: 'plots',      label: 'Available Plots' },
+  { key: 'prestige',   label: 'House Prestige' }   // house standing; starts at 0
 ];
 
 // The head of house's personal attributes — shown on the Head of House card, NOT the house top bar
