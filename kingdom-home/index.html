@@ -184,6 +184,23 @@
   .hd-empty { color: var(--bone-dim); font-style: italic; }
   .hd-note { color: var(--bone-dim); font-style: italic; font-size: 0.8rem; padding: 0.8rem 0.75rem 0; }
 
+  /* ---- Cards hand (full width, below Head of House + Holdings) ---- */
+  .cards { flex-basis: 100%; width: 100%; background: var(--steel); border: 1px solid var(--steel-edge); }
+  .cards-head {
+    display: flex; align-items: baseline; gap: 0.6rem;
+    padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--steel-edge);
+  }
+  .cards-title { font-family: var(--display); font-weight: 600; font-size: 0.8rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--bone); }
+  .cards-count { font-family: var(--display); font-size: 0.8rem; letter-spacing: 0.1em; color: var(--gold); }
+  .cards-body { padding: 1.1rem; display: flex; gap: 1rem; flex-wrap: wrap; }
+  .card-slot {
+    flex: 1 1 130px; max-width: 160px; aspect-ratio: 3 / 4;
+    border: 1px dashed var(--steel-edge); background: var(--ink);
+    display: flex; align-items: center; justify-content: center; text-align: center; padding: 0.5rem;
+    font-family: var(--display); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--bone-dim);
+  }
+  .card-slot.filled { border-style: solid; border-color: var(--gold); color: var(--bone); }
+
   /* ---- Dynasty tree ---- */
   .view-wrap { padding: 1.5rem; }
   .panel { background: var(--steel); border: 1px solid var(--steel-edge); }
@@ -344,6 +361,7 @@
           '</div>' +
         '</div>' +
         holdingsCard(counties) +
+        cardsCard() +
       '</div>';
     document.getElementById('banner-edit').addEventListener('click', openBanner);
     const go = document.getElementById('hd-go');
@@ -365,6 +383,24 @@
       '</tr></thead><tbody>' + rows + '</tbody></table>' +
       (counties.length ? '<p class="hd-note">* Primary Estate</p>' : '') +
     '</div></div>';
+  }
+
+  // Cards container: the house's hand (up to HAND_MAX). Full width, below Head of House + Holdings.
+  const HAND_MAX = 5;
+  function cardsCard() {
+    const hand = house.cards || [];
+    const slots = [];
+    for (let i = 0; i < HAND_MAX; i++) {
+      const c = hand[i];
+      slots.push(c
+        ? '<div class="card-slot filled">' + esc(c.name || 'Card') + '</div>'
+        : '<div class="card-slot"><span>Empty</span></div>');
+    }
+    return '<div class="cards">' +
+      '<div class="cards-head"><span class="cards-title">Cards</span>' +
+        '<span class="cards-count">( ' + hand.length + ' / ' + HAND_MAX + ' )</span></div>' +
+      '<div class="cards-body">' + slots.join('') + '</div>' +
+    '</div>';
   }
 
   // ---- Dynasty hall: the house tree (new players hold only the head of house) ----
