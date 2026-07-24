@@ -484,7 +484,7 @@
   const updateTopbar = () => {
     const res = house && house.resources ? house.resources : {};
     const freePlots = (house && house.counties || []).reduce((s, c) => s + freeLand(c), 0);
-    const vals = { gold: res.gold || 0, population: res.population || 0, plots: freePlots };
+    const vals = { gold: res.gold || 0, population: res.population || 0, plots: freePlots, prestige: res.prestige || 0 };
     document.getElementById('topbar-res').innerHTML = TREASURY_SPEC.map(s =>
       '<span class="res"><b>' + Number(vals[s.key] || 0).toLocaleString() + '</b>' + esc(s.label) + '</span>'
     ).join('');
