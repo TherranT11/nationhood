@@ -18,6 +18,7 @@
     --gold-bright: #d9b56a;
     --faint: #5c5a52;
     --blood: #7a2e2a;
+    --blood-text: #c9857f;
     --green: #7d9a5c;
     --display: 'Cinzel', serif;
     --body: 'Alegreya', serif;
@@ -366,6 +367,26 @@
   .law-you { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--steel-edge); font-size: .9rem; color: var(--gold); }
   .law-you .tag { font-family: var(--display); font-size: .55rem; letter-spacing: .18em; text-transform: uppercase; color: var(--bone-dim); margin-right: .6rem; }
 
+  /* ============================================================
+     Conflict view — strength snapshot + wars/claims/pacts/feuds (all start empty)
+     Reuses .group-title for section headers.
+     ============================================================ */
+  .conflict { width: min(1060px, 100%); margin: 0 auto; }
+  .group-title:first-child { margin-top: 0; }
+  .group-title .muted { color: var(--faint); }
+  .strength { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); background: var(--steel); border: 1px solid var(--steel-edge); }
+  .str-cell { padding: 1rem 1.1rem; border-right: 1px solid var(--steel-edge); }
+  .str-cell:last-child { border-right: none; }
+  .str-cell .lbl { display: block; font-family: var(--display); font-size: .55rem; letter-spacing: .2em; text-transform: uppercase; color: var(--bone-dim); }
+  .str-cell .val { font-family: var(--display); font-weight: 600; font-size: 1.25rem; color: var(--bone); }
+  .str-cell .val.zero { color: var(--blood-text); }
+  .str-cell .note { display: block; font-size: .78rem; font-style: italic; color: var(--faint); }
+  .empty { background: var(--steel); border: 1px dashed var(--steel-edge); padding: 1.4rem 1.5rem; margin-bottom: .6rem; }
+  .empty p { font-style: italic; color: var(--faint); font-size: .92rem; }
+  .empty .ways { margin-top: .9rem; font-style: normal; color: var(--bone-dim); font-size: .88rem; }
+  .empty .ways li { list-style: none; padding-left: .9rem; position: relative; }
+  .empty .ways li::before { content: "\00b7"; position: absolute; left: .2rem; color: var(--gold); }
+
   /* ---- banner upload modal ---- */
   .modal-back { position: fixed; inset: 0; background: rgba(6,7,9,0.75); display: none; align-items: center; justify-content: center; z-index: 20; }
   .modal-back.open { display: flex; }
@@ -451,6 +472,12 @@
   // Land used by the buildings standing in a county, and the plots left free — one source for both.
   const usedLand = c => (c.buildings || []).reduce((s, b) => s + (specByNum[b.building_num] ? specByNum[b.building_num].land : 0), 0);
   const freeLand = c => Math.max(0, (c.available_land || 0) - usedLand(c));
+  // House-derived helpers used by more than one view — one source each.
+  const primarySeat = () => {                    // primary county's place name: "County of Amberfield" → "Amberfield"
+    const cs = (house && house.counties) || [];
+    return cs.length ? cs[0].name.replace(/^\s*County of\s+/i, '').trim() : '';
+  };
+  const realmName = () => (house && house.heritage === 'Aldren') ? 'Aldren' : ((house && house.heritage) || 'the Realm');
   // The top bar shows the house Treasury: Gold + Population from resources, Available Plots = free land across holdings.
   const updateTopbar = () => {
     const res = house && house.resources ? house.resources : {};
@@ -472,6 +499,7 @@
     if (view === 'holdings') { renderHoldings(stage); return; }
     if (view === 'court') { renderCourt(stage); return; }
     if (view === 'laws') { renderLaws(stage); return; }
+    if (view === 'conflict') { renderConflict(stage); return; }
     stage.innerHTML = '<div class="stage-empty"><h2>' + esc(VIEW_TITLES[view] || view) + '</h2><p>This hall is not yet built.</p></div>';
   }
   document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => {
@@ -696,8 +724,7 @@
   function renderDynasty(stage) {
     if (!house) { stage.innerHTML = ''; return; }
     const label = houseLabel(house.house_name);
-    const counties = house.counties || [];
-    const seat = counties.length ? counties[0].name.replace(/^\s*County of\s+/i, '').trim() : '';
+    const seat = primarySeat();
     const title = esc(house.leader_title || 'Count') + (seat ? ' of ' + esc(seat) : '');
     const age = house.leader_age != null ? ' <span class="age">(' + esc(house.leader_age) + ')</span>' : '';
     stage.innerHTML =
@@ -725,13 +752,12 @@
 
   function renderCourt(stage) {
     if (!house) { stage.innerHTML = ''; return; }
-    const realm = house.heritage === 'Aldren' ? 'Aldren' : esc(house.heritage || 'the Realm');
     const seats = COURT_SEATS.map(label =>
       '<div class="seat vacant"><p class="seat-label">' + esc(label) + '</p>' +
       '<p class="seat-vacant-text">The seat stands empty.</p></div>').join('');
     stage.innerHTML =
       '<div class="view-wrap"><div class="court">' +
-        '<h2 class="court-title">The Court of ' + esc(realm) + '</h2>' +
+        '<h2 class="court-title">The Court of ' + esc(realmName()) + '</h2>' +
         '<section class="sovereign">' + CROWN_SVG +
           '<p class="seat-label">Sovereign</p>' +
           '<p class="seat-vacant-text">The throne sits empty.</p>' +
@@ -801,12 +827,7 @@
   function renderLaws(stage) {
     if (!house) { stage.innerHTML = ''; return; }
     const res = house.resources || {};
-    const counties = house.counties || [];
-    const ctx = {
-      prowess: Number(res.prowess || 0),
-      seat: counties.length ? counties[0].name.replace(/^\s*County of\s+/i, '').trim() : ''
-    };
-    const realm = house.heritage === 'Aldren' ? 'Aldren' : (house.heritage || 'the Realm');
+    const ctx = { prowess: Number(res.prowess || 0), seat: primarySeat() };
     const groups = LAW_GROUPS.map(g => {
       const laws = LAWS.filter(l => l.group === g);
       return laws.length ? '<h3 class="group-title">' + esc(g) + '</h3>' + laws.map(l => lawHTML(l, ctx)).join('') : '';
@@ -814,11 +835,56 @@
     stage.innerHTML =
       '<div class="view-wrap"><div class="laws">' +
         '<div class="laws-head">' +
-          '<h2 class="laws-title">The Laws of ' + esc(realm) + '</h2>' +
+          '<h2 class="laws-title">The Laws of ' + esc(realmName()) + '</h2>' +
           '<p class="laws-sub">Decreed by the Crown and binding on every vassal. This realm holds no assembly — the lords have no vote.</p>' +
           '<div class="laws-voice"><span class="voice-item"><span class="lbl">Your Standing</span>' +
             '<span class="val">' + esc(house.leader_title || 'Count') + '</span></span></div>' +
         '</div>' + groups +
+      '</div></div>';
+  }
+
+  // ---- Conflict hall: strength snapshot + wars / claims / pacts / feuds. Everything starts empty (no king's
+  // summons, no other houses, no armies yet); only Prowess and the house name are real. ----
+  function renderConflict(stage) {
+    if (!house) { stage.innerHTML = ''; return; }
+    const res = house.resources || {};
+    const prowess = Number(res.prowess || 0);
+    const lord = house.leader_name || 'Your lord';
+    const label = houseLabel(house.house_name);
+    const cells = [
+      { lbl: 'Levy Raised', val: '0', note: 'No levies raised' },
+      { lbl: 'Men-at-Arms', val: '0', zero: true, note: 'None trained' },
+      { lbl: 'Prowess', val: String(prowess), zero: prowess === 0, note: prowess === 0 ? lord + ' is untested' : 'Led by ' + lord },
+      { lbl: 'Defense', val: '0', note: 'No Watchtower, no Keep' },
+      { lbl: 'Cavalry', val: '—', zero: true, note: 'Requires Stables' }
+    ];
+    const strength = cells.map(c =>
+      '<div class="str-cell"><span class="lbl">' + esc(c.lbl) + '</span>' +
+      '<span class="val' + (c.zero ? ' zero' : '') + '">' + esc(c.val) + '</span>' +
+      '<span class="note">' + esc(c.note) + '</span></div>').join('');
+
+    stage.innerHTML =
+      '<div class="view-wrap"><div class="conflict">' +
+        '<h3 class="group-title">Your Strength</h3>' +
+        '<div class="strength">' + strength + '</div>' +
+
+        '<h3 class="group-title">Wars <span class="muted">— none in the realm</span></h3>' +
+        '<div class="empty"><p>No wars are being fought. The realm keeps an uneasy peace.</p></div>' +
+
+        '<h3 class="group-title">Claims &amp; Grievances <span class="muted">— none held</span></h3>' +
+        '<div class="empty"><p>You hold no claim upon any title. Under <em>Vassal Wars — With Cause</em>, you cannot lawfully war upon anyone.</p>' +
+          '<ul class="ways">' +
+            '<li>Marry into a house with a disputed inheritance</li>' +
+            '<li>Employ a Spymaster to fabricate a claim — 6 Gold, and the risk of discovery</li>' +
+            '<li>Inherit through the death of a kinsman</li>' +
+            '<li>Answer a grievance done to your house, and name it cause</li>' +
+          '</ul></div>' +
+
+        '<h3 class="group-title">Pacts &amp; Alliances <span class="muted">— none</span></h3>' +
+        '<div class="empty"><p>No pacts bind your house. You stand alone.</p></div>' +
+
+        '<h3 class="group-title">Feuds <span class="muted">— none</span></h3>' +
+        '<div class="empty"><p>No house holds a grievance against ' + esc(label) + '. Your name is clean, and unremarkable.</p></div>' +
       '</div></div>';
   }
 
