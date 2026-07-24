@@ -203,7 +203,30 @@
     display: flex; align-items: center; justify-content: center; text-align: center; padding: 0.5rem;
     font-family: var(--display); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--bone-dim);
   }
-  .card-slot.filled { border-style: solid; border-color: var(--gold); color: var(--bone); }
+  .card-slot.filled { border-style: solid; border-color: var(--gold); color: var(--bone); cursor: pointer; flex-direction: column; gap: .3rem; transition: transform .15s ease, border-color .15s ease; }
+  .card-slot.filled:hover { transform: translateY(-3px); border-color: var(--gold-bright); }
+  .card-slot .cs-top { font-family: var(--display); font-weight: 600; font-size: .78rem; letter-spacing: .1em; color: var(--bone); }
+  .card-slot .cs-div { color: var(--faint); }
+  .card-slot .cs-bot { font-family: var(--display); font-size: .68rem; letter-spacing: .1em; color: var(--bone-dim); }
+  .cards-draw { margin-left: auto; padding: .4rem 1rem; font-size: .6rem; }
+
+  /* ---- card play modal ---- */
+  .card-play { width: min(520px, 94vw); max-height: 88vh; overflow-y: auto; }
+  .pc-side { border: 1px solid var(--steel-edge); padding: 1rem 1.1rem 1.15rem; margin-bottom: .9rem; }
+  .pc-side.playable { border-color: var(--gold); }
+  .pc-head { display: flex; align-items: baseline; gap: .6rem; margin-bottom: .5rem; }
+  .pc-name { font-family: var(--display); font-weight: 600; font-size: .95rem; letter-spacing: .1em; text-transform: uppercase; }
+  .pc-which { font-family: var(--display); font-size: .55rem; letter-spacing: .18em; text-transform: uppercase; color: var(--faint); }
+  .pc-cost { font-family: var(--display); font-size: .62rem; letter-spacing: .08em; color: var(--gold); margin-bottom: .6rem; }
+  .pc-eff { list-style: none; font-size: .84rem; color: var(--bone-dim); line-height: 1.5; margin-bottom: .5rem; }
+  .pc-eff li { padding-left: .85rem; position: relative; }
+  .pc-eff li::before { content: "\00b7"; position: absolute; left: .2rem; color: var(--gold); }
+  .pc-note { font-size: .78rem; font-style: italic; color: var(--faint); margin-top: .4rem; padding-left: .1rem; }
+  .pc-play { margin-top: .7rem; font-family: var(--display); font-weight: 600; font-size: .62rem; letter-spacing: .16em; text-transform: uppercase; color: #16130b; background: var(--gold); border: none; padding: .5rem 1.4rem; cursor: pointer; }
+  .pc-play:hover { background: var(--gold-bright); }
+  .pc-play:disabled { background: none; color: var(--faint); border: 1px solid var(--steel-edge); cursor: not-allowed; }
+  .pc-why { margin-top: .6rem; font-family: var(--display); font-size: .55rem; letter-spacing: .12em; text-transform: uppercase; color: #c9857f; }
+  .pc-result { font-size: .98rem; color: var(--bone); line-height: 1.6; padding: .4rem .1rem 1rem; }
 
   /* ============================================================
      Holdings view — collapsible holdings + build catalog
@@ -294,7 +317,8 @@
   }
   .panel-body { padding: 2.5rem 1.5rem 3rem; }
   .tree { display: flex; flex-direction: column; align-items: center; }
-  .couple { display: flex; align-items: center; }
+  .couple { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: .25rem; }
+  .marriage { flex: none; width: 34px; height: 2px; background: var(--gold); opacity: .55; }   /* the bond between spouses */
   .dyn-card {
     background: var(--ink); border: 1px solid var(--steel-edge); padding: 1rem 1.6rem 0.9rem;
     min-width: 190px; text-align: center; transition: border-color 0.2s ease, background 0.2s ease;
@@ -337,6 +361,11 @@
   .seat.vacant .seat-label { color: var(--faint); }
   .seat-vacant-text { font-style: italic; color: var(--faint); font-size: .92rem; }
   .court-foot { margin-top: 2rem; text-align: center; font-size: .9rem; font-style: italic; color: var(--faint); }
+  .sov-name { font-family: var(--display); font-weight: 600; font-size: 1.5rem; letter-spacing: .08em; line-height: 1.35; }
+  .sov-name .age { color: var(--bone-dim); font-weight: 400; font-size: 1rem; }
+  .sov-reign { margin-top: .9rem; padding-top: .9rem; border-top: 1px solid var(--steel-edge); display: inline-block; min-width: min(420px, 90%); font-family: var(--display); font-size: .78rem; letter-spacing: .18em; text-transform: uppercase; color: var(--gold); }
+  .yours-tag { margin-top: .9rem; font-family: var(--display); font-size: .55rem; letter-spacing: .2em; text-transform: uppercase; color: var(--gold-bright); }
+  .claim-btn { margin-top: 1.2rem; }
 
   /* ============================================================
      Laws view — the realm's standing laws (no assembly, so no vote/debate UI)
@@ -456,6 +485,15 @@
   </div>
 </div>
 
+<!-- Card play popup (opened from a hand card): choose the top or bottom side and play it -->
+<div class="modal-back" id="card-modal">
+  <div class="modal card-play">
+    <div class="modal-title" id="card-title">Play a Card</div>
+    <div id="card-body"></div>
+    <div class="modal-actions"><button class="mbtn" id="card-close" type="button">Close</button></div>
+  </div>
+</div>
+
 <script type="module">
   import { supabase, isConfigured } from '/supabase.js';
   import { esc, houseLabel, TREASURY_SPEC, LORD_STAT_SPEC } from '/kingdoms.js';   // shared Kingdoms helpers (one source)
@@ -464,6 +502,8 @@
   let house = null;         // the signed-in player's house
   let catalog = [];         // building specs (from kingdoms_building_specs; one source)
   const specByNum = {};     // num → spec
+  let cardCatalog = [];     // card sides (from kingdoms_cards; one source)
+  const cardSides = {};     // `${card_key}:${side}` → row
 
   const setBar = name => {
     document.getElementById('house-label').innerHTML =
@@ -480,11 +520,22 @@
   const realmName = () => (house && house.heritage === 'Aldren') ? 'Aldren' : ((house && house.heritage) || 'the Realm');
   const holdingLord = () => (house && house.leader_name) || 'Head of House';   // no appoint-lord mechanic yet: the head of house holds every county
   const unrestOf = c => (c && c.unrest != null) ? c.unrest : 1;                 // defaults to 1
+  // Sovereign / rank — one source. The realm's crown title (only Aldren exists) and the head's full rank.
+  const SOVEREIGN_TITLE = 'King';
+  const nationName = () => 'Kingdom of ' + realmName();                          // "Kingdom of Aldren"
+  const sovereignRank = () => SOVEREIGN_TITLE + ' of the ' + nationName();       // "King of the Kingdom of Aldren"
+  const isSovereign = () => !!(house && house.is_sovereign);
+  const nameOfHouse = (name, houseName) => esc(name || 'Unknown') + ' of ' + esc(houseLabel(houseName));   // "Everard of House Ashvale"
+  const fullRank = () => {                                                       // the head of house's rank, seat included
+    const seat = primarySeat();
+    const feudal = (house.leader_title || 'Count') + (seat ? ' of ' + seat : '');   // "Count of Amberfield"
+    return isSovereign() ? sovereignRank() + ', ' + feudal : feudal;            // sovereign keeps the feudal title too
+  };
   // The top bar shows the house Treasury: Gold + Population from resources, Available Plots = free land across holdings.
   const updateTopbar = () => {
     const res = house && house.resources ? house.resources : {};
     const freePlots = (house && house.counties || []).reduce((s, c) => s + freeLand(c), 0);
-    const vals = { gold: res.gold || 0, population: res.population || 0, plots: freePlots, prestige: res.prestige || 0 };
+    const vals = { gold: res.gold || 0, food: res.food || 0, population: res.population || 0, plots: freePlots, prestige: res.prestige || 0 };
     document.getElementById('topbar-res').innerHTML = TREASURY_SPEC.map(s =>
       '<span class="res"><b>' + Number(vals[s.key] || 0).toLocaleString() + '</b>' + esc(s.label) + '</span>'
     ).join('');
@@ -518,7 +569,7 @@
 
   function renderHome(stage) {
     if (!house) { stage.innerHTML = ''; return; }
-    const name = esc(house.leader_name || 'Unknown') + ' of ' + esc(houseLabel(house.house_name));
+    const name = nameOfHouse(house.leader_name, house.house_name);
     const culture = house.heritage === 'Aldren' ? 'Aldric' : esc(house.heritage || '—');
     const counties = house.counties || [];
     const holdings = counties.length ? esc(counties.map(c => c.name).join(', ')) : null;
@@ -533,11 +584,11 @@
           '<div class="kv">' +
             kvRow('Name', name) +
             kvRow('Age', esc(house.leader_age != null ? house.leader_age : '—')) +
-            kvRow('Title', esc(house.leader_title || 'Count')) +
+            kvRow('Title', esc(fullRank())) +
             lordStats +
             kvRow('Holdings', holdings || '—', !holdings) +
             kvRow('Culture', culture) +
-            kvRow('Spouse', '—', true) +
+            kvRow('Spouse', house.spouse_name ? esc(house.spouse_name) : '—', !house.spouse_name) +
             kvRow('Children', '—', true) +
             kvRow('Liege', '—', true) +
           '</div>' +
@@ -548,6 +599,13 @@
     document.getElementById('banner-edit').addEventListener('click', openBanner);
     const go = document.getElementById('hd-go');
     if (go) go.addEventListener('click', () => document.querySelector('.nav-item[data-view="holdings"]').click());
+    const draw = document.getElementById('draw-card');
+    if (draw) draw.addEventListener('click', drawCard);
+    stage.querySelectorAll('.card-slot.filled[data-hand]').forEach(el => {
+      const open = () => openCard(el.dataset.hand);
+      el.addEventListener('click', open);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    });
   }
 
   // Holdings container: the house's counties (each with its own land/population), primary estate starred.
@@ -570,22 +628,107 @@
   }
 
   // Cards container: the house's hand (up to HAND_MAX). Full width, below Head of House + Holdings.
+  // Each card has a top and a bottom (e.g. Feast / Feud); click one to choose a side and play it.
   const HAND_MAX = 5;
   function cardsCard() {
-    const hand = house.cards || [];
+    const hand = house.hand || [];
     const slots = [];
     for (let i = 0; i < HAND_MAX; i++) {
       const c = hand[i];
-      slots.push(c
-        ? '<div class="card-slot filled">' + esc(c.name || 'Card') + '</div>'
-        : '<div class="card-slot"><span>Empty</span></div>');
+      if (c) {
+        const top = cardSides[c.card_key + ':top'], bot = cardSides[c.card_key + ':bottom'];
+        slots.push('<div class="card-slot filled" role="button" tabindex="0" data-hand="' + esc(c.id) + '">' +
+          '<span class="cs-top">' + esc(top ? top.name : c.card_key) + '</span>' +
+          '<span class="cs-div">' + (bot ? '&mdash;' : '') + '</span>' +
+          '<span class="cs-bot">' + esc(bot ? bot.name : '') + '</span></div>');
+      } else {
+        slots.push('<div class="card-slot"><span>Empty</span></div>');
+      }
     }
+    const canDraw = hand.length < HAND_MAX;
     return '<div class="cards">' +
       '<div class="cards-head"><span class="cards-title">Cards</span>' +
-        '<span class="cards-count">( ' + hand.length + ' / ' + HAND_MAX + ' )</span></div>' +
+        '<span class="cards-count">( ' + hand.length + ' / ' + HAND_MAX + ' )</span>' +
+        '<button class="mbtn cards-draw" id="draw-card" type="button"' + (canDraw ? '' : ' disabled') + '>Draw a Card</button></div>' +
       '<div class="cards-body">' + slots.join('') + '</div>' +
     '</div>';
   }
+
+  // ---- card play: draw, open a card, choose a side, play it ----
+  const cardModal = document.getElementById('card-modal');
+  let carding = false;   // guards draw/play against double-fire
+
+  // One guarded path for draw and play: lock, run the RPC, then reload + repaint the Home hall.
+  // Returns the RPC outcome ({ data } | { error }) so play can narrate its result; null if it was locked.
+  async function cardAction(run) {
+    if (carding) return null;
+    carding = true;
+    let out;
+    try { const { data, error } = await run(); if (error) throw error; out = { data }; }
+    catch (e) { out = { error: e }; }
+    try { await reloadThenRender(renderHome); } catch (e) {}
+    carding = false;
+    return out;
+  }
+  const drawCard = () => cardAction(() => supabase.rpc('kingdoms_draw'));
+
+  // Friendly text for the errors the play RPC can raise (the affordable ones are already gated in the modal).
+  function friendlyCardError(e) {
+    const m = (e && e.message) || '';
+    if (m.includes('already_married')) return 'There is no unmarried Personality of your House to wed.';
+    if (m.includes('cannot_pay')) return 'You cannot pay the cost.';
+    if (m.includes('not_playable')) return 'That side cannot be played yet.';
+    if (m.includes('not_your_card')) return 'That card is no longer in your hand.';
+    return '';
+  }
+  function showCardResult(msg) {
+    document.getElementById('card-title').textContent = 'Result';
+    document.getElementById('card-body').innerHTML = '<p class="pc-result">' + esc(msg) + '</p>';
+    cardModal.classList.add('open');
+  }
+
+  // The one side of a card as a block: name, cost, effects, notes, and a Play button gated by cost/playability.
+  function sideHTML(handId, key, side, which) {
+    const c = cardSides[key + ':' + side];
+    if (!c) return '';
+    const res = house.resources || {};
+    const affordable = (res.gold || 0) >= c.cost_gold && (res.food || 0) >= c.cost_food;
+    const can = c.playable && affordable;
+    const why = !c.playable ? 'Not yet available' : !affordable ? 'You cannot pay the cost' : '';
+    const eff = (c.effects || []).map(e => '<li>' + esc(e) + '</li>').join('');
+    const notes = (c.notes || []).map(n => '<p class="pc-note">' + esc(n) + '</p>').join('');
+    return '<div class="pc-side' + (can ? ' playable' : '') + '">' +
+      '<div class="pc-head"><span class="pc-name">' + esc(c.name) + '</span><span class="pc-which">' + esc(which) + '</span></div>' +
+      '<div class="pc-cost">Cost: ' + esc(c.cost_text || 'None') + '</div>' +
+      '<ul class="pc-eff">' + eff + '</ul>' + notes +
+      (can
+        ? '<button class="pc-play" type="button" data-play="' + esc(handId) + '" data-side="' + esc(side) + '">Play ' + esc(c.name) + '</button>'
+        : '<div class="pc-why">' + esc(why) + '</div>') +
+    '</div>';
+  }
+
+  function openCard(handId) {
+    const card = (house.hand || []).find(h => h.id === handId);
+    if (!card) return;
+    document.getElementById('card-title').textContent = 'Play a Card';
+    document.getElementById('card-body').innerHTML =
+      sideHTML(handId, card.card_key, 'top', 'Top') + sideHTML(handId, card.card_key, 'bottom', 'Bottom');
+    document.getElementById('card-body').querySelectorAll('[data-play]').forEach(btn =>
+      btn.addEventListener('click', () => playCard(btn.dataset.play, btn.dataset.side)));
+    cardModal.classList.add('open');
+  }
+  function closeCard() { cardModal.classList.remove('open'); }
+
+  async function playCard(handId, side) {
+    closeCard();   // the modal (and its Play button) closes first, so it can't be double-fired
+    const r = await cardAction(() => supabase.rpc('kingdoms_play_card', { p_hand_id: handId, p_side: side }));
+    if (!r) return;                                                  // was locked
+    const msg = r.error ? friendlyCardError(r.error) : r.data;       // narrate the outcome (e.g. the Marry roll)
+    if (msg) showCardResult(msg);
+  }
+
+  document.getElementById('card-close').addEventListener('click', closeCard);
+  cardModal.addEventListener('click', e => { if (e.target === cardModal) closeCard(); });
 
   // ---- Holdings hall: collapsible holdings + build catalog ----
   const CAT_ORDER = ['Food', 'Economy', 'Military', 'Administration', 'Religion', 'Prestige'];
@@ -700,17 +843,18 @@
       const { error } = await run();
       if (error) throw error;            // e.g. not_enough_gold / no_room / terrain_required (already gated in UI)
     } catch (e) { /* fall through: the reload below shows the true server state */ }
-    try { await reloadHoldings(); } catch (e) { /* keep the current view rather than crash */ }
+    try { await reloadThenRender(renderHoldings); } catch (e) { /* keep the current view rather than crash */ }
     acting = false;
   }
   const doBuild = (countyId, num) => holdingAction(() => supabase.rpc('kingdoms_build', { p_county: countyId, p_building: num }));
   const doRaze = (buildingId) => holdingAction(() => supabase.rpc('kingdoms_raze', { p_building: buildingId }));
 
-  // Re-fetch resources + holdings after a build/raze, then repaint the bar and the view.
-  async function reloadHoldings() {
+  // Re-fetch the house after a server write, repaint the top bar, then re-render the given view.
+  // One reload path shared by build/raze and Claim the Throne.
+  async function reloadThenRender(render) {
     await loadHouseData();
     updateTopbar();
-    renderHoldings(document.getElementById('stage'));
+    render(document.getElementById('stage'));
   }
 
   // ---- Dynasty hall: the house tree (new players hold only the head of house) ----
@@ -720,34 +864,52 @@
     return {
       name: house.leader_name || 'Unknown',
       age: house.leader_age,
-      spouse: null, children: null,   // new houses have neither yet
+      spouse: house.spouse_name || null, children: null,   // spouse set by the Marry card; children not yet modeled
       ambition: Number(res.ambition || 0),
       prowess: Number(res.prowess || 0),
       administration: Number(res.administration || 0)
     };
   }
 
+  // The head's spouse as a plain character (a courtier who wed in; we track only her name so far).
+  function spouseCharacter() {
+    return { name: house.spouse_name, age: null, spouse: house.leader_name, children: null, ambition: null, prowess: null, administration: null };
+  }
+
   function renderDynasty(stage) {
     if (!house) { stage.innerHTML = ''; return; }
     const label = houseLabel(house.house_name);
-    const seat = primarySeat();
-    const title = esc(house.leader_title || 'Count') + (seat ? ' of ' + esc(seat) : '');
+    const title = esc(fullRank());
     const age = house.leader_age != null ? ' <span class="age">(' + esc(house.leader_age) + ')</span>' : '';
+    const headCard =
+      '<div class="dyn-card head" id="dyn-head" role="button" tabindex="0">' +
+        '<div class="dyn-name">' + esc(house.leader_name || 'Unknown') + age + '</div>' +
+        '<div class="dyn-role">Head of ' + esc(label) + '</div>' +
+        '<div class="dyn-sub">' + title + '</div>' +
+      '</div>';
+    const spouseCard = house.spouse_name   // once married, the spouse joins the tree beside the head
+      ? '<span class="marriage" aria-hidden="true"></span>' +
+        '<div class="dyn-card" id="dyn-spouse" role="button" tabindex="0">' +
+          '<div class="dyn-name">' + esc(house.spouse_name) + '</div>' +
+          '<div class="dyn-role">Consort of ' + esc(label) + '</div>' +
+          '<div class="dyn-sub">Courtier of the realm</div>' +
+        '</div>'
+      : '';
     stage.innerHTML =
       '<div class="view-wrap"><section class="panel">' +
         '<h2 class="panel-head">Dynasty of ' + esc(label) + '</h2>' +
-        '<div class="panel-body"><div class="tree"><div class="couple">' +
-          '<div class="dyn-card head" id="dyn-head" role="button" tabindex="0">' +
-            '<div class="dyn-name">' + esc(house.leader_name || 'Unknown') + age + '</div>' +
-            '<div class="dyn-role">Head of ' + esc(label) + '</div>' +
-            '<div class="dyn-sub">' + title + '</div>' +
-          '</div>' +
-        '</div></div></div>' +
+        '<div class="panel-body"><div class="tree"><div class="couple">' + headCard + spouseCard + '</div></div></div>' +
       '</section></div>';
-    const card = document.getElementById('dyn-head');
-    const open = () => openCharacter(headOfHouse());
-    card.addEventListener('click', open);
-    card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    wireCard('dyn-head', () => openCharacter(headOfHouse()));
+    wireCard('dyn-spouse', () => openCharacter(spouseCharacter()));
+  }
+
+  // Attach click + keyboard "open" to a dynasty card if it's present.
+  function wireCard(id, open) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', open);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
   }
 
   // ---- Court hall: sovereign + council (every seat starts empty — no one is seated yet) ----
@@ -761,17 +923,51 @@
     const seats = COURT_SEATS.map(label =>
       '<div class="seat vacant"><p class="seat-label">' + esc(label) + '</p>' +
       '<p class="seat-vacant-text">The seat stands empty.</p></div>').join('');
+
+    const sov = house.sovereign;
+    let sovInner;
+    if (sov) {                                          // the realm has a sovereign — show them
+      const age = sov.leader_age != null ? ' <span class="age">' + esc(sov.leader_age) + '</span>' : '';
+      const yours = isSovereign() ? '<p class="yours-tag">Your House holds the throne</p>' : '';
+      sovInner = CROWN_SVG +
+        '<p class="seat-label">Sovereign</p>' +
+        '<p class="sov-name">' + nameOfHouse(sov.leader_name, sov.house_name) + ',' + age + '</p>' +
+        '<p class="sov-reign">' + esc(sovereignRank()) + '</p>' + yours;
+    } else {                                            // empty throne — offer the claim (only place, only at start)
+      sovInner = CROWN_SVG +
+        '<p class="seat-label">Sovereign</p>' +
+        '<p class="seat-vacant-text">The throne sits empty.</p>' +
+        '<button class="mbtn primary claim-btn" id="claim-throne" type="button">Claim the Throne</button>';
+    }
+    const foot = isSovereign()
+      ? esc(houseLabel(house.house_name)) + ' sits the throne of the ' + esc(nationName()) + '.'
+      : esc(houseLabel(house.house_name)) + ' holds no seat at this court.';
+
     stage.innerHTML =
       '<div class="view-wrap"><div class="court">' +
         '<h2 class="court-title">The Court of ' + esc(realmName()) + '</h2>' +
-        '<section class="sovereign">' + CROWN_SVG +
-          '<p class="seat-label">Sovereign</p>' +
-          '<p class="seat-vacant-text">The throne sits empty.</p>' +
-        '</section>' +
+        '<section class="sovereign">' + sovInner + '</section>' +
         '<h3 class="council-title">The King’s Council</h3>' +
         '<div class="council">' + seats + '</div>' +
-        '<p class="court-foot">' + esc(houseLabel(house.house_name)) + ' holds no seat at this court.</p>' +
+        '<p class="court-foot">' + foot + '</p>' +
       '</div></div>';
+
+    const claimBtn = document.getElementById('claim-throne');
+    if (claimBtn) claimBtn.addEventListener('click', claimThrone);
+  }
+
+  // Claim the empty throne: the head of house becomes Sovereign (+7 Prestige). Guarded against double-fire;
+  // the server is authoritative (one sovereign per realm), and we reload the true state after.
+  let claiming = false;
+  async function claimThrone() {
+    if (claiming) return;
+    claiming = true;
+    try {
+      const { error } = await supabase.rpc('kingdoms_claim_throne');
+      if (error) throw error;
+    } catch (e) { /* fall through: the reload shows the true state (e.g. someone beat us to it) */ }
+    try { await reloadThenRender(renderCourt); } catch (e) {}
+    claiming = false;
   }
 
   // ---- Laws hall: the realm's standing laws. Crown-set; Aldren starts High on Crown Authority and holds no
@@ -844,7 +1040,7 @@
           '<h2 class="laws-title">The Laws of ' + esc(realmName()) + '</h2>' +
           '<p class="laws-sub">Decreed by the Crown and binding on every vassal. This realm holds no assembly — the lords have no vote.</p>' +
           '<div class="laws-voice"><span class="voice-item"><span class="lbl">Your Standing</span>' +
-            '<span class="val">' + esc(house.leader_title || 'Count') + '</span></span></div>' +
+            '<span class="val">' + esc(isSovereign() ? SOVEREIGN_TITLE : (house.leader_title || 'Count')) + '</span></span></div>' +
         '</div>' + groups +
       '</div></div>';
   }
@@ -902,9 +1098,9 @@
       kvRow('Age', esc(c.age != null ? c.age : '—'), c.age == null) +
       kvRow('Spouse', c.spouse ? esc(c.spouse) : '—', !c.spouse) +
       kvRow('Children', c.children ? esc(c.children) : '—', !c.children) +
-      kvRow('Ambition', esc(c.ambition)) +
-      kvRow('Prowess', esc(c.prowess)) +
-      kvRow('Administration', esc(c.administration));
+      kvRow('Ambition', c.ambition != null ? esc(c.ambition) : '—', c.ambition == null) +
+      kvRow('Prowess', c.prowess != null ? esc(c.prowess) : '—', c.prowess == null) +
+      kvRow('Administration', c.administration != null ? esc(c.administration) : '—', c.administration == null);
     charModal.classList.add('open');
   }
   function closeCharacter() { charModal.classList.remove('open'); }
@@ -951,7 +1147,7 @@
   });
   document.getElementById('banner-cancel').addEventListener('click', closeBanner);
   modal.addEventListener('click', e => { if (e.target === modal) closeBanner(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); closeCard(); } });
 
   // ---- data load ----
   async function ensureCatalog() {
@@ -963,6 +1159,15 @@
     catalog.forEach(s => { specByNum[s.num] = s; });
   }
 
+  async function ensureCards() {
+    if (cardCatalog.length) return;
+    const { data, error } = await supabase.from('kingdoms_cards')
+      .select('card_key, side, name, cost_text, cost_gold, cost_food, effects, notes, playable');
+    if (error) throw error;
+    cardCatalog = data || [];
+    cardCatalog.forEach(c => { cardSides[c.card_key + ':' + c.side] = c; });
+  }
+
   // Load (or reload) the signed-in player's house: the leader row, its counties, and each county's buildings.
   // Returns false if there is no signed-in user or no house (caller redirects).
   async function loadHouseData() {
@@ -970,7 +1175,7 @@
     const uid = u && u.user ? u.user.id : null;
     if (!uid) return false;
     const { data, error } = await supabase.from('kingdoms_leaders')
-      .select('id, house_name, heritage, leader_name, leader_age, leader_title, banner_url, resources')
+      .select('id, house_name, heritage, leader_name, leader_age, leader_title, banner_url, resources, is_sovereign, spouse_name')
       .eq('user_id', uid).order('created_at', { ascending: false }).limit(1).maybeSingle();
     if (error) throw error;
     if (!data) return false;
@@ -986,6 +1191,14 @@
       builds = bd || [];
     }
     house.counties.forEach(c => { c.buildings = builds.filter(b => b.county_id === c.id); });
+    // Who, if anyone, holds the realm's throne (public game state; may be this house or another).
+    const { data: sov } = await supabase.from('kingdoms_leaders')
+      .select('leader_name, house_name, leader_age').eq('heritage', house.heritage).eq('is_sovereign', true)
+      .order('created_at', { ascending: true }).limit(1).maybeSingle();
+    house.sovereign = sov || null;
+    const { data: hand } = await supabase.from('kingdoms_hand')
+      .select('id, card_key').eq('house_id', house.id).order('created_at', { ascending: true });
+    house.hand = hand || [];   // the cards currently in hand
     return true;
   }
 
@@ -993,6 +1206,7 @@
     if (!isConfigured) { setBar('—'); return; }
     try {
       await ensureCatalog();                                     // building specs (one source, small, cached)
+      await ensureCards();                                       // card catalog (one source, small, cached)
       const ok = await loadHouseData();
       if (!ok) { window.location.replace('/kingdoms/'); return; } // not signed in / no house yet
       setBar(house.house_name);

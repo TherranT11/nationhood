@@ -14,6 +14,7 @@ export const houseLabel = name => 'House ' + String(name || '').replace(/^\s*Hou
 // `resources` jsonb — this is only how they show.
 export const TREASURY_SPEC = [
   { key: 'gold',       label: 'Gold' },
+  { key: 'food',       label: 'Food' },            // spent by cards; starts at 0 (no production yet)
   { key: 'population', label: 'Population' },
   { key: 'plots',      label: 'Available Plots' },
   { key: 'prestige',   label: 'House Prestige' }   // house standing; starts at 0
