@@ -309,6 +309,34 @@
   }
   .dyn-sub { font-size: 0.85rem; font-style: italic; color: var(--bone-dim); margin-top: 0.15rem; }
 
+  /* ============================================================
+     Court view — sovereign + council (all seats start empty)
+     ============================================================ */
+  .court { width: min(1000px, 100%); margin: 0 auto; }
+  .court-title {
+    font-family: var(--display); font-weight: 600; font-size: .72rem; letter-spacing: .28em;
+    text-transform: uppercase; color: var(--bone-dim); text-align: center; margin-bottom: 1.5rem;
+  }
+  .sovereign {
+    background: var(--steel); border: 1px solid var(--gold); padding: 2rem 2rem 1.9rem;
+    text-align: center; position: relative; margin-bottom: 2.5rem;
+  }
+  .sovereign::before, .sovereign::after { content: ""; position: absolute; width: 14px; height: 14px; border: 1px solid var(--gold); opacity: .6; }
+  .sovereign::before { top: 6px; left: 6px; border-right: none; border-bottom: none; }
+  .sovereign::after { bottom: 6px; right: 6px; border-left: none; border-top: none; }
+  .crown { display: block; margin: 0 auto .9rem; }
+  .seat-label { font-family: var(--display); font-weight: 600; font-size: .62rem; letter-spacing: .26em; text-transform: uppercase; color: var(--gold); margin-bottom: .6rem; }
+  .council-title { font-family: var(--display); font-weight: 600; font-size: .66rem; letter-spacing: .26em; text-transform: uppercase; color: var(--bone-dim); text-align: center; margin-bottom: 1.25rem; }
+  .council { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 1rem; }
+  .seat {
+    background: var(--steel); border: 1px solid var(--steel-edge); border-top: 2px solid var(--gold);
+    padding: 1.2rem 1.3rem 1.15rem; text-align: center; transition: border-color .2s ease, background .2s ease;
+  }
+  .seat.vacant { border-top-color: var(--steel-edge); }
+  .seat.vacant .seat-label { color: var(--faint); }
+  .seat-vacant-text { font-style: italic; color: var(--faint); font-size: .92rem; }
+  .court-foot { margin-top: 2rem; text-align: center; font-size: .9rem; font-style: italic; color: var(--faint); }
+
   /* ---- banner upload modal ---- */
   .modal-back { position: fixed; inset: 0; background: rgba(6,7,9,0.75); display: none; align-items: center; justify-content: center; z-index: 20; }
   .modal-back.open { display: flex; }
@@ -412,6 +440,7 @@
     if (view === 'home') { renderHome(stage); return; }
     if (view === 'dynasty') { renderDynasty(stage); return; }
     if (view === 'holdings') { renderHoldings(stage); return; }
+    if (view === 'court') { renderCourt(stage); return; }
     stage.innerHTML = '<div class="stage-empty"><h2>' + esc(VIEW_TITLES[view] || view) + '</h2><p>This hall is not yet built.</p></div>';
   }
   document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => {
@@ -655,6 +684,31 @@
     const open = () => openCharacter(headOfHouse());
     card.addEventListener('click', open);
     card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+  }
+
+  // ---- Court hall: sovereign + council (every seat starts empty — no one is seated yet) ----
+  const COURT_SEATS = ['Steward', 'Master of Coin', 'Marshal of the Realm', 'Master of Laws', 'Master of Ships', 'Spymaster'];
+  const CROWN_SVG = '<svg class="crown" width="46" height="30" viewBox="0 0 46 30" aria-hidden="true">' +
+    '<path d="M4 26 L7 8 L15 17 L23 4 L31 17 L39 8 L42 26 Z" fill="none" stroke="#b99653" stroke-width="1.6" stroke-linejoin="round"/>' +
+    '<circle cx="23" cy="3" r="2" fill="#b99653"/><circle cx="7" cy="7" r="1.6" fill="#b99653"/><circle cx="39" cy="7" r="1.6" fill="#b99653"/></svg>';
+
+  function renderCourt(stage) {
+    if (!house) { stage.innerHTML = ''; return; }
+    const realm = house.heritage === 'Aldren' ? 'Aldren' : esc(house.heritage || 'the Realm');
+    const seats = COURT_SEATS.map(label =>
+      '<div class="seat vacant"><p class="seat-label">' + esc(label) + '</p>' +
+      '<p class="seat-vacant-text">The seat stands empty.</p></div>').join('');
+    stage.innerHTML =
+      '<div class="view-wrap"><div class="court">' +
+        '<h2 class="court-title">The Court of ' + esc(realm) + '</h2>' +
+        '<section class="sovereign">' + CROWN_SVG +
+          '<p class="seat-label">Sovereign</p>' +
+          '<p class="seat-vacant-text">The throne sits empty.</p>' +
+        '</section>' +
+        '<h3 class="council-title">The King’s Council</h3>' +
+        '<div class="council">' + seats + '</div>' +
+        '<p class="court-foot">' + esc(houseLabel(house.house_name)) + ' holds no seat at this court.</p>' +
+      '</div></div>';
   }
 
   // ---- character popup ----
