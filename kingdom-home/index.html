@@ -317,7 +317,8 @@
   }
   .panel-body { padding: 2.5rem 1.5rem 3rem; }
   .tree { display: flex; flex-direction: column; align-items: center; }
-  .couple { display: flex; align-items: center; }
+  .couple { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: .25rem; }
+  .marriage { flex: none; width: 34px; height: 2px; background: var(--gold); opacity: .55; }   /* the bond between spouses */
   .dyn-card {
     background: var(--ink); border: 1px solid var(--steel-edge); padding: 1rem 1.6rem 0.9rem;
     min-width: 190px; text-align: center; transition: border-color 0.2s ease, background 0.2s ease;
@@ -870,26 +871,45 @@
     };
   }
 
+  // The head's spouse as a plain character (a courtier who wed in; we track only her name so far).
+  function spouseCharacter() {
+    return { name: house.spouse_name, age: null, spouse: house.leader_name, children: null, ambition: null, prowess: null, administration: null };
+  }
+
   function renderDynasty(stage) {
     if (!house) { stage.innerHTML = ''; return; }
     const label = houseLabel(house.house_name);
     const title = esc(fullRank());
     const age = house.leader_age != null ? ' <span class="age">(' + esc(house.leader_age) + ')</span>' : '';
+    const headCard =
+      '<div class="dyn-card head" id="dyn-head" role="button" tabindex="0">' +
+        '<div class="dyn-name">' + esc(house.leader_name || 'Unknown') + age + '</div>' +
+        '<div class="dyn-role">Head of ' + esc(label) + '</div>' +
+        '<div class="dyn-sub">' + title + '</div>' +
+      '</div>';
+    const spouseCard = house.spouse_name   // once married, the spouse joins the tree beside the head
+      ? '<span class="marriage" aria-hidden="true"></span>' +
+        '<div class="dyn-card" id="dyn-spouse" role="button" tabindex="0">' +
+          '<div class="dyn-name">' + esc(house.spouse_name) + '</div>' +
+          '<div class="dyn-role">Consort of ' + esc(label) + '</div>' +
+          '<div class="dyn-sub">Courtier of the realm</div>' +
+        '</div>'
+      : '';
     stage.innerHTML =
       '<div class="view-wrap"><section class="panel">' +
         '<h2 class="panel-head">Dynasty of ' + esc(label) + '</h2>' +
-        '<div class="panel-body"><div class="tree"><div class="couple">' +
-          '<div class="dyn-card head" id="dyn-head" role="button" tabindex="0">' +
-            '<div class="dyn-name">' + esc(house.leader_name || 'Unknown') + age + '</div>' +
-            '<div class="dyn-role">Head of ' + esc(label) + '</div>' +
-            '<div class="dyn-sub">' + title + '</div>' +
-          '</div>' +
-        '</div></div></div>' +
+        '<div class="panel-body"><div class="tree"><div class="couple">' + headCard + spouseCard + '</div></div></div>' +
       '</section></div>';
-    const card = document.getElementById('dyn-head');
-    const open = () => openCharacter(headOfHouse());
-    card.addEventListener('click', open);
-    card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    wireCard('dyn-head', () => openCharacter(headOfHouse()));
+    wireCard('dyn-spouse', () => openCharacter(spouseCharacter()));
+  }
+
+  // Attach click + keyboard "open" to a dynasty card if it's present.
+  function wireCard(id, open) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', open);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
   }
 
   // ---- Court hall: sovereign + council (every seat starts empty — no one is seated yet) ----
@@ -1078,9 +1098,9 @@
       kvRow('Age', esc(c.age != null ? c.age : '—'), c.age == null) +
       kvRow('Spouse', c.spouse ? esc(c.spouse) : '—', !c.spouse) +
       kvRow('Children', c.children ? esc(c.children) : '—', !c.children) +
-      kvRow('Ambition', esc(c.ambition)) +
-      kvRow('Prowess', esc(c.prowess)) +
-      kvRow('Administration', esc(c.administration));
+      kvRow('Ambition', c.ambition != null ? esc(c.ambition) : '—', c.ambition == null) +
+      kvRow('Prowess', c.prowess != null ? esc(c.prowess) : '—', c.prowess == null) +
+      kvRow('Administration', c.administration != null ? esc(c.administration) : '—', c.administration == null);
     charModal.classList.add('open');
   }
   function closeCharacter() { charModal.classList.remove('open'); }
