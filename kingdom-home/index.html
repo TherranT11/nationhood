@@ -337,6 +337,11 @@
   .seat.vacant .seat-label { color: var(--faint); }
   .seat-vacant-text { font-style: italic; color: var(--faint); font-size: .92rem; }
   .court-foot { margin-top: 2rem; text-align: center; font-size: .9rem; font-style: italic; color: var(--faint); }
+  .sov-name { font-family: var(--display); font-weight: 600; font-size: 1.5rem; letter-spacing: .08em; line-height: 1.35; }
+  .sov-name .age { color: var(--bone-dim); font-weight: 400; font-size: 1rem; }
+  .sov-reign { margin-top: .9rem; padding-top: .9rem; border-top: 1px solid var(--steel-edge); display: inline-block; min-width: min(420px, 90%); font-family: var(--display); font-size: .78rem; letter-spacing: .18em; text-transform: uppercase; color: var(--gold); }
+  .yours-tag { margin-top: .9rem; font-family: var(--display); font-size: .55rem; letter-spacing: .2em; text-transform: uppercase; color: var(--gold-bright); }
+  .claim-btn { margin-top: 1.2rem; }
 
   /* ============================================================
      Laws view — the realm's standing laws (no assembly, so no vote/debate UI)
@@ -480,6 +485,16 @@
   const realmName = () => (house && house.heritage === 'Aldren') ? 'Aldren' : ((house && house.heritage) || 'the Realm');
   const holdingLord = () => (house && house.leader_name) || 'Head of House';   // no appoint-lord mechanic yet: the head of house holds every county
   const unrestOf = c => (c && c.unrest != null) ? c.unrest : 1;                 // defaults to 1
+  // Sovereign / rank — one source. The realm's crown title (only Aldren exists) and the head's full rank.
+  const SOVEREIGN_TITLE = 'King';
+  const nationName = () => 'Kingdom of ' + realmName();                          // "Kingdom of Aldren"
+  const sovereignRank = () => SOVEREIGN_TITLE + ' of the ' + nationName();       // "King of the Kingdom of Aldren"
+  const isSovereign = () => !!(house && house.is_sovereign);
+  const fullRank = () => {                                                       // the head of house's rank, seat included
+    const seat = primarySeat();
+    const feudal = (house.leader_title || 'Count') + (seat ? ' of ' + seat : '');   // "Count of Amberfield"
+    return isSovereign() ? sovereignRank() + ', ' + feudal : feudal;            // sovereign keeps the feudal title too
+  };
   // The top bar shows the house Treasury: Gold + Population from resources, Available Plots = free land across holdings.
   const updateTopbar = () => {
     const res = house && house.resources ? house.resources : {};
@@ -533,7 +548,7 @@
           '<div class="kv">' +
             kvRow('Name', name) +
             kvRow('Age', esc(house.leader_age != null ? house.leader_age : '—')) +
-            kvRow('Title', esc(house.leader_title || 'Count')) +
+            kvRow('Title', esc(fullRank())) +
             lordStats +
             kvRow('Holdings', holdings || '—', !holdings) +
             kvRow('Culture', culture) +
@@ -730,8 +745,7 @@
   function renderDynasty(stage) {
     if (!house) { stage.innerHTML = ''; return; }
     const label = houseLabel(house.house_name);
-    const seat = primarySeat();
-    const title = esc(house.leader_title || 'Count') + (seat ? ' of ' + esc(seat) : '');
+    const title = esc(fullRank());
     const age = house.leader_age != null ? ' <span class="age">(' + esc(house.leader_age) + ')</span>' : '';
     stage.innerHTML =
       '<div class="view-wrap"><section class="panel">' +
@@ -761,17 +775,51 @@
     const seats = COURT_SEATS.map(label =>
       '<div class="seat vacant"><p class="seat-label">' + esc(label) + '</p>' +
       '<p class="seat-vacant-text">The seat stands empty.</p></div>').join('');
+
+    const sov = house.sovereign;
+    let sovInner;
+    if (sov) {                                          // the realm has a sovereign — show them
+      const age = sov.leader_age != null ? ' <span class="age">' + esc(sov.leader_age) + '</span>' : '';
+      const yours = isSovereign() ? '<p class="yours-tag">Your House holds the throne</p>' : '';
+      sovInner = CROWN_SVG +
+        '<p class="seat-label">Sovereign</p>' +
+        '<p class="sov-name">' + esc(sov.leader_name || 'Unknown') + ' of ' + esc(houseLabel(sov.house_name)) + ',' + age + '</p>' +
+        '<p class="sov-reign">' + esc(sovereignRank()) + '</p>' + yours;
+    } else {                                            // empty throne — offer the claim (only place, only at start)
+      sovInner = CROWN_SVG +
+        '<p class="seat-label">Sovereign</p>' +
+        '<p class="seat-vacant-text">The throne sits empty.</p>' +
+        '<button class="mbtn primary claim-btn" id="claim-throne" type="button">Claim the Throne</button>';
+    }
+    const foot = isSovereign()
+      ? esc(houseLabel(house.house_name)) + ' sits the throne of the ' + esc(nationName()) + '.'
+      : esc(houseLabel(house.house_name)) + ' holds no seat at this court.';
+
     stage.innerHTML =
       '<div class="view-wrap"><div class="court">' +
         '<h2 class="court-title">The Court of ' + esc(realmName()) + '</h2>' +
-        '<section class="sovereign">' + CROWN_SVG +
-          '<p class="seat-label">Sovereign</p>' +
-          '<p class="seat-vacant-text">The throne sits empty.</p>' +
-        '</section>' +
+        '<section class="sovereign">' + sovInner + '</section>' +
         '<h3 class="council-title">The King’s Council</h3>' +
         '<div class="council">' + seats + '</div>' +
-        '<p class="court-foot">' + esc(houseLabel(house.house_name)) + ' holds no seat at this court.</p>' +
+        '<p class="court-foot">' + foot + '</p>' +
       '</div></div>';
+
+    const claimBtn = document.getElementById('claim-throne');
+    if (claimBtn) claimBtn.addEventListener('click', claimThrone);
+  }
+
+  // Claim the empty throne: the head of house becomes Sovereign (+7 Prestige). Guarded against double-fire;
+  // the server is authoritative (one sovereign per realm), and we reload the true state after.
+  let claiming = false;
+  async function claimThrone() {
+    if (claiming) return;
+    claiming = true;
+    try {
+      const { error } = await supabase.rpc('kingdoms_claim_throne');
+      if (error) throw error;
+    } catch (e) { /* fall through: the reload shows the true state (e.g. someone beat us to it) */ }
+    try { await loadHouseData(); updateTopbar(); renderCourt(document.getElementById('stage')); } catch (e) {}
+    claiming = false;
   }
 
   // ---- Laws hall: the realm's standing laws. Crown-set; Aldren starts High on Crown Authority and holds no
@@ -844,7 +892,7 @@
           '<h2 class="laws-title">The Laws of ' + esc(realmName()) + '</h2>' +
           '<p class="laws-sub">Decreed by the Crown and binding on every vassal. This realm holds no assembly — the lords have no vote.</p>' +
           '<div class="laws-voice"><span class="voice-item"><span class="lbl">Your Standing</span>' +
-            '<span class="val">' + esc(house.leader_title || 'Count') + '</span></span></div>' +
+            '<span class="val">' + esc(isSovereign() ? SOVEREIGN_TITLE : (house.leader_title || 'Count')) + '</span></span></div>' +
         '</div>' + groups +
       '</div></div>';
   }
@@ -970,7 +1018,7 @@
     const uid = u && u.user ? u.user.id : null;
     if (!uid) return false;
     const { data, error } = await supabase.from('kingdoms_leaders')
-      .select('id, house_name, heritage, leader_name, leader_age, leader_title, banner_url, resources')
+      .select('id, house_name, heritage, leader_name, leader_age, leader_title, banner_url, resources, is_sovereign')
       .eq('user_id', uid).order('created_at', { ascending: false }).limit(1).maybeSingle();
     if (error) throw error;
     if (!data) return false;
@@ -986,6 +1034,11 @@
       builds = bd || [];
     }
     house.counties.forEach(c => { c.buildings = builds.filter(b => b.county_id === c.id); });
+    // Who, if anyone, holds the realm's throne (public game state; may be this house or another).
+    const { data: sov } = await supabase.from('kingdoms_leaders')
+      .select('leader_name, house_name, leader_age').eq('heritage', house.heritage).eq('is_sovereign', true)
+      .order('created_at', { ascending: true }).limit(1).maybeSingle();
+    house.sovereign = sov || null;
     return true;
   }
 
