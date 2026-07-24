@@ -337,6 +337,35 @@
   .seat-vacant-text { font-style: italic; color: var(--faint); font-size: .92rem; }
   .court-foot { margin-top: 2rem; text-align: center; font-size: .9rem; font-style: italic; color: var(--faint); }
 
+  /* ============================================================
+     Laws view — the realm's standing laws (no assembly, so no vote/debate UI)
+     ============================================================ */
+  .laws { width: min(1040px, 100%); margin: 0 auto; }
+  .laws-head { text-align: center; margin-bottom: 2rem; }
+  .laws-title { font-family: var(--display); font-weight: 600; font-size: .72rem; letter-spacing: .28em; text-transform: uppercase; color: var(--bone-dim); }
+  .laws-sub { font-style: italic; color: var(--faint); margin-top: .4rem; font-size: .92rem; }
+  .laws-voice { display: inline-flex; gap: 1.75rem; margin-top: 1.1rem; padding: .7rem 1.5rem; border: 1px solid var(--steel-edge); background: var(--steel); }
+  .voice-item { text-align: center; }
+  .voice-item .lbl { display: block; font-family: var(--display); font-size: .55rem; letter-spacing: .2em; text-transform: uppercase; color: var(--bone-dim); }
+  .voice-item .val { font-family: var(--display); font-weight: 600; font-size: .9rem; color: var(--gold); }
+  .group-title { font-family: var(--display); font-weight: 600; font-size: .62rem; letter-spacing: .24em; text-transform: uppercase; color: var(--gold); border-bottom: 1px solid var(--steel-edge); padding-bottom: .5rem; margin: 2rem 0 1rem; }
+  .law { background: var(--steel); border: 1px solid var(--steel-edge); padding: 1.3rem 1.4rem 1.4rem; margin-bottom: 1rem; }
+  .law-top { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .law-name { font-family: var(--display); font-weight: 600; font-size: .88rem; letter-spacing: .12em; text-transform: uppercase; }
+  .law-now { font-family: var(--display); font-weight: 600; font-size: .8rem; letter-spacing: .08em; color: var(--gold); margin-left: auto; }
+  .track { display: flex; gap: 3px; margin-bottom: .45rem; }
+  .tier { flex: 1; height: 5px; background: var(--steel-edge); }
+  .tier.below { background: #4a4433; }
+  .tier.at { background: var(--gold); }
+  .tier-names { display: flex; gap: 3px; margin-bottom: 1rem; }
+  .tier-name { flex: 1; font-family: var(--display); font-size: .55rem; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); text-align: center; line-height: 1.4; }
+  .tier-name.at { color: var(--bone); }
+  .law-eff { list-style: none; font-size: .9rem; color: var(--bone-dim); }
+  .law-eff li { padding-left: .9rem; position: relative; }
+  .law-eff li::before { content: "\00b7"; position: absolute; left: .2rem; color: var(--gold); }
+  .law-you { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--steel-edge); font-size: .9rem; color: var(--gold); }
+  .law-you .tag { font-family: var(--display); font-size: .55rem; letter-spacing: .18em; text-transform: uppercase; color: var(--bone-dim); margin-right: .6rem; }
+
   /* ---- banner upload modal ---- */
   .modal-back { position: fixed; inset: 0; background: rgba(6,7,9,0.75); display: none; align-items: center; justify-content: center; z-index: 20; }
   .modal-back.open { display: flex; }
@@ -377,6 +406,7 @@
   <button class="nav-item" data-view="dynasty" type="button">Dynasty</button>
   <button class="nav-item" data-view="holdings" type="button">Holdings</button>
   <button class="nav-item" data-view="court" type="button">Court</button>
+  <button class="nav-item" data-view="laws" type="button">Laws</button>
   <button class="nav-item" data-view="conflict" type="button">Conflict</button>
 </aside>
 
@@ -434,13 +464,14 @@
   document.getElementById('leave-btn').addEventListener('click', () => { window.location.href = '/kingdoms/'; });
 
   // ---- sidebar navigation ----
-  const VIEW_TITLES = { home: 'Home', dynasty: 'Dynasty', holdings: 'Holdings', court: 'Court', conflict: 'Conflict' };
+  const VIEW_TITLES = { home: 'Home', dynasty: 'Dynasty', holdings: 'Holdings', court: 'Court', laws: 'Laws', conflict: 'Conflict' };
   function renderView(view) {
     const stage = document.getElementById('stage');
     if (view === 'home') { renderHome(stage); return; }
     if (view === 'dynasty') { renderDynasty(stage); return; }
     if (view === 'holdings') { renderHoldings(stage); return; }
     if (view === 'court') { renderCourt(stage); return; }
+    if (view === 'laws') { renderLaws(stage); return; }
     stage.innerHTML = '<div class="stage-empty"><h2>' + esc(VIEW_TITLES[view] || view) + '</h2><p>This hall is not yet built.</p></div>';
   }
   document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => {
@@ -708,6 +739,86 @@
         '<h3 class="council-title">The King’s Council</h3>' +
         '<div class="council">' + seats + '</div>' +
         '<p class="court-foot">' + esc(houseLabel(house.house_name)) + ' holds no seat at this court.</p>' +
+      '</div></div>';
+  }
+
+  // ---- Laws hall: the realm's standing laws. Crown-set; Aldren starts High on Crown Authority and holds no
+  // assembly, so there is no vote or debate — the tiers below simply show where each law stands. ----
+  const LAW_GROUPS = ['Crown', 'Coin', 'Sword', 'Justice'];
+  const LAWS = [
+    { group: 'Crown', name: 'Crown Authority', at: 3,
+      tiers: ['Minimal', 'Limited', 'Moderate', 'High', 'Absolute'],
+      eff: ['The Crown may revoke any vassal’s title at will',
+            'Vassals owe the greater share of their levies to the Crown',
+            'Royal justice overrides a lord’s own courts'],
+      you: () => 'The Crown’s word runs law in your halls; you hold your lands at its pleasure.' },
+    { group: 'Crown', name: 'Succession', at: 1,
+      tiers: ['Elective', 'Partition', 'Primogeniture', 'Ultimogeniture'],
+      eff: ['Holdings are divided among all trueborn sons on the lord’s death',
+            'Houses fracture quickly, but cadet branches multiply'],
+      you: () => 'With no children born, your holdings would pass to your nearest kin.' },
+    { group: 'Coin', name: 'Crown Taxation', at: 1,
+      tiers: ['None', 'Tithe — 1 in 10', 'Fifth — 1 in 5', 'Half'],
+      eff: ['Each vassal owes the Crown one tenth of gold raised in Taxation',
+            'Refusal earns a claim against your titles'],
+      you: () => 'For every 10 gold you raise in Taxation, 1 is owed to the Crown.' },
+    { group: 'Coin', name: 'Right of Toll', at: 1,
+      tiers: ['Forbidden', 'Granted', 'Crown Monopoly'],
+      eff: ['Lords may levy tolls on roads and rivers crossing their domain',
+            '+1 Gold per Market at Taxation'],
+      you: c => 'Build a Market in ' + (c.seat || 'your domain') + ' to claim the toll.' },
+    { group: 'Sword', name: 'Vassal Wars', at: 1,
+      tiers: ['Unrestricted', 'With Cause', 'Feuds Only', 'Forbidden'],
+      eff: ['A vassal may war upon another only with a recognised claim or grievance',
+            'War without cause brands you Oathbreaker — −2 Prestige, and the Crown may intervene'],
+      you: () => 'You hold no claims. You cannot lawfully war upon anyone.' },
+    { group: 'Sword', name: 'Levy Obligation', at: 1,
+      tiers: ['Voluntary', 'One in Ten', 'One in Five'],
+      eff: ['When the Crown calls its banners, each lord owes one man in ten',
+            'Failing the call costs 3 Prestige and the Crown’s favour'],
+      you: () => 'When the Crown calls its banners, you owe one man in ten of your levy.' },
+    { group: 'Justice', name: 'Right of Trial', at: 1,
+      tiers: ['Lord’s Judgment', 'Trial by Combat', 'Royal Courts'],
+      eff: ['The accused may demand a champion and settle the matter in arms',
+            'Prowess decides guilt as often as evidence'],
+      you: c => 'Your Prowess is ' + c.prowess + '. ' + (c.prowess > 0 ? 'Meet your accuser in the field if you must.' : 'Avoid accusation, or find a champion.') }
+  ];
+
+  function lawHTML(law, ctx) {
+    const track = law.tiers.map((t, i) => '<span class="tier' + (i < law.at ? ' below' : i === law.at ? ' at' : '') + '"></span>').join('');
+    const names = law.tiers.map((t, i) => '<span class="tier-name' + (i === law.at ? ' at' : '') + '">' + esc(t) + '</span>').join('');
+    const eff = law.eff.map(e => '<li>' + esc(e) + '</li>').join('');
+    return '<section class="law">' +
+      '<div class="law-top"><span class="law-name">' + esc(law.name) + '</span>' +
+        '<span class="law-now">' + esc(law.tiers[law.at]) + '</span></div>' +
+      '<div class="track">' + track + '</div>' +
+      '<div class="tier-names">' + names + '</div>' +
+      '<ul class="law-eff">' + eff + '</ul>' +
+      '<p class="law-you"><span class="tag">Your House</span>' + esc(law.you(ctx)) + '</p>' +
+    '</section>';
+  }
+
+  function renderLaws(stage) {
+    if (!house) { stage.innerHTML = ''; return; }
+    const res = house.resources || {};
+    const counties = house.counties || [];
+    const ctx = {
+      prowess: Number(res.prowess || 0),
+      seat: counties.length ? counties[0].name.replace(/^\s*County of\s+/i, '').trim() : ''
+    };
+    const realm = house.heritage === 'Aldren' ? 'Aldren' : (house.heritage || 'the Realm');
+    const groups = LAW_GROUPS.map(g => {
+      const laws = LAWS.filter(l => l.group === g);
+      return laws.length ? '<h3 class="group-title">' + esc(g) + '</h3>' + laws.map(l => lawHTML(l, ctx)).join('') : '';
+    }).join('');
+    stage.innerHTML =
+      '<div class="view-wrap"><div class="laws">' +
+        '<div class="laws-head">' +
+          '<h2 class="laws-title">The Laws of ' + esc(realm) + '</h2>' +
+          '<p class="laws-sub">Decreed by the Crown and binding on every vassal. This realm holds no assembly — the lords have no vote.</p>' +
+          '<div class="laws-voice"><span class="voice-item"><span class="lbl">Your Standing</span>' +
+            '<span class="val">' + esc(house.leader_title || 'Count') + '</span></span></div>' +
+        '</div>' + groups +
       '</div></div>';
   }
 
