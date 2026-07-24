@@ -472,6 +472,12 @@
   // Land used by the buildings standing in a county, and the plots left free — one source for both.
   const usedLand = c => (c.buildings || []).reduce((s, b) => s + (specByNum[b.building_num] ? specByNum[b.building_num].land : 0), 0);
   const freeLand = c => Math.max(0, (c.available_land || 0) - usedLand(c));
+  // House-derived helpers used by more than one view — one source each.
+  const primarySeat = () => {                    // primary county's place name: "County of Amberfield" → "Amberfield"
+    const cs = (house && house.counties) || [];
+    return cs.length ? cs[0].name.replace(/^\s*County of\s+/i, '').trim() : '';
+  };
+  const realmName = () => (house && house.heritage === 'Aldren') ? 'Aldren' : ((house && house.heritage) || 'the Realm');
   // The top bar shows the house Treasury: Gold + Population from resources, Available Plots = free land across holdings.
   const updateTopbar = () => {
     const res = house && house.resources ? house.resources : {};
@@ -718,8 +724,7 @@
   function renderDynasty(stage) {
     if (!house) { stage.innerHTML = ''; return; }
     const label = houseLabel(house.house_name);
-    const counties = house.counties || [];
-    const seat = counties.length ? counties[0].name.replace(/^\s*County of\s+/i, '').trim() : '';
+    const seat = primarySeat();
     const title = esc(house.leader_title || 'Count') + (seat ? ' of ' + esc(seat) : '');
     const age = house.leader_age != null ? ' <span class="age">(' + esc(house.leader_age) + ')</span>' : '';
     stage.innerHTML =
@@ -747,13 +752,12 @@
 
   function renderCourt(stage) {
     if (!house) { stage.innerHTML = ''; return; }
-    const realm = house.heritage === 'Aldren' ? 'Aldren' : esc(house.heritage || 'the Realm');
     const seats = COURT_SEATS.map(label =>
       '<div class="seat vacant"><p class="seat-label">' + esc(label) + '</p>' +
       '<p class="seat-vacant-text">The seat stands empty.</p></div>').join('');
     stage.innerHTML =
       '<div class="view-wrap"><div class="court">' +
-        '<h2 class="court-title">The Court of ' + esc(realm) + '</h2>' +
+        '<h2 class="court-title">The Court of ' + esc(realmName()) + '</h2>' +
         '<section class="sovereign">' + CROWN_SVG +
           '<p class="seat-label">Sovereign</p>' +
           '<p class="seat-vacant-text">The throne sits empty.</p>' +
@@ -823,12 +827,7 @@
   function renderLaws(stage) {
     if (!house) { stage.innerHTML = ''; return; }
     const res = house.resources || {};
-    const counties = house.counties || [];
-    const ctx = {
-      prowess: Number(res.prowess || 0),
-      seat: counties.length ? counties[0].name.replace(/^\s*County of\s+/i, '').trim() : ''
-    };
-    const realm = house.heritage === 'Aldren' ? 'Aldren' : (house.heritage || 'the Realm');
+    const ctx = { prowess: Number(res.prowess || 0), seat: primarySeat() };
     const groups = LAW_GROUPS.map(g => {
       const laws = LAWS.filter(l => l.group === g);
       return laws.length ? '<h3 class="group-title">' + esc(g) + '</h3>' + laws.map(l => lawHTML(l, ctx)).join('') : '';
@@ -836,7 +835,7 @@
     stage.innerHTML =
       '<div class="view-wrap"><div class="laws">' +
         '<div class="laws-head">' +
-          '<h2 class="laws-title">The Laws of ' + esc(realm) + '</h2>' +
+          '<h2 class="laws-title">The Laws of ' + esc(realmName()) + '</h2>' +
           '<p class="laws-sub">Decreed by the Crown and binding on every vassal. This realm holds no assembly — the lords have no vote.</p>' +
           '<div class="laws-voice"><span class="voice-item"><span class="lbl">Your Standing</span>' +
             '<span class="val">' + esc(house.leader_title || 'Count') + '</span></span></div>' +
