@@ -211,7 +211,7 @@
   .cards-draw { margin-left: auto; padding: .4rem 1rem; font-size: .6rem; }
 
   /* ---- card play modal ---- */
-  .card-play { width: min(520px, 94vw); }
+  .card-play { width: min(520px, 94vw); max-height: 88vh; overflow-y: auto; }
   .pc-side { border: 1px solid var(--steel-edge); padding: 1rem 1.1rem 1.15rem; margin-bottom: .9rem; }
   .pc-side.playable { border-color: var(--gold); }
   .pc-head { display: flex; align-items: baseline; gap: .6rem; margin-bottom: .5rem; }
@@ -656,13 +656,15 @@
   const cardModal = document.getElementById('card-modal');
   let carding = false;   // guards draw/play against double-fire
 
-  async function drawCard() {
+  // One guarded path for draw and play: lock, run the RPC, then reload + repaint the Home hall.
+  async function cardAction(run) {
     if (carding) return;
     carding = true;
-    try { const { error } = await supabase.rpc('kingdoms_draw'); if (error) throw error; } catch (e) {}
-    try { await loadHouseData(); renderHome(document.getElementById('stage')); } catch (e) {}
+    try { const { error } = await run(); if (error) throw error; } catch (e) {}
+    try { await reloadThenRender(renderHome); } catch (e) {}
     carding = false;
   }
+  const drawCard = () => cardAction(() => supabase.rpc('kingdoms_draw'));
 
   // The one side of a card as a block: name, cost, effects, notes, and a Play button gated by cost/playability.
   function sideHTML(handId, key, side, which) {
@@ -695,13 +697,9 @@
   }
   function closeCard() { cardModal.classList.remove('open'); }
 
-  async function playCard(handId, side) {
-    if (carding) return;
-    carding = true;
-    try { const { error } = await supabase.rpc('kingdoms_play_card', { p_hand_id: handId, p_side: side }); if (error) throw error; } catch (e) {}
-    closeCard();
-    try { await loadHouseData(); updateTopbar(); renderHome(document.getElementById('stage')); } catch (e) {}
-    carding = false;
+  function playCard(handId, side) {
+    closeCard();   // the modal (and its Play button) closes first, so it can't be double-fired
+    return cardAction(() => supabase.rpc('kingdoms_play_card', { p_hand_id: handId, p_side: side }));
   }
 
   document.getElementById('card-close').addEventListener('click', closeCard);
