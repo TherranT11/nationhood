@@ -198,6 +198,8 @@
     background: var(--ink); border: 1px solid var(--steel-edge); padding: 1rem 1.6rem 0.9rem;
     min-width: 190px; text-align: center; transition: border-color 0.2s ease, background 0.2s ease;
   }
+  .dyn-card { cursor: pointer; }
+  .dyn-card:hover { border-color: var(--gold); background: #14171f; }
   .dyn-card.head { border-top: 2px solid var(--gold); }   /* marks the head of house */
   .dyn-name { font-family: var(--display); font-weight: 600; font-size: 1rem; letter-spacing: 0.08em; color: var(--bone); }
   .dyn-name .age { color: var(--bone-dim); font-weight: 400; font-size: 0.85rem; }
@@ -230,6 +232,8 @@
   .mbtn.primary { background: var(--gold); color: #16130b; border-color: var(--gold); }
   .mbtn.primary:hover { background: var(--gold-bright); color: #16130b; }
   .mbtn:disabled { opacity: 0.4; cursor: default; }
+  .char-card { width: min(340px, 92vw); }
+  .char-card .kv { padding: 0 0 1.1rem; }
 </style>
 </head>
 <body>
@@ -261,6 +265,15 @@
       <button class="mbtn primary" id="banner-save" type="button" disabled>Save Banner</button>
       <button class="mbtn" id="banner-cancel" type="button">Cancel</button>
     </div>
+  </div>
+</div>
+
+<!-- Character popup (opened from a Dynasty card) -->
+<div class="modal-back" id="char-modal">
+  <div class="modal char-card">
+    <div class="modal-title" id="char-name">&hellip;</div>
+    <div class="kv" id="char-body"></div>
+    <div class="modal-actions"><button class="mbtn" id="char-close" type="button">Close</button></div>
   </div>
 </div>
 
@@ -355,6 +368,19 @@
   }
 
   // ---- Dynasty hall: the house tree (new players hold only the head of house) ----
+  // A dynasty member as a plain object → the tree card and the character popup read from the same shape.
+  function headOfHouse() {
+    const res = house.resources || {};
+    return {
+      name: house.leader_name || 'Unknown',
+      age: house.leader_age,
+      spouse: null, children: null,   // new houses have neither yet
+      ambition: Number(res.ambition || 0),
+      prowess: Number(res.prowess || 0),
+      administration: Number(res.administration || 0)
+    };
+  }
+
   function renderDynasty(stage) {
     if (!house) { stage.innerHTML = ''; return; }
     const label = houseLabel(house.house_name);
@@ -366,14 +392,35 @@
       '<div class="view-wrap"><section class="panel">' +
         '<h2 class="panel-head">Dynasty of ' + esc(label) + '</h2>' +
         '<div class="panel-body"><div class="tree"><div class="couple">' +
-          '<div class="dyn-card head">' +
+          '<div class="dyn-card head" id="dyn-head" role="button" tabindex="0">' +
             '<div class="dyn-name">' + esc(house.leader_name || 'Unknown') + age + '</div>' +
             '<div class="dyn-role">Head of ' + esc(label) + '</div>' +
             '<div class="dyn-sub">' + title + '</div>' +
           '</div>' +
         '</div></div></div>' +
       '</section></div>';
+    const card = document.getElementById('dyn-head');
+    const open = () => openCharacter(headOfHouse());
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
   }
+
+  // ---- character popup ----
+  const charModal = document.getElementById('char-modal');
+  function openCharacter(c) {
+    document.getElementById('char-name').textContent = (c.name || 'Unknown') + ' of ' + houseLabel(house.house_name);
+    document.getElementById('char-body').innerHTML =
+      kvRow('Age', esc(c.age != null ? c.age : '—'), c.age == null) +
+      kvRow('Spouse', c.spouse ? esc(c.spouse) : '—', !c.spouse) +
+      kvRow('Children', c.children ? esc(c.children) : '—', !c.children) +
+      kvRow('Ambition', esc(c.ambition)) +
+      kvRow('Prowess', esc(c.prowess)) +
+      kvRow('Administration', esc(c.administration));
+    charModal.classList.add('open');
+  }
+  function closeCharacter() { charModal.classList.remove('open'); }
+  document.getElementById('char-close').addEventListener('click', closeCharacter);
+  charModal.addEventListener('click', e => { if (e.target === charModal) closeCharacter(); });
 
   // ---- banner upload modal ----
   const modal = document.getElementById('banner-modal');
@@ -415,7 +462,7 @@
   });
   document.getElementById('banner-cancel').addEventListener('click', closeBanner);
   modal.addEventListener('click', e => { if (e.target === modal) closeBanner(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeBanner(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); } });
 
   // ---- load ----
   (async () => {
