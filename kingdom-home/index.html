@@ -478,6 +478,8 @@
     return cs.length ? cs[0].name.replace(/^\s*County of\s+/i, '').trim() : '';
   };
   const realmName = () => (house && house.heritage === 'Aldren') ? 'Aldren' : ((house && house.heritage) || 'the Realm');
+  const holdingLord = () => (house && house.leader_name) || 'Head of House';   // no appoint-lord mechanic yet: the head of house holds every county
+  const unrestOf = c => (c && c.unrest != null) ? c.unrest : 1;                 // defaults to 1
   // The top bar shows the house Treasury: Gold + Population from resources, Available Plots = free land across holdings.
   const updateTopbar = () => {
     const res = house && house.resources ? house.resources : {};
@@ -553,13 +555,15 @@
     const rows = counties.length
       ? counties.map((c, i) =>
           '<tr><td class="hd-name">' + esc(c.name) + (i === 0 ? ' <span class="hd-star">*</span>' : '') + '</td>' +
+          '<td class="hd-name">' + esc(holdingLord()) + '</td>' +
           '<td>' + Number(c.available_land || 0).toLocaleString() + '</td>' +
           '<td>' + Number(c.population || 0).toLocaleString() + '</td>' +
+          '<td>' + esc(unrestOf(c)) + '</td>' +
           '<td>' + (i === 0 ? '<button class="hd-go" id="hd-go" type="button">Go to Holdings</button>' : '') + '</td></tr>').join('')
-      : '<tr><td class="hd-name hd-empty" colspan="4">No holdings yet.</td></tr>';
+      : '<tr><td class="hd-name hd-empty" colspan="6">No holdings yet.</td></tr>';
     return '<div class="holdings"><div class="hoh-title">Holdings</div><div class="hd-body">' +
       '<table class="hd-table"><thead><tr>' +
-        '<th class="hd-name">Name</th><th>Available Land</th><th>Population</th><th></th>' +
+        '<th class="hd-name">Name</th><th class="hd-name">Lord</th><th>Available Land</th><th>Population</th><th>Unrest</th><th></th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table>' +
       (counties.length ? '<p class="hd-note">* Primary Estate</p>' : '') +
     '</div></div>';
@@ -617,7 +621,9 @@
           '<span class="terrain">' + terrain + '</span>' +
         '</span>' +
         '<span class="head-stats">' +
+          '<span class="hstat"><span class="lbl">Lord</span><span class="val">' + esc(holdingLord()) + '</span></span>' +
           '<span class="hstat"><span class="lbl">Population</span><span class="val">' + Number(h.population || 0).toLocaleString() + '</span></span>' +
+          '<span class="hstat"><span class="lbl">Unrest</span><span class="val">' + esc(unrestOf(h)) + '</span></span>' +
           '<span class="hstat"><span class="lbl">Buildings</span><span class="val">' + (h.buildings || []).length + '</span></span>' +
           '<span class="hstat land-meter">' +
             '<span class="lbl">Available Land</span>' +
@@ -970,7 +976,7 @@
     if (!data) return false;
     house = data;
     const { data: cs } = await supabase.from('kingdoms_counties')
-      .select('id, name, available_land, population, terrain, hills').eq('held_by', house.id).order('name', { ascending: true });
+      .select('id, name, available_land, population, terrain, hills, unrest').eq('held_by', house.id).order('name', { ascending: true });
     house.counties = cs || [];
     const ids = house.counties.map(c => c.id);
     let builds = [];
