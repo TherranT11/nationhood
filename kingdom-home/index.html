@@ -208,7 +208,9 @@
   .card-slot .cs-top { font-family: var(--display); font-weight: 600; font-size: .78rem; letter-spacing: .1em; color: var(--bone); }
   .card-slot .cs-div { color: var(--faint); }
   .card-slot .cs-bot { font-family: var(--display); font-size: .68rem; letter-spacing: .1em; color: var(--bone-dim); }
+  .cards-turn { font-family: var(--display); font-size: .58rem; letter-spacing: .12em; text-transform: uppercase; color: var(--bone-dim); }
   .cards-draw { margin-left: auto; padding: .4rem 1rem; font-size: .6rem; }
+  .cards-end { padding: .4rem 1rem; font-size: .6rem; }
 
   /* ---- card play modal ---- */
   .card-play { width: min(520px, 94vw); max-height: 88vh; overflow-y: auto; }
@@ -604,6 +606,8 @@
     if (go) go.addEventListener('click', () => document.querySelector('.nav-item[data-view="holdings"]').click());
     const draw = document.getElementById('draw-card');
     if (draw) draw.addEventListener('click', drawCard);
+    const endBtn = document.getElementById('end-turn');
+    if (endBtn) endBtn.addEventListener('click', endTurn);
     stage.querySelectorAll('.card-slot.filled[data-hand]').forEach(el => {
       const open = () => openCard(el.dataset.hand);
       el.addEventListener('click', open);
@@ -633,6 +637,7 @@
   // Cards container: the house's hand (up to HAND_MAX). Full width, below Head of House + Holdings.
   // Each card has a top and a bottom (e.g. Feast / Feud); click one to choose a side and play it.
   const HAND_MAX = 5;
+  const PLAYS_PER_TURN = 2;   // at most 2 cards per turn (server-enforced; End Turn resets it)
   function cardsCard() {
     const hand = house.hand || [];
     const slots = [];
@@ -649,10 +654,13 @@
       }
     }
     const canDraw = hand.length < HAND_MAX;
+    const played = Math.min(house.cards_played || 0, PLAYS_PER_TURN);
     return '<div class="cards">' +
       '<div class="cards-head"><span class="cards-title">Cards</span>' +
         '<span class="cards-count">( ' + hand.length + ' / ' + HAND_MAX + ' )</span>' +
-        '<button class="mbtn cards-draw" id="draw-card" type="button"' + (canDraw ? '' : ' disabled') + '>Draw a Card</button></div>' +
+        '<span class="cards-turn">Played ' + played + ' / ' + PLAYS_PER_TURN + ' this turn</span>' +
+        '<button class="mbtn cards-draw" id="draw-card" type="button"' + (canDraw ? '' : ' disabled') + '>Draw a Card</button>' +
+        '<button class="mbtn cards-end" id="end-turn" type="button">End Turn</button></div>' +
       '<div class="cards-body">' + slots.join('') + '</div>' +
     '</div>';
   }
@@ -674,6 +682,7 @@
     return out;
   }
   const drawCard = () => cardAction(() => supabase.rpc('kingdoms_draw'));
+  const endTurn = () => cardAction(() => supabase.rpc('kingdoms_end_turn'));   // placeholder: resets the play counter
 
   // Friendly text for the errors the play RPC can raise (the affordable ones are already gated in the modal).
   function friendlyCardError(e) {
@@ -681,6 +690,7 @@
     if (m.includes('already_married')) return 'There is no unmarried Personality of your House to wed.';
     if (m.includes('no_spouse')) return 'You have no married Personality to bear a child.';
     if (m.includes('infirm')) return 'She is Infirm and cannot bear a child.';
+    if (m.includes('turn_limit')) return 'You have already played 2 cards this turn. End your turn to play more.';
     if (m.includes('cannot_pay')) return 'You cannot pay the cost.';
     if (m.includes('not_playable')) return 'That side cannot be played yet.';
     if (m.includes('not_your_card')) return 'That card is no longer in your hand.';
@@ -699,8 +709,9 @@
     if (!c) return '';
     const res = house.resources || {};
     const affordable = (res.gold || 0) >= c.cost_gold && (res.food || 0) >= c.cost_food;
-    const can = c.playable && affordable;
-    const why = !c.playable ? 'Not yet available' : !affordable ? 'You cannot pay the cost' : '';
+    const atLimit = (house.cards_played || 0) >= PLAYS_PER_TURN;
+    const can = c.playable && affordable && !atLimit;
+    const why = !c.playable ? 'Not yet available' : atLimit ? '2 cards played this turn' : !affordable ? 'You cannot pay the cost' : '';
     const eff = (c.effects || []).map(e => '<li>' + esc(e) + '</li>').join('');
     const notes = (c.notes || []).map(n => '<p class="pc-note">' + esc(n) + '</p>').join('');
     return '<div class="pc-side' + (can ? ' playable' : '') + '">' +
