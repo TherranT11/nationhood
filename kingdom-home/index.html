@@ -191,7 +191,7 @@
   /* ---- Cards hand (full width, below Head of House + Holdings) ---- */
   .cards { flex-basis: 100%; width: 100%; background: var(--steel); border: 1px solid var(--steel-edge); }
   .cards-head {
-    display: flex; align-items: baseline; gap: 0.6rem;
+    display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap;
     padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--steel-edge);
   }
   .cards-title { font-family: var(--display); font-weight: 600; font-size: 0.8rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--bone); }
@@ -609,9 +609,7 @@
     const endBtn = document.getElementById('end-turn');
     if (endBtn) endBtn.addEventListener('click', endTurn);
     stage.querySelectorAll('.card-slot.filled[data-hand]').forEach(el => {
-      const open = () => openCard(el.dataset.hand);
-      el.addEventListener('click', open);
-      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      clickable(el, () => openCard(el.dataset.hand));
     });
   }
 
@@ -638,6 +636,11 @@
   // Each card has a top and a bottom (e.g. Feast / Feud); click one to choose a side and play it.
   const HAND_MAX = 5;
   const PLAYS_PER_TURN = 2;   // at most 2 cards per turn (server-enforced; End Turn resets it)
+  // Make a role="button" element act on click and on Enter/Space (keyboard access). One source for the pattern.
+  function clickable(el, fn) {
+    el.addEventListener('click', fn);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } });
+  }
   function cardsCard() {
     const hand = house.hand || [];
     const slots = [];
@@ -923,14 +926,10 @@
         '<div class="panel-body"><div class="tree"><div class="couple">' + headCard + spouseCard + '</div>' + issue + '</div></div>' +
       '</section></div>';
     const head = document.getElementById('dyn-head');   // the head is a Personality → clickable
-    const openHead = () => openCharacter(headOfHouse());
-    head.addEventListener('click', openHead);
-    head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openHead(); } });
+    clickable(head, () => openCharacter(headOfHouse()));
     stage.querySelectorAll('.dyn-card.child[data-child]').forEach(el => {   // children are Personalities too
       const c = kids.find(k => k.id === el.dataset.child); if (!c) return;
-      const open = () => openCharacter(childCharacter(c));
-      el.addEventListener('click', open);
-      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      clickable(el, () => openCharacter(childCharacter(c)));
     });
   }
 
