@@ -323,8 +323,8 @@
     background: var(--ink); border: 1px solid var(--steel-edge); padding: 1rem 1.6rem 0.9rem;
     min-width: 190px; text-align: center; transition: border-color 0.2s ease, background 0.2s ease;
   }
-  .dyn-card { cursor: pointer; }
-  .dyn-card:hover { border-color: var(--gold); background: #14171f; }
+  .dyn-card[role="button"] { cursor: pointer; }   /* only Personalities (the head) open a character sheet */
+  .dyn-card[role="button"]:hover { border-color: var(--gold); background: #14171f; }
   .dyn-card.head { border-top: 2px solid var(--gold); }   /* marks the head of house */
   .dyn-name { font-family: var(--display); font-weight: 600; font-size: 1rem; letter-spacing: 0.08em; color: var(--bone); }
   .dyn-name .age { color: var(--bone-dim); font-weight: 400; font-size: 0.85rem; }
@@ -871,11 +871,6 @@
     };
   }
 
-  // The head's spouse as a plain character (a courtier who wed in; we track only her name so far).
-  function spouseCharacter() {
-    return { name: house.spouse_name, age: null, spouse: house.leader_name, children: null, ambition: null, prowess: null, administration: null };
-  }
-
   function renderDynasty(stage) {
     if (!house) { stage.innerHTML = ''; return; }
     const label = houseLabel(house.house_name);
@@ -887,9 +882,10 @@
         '<div class="dyn-role">Head of ' + esc(label) + '</div>' +
         '<div class="dyn-sub">' + title + '</div>' +
       '</div>';
-    const spouseCard = house.spouse_name   // once married, the spouse joins the tree beside the head
+    // The spouse is a consort, not a stat-bearing Personality — a display-only card (no age, no character sheet).
+    const spouseCard = house.spouse_name
       ? '<span class="marriage" aria-hidden="true"></span>' +
-        '<div class="dyn-card" id="dyn-spouse" role="button" tabindex="0">' +
+        '<div class="dyn-card">' +
           '<div class="dyn-name">' + esc(house.spouse_name) + '</div>' +
           '<div class="dyn-role">Consort of ' + esc(label) + '</div>' +
           '<div class="dyn-sub">Courtier of the realm</div>' +
@@ -900,16 +896,10 @@
         '<h2 class="panel-head">Dynasty of ' + esc(label) + '</h2>' +
         '<div class="panel-body"><div class="tree"><div class="couple">' + headCard + spouseCard + '</div></div></div>' +
       '</section></div>';
-    wireCard('dyn-head', () => openCharacter(headOfHouse()));
-    wireCard('dyn-spouse', () => openCharacter(spouseCharacter()));
-  }
-
-  // Attach click + keyboard "open" to a dynasty card if it's present.
-  function wireCard(id, open) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('click', open);
-    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    const head = document.getElementById('dyn-head');   // only the head is a Personality → clickable
+    const open = () => openCharacter(headOfHouse());
+    head.addEventListener('click', open);
+    head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
   }
 
   // ---- Court hall: sovereign + council (every seat starts empty — no one is seated yet) ----
@@ -1098,9 +1088,9 @@
       kvRow('Age', esc(c.age != null ? c.age : '—'), c.age == null) +
       kvRow('Spouse', c.spouse ? esc(c.spouse) : '—', !c.spouse) +
       kvRow('Children', c.children ? esc(c.children) : '—', !c.children) +
-      kvRow('Ambition', c.ambition != null ? esc(c.ambition) : '—', c.ambition == null) +
-      kvRow('Prowess', c.prowess != null ? esc(c.prowess) : '—', c.prowess == null) +
-      kvRow('Administration', c.administration != null ? esc(c.administration) : '—', c.administration == null);
+      kvRow('Ambition', esc(c.ambition)) +
+      kvRow('Prowess', esc(c.prowess)) +
+      kvRow('Administration', esc(c.administration));
     charModal.classList.add('open');
   }
   function closeCharacter() { charModal.classList.remove('open'); }
