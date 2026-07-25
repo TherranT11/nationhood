@@ -319,6 +319,9 @@
   .tree { display: flex; flex-direction: column; align-items: center; }
   .couple { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: .25rem; }
   .marriage { flex: none; width: 34px; height: 2px; background: var(--gold); opacity: .55; }   /* the bond between spouses */
+  .descent { width: 2px; height: 26px; background: var(--gold); opacity: .4; }                 /* couple → issue */
+  .issue { display: flex; align-items: flex-start; flex-wrap: wrap; justify-content: center; gap: .75rem; }
+  .dyn-card.child { min-width: 150px; }
   .dyn-card {
     background: var(--ink); border: 1px solid var(--steel-edge); padding: 1rem 1.6rem 0.9rem;
     min-width: 190px; text-align: center; transition: border-color 0.2s ease, background 0.2s ease;
@@ -676,13 +679,16 @@
   function friendlyCardError(e) {
     const m = (e && e.message) || '';
     if (m.includes('already_married')) return 'There is no unmarried Personality of your House to wed.';
+    if (m.includes('no_spouse')) return 'You have no married Personality to bear a child.';
+    if (m.includes('infirm')) return 'She is Infirm and cannot bear a child.';
     if (m.includes('cannot_pay')) return 'You cannot pay the cost.';
     if (m.includes('not_playable')) return 'That side cannot be played yet.';
     if (m.includes('not_your_card')) return 'That card is no longer in your hand.';
     return '';
   }
-  function showCardResult(msg) {
-    document.getElementById('card-title').textContent = 'Result';
+  // A short message shown in the card modal (a card's outcome, a coronation, an error). One notice path.
+  function showNotice(msg, title) {
+    document.getElementById('card-title').textContent = title || 'Result';
     document.getElementById('card-body').innerHTML = '<p class="pc-result">' + esc(msg) + '</p>';
     cardModal.classList.add('open');
   }
@@ -724,7 +730,7 @@
     const r = await cardAction(() => supabase.rpc('kingdoms_play_card', { p_hand_id: handId, p_side: side }));
     if (!r) return;                                                  // was locked
     const msg = r.error ? friendlyCardError(r.error) : r.data;       // narrate the outcome (e.g. the Marry roll)
-    if (msg) showCardResult(msg);
+    if (msg) showNotice(msg);
   }
 
   document.getElementById('card-close').addEventListener('click', closeCard);
@@ -882,24 +888,45 @@
         '<div class="dyn-role">Head of ' + esc(label) + '</div>' +
         '<div class="dyn-sub">' + title + '</div>' +
       '</div>';
-    // The spouse is a consort, not a stat-bearing Personality — a display-only card (no age, no character sheet).
+    // The spouse is a consort (name + age), not a stat-bearing Personality — a display-only card.
+    const spouseAge = house.spouse_age != null ? ' <span class="age">(' + esc(house.spouse_age) + ')</span>' : '';
     const spouseCard = house.spouse_name
       ? '<span class="marriage" aria-hidden="true"></span>' +
         '<div class="dyn-card">' +
-          '<div class="dyn-name">' + esc(house.spouse_name) + '</div>' +
+          '<div class="dyn-name">' + esc(house.spouse_name) + spouseAge + '</div>' +
           '<div class="dyn-role">Consort of ' + esc(label) + '</div>' +
-          '<div class="dyn-sub">Courtier of the realm</div>' +
+          (house.spouse_infirm ? '<div class="dyn-sub">Infirm</div>' : '') +
         '</div>'
+      : '';
+    // Children (from A Child is Born) descend from both parents — each is a Personality (name, sex, age, stats).
+    const kids = house.children || [];
+    const issue = kids.length
+      ? '<span class="descent" aria-hidden="true"></span><div class="issue">' + kids.map(c =>
+          '<div class="dyn-card child" role="button" tabindex="0" data-child="' + esc(c.id) + '">' +
+          '<div class="dyn-name">' + esc(c.name) + ' <span class="age">(' + esc(c.age) + ')</span></div>' +
+          '<div class="dyn-role">' + (c.gender === 'male' ? 'Son' : 'Daughter') + '</div></div>').join('') + '</div>'
       : '';
     stage.innerHTML =
       '<div class="view-wrap"><section class="panel">' +
         '<h2 class="panel-head">Dynasty of ' + esc(label) + '</h2>' +
-        '<div class="panel-body"><div class="tree"><div class="couple">' + headCard + spouseCard + '</div></div></div>' +
+        '<div class="panel-body"><div class="tree"><div class="couple">' + headCard + spouseCard + '</div>' + issue + '</div></div>' +
       '</section></div>';
-    const head = document.getElementById('dyn-head');   // only the head is a Personality → clickable
-    const open = () => openCharacter(headOfHouse());
-    head.addEventListener('click', open);
-    head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    const head = document.getElementById('dyn-head');   // the head is a Personality → clickable
+    const openHead = () => openCharacter(headOfHouse());
+    head.addEventListener('click', openHead);
+    head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openHead(); } });
+    stage.querySelectorAll('.dyn-card.child[data-child]').forEach(el => {   // children are Personalities too
+      const c = kids.find(k => k.id === el.dataset.child); if (!c) return;
+      const open = () => openCharacter(childCharacter(c));
+      el.addEventListener('click', open);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    });
+  }
+
+  // A child as a plain character for the popup (age + stats; no spouse/issue of their own yet).
+  function childCharacter(c) {
+    return { name: c.name, age: c.age, spouse: null, children: null,
+      ambition: Number(c.ambition || 0), prowess: Number(c.prowess || 0), administration: Number(c.administration || 0) };
   }
 
   // ---- Court hall: sovereign + council (every seat starts empty — no one is seated yet) ----
@@ -952,12 +979,21 @@
   async function claimThrone() {
     if (claiming) return;
     claiming = true;
+    let err = null;
     try {
       const { error } = await supabase.rpc('kingdoms_claim_throne');
       if (error) throw error;
-    } catch (e) { /* fall through: the reload shows the true state (e.g. someone beat us to it) */ }
+    } catch (e) { err = e; }
     try { await reloadThenRender(renderCourt); } catch (e) {}
     claiming = false;
+    if (!err) showNotice('You are crowned ' + sovereignRank() + '. +7 House Prestige.', 'Coronation');
+    else showNotice(friendlyThroneError(err), 'The Throne');
+  }
+  function friendlyThroneError(e) {
+    const m = (e && e.message) || '';
+    if (m.includes('throne_taken')) return 'The throne has already been claimed.';
+    if (m.includes('no_house')) return 'You hold no house in this realm.';
+    return 'The throne cannot be claimed right now.';   // e.g. the claim isn't deployed to the world yet
   }
 
   // ---- Laws hall: the realm's standing laws. Crown-set; Aldren starts High on Crown Authority and holds no
@@ -1196,6 +1232,9 @@
     const { data: hand } = await supabase.from('kingdoms_hand')
       .select('id, card_key').eq('house_id', house.id).order('created_at', { ascending: true });
     house.hand = hand || [];   // the cards currently in hand
+    const { data: kids } = await supabase.from('kingdoms_children')
+      .select('id, name, gender, age, administration, prowess, ambition').eq('house_id', house.id).order('created_at', { ascending: true });
+    house.children = kids || [];   // the house's issue (from A Child is Born)
     return true;
   }
 
