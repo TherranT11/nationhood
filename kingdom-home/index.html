@@ -556,6 +556,32 @@
   .empty .ways { margin-top: .9rem; font-style: normal; color: var(--bone-dim); font-size: .88rem; }
   .empty .ways li { list-style: none; padding-left: .9rem; position: relative; }
   .empty .ways li::before { content: "\00b7"; position: absolute; left: .2rem; color: var(--gold); }
+  /* ---- Conflict: the Season's Muster calendar ---- */
+  .calendar { background: var(--steel); border: 1px solid var(--steel-edge); padding: 1.1rem 1.2rem 1.2rem; }
+  .cal-legend { display: flex; align-items: center; gap: 1.25rem; margin-bottom: .9rem; flex-wrap: wrap; }
+  .cal-now { font-size: .85rem; color: var(--bone-dim); font-style: italic; }
+  .cal-now .lit { color: var(--gold); font-style: normal; font-family: var(--display); font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; }
+  .cal-key { margin-left: auto; display: flex; gap: 1.1rem; }
+  .cal-key span { display: flex; align-items: center; gap: .4rem; font-family: var(--display); font-size: .54rem; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+  .cal-swatch { width: 10px; height: 10px; flex: none; }
+  .sw-now { background: var(--gold); }
+  .sw-serve { background: #4a4433; }
+  .sw-end { border: 1px solid var(--blood); background: rgba(122,46,42,.25); }
+  .seasons { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+  .season { background: var(--ink); border: 1px solid var(--steel-edge); padding: .7rem .6rem .8rem; min-height: 96px; display: flex; flex-direction: column; position: relative; }
+  .season.serving { background: #191712; }
+  .season.now { border-color: var(--gold); }
+  .season.ends { border-color: var(--blood); }
+  .season-name { font-family: var(--display); font-size: .56rem; letter-spacing: .1em; text-transform: uppercase; color: var(--bone-dim); text-align: center; padding-bottom: .5rem; margin-bottom: .5rem; border-bottom: 1px solid var(--steel-edge); }
+  .season.now .season-name { color: var(--gold); }
+  .season-year { display: block; font-size: .5rem; color: var(--faint); letter-spacing: .06em; }
+  .now-flag { position: absolute; top: .55rem; right: .55rem; width: 6px; height: 6px; transform: rotate(45deg); background: var(--gold); }
+  .levy-chip { font-size: .74rem; line-height: 1.3; padding: .3rem .4rem; margin-top: auto; border-left: 2px solid #6a6350; background: var(--steel); color: var(--bone-dim); }
+  .levy-chip + .levy-chip { margin-top: .3rem; }
+  .levy-chip.release { border-left-color: var(--blood); color: var(--blood-text); }
+  .levy-chip .cn { display: block; font-family: var(--display); font-size: .58rem; letter-spacing: .06em; text-transform: uppercase; color: var(--bone); }
+  .levy-chip.release .cn { color: var(--blood-text); }
+  .season-empty { margin-top: auto; font-size: .7rem; font-style: italic; color: #3f3d38; text-align: center; }
 
   /* ---- banner upload modal ---- */
   .modal-back { position: fixed; inset: 0; background: rgba(6,7,9,0.75); display: none; align-items: center; justify-content: center; z-index: 20; }
@@ -1840,6 +1866,55 @@
     if (law && newTier != null) showNotice(esc(law.name) + ' now stands at ' + esc(law.tiers[newTier]) + '.', 'Decree');
   }
 
+  // The Season's Muster: a rolling six-season window from the current season. A levy raised at tick R serves
+  // that season and the two following (R, R+1, R+2) and is released at R+3, so it shows Mustered → In service →
+  // Service ends across three cells. Reads the world clock + the house's active musters (one source each).
+  function musterCalendar() {
+    const baseTick = clock ? clock.tick : 0;
+    const baseYear = clock ? clock.base_year : 845;
+    const musters = house.musters || [];
+    const seatOf = id => {
+      const c = (house.counties || []).find(x => x.id === id);
+      return c ? seatName(c.name) : 'Levy';
+    };
+    const cells = [];
+    for (let i = 0; i < 6; i++) {
+      const t = baseTick + i;
+      const sName = SEASONS[((t % 6) + 6) % 6];
+      const sYear = baseYear + Math.floor(t / 6);
+      const chips = [];
+      let serving = false, ending = false;
+      musters.forEach(m => {
+        const R = m.raised_tick;
+        if (t < R || t > R + 2) return;                       // this levy isn't in service this season
+        serving = true;
+        const n = m.count, men = (n === 1 ? ' man' : ' men');
+        let cls = '', txt;
+        if (t === R) txt = 'Mustered &middot; ' + esc(n) + men;
+        else if (t === R + 2) { txt = 'Service ends'; cls = ' release'; ending = true; }
+        else txt = 'In service';
+        chips.push('<span class="levy-chip' + cls + '"><span class="cn">' + esc(seatOf(m.county_id)) + ' Levy</span>' + txt + '</span>');
+      });
+      const body = chips.length ? chips.join('') : '<span class="season-empty">No muster</span>';
+      const klass = 'season' + (i === 0 ? ' now' : '') + (serving ? ' serving' : '') + (ending ? ' ends' : '');
+      cells.push('<div class="' + klass + '">' + (i === 0 ? '<span class="now-flag" aria-hidden="true"></span>' : '') +
+        '<span class="season-name">' + esc(sName) + '<span class="season-year">' + sYear + ' V.E.</span></span>' +
+        body + '</div>');
+    }
+    return '<div class="calendar">' +
+      '<div class="cal-legend">' +
+        '<span class="cal-now">The season is <span class="lit">' + esc(seasonName()) + ', ' + gameYear() +
+          ' V.E.</span> &middot; levies serve two seasons more, then disband.</span>' +
+        '<span class="cal-key">' +
+          '<span><span class="cal-swatch sw-now"></span>Now</span>' +
+          '<span><span class="cal-swatch sw-serve"></span>In Service</span>' +
+          '<span><span class="cal-swatch sw-end"></span>Service Ends</span>' +
+        '</span>' +
+      '</div>' +
+      '<div class="seasons">' + cells.join('') + '</div>' +
+    '</div>';
+  }
+
   // ---- Conflict hall: strength snapshot + wars / claims / pacts / feuds. Everything starts empty (no king's
   // summons, no other houses, no armies yet); only Prowess and the house name are real. ----
   function renderConflict(stage) {
@@ -1848,7 +1923,7 @@
     const prowess = Number(res.prowess || 0);
     const lord = house.leader_name || 'Your lord';
     const label = houseLabel(house.house_name);
-    const levies = Number(res.levies || 0);
+    const levies = (house.musters || []).reduce((s, m) => s + (m.count || 0), 0);   // one source: active muster rows
     const menAtArms = Number(res.men_at_arms || 0);
     const lightCav = Number(res.light_cavalry || 0);
     const mountedUnits = Number(res.mounted_knights || 0);
@@ -1871,6 +1946,9 @@
       '<div class="view-wrap"><div class="conflict">' +
         '<h3 class="group-title">Your Strength</h3>' +
         '<div class="strength">' + strength + '</div>' +
+
+        '<h3 class="group-title">The Season&rsquo;s Muster</h3>' +
+        musterCalendar() +
 
         '<h3 class="group-title">Wars <span class="muted">— none in the realm</span></h3>' +
         '<div class="empty"><p>No wars are being fought. The realm keeps an uneasy peace.</p></div>' +
@@ -2014,6 +2092,9 @@
     const { data: kn } = await supabase.from('kingdoms_knights')
       .select('id, name, age, prowess, mounted').eq('house_id', house.id).order('created_at', { ascending: true });
     house.knights = kn || [];      // the house's trained retinue (from Train Knights); [] if table not deployed yet
+    const { data: mu } = await supabase.from('kingdoms_musters')
+      .select('id, county_id, count, raised_tick').eq('house_id', house.id).order('raised_tick', { ascending: true });
+    house.musters = mu || [];      // active levy service terms (raised_tick → serves +2 seasons); [] if not deployed
     const { data: ev } = await supabase.from('kingdoms_events')
       .select('id, tag, place, body, created_at').eq('house_id', house.id).order('created_at', { ascending: false }).limit(40);
     house.events = ev || [];       // News of the Realm chronicle (from card actions); [] if table not deployed yet
