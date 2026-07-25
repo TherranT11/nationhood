@@ -1150,32 +1150,39 @@
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); closeCard(); } });
 
   // ---- data load ----
+  // Catalogs are OPTIONAL: if their migrations aren't deployed yet, the hall must still load (no buildings /
+  // no cards) rather than eject the player from their own house — so these degrade to empty, never throw.
   async function ensureCatalog() {
     if (catalog.length) return;
-    const { data, error } = await supabase.from('kingdoms_building_specs')
-      .select('num, name, category, cost, land, upkeep, needs, eff, need_text').order('num', { ascending: true });
-    if (error) throw error;
-    catalog = data || [];
-    catalog.forEach(s => { specByNum[s.num] = s; });
+    try {
+      const { data, error } = await supabase.from('kingdoms_building_specs')
+        .select('num, name, category, cost, land, upkeep, needs, eff, need_text').order('num', { ascending: true });
+      if (error) throw error;
+      catalog = data || [];
+      catalog.forEach(s => { specByNum[s.num] = s; });
+    } catch (e) { catalog = []; }
   }
 
   async function ensureCards() {
     if (cardCatalog.length) return;
-    const { data, error } = await supabase.from('kingdoms_cards')
-      .select('card_key, side, name, cost_text, cost_gold, cost_food, effects, notes, playable');
-    if (error) throw error;
-    cardCatalog = data || [];
-    cardCatalog.forEach(c => { cardSides[c.card_key + ':' + c.side] = c; });
+    try {
+      const { data, error } = await supabase.from('kingdoms_cards')
+        .select('card_key, side, name, cost_text, cost_gold, cost_food, effects, notes, playable');
+      if (error) throw error;
+      cardCatalog = data || [];
+      cardCatalog.forEach(c => { cardSides[c.card_key + ':' + c.side] = c; });
+    } catch (e) { cardCatalog = []; }
   }
 
   // Load (or reload) the signed-in player's house: the leader row, its counties, and each county's buildings.
-  // Returns false if there is no signed-in user or no house (caller redirects).
+  // Returns false if there is no signed-in user or no house (caller redirects). Selects '*' so a newly-added
+  // leader column whose migration isn't deployed yet is simply absent, not a query error that ejects the player.
   async function loadHouseData() {
     const { data: u } = await supabase.auth.getUser();
     const uid = u && u.user ? u.user.id : null;
     if (!uid) return false;
     const { data, error } = await supabase.from('kingdoms_leaders')
-      .select('id, house_name, heritage, leader_name, leader_age, leader_title, banner_url, resources, is_sovereign, spouse_name')
+      .select('*')
       .eq('user_id', uid).order('created_at', { ascending: false }).limit(1).maybeSingle();
     if (error) throw error;
     if (!data) return false;
