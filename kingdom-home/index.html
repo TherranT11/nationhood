@@ -1171,18 +1171,18 @@
     const kids = all.filter(k => k.relation !== 'sibling');
     const sibs = all.filter(k => k.relation === 'sibling');
     const headName = esc(house.leader_name || 'the Head');
+    // One card for every clickable dynasty Personality (child or sibling); they share markup, differ by role.
+    const personCard = (p, cls, role) =>
+      '<div class="dyn-card ' + cls + '" role="button" tabindex="0" data-person="' + esc(p.id) + '">' +
+        '<div class="dyn-name">' + esc(p.name) + ' <span class="age">(' + esc(p.age) + ')</span></div>' +
+        '<div class="dyn-role">' + role + '</div></div>';
     const sibBlock = sibs.length
-      ? '<div class="siblings">' + sibs.map(s =>
-          '<div class="dyn-card sib" role="button" tabindex="0" data-sib="' + esc(s.id) + '">' +
-          '<div class="dyn-name">' + esc(s.name) + ' <span class="age">(' + esc(s.age) + ')</span></div>' +
-          '<div class="dyn-role">' + (s.gender === 'male' ? 'Brother' : 'Sister') + ' of ' + headName + '</div></div>').join('') +
-          '</div><span class="sib-link" aria-hidden="true"></span>'
+      ? '<div class="siblings">' + sibs.map(s => personCard(s, 'sib', (s.gender === 'male' ? 'Brother' : 'Sister') + ' of ' + headName)).join('') +
+        '</div><span class="sib-link" aria-hidden="true"></span>'
       : '';
     const issue = kids.length
-      ? '<span class="descent" aria-hidden="true"></span><div class="issue">' + kids.map(c =>
-          '<div class="dyn-card child" role="button" tabindex="0" data-child="' + esc(c.id) + '">' +
-          '<div class="dyn-name">' + esc(c.name) + ' <span class="age">(' + esc(c.age) + ')</span></div>' +
-          '<div class="dyn-role">' + (c.gender === 'male' ? 'Son' : 'Daughter') + '</div></div>').join('') + '</div>'
+      ? '<span class="descent" aria-hidden="true"></span><div class="issue">' +
+        kids.map(c => personCard(c, 'child', c.gender === 'male' ? 'Son' : 'Daughter')).join('') + '</div>'
       : '';
     stage.innerHTML =
       '<div class="view-wrap"><section class="panel">' +
@@ -1191,18 +1191,14 @@
       '</section></div>';
     const head = document.getElementById('dyn-head');   // the head is a Personality → clickable
     clickable(head, () => openCharacter(headOfHouse()));
-    stage.querySelectorAll('.dyn-card.child[data-child]').forEach(el => {   // children are Personalities too
-      const c = kids.find(k => k.id === el.dataset.child); if (!c) return;
-      clickable(el, () => openCharacter(childCharacter(c)));
-    });
-    stage.querySelectorAll('.dyn-card.sib[data-sib]').forEach(el => {   // siblings are Personalities too
-      const s = sibs.find(k => k.id === el.dataset.sib); if (!s) return;
-      clickable(el, () => openCharacter(childCharacter(s)));
+    stage.querySelectorAll('.dyn-card[data-person]').forEach(el => {   // children + siblings are Personalities too
+      const p = all.find(x => x.id === el.dataset.person); if (!p) return;
+      clickable(el, () => openCharacter(personCharacter(p)));
     });
   }
 
-  // A child as a plain character for the popup (age + stats; no spouse/issue of their own yet).
-  function childCharacter(c) {
+  // A child or sibling as a plain character for the popup (age + stats; no spouse/issue of their own yet).
+  function personCharacter(c) {
     return { name: c.name, age: c.age, spouse: null, children: null,
       ambition: Number(c.ambition || 0), prowess: Number(c.prowess || 0), administration: Number(c.administration || 0) };
   }
