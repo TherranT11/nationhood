@@ -883,13 +883,13 @@
         '<div class="dyn-role">Head of ' + esc(label) + '</div>' +
         '<div class="dyn-sub">' + title + '</div>' +
       '</div>';
-    // The spouse is a consort, not a stat-bearing Personality — a display-only card (no age, no character sheet).
+    // The spouse is a consort (name + age), not a stat-bearing Personality — a display-only card.
+    const spouseAge = house.spouse_age != null ? ' <span class="age">(' + esc(house.spouse_age) + ')</span>' : '';
     const spouseCard = house.spouse_name
       ? '<span class="marriage" aria-hidden="true"></span>' +
         '<div class="dyn-card">' +
-          '<div class="dyn-name">' + esc(house.spouse_name) + '</div>' +
+          '<div class="dyn-name">' + esc(house.spouse_name) + spouseAge + '</div>' +
           '<div class="dyn-role">Consort of ' + esc(label) + '</div>' +
-          '<div class="dyn-sub">Courtier of the realm</div>' +
         '</div>'
       : '';
     stage.innerHTML =
