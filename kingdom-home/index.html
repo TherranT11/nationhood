@@ -319,6 +319,9 @@
   .tree { display: flex; flex-direction: column; align-items: center; }
   .couple { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: .25rem; }
   .marriage { flex: none; width: 34px; height: 2px; background: var(--gold); opacity: .55; }   /* the bond between spouses */
+  .descent { width: 2px; height: 26px; background: var(--gold); opacity: .4; }                 /* couple → issue */
+  .issue { display: flex; align-items: flex-start; flex-wrap: wrap; justify-content: center; gap: .75rem; }
+  .dyn-card.child { min-width: 150px; }
   .dyn-card {
     background: var(--ink); border: 1px solid var(--steel-edge); padding: 1rem 1.6rem 0.9rem;
     min-width: 190px; text-align: center; transition: border-color 0.2s ease, background 0.2s ease;
@@ -676,6 +679,8 @@
   function friendlyCardError(e) {
     const m = (e && e.message) || '';
     if (m.includes('already_married')) return 'There is no unmarried Personality of your House to wed.';
+    if (m.includes('no_spouse')) return 'You have no married Personality to bear a child.';
+    if (m.includes('infirm')) return 'She is Infirm and cannot bear a child.';
     if (m.includes('cannot_pay')) return 'You cannot pay the cost.';
     if (m.includes('not_playable')) return 'That side cannot be played yet.';
     if (m.includes('not_your_card')) return 'That card is no longer in your hand.';
@@ -890,12 +895,20 @@
         '<div class="dyn-card">' +
           '<div class="dyn-name">' + esc(house.spouse_name) + spouseAge + '</div>' +
           '<div class="dyn-role">Consort of ' + esc(label) + '</div>' +
+          (house.spouse_infirm ? '<div class="dyn-sub">Infirm</div>' : '') +
         '</div>'
+      : '';
+    // Children (from A Child is Born) form the next row of the tree — display-only (name, sex, age).
+    const kids = house.children || [];
+    const issue = kids.length
+      ? '<span class="descent" aria-hidden="true"></span><div class="issue">' + kids.map(c =>
+          '<div class="dyn-card child"><div class="dyn-name">' + esc(c.name) + ' <span class="age">(' + esc(c.age) + ')</span></div>' +
+          '<div class="dyn-role">' + (c.gender === 'male' ? 'Son' : 'Daughter') + '</div></div>').join('') + '</div>'
       : '';
     stage.innerHTML =
       '<div class="view-wrap"><section class="panel">' +
         '<h2 class="panel-head">Dynasty of ' + esc(label) + '</h2>' +
-        '<div class="panel-body"><div class="tree"><div class="couple">' + headCard + spouseCard + '</div></div></div>' +
+        '<div class="panel-body"><div class="tree"><div class="couple">' + headCard + spouseCard + '</div>' + issue + '</div></div>' +
       '</section></div>';
     const head = document.getElementById('dyn-head');   // only the head is a Personality → clickable
     const open = () => openCharacter(headOfHouse());
@@ -1206,6 +1219,9 @@
     const { data: hand } = await supabase.from('kingdoms_hand')
       .select('id, card_key').eq('house_id', house.id).order('created_at', { ascending: true });
     house.hand = hand || [];   // the cards currently in hand
+    const { data: kids } = await supabase.from('kingdoms_children')
+      .select('id, name, gender, age').eq('house_id', house.id).order('created_at', { ascending: true });
+    house.children = kids || [];   // the house's issue (from A Child is Born)
     return true;
   }
 
