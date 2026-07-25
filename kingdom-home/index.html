@@ -134,6 +134,14 @@
   .muster-count { font-family: var(--display); font-weight: 600; font-size: 1.6rem; color: var(--gold); min-width: 2.4rem; text-align: center; }
   .muster-of { font-size: 0.8rem; color: var(--faint); }
   .muster-cost { font-size: 0.86rem; color: var(--bone-dim); margin-top: 0.3rem; }
+  .troop-row { display: flex; align-items: center; gap: 1rem; padding: 0.6rem 0; border-bottom: 1px solid var(--steel-edge); }
+  .troop-row:last-of-type { border-bottom: none; }
+  .troop-info { flex: 1; display: flex; flex-direction: column; }
+  .troop-name { font-family: var(--display); font-weight: 600; font-size: 0.9rem; letter-spacing: 0.04em; color: var(--bone); }
+  .troop-cost { font-size: 0.78rem; color: var(--faint); }
+  .troop-row .muster-stepper { margin: 0; }
+  .troop-row .muster-count { font-size: 1.2rem; min-width: 1.8rem; }
+  .troop-row .mstep { width: 32px; height: 32px; font-size: 1.1rem; }
   /* ---- Court: household knights ---- */
   .knight-name { font-family: var(--display); font-weight: 600; font-size: 1.05rem; letter-spacing: 0.04em; color: var(--bone); }
   .knight-name .knight-age { color: var(--bone-dim); font-weight: 400; font-size: 0.9rem; }
@@ -638,6 +646,18 @@
   </div>
 </div>
 
+<!-- Raise Troops picker (opened by playing a Raise Troops card) -->
+<div class="modal-back" id="troops-modal">
+  <div class="modal muster-card">
+    <div class="modal-title">Raise Troops</div>
+    <div id="troops-body"></div>
+    <div class="modal-actions">
+      <button class="mbtn primary" id="troops-confirm" type="button">Raise</button>
+      <button class="mbtn" id="troops-cancel" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Delete-dynasty confirmation (destructive, irreversible) -->
 <div class="modal-back" id="delete-modal">
   <div class="modal">
@@ -945,6 +965,8 @@
     if (m.includes('cannot_pay')) return 'You cannot pay the cost.';
     if (m.includes('no_construction_card')) return 'You have no Construction card to build with.';
     if (m.includes('no_muster_card')) return 'You have no Muster Levies card to raise them with.';
+    if (m.includes('no_troops_card')) return 'You have no Raise Troops card to raise them with.';
+    if (m.includes('bad_count')) return 'You may raise between 1 and 3 units.';
     if (m.includes('need_barracks')) return 'You need a Barracks to train a Knight.';
     if (m.includes('not_enough_people')) return 'That holding has too few people for so many levies.';
     if (m.includes('bad_count')) return 'That is beyond the holding’s Levy Capacity.';
@@ -1002,6 +1024,7 @@
     closeCard();   // the modal (and its Play button) closes first, so it can't be double-fired
     if (card && card.card_key === 'construction' && side === 'top') { openConstruct(); return; }   // build picker, not a direct play
     if (card && card.card_key === 'levies' && side === 'top') { openMuster(); return; }             // muster picker (holding + count)
+    if (card && card.card_key === 'troops' && side === 'top') { openTroops(); return; }             // raise-troops picker (unit mix)
     const r = await cardAction(() => supabase.rpc('kingdoms_play_card', { p_hand_id: handId, p_side: side }));
     if (!r) return;                                                  // was locked
     const msg = r.error ? friendlyCardError(r.error) : r.data;       // narrate the outcome (e.g. the Marry roll)
@@ -1122,6 +1145,54 @@
   document.getElementById('muster-confirm').addEventListener('click', doMuster);
   document.getElementById('muster-cancel').addEventListener('click', closeMuster);
   musterModal.addEventListener('click', e => { if (e.target === musterModal) closeMuster(); });
+
+  // ---- Raise Troops picker: playing Raise Troops opens this to pick a unit mix (up to 3 units).
+  const troopsModal = document.getElementById('troops-modal');
+  const TROOP_TYPES = [                                     // gold + population cost per unit (server is authoritative)
+    { key: 'men', name: 'Men-at-Arms', gold: 3, pop: 1 },
+    { key: 'cav', name: 'Light Cavalry', gold: 2, pop: 1 },
+    { key: 'kn',  name: 'Mounted Knights', gold: 5, pop: 0 }
+  ];
+  let troops = { men: 0, cav: 0, kn: 0 };
+  function openTroops() { troops = { men: 0, cav: 0, kn: 0 }; renderTroops(); troopsModal.classList.add('open'); }
+  const closeTroops = () => troopsModal.classList.remove('open');
+  function renderTroops() {
+    const res = house.resources || {};
+    const gold = Number(res.gold || 0), pop = Number(res.population || 0);
+    const total = troops.men + troops.cav + troops.kn;
+    const goldCost = troops.men * 3 + troops.cav * 2 + troops.kn * 5;
+    const popCost = troops.men + troops.cav;
+    const rows = TROOP_TYPES.map(t => {
+      const n = troops[t.key];
+      const canAdd = total < 3 && gold >= goldCost + t.gold && pop >= popCost + t.pop;
+      return '<div class="troop-row">' +
+        '<div class="troop-info"><span class="troop-name">' + esc(t.name) + '</span>' +
+          '<span class="troop-cost">' + t.gold + ' Gold' + (t.pop ? ' · −' + t.pop + ' Pop' : '') + '</span></div>' +
+        '<div class="muster-stepper">' +
+          '<button class="mstep" type="button" data-troop="' + t.key + '" data-step="-1"' + (n <= 0 ? ' disabled' : '') + '>&minus;</button>' +
+          '<span class="muster-count">' + n + '</span>' +
+          '<button class="mstep" type="button" data-troop="' + t.key + '" data-step="1"' + (canAdd ? '' : ' disabled') + '>+</button>' +
+        '</div></div>';
+    }).join('');
+    document.getElementById('troops-body').innerHTML =
+      '<p class="construct-sub">Raise up to 3 units. <span class="muted">' + gold + ' gold · ' + pop + ' population</span></p>' + rows +
+      '<p class="muster-cost">' + total + ' / 3 units · &minus;' + goldCost + ' Gold' + (popCost ? ' · &minus;' + popCost + ' Population' : '') + '</p>';
+    document.getElementById('troops-confirm').disabled = (total < 1);
+    document.getElementById('troops-body').querySelectorAll('[data-troop]').forEach(btn =>
+      btn.addEventListener('click', () => { troops[btn.dataset.troop] += Number(btn.dataset.step); renderTroops(); }));
+  }
+  async function doTroops() {
+    if (troops.men + troops.cav + troops.kn < 1) return;
+    const r = await cardAction(() => supabase.rpc('kingdoms_raise_troops',
+      { p_men: troops.men, p_cavalry: troops.cav, p_knights: troops.kn }));
+    if (!r) return;   // was locked
+    closeTroops();
+    const msg = r.error ? friendlyCardError(r.error) : r.data;
+    if (msg) showNotice(msg, 'Raise Troops');
+  }
+  document.getElementById('troops-confirm').addEventListener('click', doTroops);
+  document.getElementById('troops-cancel').addEventListener('click', closeTroops);
+  troopsModal.addEventListener('click', e => { if (e.target === troopsModal) closeTroops(); });
 
   // ---- Holdings hall: collapsible holdings + build catalog ----
   const CAT_ORDER = ['Food', 'Economy', 'Military', 'Administration', 'Religion', 'Prestige'];
@@ -1655,14 +1726,18 @@
     const lord = house.leader_name || 'Your lord';
     const label = houseLabel(house.house_name);
     const levies = Number(res.levies || 0);
-    const knights = house.knights || [];
-    const mounted = knights.filter(k => k.mounted).length;
+    const menAtArms = Number(res.men_at_arms || 0);
+    const lightCav = Number(res.light_cavalry || 0);
+    const mountedUnits = Number(res.mounted_knights || 0);
+    const knights = house.knights || [];   // named Knight champions (Train Knights), distinct from Mounted Knight units
     const cells = [
       { lbl: 'Levy Raised', val: String(levies), zero: levies === 0, note: levies === 0 ? 'No levies raised' : 'Mustered from your holdings' },
-      { lbl: 'Knights', val: String(knights.length), zero: knights.length === 0, note: knights.length === 0 ? 'None trained' : 'Sworn to your house' },
+      { lbl: 'Men-at-Arms', val: String(menAtArms), zero: menAtArms === 0, note: menAtArms === 0 ? 'None raised' : 'Trained soldiers' },
+      { lbl: 'Light Cavalry', val: String(lightCav), zero: lightCav === 0, note: lightCav === 0 ? 'None raised' : 'Swift riders' },
+      { lbl: 'Mounted Knights', val: String(mountedUnits), zero: mountedUnits === 0, note: mountedUnits === 0 ? 'None raised' : 'Heavy horse' },
+      { lbl: 'Knights', val: String(knights.length), zero: knights.length === 0, note: knights.length === 0 ? 'None trained' : 'Champions of your house' },
       { lbl: 'Prowess', val: String(prowess), zero: prowess === 0, note: prowess === 0 ? lord + ' is untested' : 'Led by ' + lord },
-      { lbl: 'Defense', val: '0', note: 'No Watchtower, no Keep' },
-      { lbl: 'Cavalry', val: mounted ? String(mounted) : '—', zero: mounted === 0, note: mounted === 0 ? 'Requires a mounted Knight' : 'Mounted knights' }
+      { lbl: 'Defense', val: '0', note: 'No Watchtower, no Keep' }
     ];
     const strength = cells.map(c =>
       '<div class="str-cell"><span class="lbl">' + esc(c.lbl) + '</span>' +
@@ -1751,7 +1826,7 @@
   });
   document.getElementById('banner-cancel').addEventListener('click', closeBanner);
   modal.addEventListener('click', e => { if (e.target === modal) closeBanner(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); closeCard(); closeDelete(); closeConstruct(); closeMuster(); setGearOpen(false); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); closeCard(); closeDelete(); closeConstruct(); closeMuster(); closeTroops(); setGearOpen(false); } });
 
   // ---- data load ----
   // Catalogs are OPTIONAL: if their migrations aren't deployed yet, the hall must still load (no buildings /
