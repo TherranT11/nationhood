@@ -59,6 +59,19 @@
   }
   .topbar-house .sep { color: var(--steel-edge); margin: 0 0.7rem; font-weight: 400; }
   .topbar-house .era { color: var(--bone-dim); letter-spacing: 0.18em; }
+  /* season + next-tick clock: never clipped (house name yields first, stats scroll) */
+  .topbar-clock {
+    flex-shrink: 0;
+    font-family: var(--display);
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+    white-space: nowrap;
+  }
+  .topbar-clock .season { color: var(--bone); }
+  .topbar-clock .tick b { color: var(--gold); font-weight: 700; letter-spacing: 0.04em; }
+  .topbar-clock .cdot { color: var(--steel-edge); margin: 0 0.7rem; }
 
   /* resources — pushed to the right of the bar */
   .topbar-res {
@@ -575,6 +588,7 @@
 
 <header class="topbar">
   <span class="topbar-house" id="house-label">&hellip;</span>
+  <span class="topbar-clock" id="clock-label"></span>
   <div class="topbar-res" id="topbar-res"></div>
   <div class="topbar-gear-wrap">
     <button class="topbar-gear" id="gear-btn" type="button" aria-label="Settings" aria-haspopup="true" aria-expanded="false">
@@ -702,10 +716,51 @@
   let cardCatalog = [];     // card sides (from kingdoms_cards; one source)
   const cardSides = {};     // `${card_key}:${side}` → row
 
+  // The world clock (kingdoms_clock): tick advances every 8h via pg_cron; season = tick mod 6, year rolls on Spring.
+  let clock = null;
+  const SEASONS = ['Spring', 'Early Summer', 'Late Summer', 'Fall', 'Early Winter', 'Late Winter'];
+  const seasonName = () => clock ? SEASONS[((clock.tick % 6) + 6) % 6] : SEASONS[0];
+  const gameYear = () => clock ? (clock.base_year + Math.floor(clock.tick / 6)) : 845;
+  async function loadClock() {
+    try { const { data } = await supabase.from('kingdoms_clock').select('*').limit(1).maybeSingle(); if (data) clock = data; }
+    catch (e) { /* clock not deployed yet: fall back to defaults */ }
+  }
+  // Real-time countdown to the next 8-hour tick boundary (00:00 / 08:00 / 16:00 UTC — where the cron fires).
+  function nextTickMs() {
+    const now = new Date();
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+    next.setUTCHours((Math.floor(now.getUTCHours() / 8) + 1) * 8, 0, 0, 0);   // 8 / 16 / 24 → next-day 00:00
+    return next.getTime() - now.getTime();
+  }
+  const fmtCountdown = ms => {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const p = n => String(n).padStart(2, '0');
+    return p(Math.floor(s / 3600)) + ':' + p(Math.floor((s % 3600) / 60)) + ':' + p(s % 60);
+  };
   const setBar = name => {
     document.getElementById('house-label').innerHTML =
-      esc(houseLabel(name)) + '<span class="sep">|</span><span class="era">Year 845 V.E.</span>';
+      esc(houseLabel(name)) + '<span class="sep">|</span><span class="era">Year ' + gameYear() + ' V.E.</span>';
+    document.getElementById('clock-label').innerHTML =
+      '<span class="season">Current Season: ' + esc(seasonName()) + '</span>' +
+      '<span class="cdot">&middot;</span>' +
+      '<span class="tick">Next Tick: <b id="tick-countdown">' + fmtCountdown(nextTickMs()) + '</b></span>';
   };
+  // One ticking timer: refresh the countdown each second, and shortly after a boundary re-read the clock so
+  // the season/year catch up once the cron has run. Guarded so the re-read fires at most once per boundary.
+  let tickTimer = null, tickRefreshed = false;
+  function startTicker() {
+    if (tickTimer) return;
+    tickTimer = setInterval(() => {
+      const ms = nextTickMs();
+      const el = document.getElementById('tick-countdown');
+      if (el) el.textContent = fmtCountdown(ms);
+      if (ms > 5000) tickRefreshed = false;
+      if (ms <= 2000 && !tickRefreshed) {
+        tickRefreshed = true;
+        setTimeout(async () => { await loadClock(); if (house) setBar(house.house_name); }, 4000);
+      }
+    }, 1000);
+  }
   // Land used by the buildings standing in a county, and the plots left free — one source for both.
   const usedLand = c => (c.buildings || []).reduce((s, b) => s + (specByNum[b.building_num] ? specByNum[b.building_num].land : 0), 0);
   const freeLand = c => Math.max(0, (c.available_land || 0) - usedLand(c));
@@ -864,7 +919,7 @@
   // News of the Realm: a chronicle of your house's deeds (kingdoms_events). The realm/abroad tiers await the
   // multi-House / war / foreign systems, so they show honest empty states for now.
   const NEWS_TAG_CLASS = { Coin: 'coin', Harvest: 'coin', Feast: 'realm', Marriage: 'envoy', Birth: 'birth',
-    Knight: 'war', Muster: 'war', Built: 'realm', Court: 'realm', Crown: 'realm', Decree: 'realm' };
+    Knight: 'war', Muster: 'war', Built: 'realm', Court: 'realm', Crown: 'realm', Decree: 'realm', Death: 'war' };
   const agoText = iso => {
     const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
     if (s < 60) return 'just now';
@@ -1970,9 +2025,11 @@
     try {
       await ensureCatalog();                                     // building specs (one source, small, cached)
       await ensureCards();                                       // card catalog (one source, small, cached)
+      await loadClock();                                          // the world clock (season + year in the top bar)
       const ok = await loadHouseData();
       if (!ok) { window.location.replace('/kingdoms/'); return; } // not signed in / no house yet
       setBar(house.house_name);
+      startTicker();                                             // live countdown to the next 8-hour tick
       updateTopbar();
       renderView('home');
     } catch (e) { window.location.replace('/kingdoms/'); }
