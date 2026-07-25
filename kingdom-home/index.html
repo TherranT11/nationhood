@@ -681,8 +681,9 @@
     if (m.includes('not_your_card')) return 'That card is no longer in your hand.';
     return '';
   }
-  function showCardResult(msg) {
-    document.getElementById('card-title').textContent = 'Result';
+  // A short message shown in the card modal (a card's outcome, a coronation, an error). One notice path.
+  function showNotice(msg, title) {
+    document.getElementById('card-title').textContent = title || 'Result';
     document.getElementById('card-body').innerHTML = '<p class="pc-result">' + esc(msg) + '</p>';
     cardModal.classList.add('open');
   }
@@ -724,7 +725,7 @@
     const r = await cardAction(() => supabase.rpc('kingdoms_play_card', { p_hand_id: handId, p_side: side }));
     if (!r) return;                                                  // was locked
     const msg = r.error ? friendlyCardError(r.error) : r.data;       // narrate the outcome (e.g. the Marry roll)
-    if (msg) showCardResult(msg);
+    if (msg) showNotice(msg);
   }
 
   document.getElementById('card-close').addEventListener('click', closeCard);
@@ -952,12 +953,21 @@
   async function claimThrone() {
     if (claiming) return;
     claiming = true;
+    let err = null;
     try {
       const { error } = await supabase.rpc('kingdoms_claim_throne');
       if (error) throw error;
-    } catch (e) { /* fall through: the reload shows the true state (e.g. someone beat us to it) */ }
+    } catch (e) { err = e; }
     try { await reloadThenRender(renderCourt); } catch (e) {}
     claiming = false;
+    if (!err) showNotice('You are crowned ' + sovereignRank() + '. +7 House Prestige.', 'Coronation');
+    else showNotice(friendlyThroneError(err), 'The Throne');
+  }
+  function friendlyThroneError(e) {
+    const m = (e && e.message) || '';
+    if (m.includes('throne_taken')) return 'The throne has already been claimed.';
+    if (m.includes('no_house')) return 'You hold no house in this realm.';
+    return 'The throne cannot be claimed right now.';   // e.g. the claim isn't deployed to the world yet
   }
 
   // ---- Laws hall: the realm's standing laws. Crown-set; Aldren starts High on Crown Authority and holds no
