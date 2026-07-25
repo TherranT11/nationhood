@@ -9,8 +9,9 @@
 --
 -- The release is a per-tick step of _kingdoms_tick (every 8 hours, any season — service can end mid-year), so
 -- this migration redefines _kingdoms_tick (from 341) to add it. The Conflict page reads kingdoms_musters to
--- draw the Season's Muster calendar. resources.levies stays the live count of men in service (raise adds,
--- release subtracts, floored at 0). Depends on: 328 (muster), 341 (clock + tick). Idempotent. Apply after 341.
+-- draw the Season's Muster calendar AND to count levies in service (the sum of active muster rows) — this table
+-- is the one source for that count; the old resources.levies scalar is retired (no longer written or read).
+-- Depends on: 328 (muster), 341 (clock + tick). Idempotent. Apply after 341.
 -- ===========================================================================
 
 create table if not exists public.kingdoms_musters (
@@ -58,15 +59,15 @@ begin
   if p_count < 1 or p_count > v_cap then raise exception 'bad_count'; end if;
   if p_count > v_pop then raise exception 'not_enough_people'; end if;
 
-  -- Each levy costs 1 Population (holding + house total); the holding gains 1 Unrest per 2 levies.
+  -- Each levy costs 1 Population (holding + house total); the holding gains 1 Unrest per 2 levies. The count of
+  -- levies in service is the sum of active muster rows (kingdoms_musters) — one source; no scalar tally is kept.
   update public.kingdoms_counties
      set population = population - p_count,
          unrest = unrest + (p_count / 2)
    where id = p_county;
   update public.kingdoms_leaders
-     set resources = jsonb_set(
-           jsonb_set(resources, '{population}', to_jsonb(greatest(0, coalesce((resources->>'population')::int, 0) - p_count))),
-           '{levies}', to_jsonb(coalesce((resources->>'levies')::int, 0) + p_count)),
+     set resources = jsonb_set(resources, '{population}',
+           to_jsonb(greatest(0, coalesce((resources->>'population')::int, 0) - p_count))),
          cards_played = cards_played + 1
    where id = v_house;
   delete from public.kingdoms_hand where id = v_card;
@@ -87,7 +88,8 @@ revoke all on function public.kingdoms_muster_levies(uuid, int) from public, ano
 grant execute on function public.kingdoms_muster_levies(uuid, int) to authenticated;
 
 -- Release every muster that has served its term (raised + 2 seasons). The men go home: Population restored
--- (house + holding), levies subtracted, the record removed, and the release chronicled.
+-- (house + holding), the record removed, and the release chronicled (the seat goes in the event's place, which
+-- the client renders through seatName — one source for that transform).
 create or replace function public._kingdoms_release_musters(p_tick int)
 returns void
 language plpgsql
@@ -100,17 +102,15 @@ begin
     select id, house_id, county_id, count from public.kingdoms_musters where p_tick - raised_tick >= 3
   loop
     update public.kingdoms_leaders
-       set resources = jsonb_set(
-             jsonb_set(resources, '{population}', to_jsonb(coalesce((resources->>'population')::int, 0) + r.count)),
-             '{levies}', to_jsonb(greatest(0, coalesce((resources->>'levies')::int, 0) - r.count)))
+       set resources = jsonb_set(resources, '{population}',
+             to_jsonb(coalesce((resources->>'population')::int, 0) + r.count))
      where id = r.house_id;
     if r.county_id is not null then
       update public.kingdoms_counties set population = population + r.count where id = r.county_id;
     end if;
     select name into v_seat from public.kingdoms_counties where id = r.county_id;
     perform public._kingdoms_log(r.house_id, 'Muster', v_seat,
-      'The ' || coalesce(regexp_replace(v_seat, '^\s*County of\s+', ''), 'levy') || ' levy is released — '
-      || r.count || ' return home.');
+      'The levy is released — ' || r.count || ' return home.');
     delete from public.kingdoms_musters where id = r.id;
   end loop;
 end;

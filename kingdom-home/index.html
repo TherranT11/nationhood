@@ -1923,7 +1923,7 @@
     const prowess = Number(res.prowess || 0);
     const lord = house.leader_name || 'Your lord';
     const label = houseLabel(house.house_name);
-    const levies = Number(res.levies || 0);
+    const levies = (house.musters || []).reduce((s, m) => s + (m.count || 0), 0);   // one source: active muster rows
     const menAtArms = Number(res.men_at_arms || 0);
     const lightCav = Number(res.light_cavalry || 0);
     const mountedUnits = Number(res.mounted_knights || 0);
