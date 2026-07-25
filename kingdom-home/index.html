@@ -122,6 +122,20 @@
   .ctab:hover { border-color: var(--gold); color: var(--gold); }
   .ctab.active { border-color: var(--gold); color: #16130b; background: var(--gold); }
   .construct-empty { color: var(--faint); font-style: italic; font-size: 0.9rem; }
+  .muster-card { width: min(460px, 94vw); text-align: left; }
+  .muster-stepper { display: flex; align-items: center; gap: 0.9rem; margin: 1.4rem 0 0.6rem; }
+  .mstep {
+    width: 40px; height: 40px; font-size: 1.3rem; line-height: 1; color: var(--bone);
+    background: none; border: 1px solid var(--steel-edge); cursor: pointer;
+  }
+  .mstep:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); }
+  .mstep:disabled { opacity: 0.35; cursor: default; }
+  .muster-count { font-family: var(--display); font-weight: 600; font-size: 1.6rem; color: var(--gold); min-width: 2.4rem; text-align: center; }
+  .muster-of { font-size: 0.8rem; color: var(--faint); }
+  .muster-cost { font-size: 0.86rem; color: var(--bone-dim); margin-top: 0.3rem; }
+  /* ---- Court: household knights ---- */
+  .knight-name { font-family: var(--display); font-weight: 600; font-size: 1.05rem; letter-spacing: 0.04em; color: var(--bone); }
+  .knight-prowess { margin-top: 0.5rem; font-family: var(--display); font-size: 0.68rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold); }
 
   /* ---- left sidebar ---- */
   .sidebar {
@@ -383,7 +397,8 @@
   .sovereign::after { bottom: 6px; right: 6px; border-left: none; border-top: none; }
   .crown { display: block; margin: 0 auto .9rem; }
   .seat-label { font-family: var(--display); font-weight: 600; font-size: .62rem; letter-spacing: .26em; text-transform: uppercase; color: var(--gold); margin-bottom: .6rem; }
-  .council-title { font-family: var(--display); font-weight: 600; font-size: .66rem; letter-spacing: .26em; text-transform: uppercase; color: var(--bone-dim); text-align: center; margin-bottom: 1.25rem; }
+  .council-title { font-family: var(--display); font-weight: 600; font-size: .66rem; letter-spacing: .26em; text-transform: uppercase; color: var(--bone-dim); text-align: center; margin: 2rem 0 1.25rem; }
+  .council-title:first-of-type { margin-top: 0; }
   .council { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 1rem; }
   .seat {
     background: var(--steel); border: 1px solid var(--steel-edge); border-top: 2px solid var(--gold);
@@ -543,6 +558,18 @@
     <div class="modal-title">Construction</div>
     <div id="construct-body"></div>
     <div class="modal-actions"><button class="mbtn" id="construct-close" type="button">Close</button></div>
+  </div>
+</div>
+
+<!-- Muster Levies picker (opened by playing a Muster Levies card) -->
+<div class="modal-back" id="muster-modal">
+  <div class="modal muster-card">
+    <div class="modal-title">Muster Levies</div>
+    <div id="muster-body"></div>
+    <div class="modal-actions">
+      <button class="mbtn primary" id="muster-confirm" type="button">Muster</button>
+      <button class="mbtn" id="muster-cancel" type="button">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -801,6 +828,10 @@
     if (m.includes('turn_limit')) return 'You have already played 2 cards this turn. End your turn to play more.';
     if (m.includes('cannot_pay')) return 'You cannot pay the cost.';
     if (m.includes('no_construction_card')) return 'You have no Construction card to build with.';
+    if (m.includes('no_muster_card')) return 'You have no Muster Levies card to raise them with.';
+    if (m.includes('need_barracks')) return 'You need a Barracks to train a Knight.';
+    if (m.includes('not_enough_people')) return 'That holding has too few people for so many levies.';
+    if (m.includes('bad_count')) return 'That is beyond the holding’s Levy Capacity.';
     if (m.includes('has_plague')) return 'Plague grips that holding — nothing may be raised there.';
     if (m.includes('not_enough_gold')) return "You cannot pay the building's Gold cost.";
     if (m.includes('no_room')) return 'That holding has no free plots for it.';
@@ -854,6 +885,7 @@
     const card = (house.hand || []).find(h => h.id === handId);
     closeCard();   // the modal (and its Play button) closes first, so it can't be double-fired
     if (card && card.card_key === 'construction' && side === 'top') { openConstruct(); return; }   // build picker, not a direct play
+    if (card && card.card_key === 'levies' && side === 'top') { openMuster(); return; }             // muster picker (holding + count)
     const r = await cardAction(() => supabase.rpc('kingdoms_play_card', { p_hand_id: handId, p_side: side }));
     if (!r) return;                                                  // was locked
     const msg = r.error ? friendlyCardError(r.error) : r.data;       // narrate the outcome (e.g. the Marry roll)
@@ -910,6 +942,70 @@
   }
   document.getElementById('construct-close').addEventListener('click', closeConstruct);
   constructModal.addEventListener('click', e => { if (e.target === constructModal) closeConstruct(); });
+
+  // ---- Muster picker: playing Muster Levies opens this to pick a holding + a levy count (up to capacity).
+  const musterModal = document.getElementById('muster-modal');
+  let musterCounty = null, musterCount = 1;
+  // Levy Capacity = base 1 + 2 per Barracks in that holding. Mirrors kingdoms_muster_levies (328), which is
+  // authoritative — this is only for the stepper's max (same client-gates / server-enforces split as building).
+  const musterCapacity = h => 1 + 2 * ((h.buildings || []).filter(b => b.building_num === 9).length);
+  const musterMax = h => Math.max(0, Math.min(musterCapacity(h), Number(h.population || 0)));
+  function openMuster() {
+    const counties = (house && house.counties) || [];
+    if (!counties.length) { showNotice('Your house holds no land to muster from.', 'Muster Levies'); return; }
+    if (!musterCounty || !counties.some(c => c.id === musterCounty)) musterCounty = counties[0].id;
+    musterCount = 1;
+    renderMuster();
+    musterModal.classList.add('open');
+  }
+  const closeMuster = () => musterModal.classList.remove('open');
+  function renderMuster() {
+    const counties = (house && house.counties) || [];
+    const h = counties.find(c => c.id === musterCounty) || counties[0];
+    if (!h) { closeMuster(); return; }
+    const cap = musterCapacity(h), pop = Number(h.population || 0), max = musterMax(h);
+    if (musterCount > max) musterCount = Math.max(1, max);
+    if (musterCount < 1) musterCount = 1;
+    const tabs = counties.length > 1
+      ? '<div class="construct-tabs">' + counties.map(c =>
+          '<button class="ctab' + (c.id === h.id ? ' active' : '') + '" type="button" data-county="' + esc(c.id) + '">' + esc(c.name) + '</button>'
+        ).join('') + '</div>'
+      : '';
+    const unrest = Math.floor(musterCount / 2);
+    document.getElementById('muster-body').innerHTML =
+      '<p class="construct-sub">Raise levies in <b>' + esc(h.name) + '</b>. ' +
+        '<span class="muted">Capacity ' + cap + ' · Population ' + pop + '</span></p>' + tabs +
+      (max < 1
+        ? '<p class="construct-empty">This holding has no people left to muster.</p>'
+        : '<div class="muster-stepper">' +
+            '<button class="mstep" type="button" data-step="-1"' + (musterCount <= 1 ? ' disabled' : '') + '>&minus;</button>' +
+            '<span class="muster-count">' + musterCount + '</span>' +
+            '<button class="mstep" type="button" data-step="1"' + (musterCount >= max ? ' disabled' : '') + '>+</button>' +
+            '<span class="muster-of">of ' + max + ' max</span>' +
+          '</div>' +
+          '<p class="muster-cost">&minus;' + musterCount + ' Population' + (unrest > 0 ? ' · +' + unrest + ' Unrest' : '') + '</p>');
+    document.getElementById('muster-confirm').disabled = (max < 1);
+    const body = document.getElementById('muster-body');
+    body.querySelectorAll('[data-county]').forEach(btn =>
+      btn.addEventListener('click', () => { musterCounty = btn.dataset.county; musterCount = 1; renderMuster(); }));
+    body.querySelectorAll('[data-step]').forEach(btn =>
+      btn.addEventListener('click', () => { musterCount += Number(btn.dataset.step); renderMuster(); }));
+  }
+  async function doMuster() {
+    const counties = (house && house.counties) || [];
+    const h = counties.find(c => c.id === musterCounty) || counties[0];
+    if (!h) return;
+    const n = Math.max(1, Math.min(musterCount, musterMax(h)));
+    if (musterMax(h) < 1) return;
+    const r = await cardAction(() => supabase.rpc('kingdoms_muster_levies', { p_county: h.id, p_count: n }));
+    if (!r) return;   // was locked
+    closeMuster();
+    const msg = r.error ? friendlyCardError(r.error) : r.data;
+    if (msg) showNotice(msg, 'Muster Levies');
+  }
+  document.getElementById('muster-confirm').addEventListener('click', doMuster);
+  document.getElementById('muster-cancel').addEventListener('click', closeMuster);
+  musterModal.addEventListener('click', e => { if (e.target === musterModal) closeMuster(); });
 
   // ---- Holdings hall: collapsible holdings + build catalog ----
   const CAT_ORDER = ['Food', 'Economy', 'Military', 'Administration', 'Religion', 'Prestige'];
@@ -1123,12 +1219,21 @@
       ? esc(houseLabel(house.house_name)) + ' sits the throne of the ' + esc(nationName()) + '.'
       : esc(houseLabel(house.house_name)) + ' holds no seat at this court.';
 
+    const knights = house.knights || [];
+    const knightsBlock = knights.length
+      ? '<div class="council">' + knights.map(k =>
+          '<div class="seat"><p class="seat-label">' + (k.mounted ? 'Mounted Knight' : 'Knight') + '</p>' +
+          '<p class="knight-name">Sir ' + esc(k.name) + '</p>' +
+          '<p class="knight-prowess">Prowess ' + esc(k.prowess) + '</p></div>').join('') + '</div>'
+      : '<div class="empty"><p>No knights have taken their oath. Play <b>Train Knights</b> to build your retinue.</p></div>';
+
     stage.innerHTML =
       '<div class="view-wrap"><div class="court">' +
         '<h2 class="court-title">The Court of ' + esc(realmName()) + '</h2>' +
         '<section class="sovereign">' + sovInner + '</section>' +
         '<h3 class="council-title">The King’s Council</h3>' +
         '<div class="council">' + seats + '</div>' +
+        '<h3 class="council-title">Household Knights</h3>' + knightsBlock +
         '<p class="court-foot">' + foot + '</p>' +
       '</div></div>';
 
@@ -1242,12 +1347,15 @@
     const prowess = Number(res.prowess || 0);
     const lord = house.leader_name || 'Your lord';
     const label = houseLabel(house.house_name);
+    const levies = Number(res.levies || 0);
+    const knights = house.knights || [];
+    const mounted = knights.filter(k => k.mounted).length;
     const cells = [
-      { lbl: 'Levy Raised', val: '0', note: 'No levies raised' },
-      { lbl: 'Men-at-Arms', val: '0', zero: true, note: 'None trained' },
+      { lbl: 'Levy Raised', val: String(levies), zero: levies === 0, note: levies === 0 ? 'No levies raised' : 'Mustered from your holdings' },
+      { lbl: 'Knights', val: String(knights.length), zero: knights.length === 0, note: knights.length === 0 ? 'None trained' : 'Sworn to your house' },
       { lbl: 'Prowess', val: String(prowess), zero: prowess === 0, note: prowess === 0 ? lord + ' is untested' : 'Led by ' + lord },
       { lbl: 'Defense', val: '0', note: 'No Watchtower, no Keep' },
-      { lbl: 'Cavalry', val: '—', zero: true, note: 'Requires Stables' }
+      { lbl: 'Cavalry', val: mounted ? String(mounted) : '—', zero: mounted === 0, note: mounted === 0 ? 'Requires a mounted Knight' : 'Mounted knights' }
     ];
     const strength = cells.map(c =>
       '<div class="str-cell"><span class="lbl">' + esc(c.lbl) + '</span>' +
@@ -1336,7 +1444,7 @@
   });
   document.getElementById('banner-cancel').addEventListener('click', closeBanner);
   modal.addEventListener('click', e => { if (e.target === modal) closeBanner(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); closeCard(); closeDelete(); closeConstruct(); setGearOpen(false); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); closeCard(); closeDelete(); closeConstruct(); closeMuster(); setGearOpen(false); } });
 
   // ---- data load ----
   // Catalogs are OPTIONAL: if their migrations aren't deployed yet, the hall must still load (no buildings /
@@ -1398,6 +1506,9 @@
     const { data: kids } = await supabase.from('kingdoms_children')
       .select('id, name, gender, age, administration, prowess, ambition').eq('house_id', house.id).order('created_at', { ascending: true });
     house.children = kids || [];   // the house's issue (from A Child is Born)
+    const { data: kn } = await supabase.from('kingdoms_knights')
+      .select('id, name, prowess, mounted').eq('house_id', house.id).order('created_at', { ascending: true });
+    house.knights = kn || [];      // the house's trained retinue (from Train Knights); [] if table not deployed yet
     return true;
   }
 
