@@ -455,6 +455,31 @@
   .conflict { width: min(1060px, 100%); margin: 0 auto; }
   .group-title:first-child { margin-top: 0; }
   .group-title .muted { color: var(--faint); }
+
+  /* ---- Realm view: realm-wide overview + every House ---- */
+  .realm { width: min(1060px, 100%); margin: 0 auto; }
+  .realm-title { font-family: var(--display); font-weight: 600; font-size: .8rem; letter-spacing: .26em; text-transform: uppercase; color: var(--bone-dim); text-align: center; margin-bottom: 1.5rem; }
+  .realm .muted { color: var(--faint); }
+  .rv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); background: var(--steel); border: 1px solid var(--steel-edge); margin-bottom: 2rem; }
+  .rv-row { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: .85rem 1.1rem; border-right: 1px solid var(--steel-edge); border-bottom: 1px solid var(--steel-edge); }
+  .rv-k { font-family: var(--display); font-size: .55rem; letter-spacing: .2em; text-transform: uppercase; color: var(--bone-dim); }
+  .rv-v { font-family: var(--display); font-weight: 600; font-size: .95rem; color: var(--bone); text-align: right; }
+  .rv-v .age { color: var(--bone-dim); font-weight: 400; font-size: .82rem; }
+  .rl-card { border: 1px solid var(--steel-edge); background: var(--steel); margin-bottom: .6rem; }
+  .rl-head { display: flex; align-items: center; gap: .6rem; width: 100%; text-align: left; background: none; border: none; cursor: pointer; padding: .95rem 1.1rem; }
+  .rl-head:hover { background: var(--ink); }
+  .rl-card.open .chev { transform: rotate(45deg); margin-top: -6px; }
+  .rl-title { font-family: var(--display); font-weight: 600; font-size: .84rem; letter-spacing: .06em; color: var(--bone); flex: 1; }
+  .rl-you { color: var(--gold); font-size: .62rem; letter-spacing: .14em; text-transform: uppercase; }
+  .rl-crown { color: var(--gold-bright); font-size: .62rem; letter-spacing: .14em; text-transform: uppercase; }
+  .rl-head-meta { color: var(--bone-dim); font-size: .85rem; }
+  .rl-titles { list-style: none; padding: 0 1.1rem .6rem 2.3rem; margin: 0; }
+  .rl-titles li { font-size: .84rem; color: var(--gold); padding-left: .85rem; position: relative; }
+  .rl-titles li::before { content: "\00b7"; position: absolute; left: .2rem; color: var(--gold); }
+  .rl-body { padding: .3rem 1.1rem 1.1rem 2.3rem; border-top: 1px solid var(--steel-edge); }
+  .rl-sub { font-family: var(--display); font-size: .55rem; letter-spacing: .2em; text-transform: uppercase; color: var(--bone-dim); margin: 1rem 0 .5rem; }
+  .rl-dyn { font-size: .88rem; color: var(--bone-dim); line-height: 1.6; }
+  .rl-hold { font-size: .88rem; color: var(--bone); padding: .15rem 0; }
   .strength { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); background: var(--steel); border: 1px solid var(--steel-edge); }
   .str-cell { padding: 1rem 1.1rem; border-right: 1px solid var(--steel-edge); }
   .str-cell:last-child { border-right: none; }
@@ -517,6 +542,7 @@
 <aside class="sidebar" id="sidebar">
   <button class="nav-item active" data-view="home" type="button">Home</button>
   <button class="nav-item" data-view="dynasty" type="button">Dynasty</button>
+  <button class="nav-item" data-view="realm" type="button">Realm</button>
   <button class="nav-item" data-view="holdings" type="button">Holdings</button>
   <button class="nav-item" data-view="court" type="button">Court</button>
   <button class="nav-item" data-view="laws" type="button">Laws</button>
@@ -609,9 +635,10 @@
   const usedLand = c => (c.buildings || []).reduce((s, b) => s + (specByNum[b.building_num] ? specByNum[b.building_num].land : 0), 0);
   const freeLand = c => Math.max(0, (c.available_land || 0) - usedLand(c));
   // House-derived helpers used by more than one view — one source each.
-  const primarySeat = () => {                    // primary county's place name: "County of Amberfield" → "Amberfield"
+  const seatName = n => (n || '').replace(/^\s*County of\s+/i, '').trim();   // "County of Amberfield" → "Amberfield"
+  const primarySeat = () => {                    // the player's primary seat place-name
     const cs = (house && house.counties) || [];
-    return cs.length ? cs[0].name.replace(/^\s*County of\s+/i, '').trim() : '';
+    return cs.length ? seatName(cs[0].name) : '';
   };
   const realmName = () => (house && house.heritage === 'Aldren') ? 'Aldren' : ((house && house.heritage) || 'the Realm');
   const holdingLord = () => (house && house.leader_name) || 'Head of House';   // no appoint-lord mechanic yet: the head of house holds every county
@@ -686,11 +713,12 @@
   });
 
   // ---- sidebar navigation ----
-  const VIEW_TITLES = { home: 'Home', dynasty: 'Dynasty', holdings: 'Holdings', court: 'Court', laws: 'Laws', conflict: 'Conflict' };
+  const VIEW_TITLES = { home: 'Home', dynasty: 'Dynasty', realm: 'Realm', holdings: 'Holdings', court: 'Court', laws: 'Laws', conflict: 'Conflict' };
   function renderView(view) {
     const stage = document.getElementById('stage');
     if (view === 'home') { renderHome(stage); return; }
     if (view === 'dynasty') { renderDynasty(stage); return; }
+    if (view === 'realm') { renderRealm(stage); return; }
     if (view === 'holdings') { renderHoldings(stage); return; }
     if (view === 'court') { renderCourt(stage); return; }
     if (view === 'laws') { renderLaws(stage); return; }
@@ -1201,6 +1229,119 @@
   function personCharacter(c) {
     return { name: c.name, age: c.age, spouse: null, children: null,
       ambition: Number(c.ambition || 0), prowess: Number(c.prowess || 0), administration: Number(c.administration || 0) };
+  }
+
+  // ---- Realm hall: a realm-wide overview + every House. All read from public game data; lazy-loaded. ----
+  const realmOpen = {};   // house id → expanded (Realm Lords)
+  async function renderRealm(stage) {
+    if (!house) { stage.innerHTML = ''; return; }
+    stage.innerHTML = '<div class="view-wrap"><p class="empty-note">Surveying the realm&hellip;</p></div>';
+    let leaders = [], counties = [], kids = [];
+    try {
+      const [L, C] = await Promise.all([
+        supabase.from('kingdoms_leaders')
+          .select('id, house_name, leader_name, leader_age, leader_title, is_sovereign, resources, spouse_name, spouse_age')
+          .eq('heritage', house.heritage).order('created_at', { ascending: true }),
+        supabase.from('kingdoms_counties')
+          .select('id, name, held_by, population, available_land, unrest').order('name', { ascending: true })
+      ]);
+      if (L.error) throw L.error;
+      if (C.error) throw C.error;
+      leaders = L.data || []; counties = C.data || [];
+      const ids = leaders.map(l => l.id);
+      if (ids.length) {
+        const K = await supabase.from('kingdoms_children')
+          .select('house_id, name, gender, age, relation').in('house_id', ids).order('age', { ascending: false });
+        kids = K.data || [];
+      }
+    } catch (e) {
+      stage.innerHTML = '<div class="view-wrap"><p class="empty-note">The realm could not be surveyed just now.</p></div>';
+      return;
+    }
+    // If the player navigated away while the survey was in flight, don't overwrite the new view.
+    if (!document.querySelector('.nav-item[data-view="realm"]').classList.contains('active')) return;
+    paintRealm(stage, leaders, counties, kids);
+  }
+
+  function paintRealm(stage, leaders, counties, kids) {
+    const held = counties.filter(c => c.held_by);
+    const heldOf = id => counties.filter(c => c.held_by === id);
+    const kidsOf = id => kids.filter(k => k.house_id === id);
+    const num = n => Number(n || 0).toLocaleString();
+    const sov = leaders.find(l => l.is_sovereign) || null;
+    const totalPop = leaders.reduce((s, l) => s + Number((l.resources && l.resources.population) || 0), 0);
+    const treasury = leaders.reduce((s, l) => s + Number((l.resources && l.resources.gold) || 0), 0);
+    const crowns = leaders.filter(l => l.is_sovereign).length;
+
+    let heir = '<span class="muted">&mdash;</span>';
+    if (sov) {
+      const son = kidsOf(sov.id).find(k => k.gender === 'male' && k.relation !== 'sibling');   // oldest son (kids sorted age desc)
+      heir = son ? esc(son.name) + ' <span class="age">(' + esc(son.age) + ')</span>' : 'Disputed';
+    }
+    const titlesOf = l => {
+      const t = [];
+      if (l.is_sovereign) t.push(SOVEREIGN_TITLE + ' of the ' + nationName());
+      heldOf(l.id).forEach(c => t.push((l.leader_title || 'Count') + ' of ' + seatName(c.name)));
+      return t.length ? t : ['Landless'];
+    };
+
+    const ov = [
+      ['Kingdom', esc(nationName())],
+      ['Sovereign', sov ? nameOfHouse(sov.leader_name, sov.house_name) : '<span class="muted">The throne sits empty</span>'],
+      ['Heir', heir],
+      ['Total Population', num(totalPop)],
+      ['Treasury', num(treasury) + ' Gold'],
+      ['Total Holdings', num(held.length)],
+      ['Total Lords', num(leaders.length)],
+      ['Total Domains', num(held.length + crowns) + ' <span class="muted">titles</span>']
+    ].map(([k, v]) => '<div class="rv-row"><span class="rv-k">' + k + '</span><span class="rv-v">' + v + '</span></div>').join('');
+
+    const lords = leaders.map(l => {
+      const open = !!realmOpen[l.id];
+      const titles = titlesOf(l).map(t => '<li>' + esc(t) + '</li>').join('');
+      const myKids = kidsOf(l.id);
+      const children = myKids.filter(k => k.relation !== 'sibling');
+      const sibs = myKids.filter(k => k.relation === 'sibling');
+      const dyn = [];
+      if (l.spouse_name) dyn.push('Consort: ' + esc(l.spouse_name) + (l.spouse_age != null ? ' (' + esc(l.spouse_age) + ')' : ''));
+      if (children.length) dyn.push('Children: ' + children.map(k => esc(k.name) + ' (' + esc(k.age) + ')').join(', '));
+      if (sibs.length) dyn.push('Siblings: ' + sibs.map(k => esc(k.name) + ' (' + esc(k.age) + ')').join(', '));
+      const holds = heldOf(l.id);
+      const holdRows = holds.length
+        ? holds.map(c => '<div class="rl-hold">' + esc(c.name) + ' <span class="muted">&mdash; ' + num(c.population) +
+            ' pop · ' + num(c.available_land) + ' land · ' + (c.unrest != null ? c.unrest : 1) + ' unrest</span></div>').join('')
+        : '<p class="empty-note">Holds no land.</p>';
+      const body = open
+        ? '<div class="rl-body">' +
+            '<h4 class="rl-sub">Dynasty</h4>' +
+            (dyn.length ? '<p class="rl-dyn">' + dyn.join('<br>') + '</p>' : '<p class="empty-note">Only the head of house.</p>') +
+            '<h4 class="rl-sub">Holdings</h4>' + holdRows +
+          '</div>'
+        : '';
+      return '<section class="rl-card' + (open ? ' open' : '') + '">' +
+          '<button class="rl-head" type="button" data-lord="' + esc(l.id) + '" aria-expanded="' + open + '">' +
+            '<span class="chev" aria-hidden="true"></span>' +
+            '<span class="rl-title">' + esc(houseLabel(l.house_name)) +
+              (l.id === house.id ? '<span class="rl-you"> · You</span>' : '') +
+              (l.is_sovereign ? '<span class="rl-crown"> · Sovereign</span>' : '') + '</span>' +
+            '<span class="rl-head-meta">' + esc(l.leader_name || '—') + (l.leader_age != null ? ', ' + esc(l.leader_age) : '') + '</span>' +
+          '</button>' +
+          '<ul class="rl-titles">' + titles + '</ul>' + body +
+        '</section>';
+    }).join('');
+
+    stage.innerHTML =
+      '<div class="view-wrap"><div class="realm">' +
+        '<h2 class="realm-title">The ' + esc(nationName()) + '</h2>' +
+        '<section class="rv-grid">' + ov + '</section>' +
+        '<h3 class="group-title">Realm Lords <span class="muted">&mdash; ' + leaders.length + '</span></h3>' +
+        (lords || '<div class="empty"><p>No houses hold this realm.</p></div>') +
+      '</div></div>';
+
+    stage.querySelectorAll('[data-lord]').forEach(btn => btn.addEventListener('click', () => {
+      realmOpen[btn.dataset.lord] = !realmOpen[btn.dataset.lord];
+      paintRealm(stage, leaders, counties, kids);
+    }));
   }
 
   // ---- Court hall: sovereign + council (every seat starts empty — no one is seated yet) ----
