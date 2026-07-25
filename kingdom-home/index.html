@@ -606,6 +606,7 @@
   const deleteModal = document.getElementById('delete-modal');
   const openDelete = () => {
     setGearOpen(false);
+    if (!house) return;   // no house loaded (e.g. Supabase not configured) — nothing to delete
     const sov = isSovereign()
       ? ' As Sovereign, the throne of the ' + esc(nationName()) + ' will fall empty for another house to claim.'
       : '';
@@ -617,6 +618,7 @@
   const closeDelete = () => deleteModal.classList.remove('open');
   document.getElementById('delete-dynasty-btn').addEventListener('click', openDelete);
   document.getElementById('delete-cancel').addEventListener('click', closeDelete);
+  deleteModal.addEventListener('click', e => { if (e.target === deleteModal) closeDelete(); });   // backdrop click cancels
   document.getElementById('delete-confirm').addEventListener('click', async () => {
     const btn = document.getElementById('delete-confirm');
     btn.disabled = true; btn.textContent = 'Deleting…';
