@@ -898,11 +898,12 @@
           (house.spouse_infirm ? '<div class="dyn-sub">Infirm</div>' : '') +
         '</div>'
       : '';
-    // Children (from A Child is Born) form the next row of the tree — display-only (name, sex, age).
+    // Children (from A Child is Born) descend from both parents — each is a Personality (name, sex, age, stats).
     const kids = house.children || [];
     const issue = kids.length
       ? '<span class="descent" aria-hidden="true"></span><div class="issue">' + kids.map(c =>
-          '<div class="dyn-card child"><div class="dyn-name">' + esc(c.name) + ' <span class="age">(' + esc(c.age) + ')</span></div>' +
+          '<div class="dyn-card child" role="button" tabindex="0" data-child="' + esc(c.id) + '">' +
+          '<div class="dyn-name">' + esc(c.name) + ' <span class="age">(' + esc(c.age) + ')</span></div>' +
           '<div class="dyn-role">' + (c.gender === 'male' ? 'Son' : 'Daughter') + '</div></div>').join('') + '</div>'
       : '';
     stage.innerHTML =
@@ -910,10 +911,22 @@
         '<h2 class="panel-head">Dynasty of ' + esc(label) + '</h2>' +
         '<div class="panel-body"><div class="tree"><div class="couple">' + headCard + spouseCard + '</div>' + issue + '</div></div>' +
       '</section></div>';
-    const head = document.getElementById('dyn-head');   // only the head is a Personality → clickable
-    const open = () => openCharacter(headOfHouse());
-    head.addEventListener('click', open);
-    head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    const head = document.getElementById('dyn-head');   // the head is a Personality → clickable
+    const openHead = () => openCharacter(headOfHouse());
+    head.addEventListener('click', openHead);
+    head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openHead(); } });
+    stage.querySelectorAll('.dyn-card.child[data-child]').forEach(el => {   // children are Personalities too
+      const c = kids.find(k => k.id === el.dataset.child); if (!c) return;
+      const open = () => openCharacter(childCharacter(c));
+      el.addEventListener('click', open);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    });
+  }
+
+  // A child as a plain character for the popup (age + stats; no spouse/issue of their own yet).
+  function childCharacter(c) {
+    return { name: c.name, age: c.age, spouse: null, children: null,
+      ambition: Number(c.ambition || 0), prowess: Number(c.prowess || 0), administration: Number(c.administration || 0) };
   }
 
   // ---- Court hall: sovereign + council (every seat starts empty — no one is seated yet) ----
@@ -1220,7 +1233,7 @@
       .select('id, card_key').eq('house_id', house.id).order('created_at', { ascending: true });
     house.hand = hand || [];   // the cards currently in hand
     const { data: kids } = await supabase.from('kingdoms_children')
-      .select('id, name, gender, age').eq('house_id', house.id).order('created_at', { ascending: true });
+      .select('id, name, gender, age, administration, prowess, ambition').eq('house_id', house.id).order('created_at', { ascending: true });
     house.children = kids || [];   // the house's issue (from A Child is Born)
     return true;
   }
