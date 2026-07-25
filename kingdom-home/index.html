@@ -365,6 +365,9 @@
   .couple { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: .25rem; }
   .marriage { flex: none; width: 34px; height: 2px; background: var(--gold); opacity: .55; }   /* the bond between spouses */
   .descent { width: 2px; height: 26px; background: var(--gold); opacity: .4; }                 /* couple → issue */
+  .sib-link { flex: none; width: 28px; height: 2px; background: var(--gold); opacity: .4; }    /* siblings → head */
+  .siblings { display: flex; flex-direction: column; gap: .4rem; }
+  .dyn-card.sib { min-width: 150px; border-left: 2px solid var(--steel-edge); }
   .issue { display: flex; align-items: flex-start; flex-wrap: wrap; justify-content: center; gap: .75rem; }
   .dyn-card.child { min-width: 150px; }
   .dyn-card {
@@ -1163,8 +1166,18 @@
           (house.spouse_infirm ? '<div class="dyn-sub">Infirm</div>' : '') +
         '</div>'
       : '';
-    // Children (from A Child is Born) descend from both parents — each is a Personality (name, sex, age, stats).
-    const kids = house.children || [];
+    const all = house.children || [];
+    // Children descend from both parents; siblings of the head branch off to the side. relation splits them.
+    const kids = all.filter(k => k.relation !== 'sibling');
+    const sibs = all.filter(k => k.relation === 'sibling');
+    const headName = esc(house.leader_name || 'the Head');
+    const sibBlock = sibs.length
+      ? '<div class="siblings">' + sibs.map(s =>
+          '<div class="dyn-card sib" role="button" tabindex="0" data-sib="' + esc(s.id) + '">' +
+          '<div class="dyn-name">' + esc(s.name) + ' <span class="age">(' + esc(s.age) + ')</span></div>' +
+          '<div class="dyn-role">' + (s.gender === 'male' ? 'Brother' : 'Sister') + ' of ' + headName + '</div></div>').join('') +
+          '</div><span class="sib-link" aria-hidden="true"></span>'
+      : '';
     const issue = kids.length
       ? '<span class="descent" aria-hidden="true"></span><div class="issue">' + kids.map(c =>
           '<div class="dyn-card child" role="button" tabindex="0" data-child="' + esc(c.id) + '">' +
@@ -1174,13 +1187,17 @@
     stage.innerHTML =
       '<div class="view-wrap"><section class="panel">' +
         '<h2 class="panel-head">Dynasty of ' + esc(label) + '</h2>' +
-        '<div class="panel-body"><div class="tree"><div class="couple">' + headCard + spouseCard + '</div>' + issue + '</div></div>' +
+        '<div class="panel-body"><div class="tree"><div class="couple">' + sibBlock + headCard + spouseCard + '</div>' + issue + '</div></div>' +
       '</section></div>';
     const head = document.getElementById('dyn-head');   // the head is a Personality → clickable
     clickable(head, () => openCharacter(headOfHouse()));
     stage.querySelectorAll('.dyn-card.child[data-child]').forEach(el => {   // children are Personalities too
       const c = kids.find(k => k.id === el.dataset.child); if (!c) return;
       clickable(el, () => openCharacter(childCharacter(c)));
+    });
+    stage.querySelectorAll('.dyn-card.sib[data-sib]').forEach(el => {   // siblings are Personalities too
+      const s = sibs.find(k => k.id === el.dataset.sib); if (!s) return;
+      clickable(el, () => openCharacter(childCharacter(s)));
     });
   }
 
@@ -1507,8 +1524,8 @@
       .select('id, card_key').eq('house_id', house.id).order('created_at', { ascending: true });
     house.hand = hand || [];   // the cards currently in hand
     const { data: kids } = await supabase.from('kingdoms_children')
-      .select('id, name, gender, age, administration, prowess, ambition').eq('house_id', house.id).order('created_at', { ascending: true });
-    house.children = kids || [];   // the house's issue (from A Child is Born)
+      .select('id, name, gender, age, relation, administration, prowess, ambition').eq('house_id', house.id).order('created_at', { ascending: true });
+    house.children = kids || [];   // the house's issue + siblings (relation distinguishes them)
     const { data: kn } = await supabase.from('kingdoms_knights')
       .select('id, name, age, prowess, mounted').eq('house_id', house.id).order('created_at', { ascending: true });
     house.knights = kn || [];      // the house's trained retinue (from Train Knights); [] if table not deployed yet

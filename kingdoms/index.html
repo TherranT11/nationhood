@@ -691,6 +691,11 @@
         <span class="attr-name">Prowess</span>
         <span class="attr-desc">Steel and the skill to use it. Begin with seasoned men-at-arms and a name that carries in the field.</span>
       </button>
+      <button class="attr-card" data-attr="Family" onclick="togglePriority(this)">
+        <span class="rank-badge" aria-hidden="true"></span>
+        <span class="attr-name">Family</span>
+        <span class="attr-desc">Blood at your side. Begin with a fuller household — a spouse, children, and siblings to carry the name.</span>
+      </button>
     </div>
 
     <p class="setup-hint" id="house-hint"></p>
@@ -871,7 +876,7 @@
       if (idx >= 0) { c.classList.add('ranked'); badge.textContent = idx + 1; }
       else { c.classList.remove('ranked'); badge.textContent = ''; }
     });
-    document.getElementById('house-hint').textContent = priorities.length === 6 ? 'The character of your house is set.' : '';
+    document.getElementById('house-hint').textContent = priorities.length === 7 ? 'The character of your house is set.' : '';
   }
 
   // Found the house: persist heritage + name + priorities against the account, then show your houses.
@@ -879,7 +884,7 @@
     const hint = document.getElementById('house-hint');
     const name = document.getElementById('house-name').value.trim();
     if (!name) { hint.textContent = 'Your house must bear a name.'; return; }
-    if (priorities.length < 6) { hint.textContent = 'Rank all six priorities to continue.'; return; }
+    if (priorities.length < 7) { hint.textContent = 'Rank all seven priorities to continue.'; return; }
     if (founding) return;
     if (!currentUser) { await loadUser(); if (!currentUser) { go('screen-login'); return; } }
     founding = true; hint.textContent = 'Founding your house…';
