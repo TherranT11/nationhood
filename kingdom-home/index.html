@@ -447,6 +447,10 @@
   .law-eff li::before { content: "\00b7"; position: absolute; left: .2rem; color: var(--gold); }
   .law-you { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--steel-edge); font-size: .9rem; color: var(--gold); }
   .law-you .tag { font-family: var(--display); font-size: .55rem; letter-spacing: .18em; text-transform: uppercase; color: var(--bone-dim); margin-right: .6rem; }
+  .law-decree { display: flex; gap: .6rem; margin-top: 1rem; }
+  .dbtn { font-family: var(--display); font-weight: 600; font-size: .6rem; letter-spacing: .14em; text-transform: uppercase; color: var(--bone); background: none; border: 1px solid var(--steel-edge); padding: .5rem .9rem; cursor: pointer; }
+  .dbtn:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); }
+  .dbtn:disabled { opacity: .35; cursor: not-allowed; }
 
   /* ============================================================
      Conflict view — strength snapshot + wars/claims/pacts/feuds (all start empty)
@@ -1425,65 +1429,97 @@
   // assembly, so there is no vote or debate — the tiers below simply show where each law stands. ----
   const LAW_GROUPS = ['Crown', 'Coin', 'Sword', 'Justice'];
   const LAWS = [
-    { group: 'Crown', name: 'Crown Authority', at: 3,
+    { group: 'Crown', name: 'Crown Authority', key: 'crown_authority', at: 3,
       tiers: ['Minimal', 'Limited', 'Moderate', 'High', 'Absolute'],
       eff: ['The Crown may revoke any vassal’s title at will',
             'Vassals owe the greater share of their levies to the Crown',
             'Royal justice overrides a lord’s own courts'],
       you: () => 'The Crown’s word runs law in your halls; you hold your lands at its pleasure.' },
-    { group: 'Crown', name: 'Succession', at: 1,
+    { group: 'Crown', name: 'Succession', key: 'succession', at: 1,
       tiers: ['Elective', 'Partition', 'Primogeniture', 'Ultimogeniture'],
       eff: ['Holdings are divided among all trueborn sons on the lord’s death',
             'Houses fracture quickly, but cadet branches multiply'],
       you: () => 'With no children born, your holdings would pass to your nearest kin.' },
-    { group: 'Coin', name: 'Crown Taxation', at: 1,
+    { group: 'Coin', name: 'Crown Taxation', key: 'crown_taxation', at: 1,
       tiers: ['None', 'Tithe — 1 in 10', 'Fifth — 1 in 5', 'Half'],
       eff: ['Each vassal owes the Crown one tenth of gold raised in Taxation',
             'Refusal earns a claim against your titles'],
       you: () => 'For every 10 gold you raise in Taxation, 1 is owed to the Crown.' },
-    { group: 'Coin', name: 'Right of Toll', at: 1,
+    { group: 'Coin', name: 'Right of Toll', key: 'right_of_toll', at: 1,
       tiers: ['Forbidden', 'Granted', 'Crown Monopoly'],
       eff: ['Lords may levy tolls on roads and rivers crossing their domain',
             '+1 Gold per Market at Taxation'],
       you: c => 'Build a Market in ' + (c.seat || 'your domain') + ' to claim the toll.' },
-    { group: 'Sword', name: 'Vassal Wars', at: 1,
+    { group: 'Sword', name: 'Vassal Wars', key: 'vassal_wars', at: 1,
       tiers: ['Unrestricted', 'With Cause', 'Feuds Only', 'Forbidden'],
       eff: ['A vassal may war upon another only with a recognised claim or grievance',
             'War without cause brands you Oathbreaker — −2 Prestige, and the Crown may intervene'],
       you: () => 'You hold no claims. You cannot lawfully war upon anyone.' },
-    { group: 'Sword', name: 'Levy Obligation', at: 1,
+    { group: 'Sword', name: 'Levy Obligation', key: 'levy_obligation', at: 1,
       tiers: ['Voluntary', 'One in Ten', 'One in Five'],
       eff: ['When the Crown calls its banners, each lord owes one man in ten',
             'Failing the call costs 3 Prestige and the Crown’s favour'],
       you: () => 'When the Crown calls its banners, you owe one man in ten of your levy.' },
-    { group: 'Justice', name: 'Right of Trial', at: 1,
+    { group: 'Justice', name: 'Right of Trial', key: 'right_of_trial', at: 1,
       tiers: ['Lord’s Judgment', 'Trial by Combat', 'Royal Courts'],
       eff: ['The accused may demand a champion and settle the matter in arms',
             'Prowess decides guilt as often as evidence'],
       you: c => 'Your Prowess is ' + c.prowess + '. ' + (c.prowess > 0 ? 'Meet your accuser in the field if you must.' : 'Avoid accusation, or find a champion.') }
   ];
 
-  function lawHTML(law, ctx) {
-    const track = law.tiers.map((t, i) => '<span class="tier' + (i < law.at ? ' below' : i === law.at ? ' at' : '') + '"></span>').join('');
-    const names = law.tiers.map((t, i) => '<span class="tier-name' + (i === law.at ? ' at' : '') + '">' + esc(t) + '</span>').join('');
+  const LAW_CAPPED = k => k !== 'crown_authority' && k !== 'succession';   // Crown Authority caps all but Succession
+  function lawHTML(law, ctx, tier) {
+    const track = law.tiers.map((t, i) => '<span class="tier' + (i < tier ? ' below' : i === tier ? ' at' : '') + '"></span>').join('');
+    const names = law.tiers.map((t, i) => '<span class="tier-name' + (i === tier ? ' at' : '') + '">' + esc(t) + '</span>').join('');
     const eff = law.eff.map(e => '<li>' + esc(e) + '</li>').join('');
+    // The Sovereign may decree each law ±1 rung. These checks only gate the buttons — kingdoms_decree (335) is
+    // authoritative for the ceiling / cost / Absolute gate and re-validates every call.
+    let controls = '';
+    if (ctx.sov) {
+      const max = law.tiers.length - 1;
+      const raiseTo = tier + 1;
+      const ceilBlock = LAW_CAPPED(law.key) && raiseTo > ctx.authTier;
+      const absGate = law.key === 'crown_authority' && raiseTo === 4 && ctx.prestige < 10;
+      const canRaise = tier < max && !ceilBlock && !absGate && ctx.prestige >= 1;
+      const canLower = tier > 0;
+      const rWhy = tier >= max ? 'At its height' : ceilBlock ? 'Crown Authority too low' : absGate ? 'Needs 10 Prestige' : ctx.prestige < 1 ? 'Needs 1 Prestige' : 'Raise a rung (−1 Prestige)';
+      controls = '<div class="law-decree">' +
+        '<button class="dbtn" type="button" data-decree="' + esc(law.key) + '" data-dir="-1"' + (canLower ? '' : ' disabled') + ' title="Lower a rung (+1 Prestige)">&#9664; Loosen</button>' +
+        '<button class="dbtn" type="button" data-decree="' + esc(law.key) + '" data-dir="1"' + (canRaise ? '' : ' disabled') + ' title="' + esc(rWhy) + '">Tighten &#9654;</button>' +
+        '</div>';
+    }
     return '<section class="law">' +
       '<div class="law-top"><span class="law-name">' + esc(law.name) + '</span>' +
-        '<span class="law-now">' + esc(law.tiers[law.at]) + '</span></div>' +
+        '<span class="law-now">' + esc(law.tiers[tier]) + '</span></div>' +
       '<div class="track">' + track + '</div>' +
       '<div class="tier-names">' + names + '</div>' +
       '<ul class="law-eff">' + eff + '</ul>' +
       '<p class="law-you"><span class="tag">Your House</span>' + esc(law.you(ctx)) + '</p>' +
+      controls +
     '</section>';
   }
 
-  function renderLaws(stage) {
+  async function renderLaws(stage) {
     if (!house) { stage.innerHTML = ''; return; }
+    stage.innerHTML = '<div class="view-wrap"><p class="empty-note">Reading the realm&rsquo;s laws&hellip;</p></div>';
+    let tiers = {};
+    try {
+      const { data, error } = await supabase.from('kingdoms_realm_laws').select('law, tier').eq('heritage', house.heritage);
+      if (error) throw error;
+      (data || []).forEach(r => { tiers[r.law] = r.tier; });   // stored levels; anything missing falls back to law.at
+    } catch (e) { tiers = {}; }
+    if (!document.querySelector('.nav-item[data-view="laws"]').classList.contains('active')) return;   // navigated away mid-load
+    paintLaws(stage, tiers);
+  }
+
+  function paintLaws(stage, tiers) {
     const res = house.resources || {};
-    const ctx = { prowess: Number(res.prowess || 0), seat: primarySeat() };
+    const tierOf = l => (tiers[l.key] != null ? tiers[l.key] : l.at);
+    const ctx = { prowess: Number(res.prowess || 0), seat: primarySeat(),
+      sov: isSovereign(), prestige: Number(res.prestige || 0), authTier: tierOf({ key: 'crown_authority', at: 3 }) };
     const groups = LAW_GROUPS.map(g => {
       const laws = LAWS.filter(l => l.group === g);
-      return laws.length ? '<h3 class="group-title">' + esc(g) + '</h3>' + laws.map(l => lawHTML(l, ctx)).join('') : '';
+      return laws.length ? '<h3 class="group-title">' + esc(g) + '</h3>' + laws.map(l => lawHTML(l, ctx, tierOf(l))).join('') : '';
     }).join('');
     stage.innerHTML =
       '<div class="view-wrap"><div class="laws">' +
@@ -1491,9 +1527,40 @@
           '<h2 class="laws-title">The Laws of ' + esc(realmName()) + '</h2>' +
           '<p class="laws-sub">Decreed by the Crown and binding on every vassal. This realm holds no assembly — the lords have no vote.</p>' +
           '<div class="laws-voice"><span class="voice-item"><span class="lbl">Your Standing</span>' +
-            '<span class="val">' + esc(isSovereign() ? SOVEREIGN_TITLE : (house.leader_title || 'Count')) + '</span></span></div>' +
+            '<span class="val">' + esc(ctx.sov ? SOVEREIGN_TITLE : (house.leader_title || 'Count')) + '</span></span></div>' +
         '</div>' + groups +
       '</div></div>';
+    if (ctx.sov) stage.querySelectorAll('[data-decree]').forEach(btn =>
+      btn.addEventListener('click', () => doDecree(stage, btn.dataset.decree, Number(btn.dataset.dir))));
+  }
+
+  // Friendly text for the errors kingdoms_decree can raise (most are already gated in the UI).
+  function friendlyDecreeError(e) {
+    const m = (e && e.message) || '';
+    if (m.includes('not_sovereign')) return 'Only the Sovereign may decree the realm’s laws.';
+    if (m.includes('exceeds_authority')) return 'Crown Authority is too weak to raise this law further.';
+    if (m.includes('need_prestige')) return 'Absolute rule demands greater standing — 10 House Prestige.';
+    if (m.includes('cannot_pay')) return 'You lack the House Prestige to decree it.';
+    if (m.includes('at_bound')) return 'This law already stands at its limit.';
+    return 'The decree did not hold.';
+  }
+
+  let decreeing = false;   // one decree at a time (guards the Prestige/law write against double-fire)
+  async function doDecree(stage, key, dir) {
+    if (decreeing) return;
+    decreeing = true;
+    let newTier = null, err = null;
+    try {
+      const { data, error } = await supabase.rpc('kingdoms_decree', { p_law: key, p_dir: dir });
+      if (error) throw error;
+      newTier = data;
+    } catch (e) { err = e; }
+    if (err) { decreeing = false; showNotice(friendlyDecreeError(err), 'Decree'); return; }
+    try { await loadHouseData(); updateTopbar(); } catch (e) { /* keep going; the repaint below shows true state */ }
+    await renderLaws(stage);
+    decreeing = false;
+    const law = LAWS.find(l => l.key === key);
+    if (law && newTier != null) showNotice(esc(law.name) + ' now stands at ' + esc(law.tiers[newTier]) + '.', 'Decree');
   }
 
   // ---- Conflict hall: strength snapshot + wars / claims / pacts / feuds. Everything starts empty (no king's
