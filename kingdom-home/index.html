@@ -111,6 +111,17 @@
   .mbtn.danger:hover { background: var(--blood-text); color: #16130b; border-color: var(--blood-text); }
   .modal-warn { color: var(--bone-dim); font-size: 0.88rem; line-height: 1.5; text-align: center; margin: 0 0 1.3rem; }
   .modal-warn b { color: var(--bone); }
+  .construct-card { width: min(780px, 94vw); max-height: 86vh; overflow-y: auto; text-align: left; }
+  .construct-sub { color: var(--bone-dim); font-size: 0.9rem; margin: 0 0 1rem; }
+  .construct-sub .muted { color: var(--faint); }
+  .construct-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1.2rem; }
+  .ctab {
+    font-family: var(--display); font-weight: 600; font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--bone-dim); background: none; border: 1px solid var(--steel-edge); padding: 0.45rem 0.9rem; cursor: pointer;
+  }
+  .ctab:hover { border-color: var(--gold); color: var(--gold); }
+  .ctab.active { border-color: var(--gold); color: #16130b; background: var(--gold); }
+  .construct-empty { color: var(--faint); font-style: italic; font-size: 0.9rem; }
 
   /* ---- left sidebar ---- */
   .sidebar {
@@ -526,6 +537,15 @@
   </div>
 </div>
 
+<!-- Construction build picker (opened by playing a Construction card) -->
+<div class="modal-back" id="construct-modal">
+  <div class="modal construct-card">
+    <div class="modal-title">Construction</div>
+    <div id="construct-body"></div>
+    <div class="modal-actions"><button class="mbtn" id="construct-close" type="button">Close</button></div>
+  </div>
+</div>
+
 <!-- Delete-dynasty confirmation (destructive, irreversible) -->
 <div class="modal-back" id="delete-modal">
   <div class="modal">
@@ -780,6 +800,12 @@
     if (m.includes('infirm')) return 'She is Infirm and cannot bear a child.';
     if (m.includes('turn_limit')) return 'You have already played 2 cards this turn. End your turn to play more.';
     if (m.includes('cannot_pay')) return 'You cannot pay the cost.';
+    if (m.includes('no_construction_card')) return 'You have no Construction card to build with.';
+    if (m.includes('has_plague')) return 'Plague grips that holding — nothing may be raised there.';
+    if (m.includes('not_enough_gold')) return "You cannot pay the building's Gold cost.";
+    if (m.includes('no_room')) return 'That holding has no free plots for it.';
+    if (m.includes('terrain_required')) return 'The terrain there cannot support that building.';
+    if (m.includes('not_your_holding')) return 'That holding is not yours.';
     if (m.includes('not_playable')) return 'That side cannot be played yet.';
     if (m.includes('not_your_card')) return 'That card is no longer in your hand.';
     return '';
@@ -825,7 +851,9 @@
   function closeCard() { cardModal.classList.remove('open'); }
 
   async function playCard(handId, side) {
+    const card = (house.hand || []).find(h => h.id === handId);
     closeCard();   // the modal (and its Play button) closes first, so it can't be double-fired
+    if (card && card.card_key === 'construction' && side === 'top') { openConstruct(); return; }   // build picker, not a direct play
     const r = await cardAction(() => supabase.rpc('kingdoms_play_card', { p_hand_id: handId, p_side: side }));
     if (!r) return;                                                  // was locked
     const msg = r.error ? friendlyCardError(r.error) : r.data;       // narrate the outcome (e.g. the Marry roll)
@@ -834,6 +862,54 @@
 
   document.getElementById('card-close').addEventListener('click', closeCard);
   cardModal.addEventListener('click', e => { if (e.target === cardModal) closeCard(); });
+
+  // ---- Construction picker: playing a Construction card opens this to pick a holding + a building to raise.
+  // Building goes only through here now (kingdoms_build consumes the Construction card and counts as a play).
+  const constructModal = document.getElementById('construct-modal');
+  let constructCounty = null;   // which holding the picker is aimed at
+  function openConstruct() {
+    const counties = (house && house.counties) || [];
+    if (!counties.length) { showNotice('Your house holds no land to build upon.', 'Construction'); return; }
+    if (!constructCounty || !counties.some(c => c.id === constructCounty)) constructCounty = counties[0].id;
+    renderConstruct();
+    constructModal.classList.add('open');
+  }
+  const closeConstruct = () => constructModal.classList.remove('open');
+  function renderConstruct() {
+    const counties = (house && house.counties) || [];
+    const h = counties.find(c => c.id === constructCounty) || counties[0];
+    if (!h) { closeConstruct(); return; }
+    const free = freeLand(h), gold = house.resources ? (house.resources.gold || 0) : 0;
+    const tabs = counties.length > 1
+      ? '<div class="construct-tabs">' + counties.map(c =>
+          '<button class="ctab' + (c.id === h.id ? ' active' : '') + '" type="button" data-county="' + esc(c.id) + '">' + esc(c.name) + '</button>'
+        ).join('') + '</div>'
+      : '';
+    const grid = CAT_ORDER.map(cat => {
+      const list = catalog.filter(b => b.category === cat);
+      if (!list.length) return '';
+      return '<div class="cat-block"><h4 class="cat-name">' + esc(cat) + '</h4><div class="bld-grid">' +
+        list.map(b => buildingCardHTML(h, b, free, gold)).join('') + '</div></div>';
+    }).join('');
+    const body = document.getElementById('construct-body');
+    body.innerHTML =
+      '<p class="construct-sub">Raise one building in <b>' + esc(h.name) + '</b>. ' +
+        '<span class="muted">' + free + ' plot' + (free === 1 ? '' : 's') + ' free · ' + gold + ' gold</span></p>' +
+      tabs + (catalog.length ? grid : '<p class="construct-empty">The build catalog is unavailable.</p>');
+    body.querySelectorAll('[data-county]').forEach(btn =>
+      btn.addEventListener('click', () => { constructCounty = btn.dataset.county; renderConstruct(); }));
+    body.querySelectorAll('[data-build]').forEach(btn =>
+      btn.addEventListener('click', () => doConstruct(btn.dataset.build, Number(btn.dataset.num))));
+  }
+  async function doConstruct(countyId, num) {
+    const r = await cardAction(() => supabase.rpc('kingdoms_build', { p_county: countyId, p_building: num }));
+    if (!r) return;   // was locked
+    closeConstruct();
+    const msg = r.error ? friendlyCardError(r.error) : r.data;
+    if (msg) showNotice(msg, 'Construction');
+  }
+  document.getElementById('construct-close').addEventListener('click', closeConstruct);
+  constructModal.addEventListener('click', e => { if (e.target === constructModal) closeConstruct(); });
 
   // ---- Holdings hall: collapsible holdings + build catalog ----
   const CAT_ORDER = ['Food', 'Economy', 'Military', 'Administration', 'Religion', 'Prestige'];
@@ -852,7 +928,6 @@
     stage.querySelectorAll('[data-toggle]').forEach(el => el.addEventListener('click', () => {
       const id = el.dataset.toggle; holdingOpen[id] = !holdingOpen[id]; renderHoldings(stage);
     }));
-    stage.querySelectorAll('[data-build]').forEach(btn => btn.addEventListener('click', () => doBuild(btn.dataset.build, Number(btn.dataset.num))));
     stage.querySelectorAll('[data-raze]').forEach(btn => btn.addEventListener('click', () => doRaze(btn.dataset.raze)));
   }
 
@@ -906,13 +981,7 @@
     }
 
     out += '<h3 class="sec-title">Construct <span class="count">&mdash; ' + free + ' plot' + (free === 1 ? '' : 's') + ' free, ' + gold + ' gold</span></h3>';
-    out += CAT_ORDER.map(cat => {
-      const list = catalog.filter(b => b.category === cat);
-      if (!list.length) return '';
-      return '<div class="cat-block"><h4 class="cat-name">' + esc(cat) + '</h4><div class="bld-grid">' +
-        list.map(b => buildingCardHTML(h, b, free, gold)).join('') +
-      '</div></div>';
-    }).join('');
+    out += '<p class="empty-note">To raise a building here, play a <b>Construction</b> card from your hand on the Home page.</p>';
     return out;
   }
 
@@ -951,7 +1020,6 @@
     try { await reloadThenRender(renderHoldings); } catch (e) { /* keep the current view rather than crash */ }
     acting = false;
   }
-  const doBuild = (countyId, num) => holdingAction(() => supabase.rpc('kingdoms_build', { p_county: countyId, p_building: num }));
   const doRaze = (buildingId) => holdingAction(() => supabase.rpc('kingdoms_raze', { p_building: buildingId }));
 
   // Re-fetch the house after a server write, repaint the top bar, then re-render the given view.
@@ -1268,7 +1336,7 @@
   });
   document.getElementById('banner-cancel').addEventListener('click', closeBanner);
   modal.addEventListener('click', e => { if (e.target === modal) closeBanner(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); closeCard(); closeDelete(); setGearOpen(false); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); closeCard(); closeDelete(); closeConstruct(); setGearOpen(false); } });
 
   // ---- data load ----
   // Catalogs are OPTIONAL: if their migrations aren't deployed yet, the hall must still load (no buildings /
