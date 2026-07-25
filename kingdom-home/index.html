@@ -1427,6 +1427,10 @@
 
   // ---- Laws hall: the realm's standing laws. Crown-set; Aldren starts High on Crown Authority and holds no
   // assembly, so there is no vote or debate — the tiers below simply show where each law stands. ----
+  // KNOWN LIMITATION: each law's `eff` lines, tier names, and `you` text are static descriptions — they do NOT
+  // change with the current tier (e.g. Crown Taxation still reads "one tenth" at Half). The mechanics ARE
+  // tier-accurate (Crown Authority ceiling in 335; Taxation reads the tiers in 336); only this display copy is
+  // general. Deferred by design — wire per-tier copy when/if laws get per-tier flavour.
   const LAW_GROUPS = ['Crown', 'Coin', 'Sword', 'Justice'];
   const LAWS = [
     { group: 'Crown', name: 'Crown Authority', key: 'crown_authority', at: 3,
