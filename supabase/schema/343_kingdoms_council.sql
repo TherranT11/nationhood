@@ -13,6 +13,12 @@
 -- costs 1 Gold; a Minor Lord costs an extra 1 House Prestige. Dismissal is free. Costs never drive a stat
 -- negative (guarded). Seats carry no mechanical effect yet — that is deferred. Depends on: 307/311 (leaders),
 -- 321/334 (children), 337 (event log). Idempotent. Apply after 342.
+--
+-- KNOWN LIMITATION: holder_house's FK cascade clears a house's seats when the whole house leaves the game
+-- (Delete Dynasty / heirless death). But person_id has no FK — it points at either kingdoms_leaders or
+-- kingdoms_children — so a seated CHILD who later dies (the tick) or succeeds as head leaves a stale name
+-- snapshot on the seat until the Sovereign dismisses it. Seats are cosmetic for now, so this is acceptable;
+-- revisit when offices gain mechanical weight (would wire seat-clearing into the tick's death path).
 -- ===========================================================================
 
 create table if not exists public.kingdoms_council (
@@ -66,18 +72,20 @@ begin
     select leader_name, id, house_name into v_name, v_house, v_house_name
       from public.kingdoms_leaders where id = p_person and heritage = v_realm;
     if v_name is null then raise exception 'no_such_person'; end if;
-    if exists (select 1 from public.kingdoms_council where heritage = v_realm and person_kind = 'head' and person_id = p_person) then
-      raise exception 'already_seated'; end if;
   elsif p_kind = 'child' then
     select c.name, c.age, c.house_id, l.house_name into v_name, v_age, v_house, v_house_name
       from public.kingdoms_children c join public.kingdoms_leaders l on l.id = c.house_id
       where c.id = p_person and l.heritage = v_realm;
     if v_name is null then raise exception 'no_such_person'; end if;
     if coalesce(v_age, 0) < 18 then raise exception 'too_young'; end if;
-    if exists (select 1 from public.kingdoms_council where heritage = v_realm and person_kind = 'child' and person_id = p_person) then
-      raise exception 'already_seated'; end if;
   else
     raise exception 'bad_kind';
+  end if;
+
+  -- No Personality may hold two seats (one check for both head and child; a minor lord is always new).
+  if p_kind <> 'minor' and exists (
+       select 1 from public.kingdoms_council where heritage = v_realm and person_kind = p_kind and person_id = p_person) then
+    raise exception 'already_seated';
   end if;
 
   -- Every appointment costs 1 Gold (one source for the cost, floored so it can't drive Gold negative).
