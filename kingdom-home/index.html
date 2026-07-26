@@ -69,7 +69,7 @@
     color: var(--bone-dim);
     white-space: nowrap;
   }
-  .topbar-clock .season { color: var(--bone); }
+  .topbar-clock .cl-season { color: var(--bone); }
   .topbar-clock .tick b { color: var(--gold); font-weight: 700; letter-spacing: 0.04em; }
   .topbar-clock .cdot { color: var(--steel-edge); margin: 0 0.7rem; }
 
@@ -767,7 +767,7 @@
     document.getElementById('house-label').innerHTML =
       esc(houseLabel(name)) + '<span class="sep">|</span><span class="era">Year ' + gameYear() + ' V.E.</span>';
     document.getElementById('clock-label').innerHTML =
-      '<span class="season">Current Season: ' + esc(seasonName()) + '</span>' +
+      '<span class="cl-season">Season: ' + esc(seasonName()) + '</span>' +
       '<span class="cdot">&middot;</span>' +
       '<span class="tick">Next Tick: <b id="tick-countdown">' + fmtCountdown(nextTickMs()) + '</b></span>';
   };
