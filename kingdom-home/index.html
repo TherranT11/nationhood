@@ -472,6 +472,16 @@
   .seat.vacant { border-top-color: var(--steel-edge); }
   .seat.vacant .seat-label { color: var(--faint); }
   .seat-vacant-text { font-style: italic; color: var(--faint); font-size: .92rem; }
+  .seat-acts { margin-top: .8rem; }
+  .seat-act { font-size: .58rem; padding: .35rem .9rem; }
+  .appoint-list { display: flex; flex-direction: column; gap: .4rem; max-height: 340px; overflow-y: auto; margin-top: .3rem; }
+  .appoint-row { display: flex; flex-direction: column; gap: .15rem; text-align: left; padding: .55rem .7rem;
+    background: var(--ink); border: 1px solid var(--steel-edge); color: var(--bone); cursor: pointer; font-family: var(--body); }
+  .appoint-row:hover { border-color: var(--gold); }
+  .appoint-row.minor { border-style: dashed; border-color: var(--gold); }
+  .appoint-row .ap-name { font-family: var(--display); font-weight: 600; font-size: .82rem; letter-spacing: .04em; }
+  .appoint-row .ap-name .ap-age { color: var(--bone-dim); font-weight: 400; }
+  .appoint-row .ap-sub { font-size: .78rem; color: var(--bone-dim); }
   .court-foot { margin-top: 2rem; text-align: center; font-size: .9rem; font-style: italic; color: var(--faint); }
   .sov-name { font-family: var(--display); font-weight: 600; font-size: 1.5rem; letter-spacing: .08em; line-height: 1.35; }
   .sov-name .age { color: var(--bone-dim); font-weight: 400; font-size: 1rem; }
@@ -715,6 +725,17 @@
     <div class="modal-actions">
       <button class="mbtn primary" id="discard-confirm" type="button">Discard for 3 Gold</button>
       <button class="mbtn" id="discard-cancel" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Appoint to the King's Council (sovereign only) -->
+<div class="modal-back" id="appoint-modal">
+  <div class="modal muster-card">
+    <div class="modal-title" id="appoint-title">Appoint</div>
+    <div id="appoint-body"></div>
+    <div class="modal-actions">
+      <button class="mbtn" id="appoint-cancel" type="button">Cancel</button>
     </div>
   </div>
 </div>
@@ -1050,13 +1071,13 @@
 
   // One guarded path for draw and play: lock, run the RPC, then reload + repaint the Home hall.
   // Returns the RPC outcome ({ data } | { error }) so play can narrate its result; null if it was locked.
-  async function cardAction(run) {
+  async function cardAction(run, render) {
     if (carding) return null;
     carding = true;
     let out;
     try { const { data, error } = await run(); if (error) throw error; out = { data }; }
     catch (e) { out = { error: e }; }
-    try { await reloadThenRender(renderHome); } catch (e) {}
+    try { await reloadThenRender(render || renderHome); } catch (e) {}
     carding = false;
     return out;
   }
@@ -1069,6 +1090,12 @@
     if (m.includes('already_married')) return 'There is no unmarried Personality of your House to wed.';
     if (m.includes('no_spouse')) return 'You have no married Personality to bear a child.';
     if (m.includes('infirm')) return 'She is Infirm and cannot bear a child.';
+    if (m.includes('not_sovereign')) return 'Only the King may seat his council.';
+    if (m.includes('need_prestige')) return 'A minor lord demands 1 House Prestige you do not have.';
+    if (m.includes('already_seated')) return 'That personality already holds a council seat.';
+    if (m.includes('too_young')) return 'They are too young to hold office (must be 18).';
+    if (m.includes('empty_seat')) return 'That seat already stands empty.';
+    if (m.includes('no_such_person')) return 'That personality could not be found.';
     if (m.includes('turn_over')) return 'Your turn is over. End your turn to act again.';
     if (m.includes('turn_limit')) return 'You have already played 2 cards this turn. End your turn to play more.';
     if (m.includes('cannot_pay')) return 'You cannot pay the cost.';
@@ -1655,9 +1682,22 @@
 
   function renderCourt(stage) {
     if (!house) { stage.innerHTML = ''; return; }
-    const seats = COURT_SEATS.map(label =>
-      '<div class="seat vacant"><p class="seat-label">' + esc(label) + '</p>' +
-      '<p class="seat-vacant-text">The seat stands empty.</p></div>').join('');
+    const canManage = isSovereign();   // only the King sees or uses Appoint / Dismiss (the King's Council)
+    const bySeat = {};
+    (house.council || []).forEach(c => { bySeat[c.seat] = c; });
+    const seats = COURT_SEATS.map(label => {
+      const h = bySeat[label];
+      if (h) {
+        const where = h.holder_house_name ? esc(houseLabel(h.holder_house_name)) : 'Sworn to the Crown';
+        const act = canManage ? '<div class="seat-acts"><button class="mbtn seat-act" type="button" data-dismiss="' + esc(label) + '">Dismiss</button></div>' : '';
+        return '<div class="seat"><p class="seat-label">' + esc(label) + '</p>' +
+          '<p class="knight-name">' + esc(h.holder_name) + '</p>' +
+          '<p class="knight-house">' + where + '</p>' + act + '</div>';
+      }
+      const act = canManage ? '<div class="seat-acts"><button class="mbtn seat-act" type="button" data-appoint="' + esc(label) + '">Appoint</button></div>' : '';
+      return '<div class="seat vacant"><p class="seat-label">' + esc(label) + '</p>' +
+        '<p class="seat-vacant-text">The seat stands empty.</p>' + act + '</div>';
+    }).join('');
 
     const sov = house.sovereign;
     let sovInner;
@@ -1699,7 +1739,79 @@
 
     const claimBtn = document.getElementById('claim-throne');
     if (claimBtn) claimBtn.addEventListener('click', claimThrone);
+    stage.querySelectorAll('[data-appoint]').forEach(b => b.addEventListener('click', () => openAppoint(b.dataset.appoint)));
+    stage.querySelectorAll('[data-dismiss]').forEach(b => b.addEventListener('click', () => doDismiss(b.dataset.dismiss)));
   }
+
+  // ---- King's Council: appoint (from any adult Personality of the realm, or a fresh Minor Lord) / dismiss ----
+  const appointModal = document.getElementById('appoint-modal');
+  let appointSeat = null;
+  const closeAppoint = () => appointModal.classList.remove('open');
+  async function openAppoint(seat) {
+    appointSeat = seat;
+    document.getElementById('appoint-title').textContent = 'Appoint · ' + seat;
+    document.getElementById('appoint-body').innerHTML = '<p class="construct-sub">Summoning the realm&hellip;</p>';
+    appointModal.classList.add('open');
+    // Gather every adult (18+) Personality of the realm: heads of house + their grown children/siblings.
+    let leaders = [], kids = [];
+    try {
+      const L = await supabase.from('kingdoms_leaders')
+        .select('id, leader_name, leader_age, house_name').eq('heritage', house.heritage);
+      if (L.error) throw L.error;
+      leaders = L.data || [];
+      const ids = leaders.map(l => l.id);
+      if (ids.length) {
+        const K = await supabase.from('kingdoms_children')
+          .select('id, name, age, house_id, relation').in('house_id', ids);
+        kids = K.data || [];
+      }
+    } catch (e) {
+      document.getElementById('appoint-body').innerHTML = '<p class="construct-sub">The realm could not be summoned just now.</p>';
+      return;
+    }
+    if (!appointModal.classList.contains('open') || appointSeat !== seat) return;   // player closed / switched
+    const seated = new Set((house.council || []).filter(c => c.person_id).map(c => c.person_kind + ':' + c.person_id));
+    const houseNm = {};
+    leaders.forEach(l => { houseNm[l.id] = l.house_name; });
+    const pool = [];
+    leaders.forEach(l => {
+      if ((l.leader_age || 0) >= 18 && !seated.has('head:' + l.id))
+        pool.push({ kind: 'head', id: l.id, name: l.leader_name, age: l.leader_age, house: l.house_name, role: 'Head of House' });
+    });
+    kids.forEach(k => {
+      if ((k.age || 0) >= 18 && !seated.has('child:' + k.id))
+        pool.push({ kind: 'child', id: k.id, name: k.name, age: k.age, house: houseNm[k.house_id], role: k.relation === 'sibling' ? 'Sibling' : 'Child' });
+    });
+    pool.sort((a, b) => (a.house || '').localeCompare(b.house || '') || b.age - a.age);
+    const rows = pool.map(p =>
+      '<button class="appoint-row" type="button" data-kind="' + esc(p.kind) + '" data-id="' + esc(p.id) + '">' +
+        '<span class="ap-name">' + esc(p.name) + '<span class="ap-age">, ' + esc(p.age) + '</span></span>' +
+        '<span class="ap-sub">' + esc(p.role) + ' &middot; ' + esc(houseLabel(p.house)) + '</span></button>').join('');
+    document.getElementById('appoint-body').innerHTML =
+      '<p class="construct-sub">Choose a Personality (18+) to seat. <span class="muted">Appointing costs 1 Gold.</span></p>' +
+      '<div class="appoint-list">' + (rows || '<p class="construct-sub">No eligible Personalities stand ready.</p>') +
+        '<button class="appoint-row minor" type="button" data-kind="minor" data-id="">' +
+          '<span class="ap-name">Hire a Minor Lord</span>' +
+          '<span class="ap-sub">A new sworn officer &middot; 1 Gold and 1 House Prestige</span></button>' +
+      '</div>';
+    document.getElementById('appoint-body').querySelectorAll('.appoint-row').forEach(r =>
+      r.addEventListener('click', () => doAppoint(seat, r.dataset.kind, r.dataset.id || null)));
+  }
+  async function doAppoint(seat, kind, id) {
+    const r = await cardAction(() => supabase.rpc('kingdoms_appoint', { p_seat: seat, p_kind: kind, p_person: id }), renderCourt);
+    if (!r) return;   // was locked
+    closeAppoint();
+    const msg = r.error ? friendlyCardError(r.error) : r.data;
+    if (msg) showNotice(msg, 'The King’s Council');
+  }
+  async function doDismiss(seat) {
+    const r = await cardAction(() => supabase.rpc('kingdoms_dismiss', { p_seat: seat }), renderCourt);
+    if (!r) return;
+    const msg = r.error ? friendlyCardError(r.error) : r.data;
+    if (msg) showNotice(msg, 'The King’s Council');
+  }
+  document.getElementById('appoint-cancel').addEventListener('click', closeAppoint);
+  appointModal.addEventListener('click', e => { if (e.target === appointModal) closeAppoint(); });
 
   // Claim the empty throne: the head of house becomes Sovereign (+7 Prestige). Guarded against double-fire;
   // the server is authoritative (one sovereign per realm), and we reload the true state after.
@@ -2027,7 +2139,7 @@
   });
   document.getElementById('banner-cancel').addEventListener('click', closeBanner);
   modal.addEventListener('click', e => { if (e.target === modal) closeBanner(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); closeCard(); closeDelete(); closeConstruct(); closeMuster(); closeTroops(); closeDiscard(); setGearOpen(false); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeBanner(); closeCharacter(); closeCard(); closeDelete(); closeConstruct(); closeMuster(); closeTroops(); closeDiscard(); closeAppoint(); setGearOpen(false); } });
 
   // ---- data load ----
   // Catalogs are OPTIONAL: if their migrations aren't deployed yet, the hall must still load (no buildings /
@@ -2095,6 +2207,9 @@
     const { data: mu } = await supabase.from('kingdoms_musters')
       .select('id, county_id, count, raised_tick').eq('house_id', house.id).order('raised_tick', { ascending: true });
     house.musters = mu || [];      // active levy service terms (raised_tick → serves +2 seasons); [] if not deployed
+    const { data: co } = await supabase.from('kingdoms_council')
+      .select('seat, person_kind, person_id, holder_name, holder_house_name').eq('heritage', house.heritage);
+    house.council = co || [];      // filled King's Council seats for this realm; [] if not deployed
     const { data: ev } = await supabase.from('kingdoms_events')
       .select('id, tag, place, body, created_at').eq('house_id', house.id).order('created_at', { ascending: false }).limit(40);
     house.events = ev || [];       // News of the Realm chronicle (from card actions); [] if table not deployed yet
