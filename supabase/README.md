@@ -10,11 +10,13 @@ Structure first (`schema/`, in numeric order — the numbers encode dependencies
 then any seed data (`seed/`):
 
 ```
-schema/00_auth.sql   profiles (id, email, nickname), RLS, sign-up trigger
+schema/00_auth.sql         profiles (id, email, nickname), RLS, sign-up trigger
+schema/10_characters.sql   characters (one gens per account), RLS
 ```
 
-A fresh database: run `schema/00_auth.sql`. That is the whole backend so far —
-just authentication and the profile that a sign-up creates.
+A fresh database: run `schema/00_auth.sql`, then `schema/10_characters.sql`.
+That is the whole backend so far — authentication, the profile a sign-up
+creates, and the character a player founds.
 
 ## Conventions
 

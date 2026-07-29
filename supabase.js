@@ -45,3 +45,21 @@ export async function signOut() {
 export function onAuthChange(callback) {
   return supabase.auth.onAuthStateChange((_event, session) => callback(session));
 }
+
+// Found the signed-in citizen's gens — one per account (enforced by a UNIQUE
+// user_id in the DB, so a second attempt returns a 23505 error). Returns
+// { data, error }; wrapped so a network failure surfaces as a clean error
+// instead of a thrown exception.
+export async function foundGens({ praenomen, nomen, priorities }) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { error: { message: 'You must be logged in to found a gens.' } };
+    return await supabase
+      .from('characters')
+      .insert({ user_id: session.user.id, praenomen, nomen, priorities })
+      .select()
+      .single();
+  } catch (err) {
+    return { error: { message: 'Could not found your gens. Try again.' } };
+  }
+}
