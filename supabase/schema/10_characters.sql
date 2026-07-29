@@ -19,11 +19,13 @@ alter table public.characters
   add constraint characters_name_len
   check (char_length(praenomen) between 1 and 20 and char_length(nomen) between 1 and 20);
 
+-- cardinality() returns 0 for an empty array (array_length returns NULL, and a
+-- NULL check would *pass* — letting {} slip through). This rejects {} and NULL alike.
 alter table public.characters
   drop constraint if exists characters_priorities_four;
 alter table public.characters
   add constraint characters_priorities_four
-  check (array_length(priorities, 1) = 4);
+  check (cardinality(priorities) = 4);
 
 -- Lock it down: nothing readable/writable until a policy allows it.
 alter table public.characters enable row level security;
