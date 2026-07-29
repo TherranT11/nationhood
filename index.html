@@ -150,6 +150,18 @@
     letter-spacing: 0.2em; text-transform: uppercase; color: var(--marble-dim); margin-bottom: 0.4rem; }
   .field input { width: 100%; font-family: var(--body); font-size: 1rem; color: var(--marble);
     background: var(--stone); border: 1px solid var(--edge); padding: 0.7rem 0.9rem; }
+  .field input:focus-visible { outline: none; border-color: var(--gold); }
+  .field-note { display: block; font-size: 0.78rem; color: var(--marble-dim); font-style: italic; margin-top: 0.4rem; }
+
+  /* ---- auth tabs: Log In / Sign Up ---- */
+  .tabs { display: flex; margin-bottom: 2rem; border-bottom: 1px solid var(--edge); }
+  .tab { flex: 1; font-family: var(--display); font-weight: 600; font-size: 0.78rem;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--marble-dim);
+    background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer;
+    padding: 0.8rem 0; transition: color 0.2s, border-color 0.2s; }
+  .tab:hover { color: var(--marble); }
+  .tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+  .tab:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
   /* ---- logout modal ---- */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(6,5,3,0.8); display: none;
@@ -263,15 +275,39 @@
   </div>
 </section>
 
-<!-- ============ LOGIN (post-logout) ============ -->
-<section class="screen" id="screen-login" aria-label="Login">
+<!-- ============ LOGIN / SIGN UP (post-logout) ============ -->
+<section class="screen" id="screen-login" aria-label="Sign up or log in">
   <div class="panel" style="width:min(440px,94vw);">
     <h2 class="panel-title">Return to Rome</h2>
     <p class="panel-sub">The world turns without you.</p>
-    <div class="field"><label for="ln">Name</label><input id="ln" type="text" autocomplete="username"></div>
-    <div class="field"><label for="lp">Password</label><input id="lp" type="password" autocomplete="current-password"></div>
-    <div class="panel-actions">
-      <button class="btn btn-small btn-primary" onclick="go('screen-home')">Enter</button>
+
+    <div class="tabs" role="tablist" aria-label="Sign up or log in">
+      <button class="tab active" id="tab-login" role="tab" aria-selected="true" aria-controls="form-login" onclick="showAuth('login')">Log In</button>
+      <button class="tab" id="tab-signup" role="tab" aria-selected="false" aria-controls="form-signup" onclick="showAuth('signup')">Sign Up</button>
+    </div>
+
+    <!-- LOG IN -->
+    <div class="auth-form" id="form-login" role="tabpanel" aria-labelledby="tab-login">
+      <div class="field"><label for="li-email">Email</label><input id="li-email" type="email" autocomplete="email"></div>
+      <div class="field"><label for="li-pass">Password</label><input id="li-pass" type="password" autocomplete="current-password"></div>
+      <div class="panel-actions">
+        <button class="btn btn-small btn-primary" onclick="go('screen-home')">Enter</button>
+      </div>
+    </div>
+
+    <!-- SIGN UP -->
+    <div class="auth-form" id="form-signup" role="tabpanel" aria-labelledby="tab-signup" hidden>
+      <div class="field"><label for="su-email">Email</label><input id="su-email" type="email" autocomplete="email"></div>
+      <div class="field">
+        <label for="su-nick">Nickname</label>
+        <input id="su-nick" type="text" maxlength="16" autocomplete="nickname">
+        <span class="field-note">Shown next to your character name &middot; max 16 characters</span>
+      </div>
+      <div class="field"><label for="su-pass">Password</label><input id="su-pass" type="password" autocomplete="new-password"></div>
+      <div class="panel-actions">
+        <button class="btn btn-small" onclick="go('screen-home')">Cancel</button>
+        <button class="btn btn-small btn-primary" onclick="go('screen-home')">Sign Up</button>
+      </div>
     </div>
   </div>
 </section>
@@ -296,6 +332,15 @@
     document.getElementById(id).classList.add('active');
   }
   function flip(el) { el.setAttribute('aria-pressed', el.getAttribute('aria-pressed') !== 'true'); }
+  function showAuth(which) {
+    const login = which === 'login';
+    document.getElementById('form-login').hidden = !login;
+    document.getElementById('form-signup').hidden = login;
+    document.getElementById('tab-login').classList.toggle('active', login);
+    document.getElementById('tab-signup').classList.toggle('active', !login);
+    document.getElementById('tab-login').setAttribute('aria-selected', login);
+    document.getElementById('tab-signup').setAttribute('aria-selected', !login);
+  }
   function openLogout()  { document.getElementById('logout-modal').classList.add('open'); }
   function closeLogout() { document.getElementById('logout-modal').classList.remove('open'); }
   function confirmLogout() { closeLogout(); go('screen-login'); }
