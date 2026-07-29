@@ -1,4 +1,4 @@
-# Supabase setup
+# Supabase setup — ROME: Rise and Fall
 
 All SQL lives here, split by domain so no one file grows unwieldy. Everything is
 **idempotent** — safe to re-run. Paste each file into the Supabase SQL Editor
@@ -7,33 +7,33 @@ All SQL lives here, split by domain so no one file grows unwieldy. Everything is
 ## Run order
 
 Structure first (`schema/`, in numeric order — the numbers encode dependencies),
-then the seed data (`seed/`):
+then any seed data (`seed/`):
 
 ```
-schema/00_profiles.sql      profiles, tutorial_state, tutorial_merge(), auth trigger
-schema/05_game.sql          game_state (the shared tick counter, seeded to 1)
-schema/10_nations.sql       nations table + Sessau seed (+ election scheduling)
-schema/20_parties.sql       parties table, RLS, column-level write lock
-schema/30_politicians.sql   politicians + recruit_drives tables + RLS
-schema/40_events.sql        events feed + leader-action functions (rally, recruit, …)
-schema/50_names.sql         nation_names table (structure only; per-nation pools)
-
-seed/sessau_names.sql           Sessau's name pool (run once, after 50)
-seed/vesperia_names.sql         Vesperia's name pool (run after the nation exists)
-seed/denzgraad_names.sql        Denzgraad's name pool (run after the nation exists)
-seed/backfill_party_leaders.sql one-off: give existing partyless parties a leader
+schema/00_auth.sql   profiles (id, email, nickname), RLS, sign-up trigger
 ```
 
-A fresh database: run `schema/00 → 50`, then `seed/sessau_names.sql`. The backfill
-is only needed for parties created before the leader generator existed.
+A fresh database: run `schema/00_auth.sql`. That is the whole backend so far —
+just authentication and the profile that a sign-up creates.
 
 ## Conventions
 
 - **Structure vs data.** `schema/` holds tables, policies, functions. Bulk rows
-  (name pools, future lists) go in `seed/` so the structure stays readable.
-- **One file per domain.** New domain → new numbered file (e.g. `60_legislation.sql`),
+  (name pools, lists) go in `seed/` so the structure stays readable.
+- **One file per domain.** New domain → new numbered file (e.g. `10_world.sql`),
   numbered after whatever it depends on.
 - **Idempotent.** `create table if not exists`, `drop policy if exists` then
-  `create`, `on conflict do nothing`, guarded backfills — re-running is always safe.
-- **Game-controlled columns** (standings, stats) are not client-writable: they're
-  changed only by `security definer` functions, never granted to `authenticated`.
+  `create`, `add column if not exists`, `on conflict do nothing` — re-running is
+  always safe.
+- **Game-controlled columns** are not client-writable: they change only through
+  `security definer` functions, never granted directly to `authenticated`.
+
+## Auth notes
+
+- The publishable key in `supabase.js` is public by design; access is governed by
+  Row Level Security, not by hiding the key. The secret key never goes in client
+  code.
+- **Email confirmation** is controlled in the Supabase dashboard
+  (Authentication → Providers → Email). If it is ON, a new sign-up has no session
+  until the emailed link is clicked — the UI shows "check your email" and the
+  player logs in afterward. If OFF, sign-up logs the player straight in.
