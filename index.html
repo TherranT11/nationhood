@@ -171,6 +171,27 @@
     letter-spacing: 0.16em; text-transform: uppercase; font-size: 1.05rem;
     min-height: 1.5rem; margin: 1.25rem 0 0; }
 
+  /* ---- prioritize your family ---- */
+  .priorities { display: flex; flex-direction: column; gap: 0.75rem; }
+  .priority { position: relative; display: block; width: 100%; text-align: left;
+    padding: 1rem 3rem 1rem 1.15rem; background: var(--stone); border: 1px solid var(--edge);
+    cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+  .priority:hover:not(.ranked) { border-color: var(--gold); background: #262015; }
+  .priority:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .priority-body { display: block; transition: opacity 0.2s; }
+  .priority-title { display: block; font-family: var(--display); font-weight: 600; font-size: 0.9rem;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); }
+  .priority-desc { display: block; font-size: 0.9rem; color: var(--marble-dim); margin-top: 0.3rem; line-height: 1.45; }
+  .priority.ranked { cursor: default; }
+  .priority.ranked .priority-body { opacity: 0.4; }        /* greyed once chosen, badge stays lit */
+  .rank-badge { position: absolute; top: 50%; right: 1.1rem; transform: translateY(-50%);
+    font-family: var(--display); font-weight: 700; font-size: 1.3rem; color: var(--gold); }
+  .reset-link { display: block; margin: 0.9rem auto 0; background: none; border: none;
+    color: var(--marble-dim); font-family: var(--body); font-style: italic; font-size: 0.85rem;
+    cursor: pointer; text-decoration: underline; }
+  .reset-link:hover { color: var(--gold); }
+  .reset-link:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
   /* ---- auth tabs: Log In / Sign Up ---- */
   .tabs { display: flex; margin-bottom: 2rem; border-bottom: 1px solid var(--edge); }
   .tab { flex: 1; font-family: var(--display); font-weight: 600; font-size: 0.78rem;
@@ -273,6 +294,54 @@
 
     <div class="panel-actions">
       <button class="btn btn-small" onclick="go('screen-home')">Back</button>
+      <button class="btn btn-small btn-primary" id="to-priorities" disabled>Continue</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PRIORITIZE YOUR FAMILY ============ -->
+<section class="screen" id="screen-prioritize" aria-label="Prioritize your family">
+  <div class="panel">
+    <h2 class="panel-title">Prioritize Your Family</h2>
+    <p class="panel-sub">Rank what your gens holds dear — click them in order of importance.</p>
+
+    <div class="priorities" id="priorities">
+      <button class="priority" type="button" data-key="wealth">
+        <span class="priority-body">
+          <span class="priority-title">Wealth</span>
+          <span class="priority-desc">Fill your coffers with coin and land — the sinews of every campaign and every bribe.</span>
+        </span>
+        <span class="rank-badge" aria-hidden="true"></span>
+      </button>
+      <button class="priority" type="button" data-key="influence">
+        <span class="priority-body">
+          <span class="priority-title">Influence</span>
+          <span class="priority-desc">Command the Forum and the Senate; let your name move crowds and sway the vote.</span>
+        </span>
+        <span class="rank-badge" aria-hidden="true"></span>
+      </button>
+      <button class="priority" type="button" data-key="strategy">
+        <span class="priority-body">
+          <span class="priority-title">Strategy</span>
+          <span class="priority-desc">Master war and intrigue alike — outmanoeuvre your rivals on the field and in the shadows.</span>
+        </span>
+        <span class="rank-badge" aria-hidden="true"></span>
+      </button>
+      <button class="priority" type="button" data-key="family">
+        <span class="priority-body">
+          <span class="priority-title">Family</span>
+          <span class="priority-desc">Bind your kin and clients close; a loyal gens endures where lone men fall.</span>
+        </span>
+        <span class="rank-badge" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <button class="reset-link" type="button" id="reset-priorities">Reset order</button>
+    <p class="char-preview" id="found-msg" aria-live="polite"></p>
+
+    <div class="panel-actions">
+      <button class="btn btn-small" onclick="go('screen-join')">Back</button>
+      <button class="btn btn-small btn-primary" id="found-gens" disabled>Found Your Gens</button>
     </div>
   </div>
 </section>
@@ -436,6 +505,7 @@
   function refreshPreview() {
     const p = praeIn.value.trim(), n = nomenIn.value.trim();
     preview.textContent = (p && n) ? p + ' ' + n : '';   // praenomen + nomen
+    $('to-priorities').disabled = !(p && n);             // gate the Continue step
   }
 
   // Roll a name: a brief shuffle through the pool, then settle on one. The
@@ -454,6 +524,50 @@
 
   $('roll-nomen').addEventListener('click', (e) => roll(nomenIn, NOMINA, e.currentTarget));
   $('roll-praenomen').addEventListener('click', (e) => roll(praeIn, PRAENOMINA, e.currentTarget));
+
+  $('to-priorities').addEventListener('click', () => { if (!$('to-priorities').disabled) go('screen-prioritize'); });
+
+  // --- Prioritize Your Family: rank the four values 1–4 -------------------
+  const NUMERALS = ['I', 'II', 'III', 'IV'];
+  const priorityBox = $('priorities');
+  const foundBtn = $('found-gens');
+  const foundMsg = $('found-msg');
+  let order = [];                                 // keys in chosen order; [0] = 1st
+
+  function updateFound() { foundBtn.disabled = order.length !== 4; }
+
+  priorityBox.addEventListener('click', (e) => {
+    const card = e.target.closest('.priority');
+    if (!card || card.classList.contains('ranked')) return;   // already ranked → ignore
+    order.push(card.dataset.key);
+    card.classList.add('ranked');
+    card.querySelector('.rank-badge').textContent = NUMERALS[order.length - 1];
+    updateFound();
+  });
+
+  $('reset-priorities').addEventListener('click', () => {
+    order = [];
+    priorityBox.querySelectorAll('.priority').forEach((c) => {
+      c.classList.remove('ranked');
+      c.querySelector('.rank-badge').textContent = '';
+    });
+    foundMsg.textContent = '';
+    foundBtn.textContent = 'Found Your Gens';
+    updateFound();
+  });
+
+  foundBtn.addEventListener('click', () => {
+    if (foundBtn.disabled) return;
+    // The completed character. Persisting this to the DB is the next step.
+    const character = {
+      praenomen: praeIn.value.trim(),
+      nomen: nomenIn.value.trim(),
+      priorities: order.slice(),
+    };
+    foundBtn.disabled = true;
+    foundBtn.textContent = 'Founded';
+    foundMsg.textContent = character.praenomen + ' ' + character.nomen + ' — your gens takes its place among the Republic.';
+  });
 
   // --- Log In -------------------------------------------------------------
   const liBtn = $('li-submit');
