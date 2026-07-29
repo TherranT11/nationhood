@@ -153,7 +153,23 @@
   .field input { width: 100%; font-family: var(--body); font-size: 1rem; color: var(--marble);
     background: var(--stone); border: 1px solid var(--edge); padding: 0.7rem 0.9rem; }
   .field input:focus-visible { outline: none; border-color: var(--gold); }
+  .field input[readonly] { cursor: default; }
   .field-note { display: block; font-size: 0.78rem; color: var(--marble-dim); font-style: italic; margin-top: 0.4rem; }
+
+  /* ---- name dice (character creation) ---- */
+  .roll-row { display: flex; gap: 0.6rem; align-items: stretch; }
+  .roll-row input { flex: 1; }
+  .die { flex-shrink: 0; width: 3.1rem; font-size: 1.5rem; line-height: 1; color: var(--gold);
+    background: var(--stone); border: 1px solid var(--edge); cursor: pointer;
+    transition: border-color 0.2s, background 0.2s, transform 0.12s; }
+  .die:hover { border-color: var(--gold); background: #262015; }
+  .die:active { transform: translateY(1px); }
+  .die:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .die.rolling { animation: roll 0.35s ease; }
+  @keyframes roll { 0%,100% { transform: rotate(0); } 30% { transform: rotate(-16deg); } 70% { transform: rotate(16deg); } }
+  .char-preview { font-family: var(--display); text-align: center; color: var(--gold);
+    letter-spacing: 0.16em; text-transform: uppercase; font-size: 1.05rem;
+    min-height: 1.5rem; margin: 1.25rem 0 0; }
 
   /* ---- auth tabs: Log In / Sign Up ---- */
   .tabs { display: flex; margin-bottom: 2rem; border-bottom: 1px solid var(--edge); }
@@ -231,15 +247,30 @@
   </div>
 </section>
 
-<!-- ============ JOIN THE WORLD ============ -->
-<section class="screen" id="screen-join" aria-label="Join the world">
+<!-- ============ JOIN THE WORLD — create your character ============ -->
+<section class="screen" id="screen-join" aria-label="Create your character">
   <div class="panel">
     <h2 class="panel-title">Enter the Republic</h2>
     <p class="panel-sub">Whose name will history remember?</p>
-    <div style="text-align:center; color:var(--marble-dim); font-style:italic; padding:1rem 0 1.5rem;">
-      Character selection and the founding of your gens
-      would be built here next.
+
+    <div class="field">
+      <label for="char-nomen">Family Name</label>
+      <div class="roll-row">
+        <input id="char-nomen" type="text" readonly placeholder="Roll the dice…" aria-describedby="char-preview">
+        <button class="die" id="roll-nomen" aria-label="Roll a family name" title="Roll a family name">&#9861;</button>
+      </div>
     </div>
+
+    <div class="field">
+      <label for="char-praenomen">First Name</label>
+      <div class="roll-row">
+        <input id="char-praenomen" type="text" readonly placeholder="Roll the dice…" aria-describedby="char-preview">
+        <button class="die" id="roll-praenomen" aria-label="Roll a first name" title="Roll a first name">&#9861;</button>
+      </div>
+    </div>
+
+    <p class="char-preview" id="char-preview" aria-live="polite"></p>
+
     <div class="panel-actions">
       <button class="btn btn-small" onclick="go('screen-home')">Back</button>
     </div>
@@ -364,6 +395,7 @@
      script so the inline onclick handlers keep working. -->
 <script type="module">
   import { signUp, signIn, signOut, onAuthChange } from './supabase.js';
+  import { PRAENOMINA, NOMINA } from './names.js';
 
   const $ = (id) => document.getElementById(id);
   function setMsg(el, text, kind) {
@@ -394,6 +426,34 @@
   joinBtn.addEventListener('click', () => {
     if (!joinBtn.disabled) go('screen-join');
   });
+
+  // --- Character creation: name dice --------------------------------------
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const nomenIn = $('char-nomen');
+  const praeIn = $('char-praenomen');
+  const preview = $('char-preview');
+
+  function refreshPreview() {
+    const p = praeIn.value.trim(), n = nomenIn.value.trim();
+    preview.textContent = (p && n) ? p + ' ' + n : '';   // praenomen + nomen
+  }
+
+  // Roll a name: a brief shuffle through the pool, then settle on one. The
+  // interval is cleared before the next roll so rapid clicks can't stack timers.
+  function roll(input, pool, dieBtn) {
+    dieBtn.classList.remove('rolling');
+    void dieBtn.offsetWidth;                 // restart the spin animation
+    dieBtn.classList.add('rolling');
+    clearInterval(input._rollTimer);
+    let ticks = 0;
+    input._rollTimer = setInterval(() => {
+      input.value = pick(pool);
+      if (++ticks >= 6) { clearInterval(input._rollTimer); refreshPreview(); }
+    }, 55);
+  }
+
+  $('roll-nomen').addEventListener('click', (e) => roll(nomenIn, NOMINA, e.currentTarget));
+  $('roll-praenomen').addEventListener('click', (e) => roll(praeIn, PRAENOMINA, e.currentTarget));
 
   // --- Log In -------------------------------------------------------------
   const liBtn = $('li-submit');
