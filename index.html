@@ -163,6 +163,13 @@
   .tab.active { color: var(--gold); border-bottom-color: var(--gold); }
   .tab:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
+  /* ---- form feedback line ---- */
+  .form-msg { min-height: 1.1rem; margin-bottom: 0.5rem; text-align: center;
+    font-size: 0.88rem; font-style: italic; }
+  .form-msg.error { color: #d68a7f; }
+  .form-msg.ok { color: var(--gold); }
+  .form-msg:empty { margin-bottom: 0; }
+
   /* ---- logout modal ---- */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(6,5,3,0.8); display: none;
     align-items: center; justify-content: center; z-index: 5; }
@@ -290,8 +297,9 @@
     <div class="auth-form" id="form-login" role="tabpanel" aria-labelledby="tab-login">
       <div class="field"><label for="li-email">Email</label><input id="li-email" type="email" autocomplete="email"></div>
       <div class="field"><label for="li-pass">Password</label><input id="li-pass" type="password" autocomplete="current-password"></div>
+      <p class="form-msg" id="li-msg" role="alert"></p>
       <div class="panel-actions">
-        <button class="btn btn-small btn-primary" onclick="go('screen-home')">Enter</button>
+        <button class="btn btn-small btn-primary" id="li-submit">Enter</button>
       </div>
     </div>
 
@@ -304,9 +312,10 @@
         <span class="field-note">Shown next to your character name &middot; max 16 characters</span>
       </div>
       <div class="field"><label for="su-pass">Password</label><input id="su-pass" type="password" autocomplete="new-password"></div>
+      <p class="form-msg" id="su-msg" role="alert"></p>
       <div class="panel-actions">
         <button class="btn btn-small" onclick="go('screen-home')">Cancel</button>
-        <button class="btn btn-small btn-primary" onclick="go('screen-home')">Sign Up</button>
+        <button class="btn btn-small btn-primary" id="su-submit">Sign Up</button>
       </div>
     </div>
   </div>
@@ -318,7 +327,7 @@
     <h2 class="panel-title" id="lt">Depart?</h2>
     <p class="panel-sub" style="margin-bottom:1.5rem;">Rome endures in your absence &mdash; the world is persistent.</p>
     <div class="panel-actions" style="margin-top:0;">
-      <button class="btn btn-small btn-danger" onclick="confirmLogout()">Log Out</button>
+      <button class="btn btn-small btn-danger" id="logout-confirm">Log Out</button>
       <button class="btn btn-small" onclick="closeLogout()">Stay</button>
     </div>
   </div>
@@ -343,8 +352,78 @@
   }
   function openLogout()  { document.getElementById('logout-modal').classList.add('open'); }
   function closeLogout() { document.getElementById('logout-modal').classList.remove('open'); }
-  function confirmLogout() { closeLogout(); go('screen-login'); }
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLogout(); });
+</script>
+
+<!-- Auth: real Supabase sign up / log in / log out. Kept in a module so it can
+     import the shared client; the pure-UI navigation above stays a classic
+     script so the inline onclick handlers keep working. -->
+<script type="module">
+  import { signUp, signIn, signOut } from './supabase.js';
+
+  const $ = (id) => document.getElementById(id);
+  function setMsg(el, text, kind) {
+    el.textContent = text || '';
+    el.className = 'form-msg' + (kind ? ' ' + kind : '');
+  }
+
+  // --- Log In -------------------------------------------------------------
+  const liBtn = $('li-submit');
+  liBtn.addEventListener('click', async () => {
+    if (liBtn.disabled) return;                       // double-fire lock
+    const email = $('li-email').value.trim();
+    const password = $('li-pass').value;
+    const msg = $('li-msg');
+    if (!email || !password) { setMsg(msg, 'Enter your email and password.', 'error'); return; }
+    liBtn.disabled = true; liBtn.textContent = 'Entering…'; setMsg(msg, '');
+    try {
+      const { error } = await signIn({ email, password });
+      if (error) { setMsg(msg, error.message || 'Could not sign you in.', 'error'); return; }
+      $('li-pass').value = '';
+      go('screen-home');                              // session persists via supabase-js
+    } catch (err) {
+      setMsg(msg, 'Something went wrong. Try again.', 'error');
+    } finally {
+      liBtn.disabled = false; liBtn.textContent = 'Enter';
+    }
+  });
+
+  // --- Sign Up ------------------------------------------------------------
+  const suBtn = $('su-submit');
+  suBtn.addEventListener('click', async () => {
+    if (suBtn.disabled) return;                       // double-fire lock
+    const email = $('su-email').value.trim();
+    const nickname = $('su-nick').value.trim();
+    const password = $('su-pass').value;
+    const msg = $('su-msg');
+    if (!email || !nickname || !password) { setMsg(msg, 'Email, nickname, and password are all required.', 'error'); return; }
+    if (nickname.length > 16) { setMsg(msg, 'Nickname must be 16 characters or fewer.', 'error'); return; }
+    suBtn.disabled = true; suBtn.textContent = 'Enrolling…'; setMsg(msg, '');
+    try {
+      const { data, error } = await signUp({ email, password, nickname });
+      if (error) { setMsg(msg, error.message || 'Could not enrol you.', 'error'); return; }
+      if (data.session) {
+        go('screen-home');                            // confirmation disabled — straight in
+      } else {
+        setMsg(msg, 'Check your email to confirm your enrolment, then log in.', 'ok');
+      }
+    } catch (err) {
+      setMsg(msg, 'Something went wrong. Try again.', 'error');
+    } finally {
+      suBtn.disabled = false; suBtn.textContent = 'Sign Up';
+    }
+  });
+
+  // --- Log Out ------------------------------------------------------------
+  const loBtn = $('logout-confirm');
+  loBtn.addEventListener('click', async () => {
+    if (loBtn.disabled) return;
+    loBtn.disabled = true; loBtn.textContent = 'Departing…';
+    try { await signOut(); } catch (err) { /* fall through to the login screen */ }
+    closeLogout();
+    go('screen-login');
+    loBtn.disabled = false; loBtn.textContent = 'Log Out';
+  });
 </script>
 </body>
 </html>
