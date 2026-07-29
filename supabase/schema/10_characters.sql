@@ -1,0 +1,44 @@
+-- 10 · Characters — one gens per account  (ROME: Rise and Fall)
+-- Idempotent — safe to paste into the Supabase SQL Editor and re-run.
+-- Depends on auth.users.
+
+create table if not exists public.characters (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null unique references auth.users (id) on delete cascade,
+  praenomen   text not null,
+  nomen       text not null,
+  priorities  text[] not null,   -- ranked keys, [0] = 1st: e.g. {influence,wealth,family,strategy}
+  created_at  timestamptz not null default now()
+);
+
+-- One gens per account: user_id is UNIQUE above. Shape guards so a stray client
+-- can't write nonsense — names bounded, exactly four ranked priorities.
+alter table public.characters
+  drop constraint if exists characters_name_len;
+alter table public.characters
+  add constraint characters_name_len
+  check (char_length(praenomen) between 1 and 20 and char_length(nomen) between 1 and 20);
+
+alter table public.characters
+  drop constraint if exists characters_priorities_four;
+alter table public.characters
+  add constraint characters_priorities_four
+  check (array_length(priorities, 1) = 4);
+
+-- Lock it down: nothing readable/writable until a policy allows it.
+alter table public.characters enable row level security;
+
+-- A citizen reads only their own character.
+drop policy if exists "characters_select_own" on public.characters;
+create policy "characters_select_own"
+  on public.characters for select
+  using (auth.uid() = user_id);
+
+-- A citizen founds their own gens. Only once — the UNIQUE user_id enforces it,
+-- so a second insert fails with 23505 (the client turns that into a clear notice).
+drop policy if exists "characters_insert_own" on public.characters;
+create policy "characters_insert_own"
+  on public.characters for insert
+  with check (auth.uid() = user_id);
+
+-- No update or delete policy on purpose: a founded gens is locked.

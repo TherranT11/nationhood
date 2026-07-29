@@ -337,7 +337,7 @@
     </div>
 
     <button class="reset-link" type="button" id="reset-priorities">Reset order</button>
-    <p class="char-preview" id="found-msg" aria-live="polite"></p>
+    <p class="form-msg" id="found-msg" role="alert"></p>
 
     <div class="panel-actions">
       <button class="btn btn-small" onclick="go('screen-join')">Back</button>
@@ -463,7 +463,7 @@
      import the shared client; the pure-UI navigation above stays a classic
      script so the inline onclick handlers keep working. -->
 <script type="module">
-  import { signUp, signIn, signOut, onAuthChange } from './supabase.js';
+  import { signUp, signIn, signOut, onAuthChange, foundGens } from './supabase.js';
   import { PRAENOMINA, NOMINA } from './names.js';
 
   const $ = (id) => document.getElementById(id);
@@ -502,9 +502,15 @@
   const praeIn = $('char-praenomen');
   const preview = $('char-preview');
 
-  function refreshPreview() {
+  // One source for the chosen name: p (praenomen), n (nomen), full ("p n").
+  function chosenName() {
     const p = praeIn.value.trim(), n = nomenIn.value.trim();
-    preview.textContent = (p && n) ? p + ' ' + n : '';   // praenomen + nomen
+    return { p, n, full: (p && n) ? p + ' ' + n : '' };
+  }
+
+  function refreshPreview() {
+    const { p, n, full } = chosenName();
+    preview.textContent = full;                          // praenomen + nomen
     $('to-priorities').disabled = !(p && n);             // gate the Continue step
   }
 
@@ -551,22 +557,27 @@
       c.classList.remove('ranked');
       c.querySelector('.rank-badge').textContent = '';
     });
-    foundMsg.textContent = '';
+    setMsg(foundMsg, '');
     foundBtn.textContent = 'Found Your Gens';
     updateFound();
   });
 
-  foundBtn.addEventListener('click', () => {
-    if (foundBtn.disabled) return;
-    // The completed character. Persisting this to the DB is the next step.
-    const character = {
-      praenomen: praeIn.value.trim(),
-      nomen: nomenIn.value.trim(),
-      priorities: order.slice(),
-    };
-    foundBtn.disabled = true;
+  foundBtn.addEventListener('click', async () => {
+    if (foundBtn.disabled) return;                 // double-fire lock (also held during the request)
+    const { p, n, full } = chosenName();
+    if (!p || !n || order.length !== 4) return;    // gated already, but guard against a bad state
+    foundBtn.disabled = true; foundBtn.textContent = 'Founding…'; setMsg(foundMsg, '');
+    const { error } = await foundGens({ praenomen: p, nomen: n, priorities: order.slice() });
+    if (error) {
+      const dup = error.code === '23505';          // UNIQUE(user_id): already founded a gens
+      setMsg(foundMsg, dup ? 'You have already founded your gens — it endures.'
+                           : (error.message || 'Could not found your gens.'), 'error');
+      if (dup) { foundBtn.textContent = 'Founded'; }         // stay locked — one per account
+      else { foundBtn.disabled = false; foundBtn.textContent = 'Found Your Gens'; }
+      return;
+    }
     foundBtn.textContent = 'Founded';
-    foundMsg.textContent = character.praenomen + ' ' + character.nomen + ' — your gens takes its place among the Republic.';
+    setMsg(foundMsg, full + ' — your gens takes its place among the Republic.', 'ok');
   });
 
   // --- Log In -------------------------------------------------------------
