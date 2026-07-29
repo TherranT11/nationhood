@@ -38,3 +38,10 @@ export async function signOut() {
   try { await supabase.auth.signOut(); }
   finally { signingOut = false; }
 }
+
+// One source of truth for "is a citizen signed in?". The callback fires once on
+// setup with the restored session (or null), then on every sign-in / sign-out,
+// so the UI can reflect auth state without polling. Returns the subscription.
+export function onAuthChange(callback) {
+  return supabase.auth.onAuthStateChange((_event, session) => callback(session));
+}

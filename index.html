@@ -109,6 +109,8 @@
   .btn-danger { color: #c99a92; }
   .btn-danger:hover, .btn-danger:focus-visible { background: var(--blood); border-color: var(--blood); color: var(--marble); }
   .btn-small { width: auto; min-width: 190px; font-size: 0.8rem; padding: 0.8rem 2.2rem; }
+  .btn:disabled { opacity: 0.38; cursor: not-allowed; }
+  .btn:disabled:hover { background: var(--stone-lit); border-color: var(--edge); transform: none; }
 
   /* ---- settings / login panels ---- */
   .panel { width: min(560px, 94vw); background: var(--stone-lit); border: 1px solid var(--edge);
@@ -219,10 +221,12 @@
     <p class="world-status">
       Current Date: <span class="lit">300 BC</span> &middot; <span class="lit">0</span> Citizens Online &middot; Rome remains a Republic
     </p>
+    <!-- Menu reflects auth state (set by the module below). Default markup is the
+         logged-out state so it paints correctly before the session resolves. -->
     <nav class="menu" aria-label="Main menu">
-      <button class="btn btn-primary" onclick="go('screen-join')">Join the World</button>
+      <button class="btn btn-primary" id="auth-btn">Log In</button>
+      <button class="btn" id="join-btn" disabled title="Log in to enter the world">Join the World</button>
       <button class="btn" onclick="go('screen-settings')">Settings</button>
-      <button class="btn btn-danger" onclick="openLogout()">Log Out</button>
     </nav>
   </div>
 </section>
@@ -359,13 +363,37 @@
      import the shared client; the pure-UI navigation above stays a classic
      script so the inline onclick handlers keep working. -->
 <script type="module">
-  import { signUp, signIn, signOut } from './supabase.js';
+  import { signUp, signIn, signOut, onAuthChange } from './supabase.js';
 
   const $ = (id) => document.getElementById(id);
   function setMsg(el, text, kind) {
     el.textContent = text || '';
     el.className = 'form-msg' + (kind ? ' ' + kind : '');
   }
+
+  // --- Auth-aware home menu ----------------------------------------------
+  // One source drives the menu: onAuthChange fires on load and on every
+  // sign-in / sign-out, so the buttons always match the real session.
+  const authBtn = $('auth-btn');
+  const joinBtn = $('join-btn');
+  let signedIn = false;
+
+  onAuthChange((session) => {
+    signedIn = !!session;
+    authBtn.textContent = signedIn ? 'Log Out' : 'Log In';
+    authBtn.classList.toggle('btn-primary', !signedIn);   // Log In is the CTA when out
+    authBtn.classList.toggle('btn-danger', signedIn);      // Log Out reads as danger
+    joinBtn.disabled = !signedIn;                          // greyed until logged in
+    joinBtn.classList.toggle('btn-primary', signedIn);     // the CTA once you're in
+    joinBtn.title = signedIn ? '' : 'Log in to enter the world';
+  });
+
+  authBtn.addEventListener('click', () => {
+    if (signedIn) openLogout(); else go('screen-login');
+  });
+  joinBtn.addEventListener('click', () => {
+    if (!joinBtn.disabled) go('screen-join');
+  });
 
   // --- Log In -------------------------------------------------------------
   const liBtn = $('li-submit');
