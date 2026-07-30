@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <style>
   :root {
-    --stone:#14110d; --stone-lit:#1e1a13; --stone-2:#100e0a; --edge:#322a1e;
+    --stone:#14110d; --stone-lit:#1e1a13; --edge:#322a1e;
     --marble:#e8e0cf; --marble-dim:#9a8f78; --faint:#5f5643;
     --gold:#c8a24a; --blood:#7a2f26;
     --display:'Cinzel',serif; --body:'EB Garamond',serif;
@@ -55,12 +55,6 @@
   .hoh::before, .hoh::after { content:""; position:absolute; width:14px; height:14px; border:1px solid var(--gold); opacity:0.55; }
   .hoh::before { top:6px; left:6px; border-right:none; border-bottom:none; }
   .hoh::after { bottom:6px; right:6px; border-left:none; border-top:none; }
-  .hoh-portrait { width:180px; min-width:180px; border-right:1px solid var(--edge);
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    padding:1.75rem 1rem; background:var(--stone-2); }
-  .bust { width:96px; height:110px; border:1px solid var(--gold); background:var(--stone);
-    display:flex; align-items:flex-end; justify-content:center; overflow:hidden; margin-bottom:0.9rem; }
-  .hoh-role { font-family:var(--display); font-size:0.55rem; letter-spacing:0.18em; text-transform:uppercase; color:var(--gold); text-align:center; }
   .hoh-body { flex:1; padding:1.75rem 2rem; }
   .hoh-name { font-family:var(--display); font-weight:700; font-size:1.5rem; letter-spacing:0.06em; }
   .hoh-title { color:var(--marble-dim); font-style:italic; margin-top:0.15rem; margin-bottom:1.3rem; }
@@ -116,16 +110,6 @@
       <!-- HEAD OF HOUSEHOLD -->
       <h2 class="sec-title">Head of Household</h2>
       <section class="hoh">
-        <div class="hoh-portrait">
-          <div class="bust">
-            <svg width="80" height="96" viewBox="0 0 80 96" aria-hidden="true">
-              <circle cx="40" cy="38" r="17" fill="#3a3225"/>
-              <path d="M14 96 C14 68 28 58 40 58 C52 58 66 68 66 96 Z" fill="#2a251b"/>
-              <path d="M24 36 C24 20 32 14 40 14 C48 14 56 20 56 36 L51 32 C48 24 32 24 29 32 Z" fill="#241f16"/>
-            </svg>
-          </div>
-          <span class="hoh-role">Pater Familias</span>
-        </div>
         <div class="hoh-body">
           <div class="hoh-name" id="hoh-name">&nbsp;</div>
           <p class="hoh-title" id="hoh-title">&nbsp;</p>
@@ -163,6 +147,7 @@
 <script type="module">
   import { signOut, currentCharacter } from '../supabase.js';
   import { gensName, BIRTHPLACES } from '../names.js';
+  import { denariiDisplay } from '../format.js';
 
   const $ = (id) => document.getElementById(id);
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
@@ -182,7 +167,7 @@
     $('page-title').textContent = 'The Gens ' + gens;
     $('hoh-name').textContent = fullName;
     $('hoh-title').textContent = 'Head of the Gens ' + gens;
-    $('hoh-denarii').textContent = c.denarii;
+    $('hoh-denarii').textContent = denariiDisplay(c.denarii);
     $('hoh-influence').textContent = c.influence;
     $('hoh-strategy').textContent = c.strategy;
     $('hoh-location').textContent = cap(c.location);
