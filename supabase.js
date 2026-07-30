@@ -46,6 +46,23 @@ export function onAuthChange(callback) {
   return supabase.auth.onAuthStateChange((_event, session) => callback(session));
 }
 
+// The signed-in citizen's founded gens, or null (not signed in / no gens yet).
+// One source for the "do I already have a gens?" routing check. Returns
+// { data, error }; data is null when there's no character.
+export async function currentCharacter() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { data: null, error: null };
+    return await supabase
+      .from('characters')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+  } catch (err) {
+    return { data: null, error: { message: 'Could not load your character.' } };
+  }
+}
+
 // Found the signed-in citizen's gens — one per account (enforced by a UNIQUE
 // user_id in the DB, so a second attempt returns a 23505 error). Returns
 // { data, error }; wrapped so a network failure surfaces as a clean error
