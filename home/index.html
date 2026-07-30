@@ -104,9 +104,21 @@
 </div>
 
 <script type="module">
-  // Only the top bar's Log Out is wired for now: reuse the shared signOut, then
-  // return to the front door. Guarded against a double-click.
-  import { signOut } from '../supabase.js';
+  import { signOut, currentCharacter } from '../supabase.js';
+  import { BIRTHPLACES, gensName } from '../names.js';
+
+  // Gate + populate the top bar. Only a signed-in player with a founded gens
+  // belongs here; anyone else is sent back to the front door.
+  (async () => {
+    const { data: character } = await currentCharacter();
+    if (!character) { window.location.href = '/'; return; }
+    document.querySelector('.family .name').textContent = 'Gens ' + gensName(character.nomen);
+    const region = BIRTHPLACES.find((b) => b.key === character.birthplace);
+    // "Plebeian House" is constant for now — patrician/plebeian isn't a mechanic yet.
+    document.querySelector('.family .rank').textContent = 'Plebeian House · ' + (region ? region.name : '—');
+  })();
+
+  // Log Out → shared signOut, then back to the front door. Guarded against a double-click.
   const logoutBtn = document.getElementById('logout');
   logoutBtn.addEventListener('click', async () => {
     if (logoutBtn.disabled) return;

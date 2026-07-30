@@ -24,6 +24,13 @@ export const PRAENOMINA = [
   'Taurus', 'Trebius', 'Tullus', 'Volero', 'Volusus',
 ];
 
+// The gens (family) name shown to players is the feminine form of the nomen:
+// -ius → -ia (Aurelius → Aurelia). Every nomen above ends in -ius; the fallback
+// returns the nomen unchanged for anything that doesn't.
+export function gensName(nomen) {
+  return nomen ? nomen.replace(/ius$/, 'ia') : '';
+}
+
 // Birthplaces — the region a gens hails from. The `key` is stored on the
 // character (stable); `name` and `blurb` are display only. Flavour for now,
 // but tracked from the start.
