@@ -194,7 +194,7 @@
 
       <!-- Location — everyone starts in Rome; travel is a future mechanic. -->
       <div class="location">
-        <span class="where">Location: Rome</span>
+        <span class="where" id="loc-where">Location: Rome</span>
         <span class="desc">Being in Rome gives you access to the buildings of Rome, as well as voting on Senate laws.</span>
         <button class="travel" disabled aria-disabled="true" title="You are already in Rome">Travel <span class="ap">(1 AP)</span></button>
       </div>
@@ -219,25 +219,12 @@
 </div>
 
 <script type="module">
-  import { signOut, currentCharacter } from '../supabase.js';
+  import { signOut, currentCharacter, romeStats } from '../supabase.js';
   import { BIRTHPLACES, gensName } from '../names.js';
 
   const $ = (id) => document.getElementById(id);
-  const fmt = (n) => n.toLocaleString('en-US');
-
-  // Stats of Rome — shared, same for every player. Starting constants for now;
-  // these belong in a shared world-state row once gameplay mutates them.
-  const ROME = { population: 180000, treasury: 290000, grain: 500000, unrest: 0 };
-
-  // Gens starting stats are a pure function of the priority ranking (rank 1..4).
-  // One source for the founding formula. FAMILY has no stat of its own yet —
-  // ranking it high simply pushes the other three down the order.
-  const STAT_BY_RANK = {
-    wealth:    { 1: 12, 2: 9, 3: 5, 4: 3 },   // → Denarii
-    influence: { 1: 10, 2: 7, 3: 4, 4: 2 },   // → Influence
-    strategy:  { 1: 5,  2: 4, 3: 1, 4: 0 },   // → Strategy
-  };
-  const statFor = (priorities, key) => STAT_BY_RANK[key][priorities.indexOf(key) + 1] ?? 0;
+  const fmt = (n) => Number(n).toLocaleString('en-US');
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 
   // Gate + populate. Only a signed-in player with a founded gens belongs here.
   (async () => {
@@ -253,17 +240,20 @@
     document.querySelector('.family .rank').textContent = 'Plebeian House · ' + (region ? region.name : '—');
     $('welcome-h').textContent = 'The House of ' + gens;
 
-    // Stats of Rome
-    $('rome-population').textContent = fmt(ROME.population);
-    $('rome-treasury').textContent = fmt(ROME.treasury);
-    $('rome-grain').textContent = fmt(ROME.grain);
-    $('rome-unrest').textContent = fmt(ROME.unrest);
+    // Gens stats + location (stored on the character)
+    $('gens-denarii').textContent = character.denarii;
+    $('gens-influence').textContent = character.influence;
+    $('gens-strategy').textContent = character.strategy;
+    $('loc-where').textContent = 'Location: ' + cap(character.location);
 
-    // Gens stats (from the stored priority ranking)
-    const p = character.priorities || [];
-    $('gens-denarii').textContent = statFor(p, 'wealth');
-    $('gens-influence').textContent = statFor(p, 'influence');
-    $('gens-strategy').textContent = statFor(p, 'strategy');
+    // Stats of Rome (shared world state)
+    const { data: rome } = await romeStats();
+    if (rome) {
+      $('rome-population').textContent = fmt(rome.population);
+      $('rome-treasury').textContent = fmt(rome.treasury);
+      $('rome-grain').textContent = fmt(rome.grain);
+      $('rome-unrest').textContent = fmt(rome.unrest);
+    }
   })();
 
   // Log Out → shared signOut, then back to the front door. Guarded against a double-click.

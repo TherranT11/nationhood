@@ -11,12 +11,15 @@ then any seed data (`seed/`):
 
 ```
 schema/00_auth.sql         profiles (id, email, nickname), RLS, sign-up trigger
-schema/10_characters.sql   characters (one gens per account: name, priorities, birthplace), RLS
+schema/05_rome.sql         rome — shared single-row world state, read-only to clients
+schema/10_characters.sql   characters (name, priorities, birthplace, stats, location)
+                           + found_gens() RPC + gens_stat() formula, RLS
 ```
 
-A fresh database: run `schema/00_auth.sql`, then `schema/10_characters.sql`.
-That is the whole backend so far — authentication, the profile a sign-up
-creates, and the character a player founds.
+A fresh database: run `schema/00_auth.sql`, then `05_rome.sql`, then
+`10_characters.sql`. That is the whole backend so far — authentication, the
+profile a sign-up creates, the shared state of Rome, and the character a player
+founds (whose stats are seeded server-side from the priority ranking).
 
 ## Conventions
 
