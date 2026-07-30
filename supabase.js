@@ -85,7 +85,7 @@ export async function romeStats() {
   try {
     return await supabase
       .from('rome')
-      .select('population, treasury, grain, unrest')
+      .select('population, treasury, grain, unrest, senate_patricians, senate_plebeians')
       .maybeSingle();
   } catch (err) {
     return { data: null, error: { message: 'Could not load Rome.' } };
