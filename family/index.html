@@ -147,6 +147,7 @@
 <script type="module">
   import { signOut, currentCharacter } from '../supabase.js';
   import { gensName, BIRTHPLACES } from '../names.js';
+  import { denariiDisplay } from '../format.js';
 
   const $ = (id) => document.getElementById(id);
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
@@ -166,7 +167,7 @@
     $('page-title').textContent = 'The Gens ' + gens;
     $('hoh-name').textContent = fullName;
     $('hoh-title').textContent = 'Head of the Gens ' + gens;
-    $('hoh-denarii').textContent = c.denarii;
+    $('hoh-denarii').textContent = denariiDisplay(c.denarii);
     $('hoh-influence').textContent = c.influence;
     $('hoh-strategy').textContent = c.strategy;
     $('hoh-location').textContent = cap(c.location);
