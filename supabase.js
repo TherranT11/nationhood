@@ -63,20 +63,31 @@ export async function currentCharacter() {
   }
 }
 
-// Found the signed-in citizen's gens — one per account (enforced by a UNIQUE
-// user_id in the DB, so a second attempt returns a 23505 error). Returns
-// { data, error }; wrapped so a network failure surfaces as a clean error
-// instead of a thrown exception.
+// Found the signed-in citizen's gens through the found_gens() RPC, which seeds
+// the game-controlled stats server-side (the client can't forge them). One per
+// account — a second attempt returns a 23505 error. Returns { data, error };
+// wrapped so a network failure surfaces as a clean error instead of a throw.
 export async function foundGens({ praenomen, nomen, priorities, birthplace }) {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return { error: { message: 'You must be logged in to found a gens.' } };
-    return await supabase
-      .from('characters')
-      .insert({ user_id: session.user.id, praenomen, nomen, priorities, birthplace })
-      .select()
-      .single();
+    return await supabase.rpc('found_gens', {
+      _praenomen: praenomen, _nomen: nomen, _priorities: priorities, _birthplace: birthplace,
+    });
   } catch (err) {
     return { error: { message: 'Could not found your gens. Try again.' } };
+  }
+}
+
+// Rome's shared world state (one row). Returns { data, error }; data is null if
+// it hasn't been seeded. One source for the city's stats.
+export async function romeStats() {
+  try {
+    return await supabase
+      .from('rome')
+      .select('population, treasury, grain, unrest')
+      .maybeSingle();
+  } catch (err) {
+    return { data: null, error: { message: 'Could not load Rome.' } };
   }
 }
