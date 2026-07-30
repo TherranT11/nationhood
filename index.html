@@ -463,13 +463,22 @@
      import the shared client; the pure-UI navigation above stays a classic
      script so the inline onclick handlers keep working. -->
 <script type="module">
-  import { signUp, signIn, signOut, onAuthChange, foundGens } from './supabase.js';
+  import { signUp, signIn, signOut, onAuthChange, foundGens, currentCharacter } from './supabase.js';
   import { PRAENOMINA, NOMINA, BIRTHPLACES } from './names.js';
 
   const $ = (id) => document.getElementById(id);
   function setMsg(el, text, kind) {
     el.textContent = text || '';
     el.className = 'form-msg' + (kind ? ' ' + kind : '');
+  }
+
+  // One source for post-auth routing: a citizen with a founded gens goes to the
+  // game (/home/); one without goes to character creation. Used after login,
+  // after sign-up, and by the Join button.
+  async function routeByGens() {
+    const { data: character } = await currentCharacter();
+    if (character) window.location.href = '/home/';
+    else go('screen-join');
   }
 
   // --- Auth-aware home menu ----------------------------------------------
@@ -493,7 +502,7 @@
     if (signedIn) openLogout(); else go('screen-login');
   });
   joinBtn.addEventListener('click', () => {
-    if (!joinBtn.disabled) go('screen-join');
+    if (!joinBtn.disabled) routeByGens();
   });
 
   // --- Character creation: name & birthplace dice -------------------------
@@ -567,7 +576,7 @@
 
   foundBtn.addEventListener('click', async () => {
     if (foundBtn.disabled) return;                 // double-fire lock (also held during the request)
-    const { p, n, full } = chosenName();
+    const { p, n } = chosenName();
     if (!p || !n || order.length !== 4) return;    // gated already, but guard against a bad state
     foundBtn.disabled = true; foundBtn.textContent = 'Founding…'; setMsg(foundMsg, '');
     const birth = pick(BIRTHPLACES);               // birthplace is assigned, not chosen
@@ -581,7 +590,7 @@
       return;
     }
     foundBtn.textContent = 'Founded';
-    setMsg(foundMsg, full + ' of ' + birth.name + ' — your gens takes its place among the Republic.', 'ok');
+    window.location.href = '/home/';                  // gens founded → enter the game
   });
 
   // --- Log In -------------------------------------------------------------
@@ -597,7 +606,7 @@
       const { error } = await signIn({ email, password });
       if (error) { setMsg(msg, error.message || 'Could not sign you in.', 'error'); return; }
       $('li-pass').value = '';
-      go('screen-home');                              // session persists via supabase-js
+      await routeByGens();                            // gens-holder → /home/, otherwise creation
     } catch (err) {
       setMsg(msg, 'Something went wrong. Try again.', 'error');
     } finally {
@@ -620,7 +629,7 @@
       const { data, error } = await signUp({ email, password, nickname });
       if (error) { setMsg(msg, error.message || 'Could not enrol you.', 'error'); return; }
       if (data.session) {
-        go('screen-home');                            // confirmation disabled — straight in
+        await routeByGens();                          // new account has no gens → creation
       } else {
         setMsg(msg, 'Check your email to confirm your enrolment, then log in.', 'ok');
       }
