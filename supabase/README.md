@@ -11,7 +11,7 @@ then any seed data (`seed/`):
 
 ```
 schema/00_auth.sql         profiles (id, email, nickname), RLS, sign-up trigger
-schema/10_characters.sql   characters (one gens per account), RLS
+schema/10_characters.sql   characters (one gens per account: name, priorities, birthplace), RLS
 ```
 
 A fresh database: run `schema/00_auth.sql`, then `schema/10_characters.sql`.

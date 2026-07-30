@@ -8,8 +8,22 @@ create table if not exists public.characters (
   praenomen   text not null,
   nomen       text not null,
   priorities  text[] not null,   -- ranked keys, [0] = 1st: e.g. {influence,wealth,family,strategy}
+  birthplace  text not null,     -- region key: rome | latium | etruria | campania
   created_at  timestamptz not null default now()
 );
+
+-- Birthplace added for tables created before it existed (idempotent): add it
+-- nullable, backfill any pre-existing rows, then enforce NOT NULL so the column
+-- is guaranteed on every path (fresh create above, or an older table upgraded).
+alter table public.characters add column if not exists birthplace text;
+update public.characters set birthplace = 'rome' where birthplace is null;
+alter table public.characters alter column birthplace set not null;
+
+alter table public.characters
+  drop constraint if exists characters_birthplace_len;
+alter table public.characters
+  add constraint characters_birthplace_len
+  check (char_length(birthplace) between 1 and 40);
 
 -- One gens per account: user_id is UNIQUE above. Shape guards so a stray client
 -- can't write nonsense — names bounded, exactly four ranked priorities.

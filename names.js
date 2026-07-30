@@ -23,3 +23,13 @@ export const PRAENOMINA = [
   'Paulus', 'Plautus', 'Postumus', 'Proculus', 'Salvius', 'Sertor', 'Statius',
   'Taurus', 'Trebius', 'Tullus', 'Volero', 'Volusus',
 ];
+
+// Birthplaces — the region a gens hails from. The `key` is stored on the
+// character (stable); `name` and `blurb` are display only. Flavour for now,
+// but tracked from the start.
+export const BIRTHPLACES = [
+  { key: 'rome',     name: 'Rome',            blurb: 'The city itself and its immediate territory.' },
+  { key: 'latium',   name: 'Latium',          blurb: 'The Latin heartland around Rome — Tusculum, Aricia, Lanuvium, and Antium.' },
+  { key: 'etruria',  name: 'Southern Etruria', blurb: 'Roman-held land north of the Tiber — Veii, Caere, Sutrium, and Nepet.' },
+  { key: 'campania', name: 'Campania',        blurb: 'The region around Capua, Cumae, Suessula, and the northern Campanian plain.' },
+];

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROME — Home</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --stone:#14110d; --stone-lit:#1e1a13; --stone-2:#100e0a; --edge:#322a1e;
+    --marble:#e8e0cf; --marble-dim:#9a8f78; --faint:#5f5643;
+    --gold:#c8a24a; --gold-bright:#e0bd63;
+    --purple:#6b2c4d; --purple-bright:#8a3a63; --blood:#7a2f26;
+    --display:'Cinzel',serif; --body:'EB Garamond',serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--stone); color:var(--marble); font-family:var(--body);
+    font-size:18px; line-height:1.6; min-height:100vh; display:flex; flex-direction:column; }
+
+  /* ---- top bar ---- */
+  .topbar { display:grid; grid-template-columns:1fr auto 1fr; align-items:center;
+    gap:1rem; padding:0.85rem 1.5rem; background:var(--stone-lit);
+    border-bottom:1px solid var(--edge); }
+
+  /* left: time cluster */
+  .time { display:flex; align-items:center; gap:0; flex-wrap:wrap; }
+  .time .cell { display:flex; align-items:baseline; gap:0.5rem; padding:0 1.15rem;
+    border-right:1px solid var(--edge); }
+  .time .cell:first-child { padding-left:0; }
+  .time .cell:last-child { border-right:none; }
+  .time .lbl { font-family:var(--display); font-size:0.6rem; letter-spacing:0.18em;
+    text-transform:uppercase; color:var(--marble-dim); }
+  .time .val { font-family:var(--display); font-weight:600; font-size:0.9rem; color:var(--marble); }
+  .time .val.gold { color:var(--gold); }
+  .time .val.pending { color:var(--faint); }
+
+  /* center: family name */
+  .family { text-align:center; }
+  .family .name { font-family:var(--display); font-weight:700; font-size:1.05rem;
+    letter-spacing:0.16em; text-transform:uppercase; color:var(--gold); }
+  .family .rank { font-family:var(--display); font-size:0.58rem; letter-spacing:0.2em;
+    text-transform:uppercase; color:var(--marble-dim); margin-top:1px; }
+
+  /* right: logout */
+  .top-right { display:flex; justify-content:flex-end; }
+  .logout { font-family:var(--display); font-size:0.62rem; letter-spacing:0.18em;
+    text-transform:uppercase; color:var(--marble-dim); background:none;
+    border:1px solid var(--edge); padding:0.5rem 1rem; cursor:pointer;
+    transition:border-color 0.2s, color 0.2s; }
+  .logout:hover { border-color:var(--blood); color:var(--marble); }
+
+  /* ---- frame: sidebar + content ---- */
+  .frame { flex:1; display:flex; min-height:0; }
+  .sidebar { width:190px; min-width:190px; background:var(--stone-lit);
+    border-right:1px solid var(--edge); padding-top:0.5rem; display:flex; flex-direction:column; }
+  .nav-item { display:flex; align-items:center; gap:0.75rem; width:100%; text-align:left;
+    font-family:var(--display); font-weight:600; font-size:0.72rem; letter-spacing:0.2em;
+    text-transform:uppercase; color:var(--marble-dim); background:none; border:none;
+    border-left:3px solid transparent; padding:0.9rem 1.4rem; cursor:pointer;
+    transition:color 0.15s, background 0.15s; }
+  .nav-item:hover { color:var(--marble); }
+  .nav-item.on { color:var(--gold); background:#1a1509; border-left-color:var(--gold); }
+  .nav-item .glyph { width:6px; height:6px; transform:rotate(45deg); background:currentColor;
+    opacity:0.7; flex:none; }
+  .sidebar-foot { margin-top:auto; padding:1rem 1.4rem; font-family:var(--display);
+    font-size:0.55rem; letter-spacing:0.24em; text-transform:uppercase; color:var(--faint); }
+
+  .content { flex:1; padding:2rem 1.75rem 3rem; overflow:auto; }
+</style>
+</head>
+<body>
+
+<!-- ============ TOP BAR ============ -->
+<header class="topbar">
+  <!-- left: time -->
+  <div class="time">
+    <span class="cell"><span class="lbl">Year</span><span class="val gold">300 BC</span></span>
+    <span class="cell"><span class="lbl">Season</span><span class="val">Spring</span></span>
+    <span class="cell"><span class="lbl">Countdown</span><span class="val pending">&mdash;</span></span>
+  </div>
+
+  <!-- center: family -->
+  <div class="family">
+    <div class="name">Gens Aurelia</div>
+    <div class="rank">Plebeian House &middot; Rome</div>
+  </div>
+
+  <!-- right: logout -->
+  <div class="top-right">
+    <button class="logout" id="logout">Log Out</button>
+  </div>
+</header>
+
+<div class="frame">
+  <!-- ============ SIDEBAR ============ -->
+  <nav class="sidebar" aria-label="Main navigation">
+    <button class="nav-item on"><span class="glyph" aria-hidden="true"></span>Home</button>
+    <div class="sidebar-foot">S &middot; P &middot; Q &middot; R</div>
+  </nav>
+
+  <!-- ============ CONTENT (intentionally empty for now) ============ -->
+  <main class="content"></main>
+</div>
+
+<script type="module">
+  // Only the top bar's Log Out is wired for now: reuse the shared signOut, then
+  // return to the front door. Guarded against a double-click.
+  import { signOut } from '../supabase.js';
+  const logoutBtn = document.getElementById('logout');
+  logoutBtn.addEventListener('click', async () => {
+    if (logoutBtn.disabled) return;
+    logoutBtn.disabled = true; logoutBtn.textContent = 'Departing…';
+    try { await signOut(); } catch (err) { /* redirect regardless so no stuck session traps the player */ }
+    window.location.href = '/';
+  });
+</script>
+
+</body>
+</html>

@@ -290,6 +290,15 @@
       </div>
     </div>
 
+    <div class="field">
+      <label for="char-birthplace">Birthplace</label>
+      <div class="roll-row">
+        <input id="char-birthplace" type="text" readonly placeholder="Roll the dice…" aria-describedby="birthplace-blurb">
+        <button class="die" id="roll-birthplace" aria-label="Roll a birthplace" title="Roll a birthplace">&#9861;</button>
+      </div>
+      <span class="field-note" id="birthplace-blurb"></span>
+    </div>
+
     <p class="char-preview" id="char-preview" aria-live="polite"></p>
 
     <div class="panel-actions">
@@ -464,7 +473,7 @@
      script so the inline onclick handlers keep working. -->
 <script type="module">
   import { signUp, signIn, signOut, onAuthChange, foundGens } from './supabase.js';
-  import { PRAENOMINA, NOMINA } from './names.js';
+  import { PRAENOMINA, NOMINA, BIRTHPLACES } from './names.js';
 
   const $ = (id) => document.getElementById(id);
   function setMsg(el, text, kind) {
@@ -496,11 +505,14 @@
     if (!joinBtn.disabled) go('screen-join');
   });
 
-  // --- Character creation: name dice --------------------------------------
+  // --- Character creation: name & birthplace dice -------------------------
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const nomenIn = $('char-nomen');
   const praeIn = $('char-praenomen');
+  const birthIn = $('char-birthplace');
+  const birthBlurb = $('birthplace-blurb');
   const preview = $('char-preview');
+  let birthplaceKey = null;
 
   // One source for the chosen name: p (praenomen), n (nomen), full ("p n").
   function chosenName() {
@@ -510,26 +522,42 @@
 
   function refreshPreview() {
     const { p, n, full } = chosenName();
-    preview.textContent = full;                          // praenomen + nomen
-    $('to-priorities').disabled = !(p && n);             // gate the Continue step
+    preview.textContent = full;                                 // praenomen + nomen
+    $('to-priorities').disabled = !(p && n && birthplaceKey);   // name + birthplace required
   }
 
-  // Roll a name: a brief shuffle through the pool, then settle on one. The
-  // interval is cleared before the next roll so rapid clicks can't stack timers.
-  function roll(input, pool, dieBtn) {
+  // Shuffle animation shared by every die: flicker via tick(), then settle().
+  // The timer lives on the die button so rapid clicks can't stack timers.
+  function spin(dieBtn, tick, settle) {
     dieBtn.classList.remove('rolling');
-    void dieBtn.offsetWidth;                 // restart the spin animation
+    void dieBtn.offsetWidth;                  // restart the spin animation
     dieBtn.classList.add('rolling');
-    clearInterval(input._rollTimer);
+    clearInterval(dieBtn._timer);
     let ticks = 0;
-    input._rollTimer = setInterval(() => {
-      input.value = pick(pool);
-      if (++ticks >= 6) { clearInterval(input._rollTimer); refreshPreview(); }
+    dieBtn._timer = setInterval(() => {
+      tick();
+      if (++ticks >= 6) { clearInterval(dieBtn._timer); settle(); }
     }, 55);
   }
 
-  $('roll-nomen').addEventListener('click', (e) => roll(nomenIn, NOMINA, e.currentTarget));
-  $('roll-praenomen').addEventListener('click', (e) => roll(praeIn, PRAENOMINA, e.currentTarget));
+  const rollName = (input, pool, dieBtn) =>
+    spin(dieBtn, () => { input.value = pick(pool); }, refreshPreview);
+
+  function rollBirthplace(dieBtn) {
+    spin(dieBtn,
+      () => { birthIn.value = pick(BIRTHPLACES).name; },        // flicker through regions
+      () => {
+        const r = pick(BIRTHPLACES);
+        birthIn.value = r.name;
+        birthBlurb.textContent = r.blurb;
+        birthplaceKey = r.key;                                  // stored on the character
+        refreshPreview();
+      });
+  }
+
+  $('roll-nomen').addEventListener('click', (e) => rollName(nomenIn, NOMINA, e.currentTarget));
+  $('roll-praenomen').addEventListener('click', (e) => rollName(praeIn, PRAENOMINA, e.currentTarget));
+  $('roll-birthplace').addEventListener('click', (e) => rollBirthplace(e.currentTarget));
 
   $('to-priorities').addEventListener('click', () => { if (!$('to-priorities').disabled) go('screen-prioritize'); });
 
@@ -565,9 +593,9 @@
   foundBtn.addEventListener('click', async () => {
     if (foundBtn.disabled) return;                 // double-fire lock (also held during the request)
     const { p, n, full } = chosenName();
-    if (!p || !n || order.length !== 4) return;    // gated already, but guard against a bad state
+    if (!p || !n || !birthplaceKey || order.length !== 4) return;   // gated already, but guard
     foundBtn.disabled = true; foundBtn.textContent = 'Founding…'; setMsg(foundMsg, '');
-    const { error } = await foundGens({ praenomen: p, nomen: n, priorities: order.slice() });
+    const { error } = await foundGens({ praenomen: p, nomen: n, priorities: order.slice(), birthplace: birthplaceKey });
     if (error) {
       const dup = error.code === '23505';          // UNIQUE(user_id): already founded a gens
       setMsg(foundMsg, dup ? 'You have already founded your gens — it endures.'
@@ -577,7 +605,8 @@
       return;
     }
     foundBtn.textContent = 'Founded';
-    setMsg(foundMsg, full + ' — your gens takes its place among the Republic.', 'ok');
+    const birth = BIRTHPLACES.find((b) => b.key === birthplaceKey);
+    setMsg(foundMsg, full + (birth ? ' of ' + birth.name : '') + ' — your gens takes its place among the Republic.', 'ok');
   });
 
   // --- Log In -------------------------------------------------------------
