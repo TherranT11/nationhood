@@ -65,6 +65,9 @@
   .btn-solid:hover:not(:disabled) { background:var(--vellum); border-color:var(--vellum); }
   .btn:disabled { cursor:not-allowed; opacity:0.4; }
 
+  .form-msg { font-family:var(--mono); font-size:11px; line-height:1.6; text-align:center; min-height:16px; margin-bottom:14px; color:var(--vellum-dim); }
+  .form-msg.error { color:var(--seal); }
+  .form-msg.ok { color:var(--brass); }
   .fineprint { font-size:13px; line-height:1.7; color:var(--vellum-dim); font-weight:300; text-align:center; margin:22px 0 0; }
 
   @media (max-width:640px) { .title { font-size:40px; } }
@@ -124,6 +127,7 @@
       <div class="field-msg" id="pass-msg">At least 8 characters.</div>
     </div>
 
+    <p class="form-msg" id="form-msg" role="alert"></p>
     <div class="actions">
       <button class="btn btn-quiet" onclick="location.href='/'">Back</button>
       <button class="btn btn-solid" id="signup" disabled>Sign up</button>
@@ -133,11 +137,15 @@
 
   </div>
 
-  <script>
+  <script type="module">
+    import { signUp } from '../supabase.js';
+
     const NICK_MAX = 16;
     const $ = (id) => document.getElementById(id);
     const email = $('email'), nick = $('nick'), pass = $('pass'), signup = $('signup');
+    const formMsg = $('form-msg');
     const touched = { email: false, nick: false, pass: false };
+    const setForm = (text, kind) => { formMsg.textContent = text || ''; formMsg.className = 'form-msg' + (kind ? ' ' + kind : ''); };
 
     const HINTS = {
       email: 'Used for turn alerts and passphrase recovery. Never shown to other rulers.',
@@ -204,7 +212,25 @@
       $('pass-toggle').textContent = show ? 'Hide' : 'Show';
     });
 
-    // Submit is intentionally non-functional until auth is wired.
+    // Create the account, then route into founding (or ask them to confirm their
+    // email first if the project requires it). Double-fire guarded via disabled.
+    signup.addEventListener('click', async () => {
+      if (signup.disabled) return;
+      signup.disabled = true; signup.textContent = 'Founding…'; setForm('');
+      const { data, error } = await signUp({ email: email.value.trim(), nickname: nick.value.trim(), password: pass.value });
+      if (error) {
+        setForm(error.message || 'That email or nickname may already be taken.', 'error');
+        signup.textContent = 'Sign up'; update();
+        return;
+      }
+      if (data && data.session) {
+        window.location.href = '/found/';          // confirmation off → straight into founding
+      } else {
+        setForm('Check your email to confirm your account, then log in.', 'ok');
+        signup.textContent = 'Sign up';            // stays disabled until they confirm + log in
+      }
+    });
+
     update();
   </script>
 </body>

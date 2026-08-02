@@ -69,6 +69,12 @@
     font-family:var(--mono); font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:var(--vellum-dim); }
   .tick .clock { color:var(--brass); }
 
+  .alert { border:1px solid var(--seal); background:var(--ink2); padding:12px 14px; margin-bottom:22px;
+    font-size:13px; line-height:1.6; color:var(--vellum); font-weight:300; }
+  .alert[hidden] { display:none; }
+  .alert-k { font-family:var(--mono); font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
+    color:var(--seal); display:block; margin-bottom:5px; }
+
   @media (max-width:640px) { .title { font-size:40px; } }
 </style>
 </head>
@@ -91,6 +97,11 @@
         <span class="words">Second Age · Vaunt</span>
         <span class="rule" aria-hidden="true"></span>
       </div>
+    </div>
+
+    <div class="alert" id="alert" role="alert" hidden>
+      <span class="alert-k">Refused at the gate</span>
+      <span id="alert-msg"></span>
     </div>
 
     <div class="field">
@@ -127,14 +138,18 @@
 
   </div>
 
-  <script>
+  <script type="module">
+    import { signIn } from '../supabase.js';
+
     const $ = (id) => document.getElementById(id);
     const ident = $('ident'), pass = $('pass'), login = $('login');
+    const alertBox = $('alert'), alertMsg = $('alert-msg');
 
-    // Enable Log in once both fields have content.
+    // Enable Log in once both fields have content; clear any error as they type.
     function update() { login.disabled = !(ident.value.trim() && pass.value.length); }
-    ident.addEventListener('input', update);
-    pass.addEventListener('input', update);
+    function onInput() { alertBox.hidden = true; update(); }
+    ident.addEventListener('input', onInput);
+    pass.addEventListener('input', onInput);
 
     // Show / hide the passphrase.
     $('pass-toggle').addEventListener('click', () => {
@@ -147,6 +162,20 @@
     [ident, pass].forEach((el) => el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !login.disabled) login.click();
     }));
+
+    // Real sign-in: resolve nickname→email if needed, verify, then into founding.
+    login.addEventListener('click', async () => {
+      if (login.disabled) return;
+      login.disabled = true; login.textContent = 'Riding for the gate…'; alertBox.hidden = true;
+      const { error } = await signIn({ ident: ident.value, password: pass.value });
+      if (error) {
+        alertMsg.textContent = error.message || "That name and passphrase don't match.";
+        alertBox.hidden = false;
+        login.textContent = 'Log in'; update();
+        return;
+      }
+      window.location.href = '/found/';
+    });
 
     // Forgot password has no flow yet — left non-functional until built.
     $('forgot').addEventListener('click', () => {});

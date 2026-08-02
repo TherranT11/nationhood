@@ -93,7 +93,7 @@
         <div class="bar-k">Your path</div>
         <div class="bar-v" id="chosen">Not yet chosen</div>
       </div>
-      <button class="btn btn-quiet" onclick="location.href='/'">Back</button>
+      <button class="btn btn-quiet" id="back">Back</button>
       <button class="btn btn-solid" id="take" disabled>Take this path</button>
     </div>
   </div>
@@ -179,6 +179,24 @@
 
     // "Take this path" leads to founding step 2 — wired once that step exists.
     takeBtn.addEventListener('click', () => {});
+  </script>
+
+  <script type="module">
+    // Gate: only a signed-in ruler belongs on the founding screen.
+    import { currentUser, signOut } from '../supabase.js';
+    (async () => {
+      const user = await currentUser();
+      if (!user) window.location.href = '/login/';
+    })();
+
+    // Back = leave founding → sign out and return to the front door.
+    const back = document.getElementById('back');
+    back.addEventListener('click', async () => {
+      if (back.disabled) return;
+      back.disabled = true; back.textContent = 'Leaving…';
+      try { await signOut(); } catch (err) { /* redirect regardless */ }
+      window.location.href = '/';
+    });
   </script>
 </body>
 </html>
