@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nationhood — About</title>
+<meta name="description" content="About Nationhood: Prophecy & Plague — a high fantasy nation simulator of prophecy, war, coin, and plague.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@400&family=Spectral:wght@300;400&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink:#0F1417; --ink2:#151C20; --line:#33413F;
+    --vellum:#E6E0D0; --vellum-dim:#9AA39B;
+    --brass:#C8A15A; --brass-dim:#8A6E3C;
+    --seal:#9B3B33; --plague:#8DA85C;
+    --display:'Grenze Gotisch','Iowan Old Style',Georgia,serif;
+    --body:'Spectral','Iowan Old Style',Georgia,serif;
+    --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',monospace;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--ink); color:var(--vellum); font-family:var(--body); padding:48px 24px 72px; }
+  :focus-visible { outline:1px solid var(--brass); outline-offset:3px; }
+  .wrap { max-width:720px; margin:0 auto; }
+
+  .display { font-family:var(--display); }
+  .mono { font-family:var(--mono); }
+
+  /* masthead */
+  .crest { display:block; margin:0 auto; }
+  .masthead { text-align:center; }
+  .title { font-family:var(--display); font-size:60px; font-weight:400; line-height:0.95; margin:18px 0 0; }
+  .tagline { display:flex; align-items:center; justify-content:center; gap:16px; margin-top:14px; }
+  .tagline .rule { height:1px; width:32px; background:var(--brass-dim); }
+  .tagline .words { font-size:17px; font-style:italic; color:var(--brass); letter-spacing:0.04em; white-space:nowrap; }
+  .kicker { font-family:var(--mono); font-size:11px; letter-spacing:0.24em; text-transform:uppercase; color:var(--vellum-dim); margin-top:26px; }
+
+  /* section eyebrow */
+  .eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:0.24em; text-transform:uppercase;
+    color:var(--vellum-dim); margin-bottom:20px; display:flex; align-items:center; gap:14px; }
+  .eyebrow::after { content:""; flex:1; height:1px; background:var(--line); }
+
+  .section { margin-top:56px; }
+  .section.first { margin-top:64px; }
+
+  /* body copy */
+  .body { font-size:16px; line-height:1.85; font-weight:300; color:var(--vellum-dim); }
+  .body strong { color:var(--vellum); font-weight:400; }
+  .body + .body { margin-top:22px; }
+  .body-sm { font-size:14px; line-height:1.7; font-weight:300; color:var(--vellum-dim); }
+  .body-sm strong { color:var(--vellum); font-weight:400; }
+  .drop::first-letter { font-family:var(--display); font-size:58px; line-height:0.8; float:left; padding:6px 12px 0 0; color:var(--brass); }
+
+  /* two-column grids */
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .two.pillars { gap:20px; }
+
+  /* side cards */
+  .side { text-align:left; background:transparent; border:1px solid var(--line); padding:22px;
+    color:var(--vellum); font-family:inherit; cursor:pointer; transition:border-color 160ms ease, background 160ms ease; }
+  .side:hover { border-color:var(--brass-dim); }
+  .side.on { background:var(--ink2); }
+  .side.on[data-key="good"] { border-color:var(--brass); }
+  .side.on[data-key="evil"] { border-color:var(--seal); }
+  .side-label { font-size:19px; }
+  .side[data-key="good"] .side-label { color:var(--brass); }
+  .side[data-key="evil"] .side-label { color:var(--seal); }
+  .side-peoples { font-family:var(--mono); font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--vellum-dim); margin-top:8px; }
+  .side .body-sm { margin-top:14px; }
+
+  /* tick times */
+  .ticks { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line);
+    border:1px solid var(--line); margin:26px 0; }
+  .ticks .cell { background:var(--ink2); padding:16px 12px; text-align:center; }
+  .ticks .t { font-family:var(--mono); font-size:22px; color:var(--brass); }
+  .ticks .l { font-family:var(--mono); font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:var(--vellum-dim); margin-top:6px; }
+
+  /* tick resolve list */
+  .resolve { margin-top:28px; border:1px solid var(--line); }
+  .resolve-head { font-family:var(--mono); font-size:11px; letter-spacing:0.2em; text-transform:uppercase;
+    color:var(--vellum-dim); padding:14px 20px; border-bottom:1px solid var(--line); background:var(--ink2); }
+  .resolve-row { display:flex; gap:18px; padding:14px 20px; border-top:1px solid var(--line); }
+  .resolve-row:first-of-type { border-top:none; }
+  .resolve-row .key { font-family:var(--mono); font-size:11px; letter-spacing:0.14em; text-transform:uppercase;
+    color:var(--brass); width:62px; flex-shrink:0; padding-top:3px; }
+  .resolve-row .key.rot { color:var(--plague); }
+
+  /* pillars */
+  .pillar { border-top:1px solid var(--brass-dim); padding-top:16px; }
+  .pillar-title { font-family:var(--display); font-size:26px; color:var(--vellum); }
+
+  /* close */
+  .close { margin-top:64px; border-top:1px solid var(--line); padding-top:40px; text-align:center; }
+  .close-title { font-family:var(--display); font-size:30px; color:var(--vellum); }
+  .close .body { max-width:420px; margin:12px auto 32px; }
+  .menu { display:flex; flex-direction:column; align-items:center; gap:12px; }
+  .btn { width:260px; padding:14px 0; font-size:14px; letter-spacing:0.16em; text-transform:uppercase;
+    font-family:inherit; cursor:pointer; transition:background 160ms ease, color 160ms ease, border-color 160ms ease; }
+  .btn-solid { background:var(--brass); color:var(--ink); border:1px solid var(--brass); }
+  .btn-solid:hover { background:var(--vellum); border-color:var(--vellum); }
+  .btn-quiet { background:transparent; color:var(--vellum-dim); border:1px solid var(--line); }
+  .btn-quiet:hover { color:var(--brass); border-color:var(--brass); }
+
+  @media (max-width:700px) {
+    .title { font-size:46px; }
+    .two { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+
+    <!-- masthead -->
+    <div class="masthead">
+      <svg class="crest" width="96" height="105" viewBox="23 4 154 168" fill="none" aria-hidden="true">
+        <path d="M100 10 L169 48 L169 124 L100 162 L31 124 L31 48 Z" stroke="#C8A15A" stroke-width="5" stroke-linejoin="round"/>
+        <path d="M100 29 L152 58 L152 116 L100 145 L48 116 L48 58 Z" stroke="#8A6E3C" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M71 101 L77 75 L88 89 L100 66 L112 89 L123 75 L129 101 Z" fill="#C8A15A" stroke-linejoin="round"/>
+        <circle cx="77" cy="72" r="4.5" fill="#C8A15A"/>
+        <circle cx="100" cy="62" r="5" fill="#C8A15A"/>
+        <circle cx="123" cy="72" r="4.5" fill="#C8A15A"/>
+        <path d="M100 111 L111 122 L100 133 L89 122 Z" fill="#C8A15A"/>
+      </svg>
+      <h1 class="title">Nationhood</h1>
+      <div class="tagline">
+        <span class="rule" aria-hidden="true"></span>
+        <span class="words">Prophecy &amp; Plague</span>
+        <span class="rule" aria-hidden="true"></span>
+      </div>
+      <div class="kicker">About the game</div>
+    </div>
+
+    <!-- The world -->
+    <section class="section first">
+      <div class="eyebrow">The world</div>
+      <p class="body drop">It is nigh the end of the Second Age, and the long-held prophecies are starting to come true. Darkness creeps back into the land. The once-powerful human kingdoms are decadent and bloated, their granaries full and their walls unrepaired. Defeated long ago and long forgotten, clans of orcs begin to stalk the land once more.</p>
+      <p class="body"><strong>Nationhood: Prophecy &amp; Plague</strong> is a high fantasy nation simulator. You take a people, a border, and a treasury, and you rule — through politics, armies, and coin. Every other nation on the map is another player doing the same, and the prophecy is watching all of you.</p>
+    </section>
+
+    <!-- Two sides -->
+    <section class="section">
+      <div class="eyebrow">Two sides</div>
+      <p class="body" style="margin-bottom:24px;">Every player stands with the forces of Good or the forces of Evil. The choice is permanent for the age, and it decides who will trade with you, who will answer your call to arms, and what victory even means for you.</p>
+      <div class="two">
+        <button class="side" type="button" data-key="good" aria-expanded="false">
+          <div class="side-label">The forces of Good</div>
+          <div class="side-peoples">Humans · Elves · Dwarves · Halflings</div>
+          <p class="body-sm">Wealthier, slower, and bound by councils. Your economies outproduce anything the dark can field, but every war needs allies who agree to fight it.</p>
+          <p class="body-sm">You win by holding the wards named in the prophecy until the age turns.</p>
+        </button>
+        <button class="side" type="button" data-key="evil" aria-expanded="false">
+          <div class="side-label">The forces of Evil</div>
+          <div class="side-peoples">Orcs · Goblins · Undead · Trolls</div>
+          <p class="body-sm">Poorer, faster, and answerable to no one. Levies muster in a single tick and your holdings grow by taking rather than building.</p>
+          <p class="body-sm">You win by breaking those same wards before the age turns.</p>
+        </button>
+      </div>
+    </section>
+
+    <!-- The tick -->
+    <section class="section">
+      <div class="eyebrow">The tick</div>
+      <p class="body">The world advances on a <strong>tick every eight hours</strong> — three times a day, at 00:00, 08:00 and 16:00 server time. Between ticks you give orders: raise a levy, sow a field, sign a treaty, move an army. Nothing happens the moment you click it. Everything happens at once, when the tick lands.</p>
+
+      <div class="ticks">
+        <div class="cell"><div class="t">00:00</div><div class="l">Dawn tick</div></div>
+        <div class="cell"><div class="t">08:00</div><div class="l">Noon tick</div></div>
+        <div class="cell"><div class="t">16:00</div><div class="l">Dusk tick</div></div>
+      </div>
+
+      <p class="body">This is the single most important rule in the game, because it means <strong>you never have to be awake at the right moment</strong>. Two players who both submit orders before the tick are treated identically, whether one did it eight hours early and the other eight minutes. There is no advantage to setting an alarm for 3am, and no way for a rival to catch you simply by being online when you aren't.</p>
+
+      <div class="resolve">
+        <div class="resolve-head">What resolves on every tick</div>
+        <div class="resolve-row"><div class="key">Coin</div><div class="body-sm">Taxes collected, upkeep paid, debts called in.</div></div>
+        <div class="resolve-row"><div class="key">Field</div><div class="body-sm">Harvests come in. Populations grow, or starve.</div></div>
+        <div class="resolve-row"><div class="key">Stone</div><div class="body-sm">Construction advances one stage. Sieges progress.</div></div>
+        <div class="resolve-row"><div class="key">March</div><div class="body-sm">Armies move one leg. Battles resolve simultaneously.</div></div>
+        <div class="resolve-row"><div class="key rot">Rot</div><div class="body-sm">Plague spreads along roads and trade routes.</div></div>
+        <div class="resolve-row"><div class="key">Omen</div><div class="body-sm">The prophecy advances. Everyone sees how far.</div></div>
+      </div>
+
+      <p class="body" style="margin-top:26px;">Miss a tick and the world does not wait, but it does not abandon you either. Standing orders keep running: your fields are still worked, your garrisons still hold, your caravans still ride. A player who checks in once a day stays competitive. A player who checks in three times a day is simply more responsive to a war.</p>
+    </section>
+
+    <!-- Pillars -->
+    <section class="section">
+      <div class="eyebrow">What you actually do</div>
+      <div class="two pillars">
+        <div class="pillar"><div class="pillar-title">Rule</div><p class="body-sm" style="margin-top:8px;">Set taxes, manage unrest, hold your court together. A province that hates you is a province that opens its gates.</p></div>
+        <div class="pillar"><div class="pillar-title">War</div><p class="body-sm" style="margin-top:8px;">Raise levies, march them, and feed them. Distance is real — an army sent to the far border is gone for days.</p></div>
+        <div class="pillar"><div class="pillar-title">Trade</div><p class="body-sm" style="margin-top:8px;">Buy and sell on a live market driven by other players. Embargo an enemy and you may starve them before you fight them.</p></div>
+        <div class="pillar"><div class="pillar-title">Faith</div><p class="body-sm" style="margin-top:8px;">Read the omens, fund the temples, and push the prophecy toward your reading of it.</p></div>
+      </div>
+    </section>
+
+    <!-- How an age ends -->
+    <section class="section">
+      <div class="eyebrow">How an age ends</div>
+      <p class="body">An age runs for roughly six months of real time, and it ends when the prophecy is fulfilled or broken — not when a clock runs out. Both sides can see the omens advancing, so everyone knows roughly how long is left, and everyone can guess what the other side is racing toward.</p>
+      <p class="body">When the age turns, the map is remade and the Third Age begins. Your nation does not carry over, but your name does: every ruler who held a ward, broke a seal, or died defending one is written into the chronicle that the next age is played on top of.</p>
+    </section>
+
+    <!-- Close -->
+    <div class="close">
+      <div class="close-title">The Second Age is ending.</div>
+      <p class="body">Founding is open now. Choose a people, choose a side, and give your first orders before the next tick.</p>
+      <div class="menu">
+        <button class="btn btn-solid">Sign up</button>
+        <button class="btn btn-quiet" onclick="location.href='/'">Back</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Two-sides cards: clicking highlights one (deselecting the other); clicking
+    // it again clears the highlight. Content is always visible either way.
+    const sides = document.querySelectorAll('.side');
+    sides.forEach((card) => {
+      card.addEventListener('click', () => {
+        const wasOn = card.classList.contains('on');
+        sides.forEach((c) => { c.classList.remove('on'); c.setAttribute('aria-expanded', 'false'); });
+        if (!wasOn) { card.classList.add('on'); card.setAttribute('aria-expanded', 'true'); }
+      });
+    });
+  </script>
+</body>
+</html>

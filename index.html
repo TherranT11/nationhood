@@ -3,8 +3,91 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>New Game</title>
+<title>Nationhood — Prophecy &amp; Plague</title>
+<meta name="description" content="Nationhood: Prophecy & Plague — a persistent world of prophecy and plague.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@400&family=Spectral:wght@300;400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink:#0F1417; --line:#33413F; --vellum:#E6E0D0; --vellum-dim:#9AA39B;
+    --brass:#C8A15A; --brass-dim:#8A6E3C;
+    --display:'Grenze Gotisch','Iowan Old Style',Georgia,serif;
+    --body:'Spectral','Iowan Old Style',Georgia,serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:var(--ink); color:var(--vellum); font-family:var(--body);
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    padding:48px 24px;
+  }
+  :focus-visible { outline:1px solid var(--brass); outline-offset:3px; }
+
+  .home { text-align:center; width:100%; max-width:400px; }
+
+  .crest { display:block; margin:0 auto; }
+
+  .title {
+    font-family:var(--display); font-size:72px; font-weight:400; line-height:0.95;
+    margin:22px 0 0; letter-spacing:0.01em;
+  }
+
+  .tagline { display:flex; align-items:center; justify-content:center; gap:16px; margin-top:16px; }
+  .tagline .rule { height:1px; width:36px; background:var(--brass-dim); }
+  .tagline .words { font-size:18px; font-style:italic; color:var(--brass);
+    letter-spacing:0.04em; white-space:nowrap; }
+
+  .menu { display:flex; flex-direction:column; align-items:center; gap:12px; margin-top:44px; }
+  .btn {
+    width:260px; padding:14px 0; font-size:14px; letter-spacing:0.16em;
+    text-transform:uppercase; font-family:inherit; cursor:pointer;
+    transition:background 160ms ease, color 160ms ease, border-color 160ms ease;
+  }
+  .btn-solid   { background:var(--brass); color:var(--ink); border:1px solid var(--brass); }
+  .btn-solid:hover   { background:var(--vellum); border-color:var(--vellum); }
+  .btn-outline { background:transparent; color:var(--brass); border:1px solid var(--brass); }
+  .btn-outline:hover { background:var(--brass); color:var(--ink); border-color:var(--brass); }
+  .btn-quiet   { background:transparent; color:var(--vellum-dim); border:1px solid var(--line); }
+  .btn-quiet:hover   { color:var(--brass); border-color:var(--brass); }
+
+  @media (max-width:640px) {
+    .title { font-size:54px; }
+    .crest { width:160px; height:175px; }
+  }
+</style>
 </head>
 <body>
+
+  <div class="home">
+    <svg class="crest" width="210" height="229" viewBox="23 4 154 168" fill="none" aria-hidden="true">
+      <!-- outer shield -->
+      <path d="M100 10 L169 48 L169 124 L100 162 L31 124 L31 48 Z" stroke="#C8A15A" stroke-width="5" stroke-linejoin="round"/>
+      <!-- inner shield -->
+      <path d="M100 29 L152 58 L152 116 L100 145 L48 116 L48 58 Z" stroke="#8A6E3C" stroke-width="2" stroke-linejoin="round"/>
+      <!-- crown -->
+      <path d="M71 101 L77 75 L88 89 L100 66 L112 89 L123 75 L129 101 Z" fill="#C8A15A" stroke-linejoin="round"/>
+      <circle cx="77" cy="72" r="4.5" fill="#C8A15A"/>
+      <circle cx="100" cy="62" r="5" fill="#C8A15A"/>
+      <circle cx="123" cy="72" r="4.5" fill="#C8A15A"/>
+      <!-- diamond -->
+      <path d="M100 111 L111 122 L100 133 L89 122 Z" fill="#C8A15A"/>
+    </svg>
+
+    <h1 class="title">Nationhood</h1>
+
+    <div class="tagline">
+      <span class="rule" aria-hidden="true"></span>
+      <span class="words">Prophecy &amp; Plague</span>
+      <span class="rule" aria-hidden="true"></span>
+    </div>
+
+    <nav class="menu" aria-label="Main menu">
+      <button class="btn btn-outline" onclick="location.href='/about/'">About</button>
+      <button class="btn btn-solid">Sign up</button>
+      <button class="btn btn-outline">Log in</button>
+      <button class="btn btn-quiet">Settings</button>
+    </nav>
+  </div>
+
 </body>
 </html>
