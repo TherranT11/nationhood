@@ -83,6 +83,26 @@ export async function foundNation({ people, realm, house }) {
   }
 }
 
+// Load the shared world map document (or null if none saved yet). Returns
+// { data, error } where data is the row { data: <map jsonb> }.
+export async function loadWorldMap() {
+  try {
+    return await supabase.from('pp_world_map').select('data').maybeSingle();
+  } catch (err) {
+    return { data: null, error: { message: 'Could not load the world map.' } };
+  }
+}
+
+// Save the world map via the admin-gated RPC (checks the caller is the owner
+// server-side). Returns { data, error }.
+export async function saveWorldMap(map) {
+  try {
+    return await supabase.rpc('pp_save_world_map', { _data: map });
+  } catch (err) {
+    return { error: { message: 'Could not save the world map. Try again.' } };
+  }
+}
+
 // Where a just-authenticated ruler belongs: the game home if they already have a
 // nation, otherwise the founding flow. One source, used after login and sign-up.
 export async function afterAuthDestination() {
