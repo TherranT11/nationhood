@@ -186,11 +186,13 @@
   </script>
 
   <script type="module">
-    // Gate: only a signed-in ruler belongs on the founding screen.
-    import { currentUser, signOut } from '../supabase.js';
+    // Gate: only a signed-in ruler who hasn't founded yet belongs here.
+    import { currentUser, currentNation, signOut } from '../supabase.js';
     (async () => {
       const user = await currentUser();
-      if (!user) window.location.href = '/login/';
+      if (!user) { window.location.href = '/login/'; return; }
+      const { data: nation } = await currentNation();
+      if (nation) window.location.href = '/home/';   // already founded → into the game
     })();
 
     // Back = leave founding → sign out and return to the front door.

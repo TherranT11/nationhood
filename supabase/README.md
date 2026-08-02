@@ -7,12 +7,21 @@ New query) and run it.
 ## Run order
 
 ```
-schema/00_auth.sql   profiles (id, email, nickname), RLS, sign-up trigger,
-                     email_for_nickname() RPC, unique-nickname index
+schema/00_auth.sql     profiles (id, email, nickname), RLS, sign-up trigger,
+                       email_for_nickname() RPC, unique-nickname index
+schema/10_nations.sql  pp_nations (one founded nation per account: people, side,
+                       realm, house) + pp_found_nation() RPC (side derived
+                       server-side), RLS
 ```
 
-A fresh database: run `schema/00_auth.sql`. That is the whole backend so far —
-authentication and the profile a sign-up creates.
+A fresh database: run `schema/00_auth.sql`, then `schema/10_nations.sql`.
+That is the whole backend so far — authentication, the profile a sign-up
+creates, and the nation a player founds.
+
+**Reused-project note:** this Supabase project also holds legacy tables from
+earlier games. This game's tables are namespaced (`pp_nations`) to avoid
+colliding with a pre-existing `nations` table. A fresh project would avoid the
+legacy cruft entirely, if you ever want a clean backend.
 
 ## Auth notes
 

@@ -124,6 +124,8 @@
 
     <div class="note">Both names are permanent for the age. Choose ones you'll want read aloud when the age ends.</div>
 
+    <p class="field-msg" id="found-msg" style="text-align:center; margin-top:10px;"></p>
+
     <div class="actions">
       <button class="btn btn-quiet" onclick="location.href='/found/'">Back</button>
       <button class="btn btn-solid" id="found" disabled>Found the realm</button>
@@ -132,49 +134,17 @@
   </div>
 
   <script type="module">
-    import { currentUser } from '../../supabase.js';
+    import { currentUser, currentNation, foundNation } from '../../supabase.js';
+    import { PEOPLES } from '../../peoples.js';
 
     const MAX = 20;
     const VALID = /^[A-Za-z][A-Za-z' -]{1,19}$/;   // starts with a letter; letters, spaces, - and ' after
 
-    // Per-people vocabulary: polity + lineage words, labels, hints, and name pools.
-    const PEOPLES = {
-      humans: { name:'Human Kingdom', side:'Forces of Good', polity:'Realm of', lineage:'House of',
-        labelA:'Your realm', labelB:'Your dynasty',
-        hintA:'Your lands, on every map and in every chronicle entry.',
-        hintB:'Your bloodline. It outlives your realm and carries into the next age.',
-        namesA:['Ordane','Bellhollow','Marrowgate','Vaunt','Highmarch','Errowdale','Cairnwell'],
-        namesB:['Verren','Calloway','Marchbank','Dellorne','Ashcombe','Ferrant'] },
-      elves: { name:'Elves of the Highborn', side:'Forces of Good', polity:'Court of', lineage:'Line of',
-        labelA:'Your court', labelB:'Your line',
-        hintA:'Where the Highborn gather. Borders come and go; the court remains.',
-        hintB:'Your line. You may still be leading it when the age ends.',
-        namesA:['Silmeryn','Aelthwood','Thessalyn','Loriel','Vaeryn','Elenmar'],
-        namesB:['Faelan','Nimrothel','Aerendil','Sylwen','Caelor','Thaelin'] },
-      dwarves: { name:'Dwarves of Karrowmoor', side:'Forces of Good', polity:'Hold of', lineage:'Kin of',
-        labelA:'Your hold', labelB:'Your kin',
-        hintA:'The mountain you cut, and the gate that has never been forced.',
-        hintB:'Your kin. Every grudge you take is entered under this name.',
-        namesA:['Karrowmoor','Grimhalt','Durnvault','Stonereach','Barrowdeep','Ironmarch'],
-        namesB:['Bralgun','Thurik','Orsdohr','Halvarn','Dregnir','Kazrun'] },
-      orcs: { name:'Orcs of the Ashen Compact', side:'Forces of Evil', polity:'Clan', lineage:'Blood of',
-        labelA:'Your clan', labelB:'Your blood',
-        hintA:'The clans know each other by name long before they meet in the field.',
-        hintB:'Your blood. It is claimed by whoever survives you.',
-        namesA:['Gorrash','Skarn','Uzgul','Blackmaw','Redtusk','Vharn'],
-        namesB:['Ghorak','Mazug','Throg','Ulgra','Nazruk','Dregka'] },
-      undead: { name:'The Quiet Court', side:'Forces of the End Prophecy', polity:'Dominion of', lineage:'Wake of',
-        labelA:'Your dominion', labelB:'Your wake',
-        hintA:'The ground you hold. It does not need to be living ground.',
-        hintB:'What follows you. The Court keeps no bloodline, only a wake.',
-        namesA:['Sorrowmere','Ashfen','Greyholt','Mourncairn','Duskharrow','Pallidane'],
-        namesB:['Vethis','Morrant','Sableth','Corvane','Nyxram','Hollowen'] },
-    };
-
     const $ = (id) => document.getElementById(id);
     const nameA = $('nameA'), nameB = $('nameB'), found = $('found');
-    let P = null;
+    let P = null, chosenKey = null, noun = '';
     const touched = { a: false, b: false };
+    const setFoundMsg = (t, k) => { const el = $('found-msg'); el.textContent = t || ''; el.className = 'field-msg' + (k ? ' ' + k : ''); };
     const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
     const okA = () => VALID.test(nameA.value.trim());
     const okB = () => VALID.test(nameB.value.trim());
@@ -204,7 +174,8 @@
 
     function render(key) {
       P = PEOPLES[key];
-      const noun = P.labelA.replace(/^Your /, '');    // realm / court / hold / clan / dominion
+      chosenKey = key;
+      noun = P.labelA.replace(/^Your /, '');    // realm / court / hold / clan / dominion
       $('title').textContent = 'Name your ' + noun;
       $('badge').textContent = P.name + ' · ' + P.side;
       $('labelA').textContent = P.labelA; $('prefixA').textContent = P.polity; nameA.placeholder = P.namesA[0];
@@ -218,17 +189,32 @@
       update();
     }
 
-    // Gate: must be signed in, and must have chosen a people in step 1.
+    // Gate: signed in, not already founded, and a people chosen in step 1.
     (async () => {
       const user = await currentUser();
       if (!user) { window.location.href = '/login/'; return; }
+      const { data: nation } = await currentNation();
+      if (nation) { window.location.href = '/home/'; return; }   // already has a nation
       const key = sessionStorage.getItem('nh_people');
       if (!key || !PEOPLES[key]) { window.location.href = '/found/'; return; }
       render(key);
     })();
 
-    // "Found the ___" — records the nation. Persistence + the game world come next.
-    found.addEventListener('click', () => {});
+    // Found the nation: persist via the RPC, then into the game home.
+    found.addEventListener('click', async () => {
+      if (found.disabled) return;
+      found.disabled = true; found.textContent = 'Founding…'; setFoundMsg('');
+      const { error } = await foundNation({ people: chosenKey, realm: nameA.value.trim(), house: nameB.value.trim() });
+      if (error) {
+        const dup = error.code === '23505';
+        setFoundMsg(dup ? 'You have already founded your nation.' : (error.message || 'Could not found your nation.'), 'error');
+        if (dup) { setTimeout(() => { window.location.href = '/home/'; }, 900); }
+        else { found.textContent = 'Found the ' + noun; update(); }
+        return;
+      }
+      sessionStorage.removeItem('nh_people');
+      window.location.href = '/home/';
+    });
   </script>
 </body>
 </html>

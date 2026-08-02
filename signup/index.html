@@ -138,7 +138,7 @@
   </div>
 
   <script type="module">
-    import { signUp } from '../supabase.js';
+    import { signUp, afterAuthDestination } from '../supabase.js';
 
     const NICK_MAX = 16;
     const $ = (id) => document.getElementById(id);
@@ -224,7 +224,7 @@
         return;
       }
       if (data && data.session) {
-        window.location.href = '/found/';          // confirmation off → straight into founding
+        window.location.href = await afterAuthDestination();   // new account → founding
       } else {
         setForm('Check your email to confirm your account, then log in.', 'ok');
         signup.textContent = 'Sign up';            // stays disabled until they confirm + log in

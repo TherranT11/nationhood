@@ -139,7 +139,7 @@
   </div>
 
   <script type="module">
-    import { signIn } from '../supabase.js';
+    import { signIn, afterAuthDestination } from '../supabase.js';
 
     const $ = (id) => document.getElementById(id);
     const ident = $('ident'), pass = $('pass'), login = $('login');
@@ -174,7 +174,7 @@
         login.textContent = 'Log in'; update();
         return;
       }
-      window.location.href = '/found/';
+      window.location.href = await afterAuthDestination();   // /home/ if founded, else /found/
     });
 
     // Forgot password has no flow yet — left non-functional until built.

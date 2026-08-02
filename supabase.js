@@ -58,3 +58,34 @@ export async function currentUser() {
     return null;
   }
 }
+
+// The signed-in ruler's founded nation, or null. One source for "have I founded
+// yet?" — used for routing and by the game home.
+export async function currentNation() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { data: null, error: null };
+    return await supabase.from('pp_nations').select('*').eq('user_id', session.user.id).maybeSingle();
+  } catch (err) {
+    return { data: null, error: { message: 'Could not load your nation.' } };
+  }
+}
+
+// Found the caller's nation via the found_nation() RPC (side derived server-side;
+// one per account). Returns { data, error }.
+export async function foundNation({ people, realm, house }) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { error: { message: 'You must be logged in to found a nation.' } };
+    return await supabase.rpc('pp_found_nation', { _people: people, _realm: realm, _house: house });
+  } catch (err) {
+    return { error: { message: 'Could not found your nation. Try again.' } };
+  }
+}
+
+// Where a just-authenticated ruler belongs: the game home if they already have a
+// nation, otherwise the founding flow. One source, used after login and sign-up.
+export async function afterAuthDestination() {
+  const { data } = await currentNation();
+  return data ? '/home/' : '/found/';
+}
