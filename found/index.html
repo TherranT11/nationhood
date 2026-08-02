@@ -177,8 +177,12 @@
       takeBtn.disabled = !picked;
     }
 
-    // "Take this path" leads to founding step 2 — wired once that step exists.
-    takeBtn.addEventListener('click', () => {});
+    // "Take this path" → carry the chosen people to founding step 2 (naming).
+    takeBtn.addEventListener('click', () => {
+      if (!picked) return;
+      sessionStorage.setItem('nh_people', picked);
+      window.location.href = '/found/name/';
+    });
   </script>
 
   <script type="module">
