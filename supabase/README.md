@@ -10,8 +10,10 @@ New query) and run it.
 schema/00_auth.sql     profiles (id, email, nickname), RLS, sign-up trigger,
                        email_for_nickname() RPC, unique-nickname index
 schema/10_nations.sql  pp_nations (one founded nation per account: people, side,
-                       realm, house) + pp_found_nation() RPC (side derived
-                       server-side), RLS
+                       realm, house, capital, capital_slot) + pp_found_nation()
+                       RPC (side derived server-side; also claims an empty capital
+                       of the ruler's people from the world map and records its
+                       settlement id in capital_slot), RLS
 schema/20_world_map.sql pp_world_map (single JSON map document, read by any
                        signed-in player) + pp_save_world_map() RPC gated to the
                        owner's email server-side
@@ -21,6 +23,13 @@ A fresh database: run `schema/00_auth.sql`, then `10_nations.sql`, then
 `20_world_map.sql`. That is the whole backend so far — authentication, the
 profile a sign-up creates, the nation a player founds, and the admin-authored
 world map.
+
+**Founding claims a map slot.** `pp_found_nation()` reads `pp_world_map` at call
+time to grab an empty capital of the ruler's people (currently only
+`humanCapital` — draw those in the Cartographer) and stores its settlement id in
+`pp_nations.capital_slot`. The order above already satisfies this: the world map
+table exists before anyone founds. If no empty capital of that people remains,
+founding fails with a clear message — draw more capitals in the Cartographer.
 
 **Reused-project note:** this Supabase project also holds legacy tables from
 earlier games. This game's tables are namespaced (`pp_nations`) to avoid

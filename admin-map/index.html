@@ -91,18 +91,11 @@
 
   <script type="module">
     import { currentUser, loadWorldMap, saveWorldMap } from '../supabase.js';
+    import { MAP_VIEW, TYPES, esc, toPath, renderTerrain, renderSettlements } from '../worldmap.js';
 
     const ADMIN_EMAIL = 'therrant@gmail.com';
-    const T = { ink:'#0F1417', vellum:'#E6E0D0', brass:'#C8A15A', seal:'#9B3B33', coast:'#2E5468' };
-    const VW = 1200, VH = 800, SNAP = 26;
+    const VW = MAP_VIEW.w, VH = MAP_VIEW.h, SNAP = 26;
 
-    const TYPES = {
-      humanTown:    { label:'Human town',    color:'#C8A15A', r:5 },
-      humanCity:    { label:'Human city',    color:'#C8A15A', r:8 },
-      humanCapital: { label:'Human capital', color:'#C8A15A', r:11 },
-      orcVillage:   { label:'Orc village',   color:'#9B3B33', r:6 },
-      orcTribe:     { label:'Orc tribe',     color:'#9B3B33', r:10 },
-    };
     const FILLS = [
       { name:'Human',    stroke:'#C8A15A', fill:'rgba(200,161,90,0.16)' },
       { name:'Orc',      stroke:'#9B3B33', fill:'rgba(155,59,51,0.18)' },
@@ -123,7 +116,6 @@
     let uid = 0;
     const nextId = () => 'id' + (++uid);
     const $ = (id) => document.getElementById(id);
-    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
     const state = {
       tool:'humanTown', settlements:[], landmasses:[], terrain:0, roads:[], borders:[],
@@ -132,43 +124,17 @@
     let dragId = null;
     const svg = $('map'), dyn = $('dyn');
 
-    const toPath = (pts, close) =>
-      pts.map((p,i) => (i===0?'M':'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ') + (close ? ' Z' : '');
-
-    function markerSvg(type, selected) {
-      const c = TYPES[type].color, ring = selected ? T.vellum : c;
-      const selRing = (r) => selected ? `<circle r="${r}" fill="none" stroke="${T.vellum}" stroke-width="1" opacity="0.7"/>` : '';
-      if (type === 'humanCapital') return `<circle r="15" fill="none" stroke="${ring}" stroke-width="1" opacity="0.6"/>`
-        + `<circle r="10" fill="${T.ink}" stroke="${c}" stroke-width="2"/>`
-        + `<path d="M-5 3 L-4 -4 L-1.5 -0.5 L0 -5 L1.5 -0.5 L4 -4 L5 3 Z" fill="${c}"/>`;
-      if (type === 'humanCity') return selRing(14) + `<circle r="8" fill="${T.ink}" stroke="${c}" stroke-width="2"/><circle r="3" fill="${c}"/>`;
-      if (type === 'humanTown') return selRing(11) + `<circle r="5" fill="${c}" stroke="${T.ink}" stroke-width="1.5"/>`;
-      if (type === 'orcTribe') return selRing(16) + `<path d="M0 -12 L11 7 L-11 7 Z" fill="${T.ink}" stroke="${c}" stroke-width="2" stroke-linejoin="round"/><path d="M0 -4 L4 4 L-4 4 Z" fill="${c}"/>`;
-      return selRing(12) + `<path d="M0 -7 L6 5 L-6 5 Z" fill="${c}" stroke="${T.ink}" stroke-width="1.5" stroke-linejoin="round"/>`;
-    }
-
-    // ---- render ----
+    // ---- render ---- (terrain + settlements from the shared worldmap module;
+    // the editor only adds its in-progress draft shape between the two layers)
     function renderMap() {
-      let s = '';
-      state.landmasses.forEach((l) => {
-        s += `<path d="${toPath(l.points,true)}" fill="none" stroke="${T.coast}" stroke-width="9" stroke-linejoin="round" opacity="0.55"/>`;
-        s += `<path d="${toPath(l.points,true)}" fill="${l.fill}" stroke="${l.stroke}" stroke-width="1.5" stroke-linejoin="round"/>`;
-      });
-      s += `<rect width="${VW}" height="${VH}" fill="url(#grid)"/>`;
-      state.borders.forEach((b) => { s += `<path d="${toPath(b.points,true)}" fill="${b.fill}" stroke="${b.stroke}" stroke-width="1.5" stroke-linejoin="round"/>`; });
-      state.roads.forEach((r) => { s += `<path d="${toPath(r.points,false)}" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`; });
+      let s = renderTerrain(state);
       if (state.draft) {
         const d = state.draft;
         const fill = d.kind === 'border' ? FILLS[state.palette].fill : d.kind === 'land' ? LANDS[state.terrain].fill : 'none';
         const stroke = d.kind === 'border' ? FILLS[state.palette].stroke : d.kind === 'land' ? LANDS[state.terrain].stroke : '#000000';
         s += `<path d="${toPath(d.points, d.kind!=='road')}" fill="${fill}" stroke="${stroke}" stroke-width="${d.kind==='road'?2.5:1.5}" stroke-dasharray="6 4" stroke-linecap="round"/>`;
       }
-      state.settlements.forEach((st) => {
-        s += `<g data-id="${st.id}" transform="translate(${st.x} ${st.y})" style="cursor:${state.tool==='select'?'move':'pointer'}">`;
-        s += markerSvg(st.type, state.sel === st.id);
-        if (state.labels) s += `<text x="${TYPES[st.type].r+8}" y="4" font-family="var(--mono)" font-size="13" fill="${state.sel===st.id?T.vellum:'#CFD6CE'}" stroke="${T.ink}" stroke-width="3" paint-order="stroke" style="pointer-events:none">${esc(st.name)}</text>`;
-        s += `</g>`;
-      });
+      s += renderSettlements(state, { labels: state.labels, selId: state.sel, interactive: true, moveCursor: state.tool === 'select' });
       dyn.innerHTML = s;
       svg.style.cursor = state.tool === 'select' ? 'default' : 'crosshair';
     }
