@@ -167,21 +167,24 @@
     const okC = () => VALID.test(nameC.value.trim());
     const ERR = 'Two to twenty letters. Spaces, hyphens and apostrophes allowed.';
 
-    function fieldMsg(msgEl, shellEl, input, ok, key, hint) {
+    // One updater per field. All of a field's elements share the key's letter
+    // (shellA/msgA/countA…), so key is the single source for the element set.
+    function refreshField(input, ok, key, hint) {
+      const K = key.toUpperCase();
       const bad = touched[key] && input.value && !ok();
-      shellEl.classList.toggle('bad', !!bad);
-      msgEl.textContent = bad ? ERR : hint;
-      msgEl.classList.toggle('error', !!bad);
+      $('shell' + K).classList.toggle('bad', !!bad);
+      const msg = $('msg' + K);
+      msg.textContent = bad ? ERR : hint;
+      msg.classList.toggle('error', !!bad);
+      const count = $('count' + K);
+      count.textContent = input.value.length + '/' + MAX;
+      count.classList.toggle('over', input.value.length === MAX);
     }
 
     function update() {
-      fieldMsg($('msgA'), $('shellA'), nameA, okA, 'a', P.hintA);
-      fieldMsg($('msgB'), $('shellB'), nameB, okB, 'b', P.hintB);
-      fieldMsg($('msgC'), $('shellC'), nameC, okC, 'c', HINT_C);
-      const cA = $('countA'), cB = $('countB'), cC = $('countC');
-      cA.textContent = nameA.value.length + '/' + MAX; cA.classList.toggle('over', nameA.value.length === MAX);
-      cB.textContent = nameB.value.length + '/' + MAX; cB.classList.toggle('over', nameB.value.length === MAX);
-      cC.textContent = nameC.value.length + '/' + MAX; cC.classList.toggle('over', nameC.value.length === MAX);
+      refreshField(nameA, okA, 'a', P.hintA);
+      refreshField(nameB, okB, 'b', P.hintB);
+      refreshField(nameC, okC, 'c', HINT_C);
 
       const ready = okA() && okB() && okC();
       const a = nameA.value.trim(), b = nameB.value.trim(), c = nameC.value.trim();
