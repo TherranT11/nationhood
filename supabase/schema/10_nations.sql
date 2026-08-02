@@ -13,8 +13,15 @@ create table if not exists public.pp_nations (
   side       text not null,   -- good | evil | end  (derived from people)
   realm      text not null,   -- polity name (Realm/Court/Hold/Clan/Dominion of ___)
   house      text not null,   -- lineage name (House/Line/Kin/Blood/Wake of ___)
+  capital    text not null,   -- capital city name
   created_at timestamptz not null default now()
 );
+
+-- capital added for tables created before it existed (idempotent): add nullable,
+-- backfill, then lock NOT NULL.
+alter table public.pp_nations add column if not exists capital text;
+update public.pp_nations set capital = coalesce(capital, realm) where capital is null;
+alter table public.pp_nations alter column capital set not null;
 
 -- Shape guards ---------------------------------------------------------------
 alter table public.pp_nations drop constraint if exists pp_nations_people_chk;
@@ -30,6 +37,9 @@ alter table public.pp_nations add constraint pp_nations_realm_len check (char_le
 
 alter table public.pp_nations drop constraint if exists pp_nations_house_len;
 alter table public.pp_nations add constraint pp_nations_house_len check (char_length(house) between 2 and 20);
+
+alter table public.pp_nations drop constraint if exists pp_nations_capital_len;
+alter table public.pp_nations add constraint pp_nations_capital_len check (char_length(capital) between 2 and 20);
 
 -- RLS ------------------------------------------------------------------------
 alter table public.pp_nations enable row level security;
@@ -57,7 +67,8 @@ $$;
 
 -- Found the caller's nation. One per account — the UNIQUE user_id raises 23505
 -- on a second attempt, which the client turns into a clear "already founded".
-create or replace function public.pp_found_nation(_people text, _realm text, _house text)
+drop function if exists public.pp_found_nation(text, text, text);   -- replaced by the 4-arg form below
+create or replace function public.pp_found_nation(_people text, _realm text, _house text, _capital text)
 returns public.pp_nations
 language plpgsql security definer set search_path = public as $$
 declare
@@ -67,11 +78,11 @@ declare
 begin
   if uid is null then raise exception 'not authenticated'; end if;
   if s is null then raise exception 'unknown people'; end if;
-  insert into public.pp_nations (user_id, people, side, realm, house)
-  values (uid, _people, s, btrim(_realm), btrim(_house))
+  insert into public.pp_nations (user_id, people, side, realm, house, capital)
+  values (uid, _people, s, btrim(_realm), btrim(_house), btrim(_capital))
   returning * into result;
   return result;
 end;
 $$;
 
-grant execute on function public.pp_found_nation(text, text, text) to authenticated;
+grant execute on function public.pp_found_nation(text, text, text, text) to authenticated;

@@ -73,11 +73,11 @@ export async function currentNation() {
 
 // Found the caller's nation via the found_nation() RPC (side derived server-side;
 // one per account). Returns { data, error }.
-export async function foundNation({ people, realm, house }) {
+export async function foundNation({ people, realm, house, capital }) {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return { error: { message: 'You must be logged in to found a nation.' } };
-    return await supabase.rpc('pp_found_nation', { _people: people, _realm: realm, _house: house });
+    return await supabase.rpc('pp_found_nation', { _people: people, _realm: realm, _house: house, _capital: capital });
   } catch (err) {
     return { error: { message: 'Could not found your nation. Try again.' } };
   }

@@ -27,6 +27,7 @@
 
   .realm { font-family:var(--display); font-size:clamp(38px,7vw,56px); font-weight:400; line-height:1; margin:0; }
   .house { font-size:18px; font-style:italic; color:var(--brass); margin-top:10px; }
+  .seat { font-family:var(--mono); font-size:11px; letter-spacing:0.14em; color:var(--vellum-dim); margin-top:12px; }
 
   .badge { display:inline-block; margin-top:20px; border:1px solid var(--brass-dim); padding:7px 15px;
     font-family:var(--mono); font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:var(--brass); }
@@ -58,6 +59,7 @@
     <div class="kicker">Second Age · Vaunt</div>
     <h1 class="realm" id="realm">&nbsp;</h1>
     <div class="house" id="house">&nbsp;</div>
+    <div class="seat" id="seat"></div>
     <div class="badge" id="badge">&nbsp;</div>
 
     <div class="rule" aria-hidden="true"></div>
@@ -81,6 +83,7 @@
       const P = PEOPLES[nation.people];
       document.getElementById('realm').textContent = 'The ' + P.polity + ' ' + nation.realm;
       document.getElementById('house').textContent = 'under the ' + P.lineage + ' ' + nation.house;
+      if (nation.capital) document.getElementById('seat').textContent = 'Seated at ' + nation.capital;
       const badge = document.getElementById('badge');
       badge.textContent = P.name + ' · ' + (SIDE_LABEL[nation.side] || '');
       if (nation.side === 'evil') badge.classList.add('evil');

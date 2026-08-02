@@ -55,6 +55,7 @@
   .preview-a { font-family:var(--display); font-size:26px; line-height:1.35; color:var(--vellum-dim); }
   .preview-a.ready { color:var(--vellum); }
   .preview-b { font-size:15px; font-style:italic; color:var(--brass); margin-top:6px; }
+  .preview-c { font-family:var(--mono); font-size:11px; letter-spacing:0.08em; color:var(--vellum-dim); margin-top:10px; }
 
   .note { font-family:var(--mono); font-size:11px; line-height:1.7; color:var(--vellum-dim); text-align:center; margin:18px 0 0; }
 
@@ -116,10 +117,24 @@
       <div class="field-msg" id="msgB"></div>
     </div>
 
+    <!-- Field C: capital city (no prefix) -->
+    <div class="field">
+      <div class="field-top">
+        <label class="field-label" for="nameC">Capital city</label>
+        <span class="field-count" id="countC">0/20</span>
+      </div>
+      <div class="shell" id="shellC">
+        <input id="nameC" type="text" maxlength="20" placeholder="">
+        <button class="roll" id="rollC" type="button" title="Suggest a name">Suggest</button>
+      </div>
+      <div class="field-msg" id="msgC"></div>
+    </div>
+
     <div class="preview">
       <div class="preview-k">As it will be written</div>
       <div class="preview-a" id="previewA">———</div>
       <div class="preview-b" id="previewB">———</div>
+      <div class="preview-c" id="previewC"></div>
     </div>
 
     <div class="note">Both names are permanent for the age. Choose ones you'll want read aloud when the age ends.</div>
@@ -141,34 +156,42 @@
     const VALID = /^[A-Za-z][A-Za-z' -]{1,19}$/;   // starts with a letter; letters, spaces, - and ' after
 
     const $ = (id) => document.getElementById(id);
-    const nameA = $('nameA'), nameB = $('nameB'), found = $('found');
+    const nameA = $('nameA'), nameB = $('nameB'), nameC = $('nameC'), found = $('found');
     let P = null, chosenKey = null, noun = '';
-    const touched = { a: false, b: false };
+    const touched = { a: false, b: false, c: false };
+    const HINT_C = 'The seat of your power, where your rule begins.';
     const setFoundMsg = (t, k) => { const el = $('found-msg'); el.textContent = t || ''; el.className = 'field-msg' + (k ? ' ' + k : ''); };
     const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
     const okA = () => VALID.test(nameA.value.trim());
     const okB = () => VALID.test(nameB.value.trim());
+    const okC = () => VALID.test(nameC.value.trim());
     const ERR = 'Two to twenty letters. Spaces, hyphens and apostrophes allowed.';
 
-    function fieldMsg(msgEl, shellEl, input, ok, key, hint) {
+    // One updater per field. All of a field's elements share the key's letter
+    // (shellA/msgA/countA…), so key is the single source for the element set.
+    function refreshField(input, ok, key, hint) {
+      const K = key.toUpperCase();
       const bad = touched[key] && input.value && !ok();
-      shellEl.classList.toggle('bad', !!bad);
-      msgEl.textContent = bad ? ERR : hint;
-      msgEl.classList.toggle('error', !!bad);
+      $('shell' + K).classList.toggle('bad', !!bad);
+      const msg = $('msg' + K);
+      msg.textContent = bad ? ERR : hint;
+      msg.classList.toggle('error', !!bad);
+      const count = $('count' + K);
+      count.textContent = input.value.length + '/' + MAX;
+      count.classList.toggle('over', input.value.length === MAX);
     }
 
     function update() {
-      fieldMsg($('msgA'), $('shellA'), nameA, okA, 'a', P.hintA);
-      fieldMsg($('msgB'), $('shellB'), nameB, okB, 'b', P.hintB);
-      const cA = $('countA'), cB = $('countB');
-      cA.textContent = nameA.value.length + '/' + MAX; cA.classList.toggle('over', nameA.value.length === MAX);
-      cB.textContent = nameB.value.length + '/' + MAX; cB.classList.toggle('over', nameB.value.length === MAX);
+      refreshField(nameA, okA, 'a', P.hintA);
+      refreshField(nameB, okB, 'b', P.hintB);
+      refreshField(nameC, okC, 'c', HINT_C);
 
-      const ready = okA() && okB();
-      const a = nameA.value.trim(), b = nameB.value.trim();
+      const ready = okA() && okB() && okC();
+      const a = nameA.value.trim(), b = nameB.value.trim(), c = nameC.value.trim();
       $('previewA').textContent = 'The ' + P.polity + ' ' + (a || '———');
       $('previewA').classList.toggle('ready', ready);
       $('previewB').textContent = 'under the ' + P.lineage + ' ' + (b || '———');
+      $('previewC').textContent = c ? 'seated at ' + c : '';
       found.disabled = !ready;
     }
 
@@ -180,12 +203,15 @@
       $('badge').textContent = P.name + ' · ' + P.side;
       $('labelA').textContent = P.labelA; $('prefixA').textContent = P.polity; nameA.placeholder = P.namesA[0];
       $('labelB').textContent = P.labelB; $('prefixB').textContent = P.lineage; nameB.placeholder = P.namesB[0];
+      nameC.placeholder = P.namesA[P.namesA.length - 1];
       found.textContent = 'Found the ' + noun;
 
       nameA.addEventListener('input', () => { touched.a = true; update(); });
       nameB.addEventListener('input', () => { touched.b = true; update(); });
+      nameC.addEventListener('input', () => { touched.c = true; update(); });
       $('rollA').addEventListener('click', () => { nameA.value = pick(P.namesA); touched.a = true; update(); });
       $('rollB').addEventListener('click', () => { nameB.value = pick(P.namesB); touched.b = true; update(); });
+      $('rollC').addEventListener('click', () => { nameC.value = pick(P.namesA); touched.c = true; update(); });
       update();
     }
 
@@ -204,7 +230,7 @@
     found.addEventListener('click', async () => {
       if (found.disabled) return;
       found.disabled = true; found.textContent = 'Founding…'; setFoundMsg('');
-      const { error } = await foundNation({ people: chosenKey, realm: nameA.value.trim(), house: nameB.value.trim() });
+      const { error } = await foundNation({ people: chosenKey, realm: nameA.value.trim(), house: nameB.value.trim(), capital: nameC.value.trim() });
       if (error) {
         const dup = error.code === '23505';
         setFoundMsg(dup ? 'You have already founded your nation.' : (error.message || 'Could not found your nation.'), 'error');
