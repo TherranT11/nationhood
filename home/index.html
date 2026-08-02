@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nationhood — Your nation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@400&family=Spectral:wght@300;400&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink:#0F1417; --ink2:#151C20; --line:#33413F;
+    --vellum:#E6E0D0; --vellum-dim:#9AA39B;
+    --brass:#C8A15A; --brass-dim:#8A6E3C; --seal:#9B3B33; --plague:#8DA85C;
+    --display:'Grenze Gotisch','Iowan Old Style',Georgia,serif;
+    --body:'Spectral','Iowan Old Style',Georgia,serif;
+    --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',monospace;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--ink); color:var(--vellum); font-family:var(--body);
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:48px 24px; }
+  :focus-visible { outline:1px solid var(--brass); outline-offset:3px; }
+
+  .home { text-align:center; width:100%; max-width:520px; }
+  .crest { display:block; margin:0 auto 22px; }
+  .kicker { font-family:var(--mono); font-size:11px; letter-spacing:0.24em; text-transform:uppercase; color:var(--vellum-dim); margin-bottom:16px; }
+
+  .realm { font-family:var(--display); font-size:clamp(38px,7vw,56px); font-weight:400; line-height:1; margin:0; }
+  .house { font-size:18px; font-style:italic; color:var(--brass); margin-top:10px; }
+
+  .badge { display:inline-block; margin-top:20px; border:1px solid var(--brass-dim); padding:7px 15px;
+    font-family:var(--mono); font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:var(--brass); }
+  .badge.evil { border-color:var(--seal); color:#c17b74; }
+  .badge.end  { border-color:var(--plague); color:var(--plague); }
+
+  .rule { width:220px; height:1px; margin:34px auto; background:linear-gradient(90deg,transparent,var(--brass-dim),transparent); }
+
+  .lede { font-size:15px; line-height:1.8; color:var(--vellum-dim); font-weight:300; max-width:400px; margin:0 auto; }
+
+  .logout { margin-top:36px; font-family:var(--mono); font-size:11px; letter-spacing:0.18em; text-transform:uppercase;
+    color:var(--vellum-dim); background:none; border:1px solid var(--line); padding:11px 22px; cursor:pointer;
+    transition:border-color 160ms ease, color 160ms ease; }
+  .logout:hover { border-color:var(--seal); color:var(--vellum); }
+</style>
+</head>
+<body>
+  <div class="home">
+    <svg class="crest" width="96" height="105" viewBox="23 4 154 168" fill="none" aria-hidden="true">
+      <path d="M100 10 L169 48 L169 124 L100 162 L31 124 L31 48 Z" stroke="#C8A15A" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M100 29 L152 58 L152 116 L100 145 L48 116 L48 58 Z" stroke="#8A6E3C" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M71 101 L77 75 L88 89 L100 66 L112 89 L123 75 L129 101 Z" fill="#C8A15A"/>
+      <circle cx="77" cy="72" r="4.5" fill="#C8A15A"/>
+      <circle cx="100" cy="62" r="5" fill="#C8A15A"/>
+      <circle cx="123" cy="72" r="4.5" fill="#C8A15A"/>
+      <path d="M100 111 L111 122 L100 133 L89 122 Z" fill="#C8A15A"/>
+    </svg>
+
+    <div class="kicker">Second Age · Vaunt</div>
+    <h1 class="realm" id="realm">&nbsp;</h1>
+    <div class="house" id="house">&nbsp;</div>
+    <div class="badge" id="badge">&nbsp;</div>
+
+    <div class="rule" aria-hidden="true"></div>
+
+    <p class="lede">Your nation is founded and the age has begun. The world — your lands, your armies, and the prophecy — opens here as it is built.</p>
+
+    <button class="logout" id="logout">Log out</button>
+  </div>
+
+  <script type="module">
+    import { currentUser, currentNation, signOut } from '../supabase.js';
+    import { PEOPLES, SIDE_LABEL } from '../peoples.js';
+
+    // Gate: signed in AND founded. Otherwise send them where they belong.
+    (async () => {
+      const user = await currentUser();
+      if (!user) { window.location.href = '/login/'; return; }
+      const { data: nation } = await currentNation();
+      if (!nation) { window.location.href = '/found/'; return; }
+
+      const P = PEOPLES[nation.people];
+      document.getElementById('realm').textContent = 'The ' + P.polity + ' ' + nation.realm;
+      document.getElementById('house').textContent = 'under the ' + P.lineage + ' ' + nation.house;
+      const badge = document.getElementById('badge');
+      badge.textContent = P.name + ' · ' + (SIDE_LABEL[nation.side] || '');
+      if (nation.side === 'evil') badge.classList.add('evil');
+      else if (nation.side === 'end') badge.classList.add('end');
+    })();
+
+    const logoutBtn = document.getElementById('logout');
+    logoutBtn.addEventListener('click', async () => {
+      if (logoutBtn.disabled) return;
+      logoutBtn.disabled = true; logoutBtn.textContent = 'Departing…';
+      try { await signOut(); } catch (err) { /* redirect regardless */ }
+      window.location.href = '/';
+    });
+  </script>
+</body>
+</html>

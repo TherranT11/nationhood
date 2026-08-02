@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nationhood — Name your realm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@400&family=Spectral:wght@300;400&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink:#0F1417; --ink2:#151C20; --ink3:#1B2429; --line:#33413F;
+    --vellum:#E6E0D0; --vellum-dim:#9AA39B;
+    --brass:#C8A15A; --brass-dim:#8A6E3C; --seal:#9B3B33;
+    --display:'Grenze Gotisch','Iowan Old Style',Georgia,serif;
+    --body:'Spectral','Iowan Old Style',Georgia,serif;
+    --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',monospace;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--ink); color:var(--vellum); font-family:var(--body);
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:48px 24px; }
+  :focus-visible { outline:1px solid var(--brass); outline-offset:2px; }
+  .mono { font-family:var(--mono); }
+  .wrap { width:100%; max-width:520px; }
+
+  .masthead { text-align:center; margin-bottom:36px; }
+  .crest { display:block; margin:0 auto; }
+  .step { font-family:var(--mono); font-size:11px; letter-spacing:0.24em; text-transform:uppercase; color:var(--vellum-dim); margin:18px 0 14px; }
+  .title { font-family:var(--display); font-size:50px; font-weight:400; line-height:0.95; margin:0; }
+  .badge { display:inline-block; margin-top:16px; border:1px solid var(--brass-dim); padding:6px 14px;
+    font-family:var(--mono); font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:var(--brass); }
+
+  .field { margin-bottom:26px; }
+  .field-top { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:9px; }
+  .field-label { font-family:var(--mono); font-size:11px; letter-spacing:0.2em; text-transform:uppercase; color:var(--vellum-dim); }
+  .field-count { font-family:var(--mono); font-size:11px; color:var(--vellum-dim); }
+  .field-count.over { color:var(--seal); }
+  .field-msg { font-family:var(--mono); font-size:11px; line-height:1.6; margin-top:8px; color:var(--vellum-dim); min-height:16px; }
+  .field-msg.error { color:var(--seal); }
+
+  .shell { display:flex; align-items:stretch; border:1px solid var(--line); background:var(--ink2); }
+  .shell.bad { border-color:var(--seal); }
+  .shell:focus-within { border-color:var(--brass); }
+  .shell .prefix { display:flex; align-items:center; padding:0 14px; font-family:var(--display); font-size:20px;
+    color:var(--brass); border-right:1px solid var(--line); background:var(--ink3); white-space:nowrap; flex-shrink:0; }
+  .shell input { flex:1; min-width:0; background:transparent; border:none; color:var(--vellum);
+    padding:14px 12px; font-size:17px; font-family:inherit; outline:none; }
+  .shell input::placeholder { color:var(--vellum-dim); opacity:0.45; }
+  .shell .roll { background:transparent; border:none; border-left:1px solid var(--line); color:var(--vellum-dim);
+    padding:0 14px; font-family:var(--mono); font-size:10px; letter-spacing:0.14em; text-transform:uppercase; cursor:pointer; flex-shrink:0; }
+  .shell .roll:hover { color:var(--brass); }
+
+  .preview { border:1px solid var(--line); background:var(--ink2); padding:22px 20px; text-align:center; margin-top:8px; }
+  .preview-k { font-family:var(--mono); font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:var(--vellum-dim); margin-bottom:12px; }
+  .preview-a { font-family:var(--display); font-size:26px; line-height:1.35; color:var(--vellum-dim); }
+  .preview-a.ready { color:var(--vellum); }
+  .preview-b { font-size:15px; font-style:italic; color:var(--brass); margin-top:6px; }
+
+  .note { font-family:var(--mono); font-size:11px; line-height:1.7; color:var(--vellum-dim); text-align:center; margin:18px 0 0; }
+
+  .actions { display:flex; gap:12px; margin-top:26px; }
+  .btn { padding:14px 0; font-size:13px; letter-spacing:0.16em; text-transform:uppercase; font-family:inherit;
+    cursor:pointer; transition:background 160ms ease, color 160ms ease, border-color 160ms ease, opacity 160ms ease; }
+  .btn-quiet { width:110px; flex-shrink:0; background:transparent; color:var(--vellum-dim); border:1px solid var(--line); }
+  .btn-quiet:hover { color:var(--brass); border-color:var(--brass); }
+  .btn-solid { flex:1; background:var(--brass); color:var(--ink); border:1px solid var(--brass); }
+  .btn-solid:hover:not(:disabled) { background:var(--vellum); border-color:var(--vellum); }
+  .btn:disabled { cursor:not-allowed; opacity:0.4; }
+
+  @media (max-width:620px) { .title { font-size:40px; } .preview-a { font-size:22px; } }
+</style>
+</head>
+<body>
+  <div class="wrap">
+
+    <div class="masthead">
+      <svg class="crest" width="72" height="79" viewBox="23 4 154 168" fill="none" aria-hidden="true">
+        <path d="M100 10 L169 48 L169 124 L100 162 L31 124 L31 48 Z" stroke="#C8A15A" stroke-width="5" stroke-linejoin="round"/>
+        <path d="M100 29 L152 58 L152 116 L100 145 L48 116 L48 58 Z" stroke="#8A6E3C" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M71 101 L77 75 L88 89 L100 66 L112 89 L123 75 L129 101 Z" fill="#C8A15A"/>
+        <circle cx="77" cy="72" r="4.5" fill="#C8A15A"/>
+        <circle cx="100" cy="62" r="5" fill="#C8A15A"/>
+        <circle cx="123" cy="72" r="4.5" fill="#C8A15A"/>
+        <path d="M100 111 L111 122 L100 133 L89 122 Z" fill="#C8A15A"/>
+      </svg>
+      <div class="step">Step 2 of 2 · Founding</div>
+      <h1 class="title" id="title">Name your realm</h1>
+      <div class="badge" id="badge">&nbsp;</div>
+    </div>
+
+    <!-- Field A: polity -->
+    <div class="field">
+      <div class="field-top">
+        <label class="field-label" id="labelA" for="nameA">Your realm</label>
+        <span class="field-count" id="countA">0/20</span>
+      </div>
+      <div class="shell" id="shellA">
+        <span class="prefix" id="prefixA">Realm of</span>
+        <input id="nameA" type="text" maxlength="20" placeholder="">
+        <button class="roll" id="rollA" type="button" title="Suggest a name">Suggest</button>
+      </div>
+      <div class="field-msg" id="msgA"></div>
+    </div>
+
+    <!-- Field B: lineage -->
+    <div class="field">
+      <div class="field-top">
+        <label class="field-label" id="labelB" for="nameB">Your dynasty</label>
+        <span class="field-count" id="countB">0/20</span>
+      </div>
+      <div class="shell" id="shellB">
+        <span class="prefix" id="prefixB">House of</span>
+        <input id="nameB" type="text" maxlength="20" placeholder="">
+        <button class="roll" id="rollB" type="button" title="Suggest a name">Suggest</button>
+      </div>
+      <div class="field-msg" id="msgB"></div>
+    </div>
+
+    <div class="preview">
+      <div class="preview-k">As it will be written</div>
+      <div class="preview-a" id="previewA">———</div>
+      <div class="preview-b" id="previewB">———</div>
+    </div>
+
+    <div class="note">Both names are permanent for the age. Choose ones you'll want read aloud when the age ends.</div>
+
+    <p class="field-msg" id="found-msg" style="text-align:center; margin-top:10px;"></p>
+
+    <div class="actions">
+      <button class="btn btn-quiet" onclick="location.href='/found/'">Back</button>
+      <button class="btn btn-solid" id="found" disabled>Found the realm</button>
+    </div>
+
+  </div>
+
+  <script type="module">
+    import { currentUser, currentNation, foundNation } from '../../supabase.js';
+    import { PEOPLES } from '../../peoples.js';
+
+    const MAX = 20;
+    const VALID = /^[A-Za-z][A-Za-z' -]{1,19}$/;   // starts with a letter; letters, spaces, - and ' after
+
+    const $ = (id) => document.getElementById(id);
+    const nameA = $('nameA'), nameB = $('nameB'), found = $('found');
+    let P = null, chosenKey = null, noun = '';
+    const touched = { a: false, b: false };
+    const setFoundMsg = (t, k) => { const el = $('found-msg'); el.textContent = t || ''; el.className = 'field-msg' + (k ? ' ' + k : ''); };
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    const okA = () => VALID.test(nameA.value.trim());
+    const okB = () => VALID.test(nameB.value.trim());
+    const ERR = 'Two to twenty letters. Spaces, hyphens and apostrophes allowed.';
+
+    function fieldMsg(msgEl, shellEl, input, ok, key, hint) {
+      const bad = touched[key] && input.value && !ok();
+      shellEl.classList.toggle('bad', !!bad);
+      msgEl.textContent = bad ? ERR : hint;
+      msgEl.classList.toggle('error', !!bad);
+    }
+
+    function update() {
+      fieldMsg($('msgA'), $('shellA'), nameA, okA, 'a', P.hintA);
+      fieldMsg($('msgB'), $('shellB'), nameB, okB, 'b', P.hintB);
+      const cA = $('countA'), cB = $('countB');
+      cA.textContent = nameA.value.length + '/' + MAX; cA.classList.toggle('over', nameA.value.length === MAX);
+      cB.textContent = nameB.value.length + '/' + MAX; cB.classList.toggle('over', nameB.value.length === MAX);
+
+      const ready = okA() && okB();
+      const a = nameA.value.trim(), b = nameB.value.trim();
+      $('previewA').textContent = 'The ' + P.polity + ' ' + (a || '———');
+      $('previewA').classList.toggle('ready', ready);
+      $('previewB').textContent = 'under the ' + P.lineage + ' ' + (b || '———');
+      found.disabled = !ready;
+    }
+
+    function render(key) {
+      P = PEOPLES[key];
+      chosenKey = key;
+      noun = P.labelA.replace(/^Your /, '');    // realm / court / hold / clan / dominion
+      $('title').textContent = 'Name your ' + noun;
+      $('badge').textContent = P.name + ' · ' + P.side;
+      $('labelA').textContent = P.labelA; $('prefixA').textContent = P.polity; nameA.placeholder = P.namesA[0];
+      $('labelB').textContent = P.labelB; $('prefixB').textContent = P.lineage; nameB.placeholder = P.namesB[0];
+      found.textContent = 'Found the ' + noun;
+
+      nameA.addEventListener('input', () => { touched.a = true; update(); });
+      nameB.addEventListener('input', () => { touched.b = true; update(); });
+      $('rollA').addEventListener('click', () => { nameA.value = pick(P.namesA); touched.a = true; update(); });
+      $('rollB').addEventListener('click', () => { nameB.value = pick(P.namesB); touched.b = true; update(); });
+      update();
+    }
+
+    // Gate: signed in, not already founded, and a people chosen in step 1.
+    (async () => {
+      const user = await currentUser();
+      if (!user) { window.location.href = '/login/'; return; }
+      const { data: nation } = await currentNation();
+      if (nation) { window.location.href = '/home/'; return; }   // already has a nation
+      const key = sessionStorage.getItem('nh_people');
+      if (!key || !PEOPLES[key]) { window.location.href = '/found/'; return; }
+      render(key);
+    })();
+
+    // Found the nation: persist via the RPC, then into the game home.
+    found.addEventListener('click', async () => {
+      if (found.disabled) return;
+      found.disabled = true; found.textContent = 'Founding…'; setFoundMsg('');
+      const { error } = await foundNation({ people: chosenKey, realm: nameA.value.trim(), house: nameB.value.trim() });
+      if (error) {
+        const dup = error.code === '23505';
+        setFoundMsg(dup ? 'You have already founded your nation.' : (error.message || 'Could not found your nation.'), 'error');
+        if (dup) { setTimeout(() => { window.location.href = '/home/'; }, 900); }
+        else { found.textContent = 'Found the ' + noun; update(); }
+        return;
+      }
+      sessionStorage.removeItem('nh_people');
+      window.location.href = '/home/';
+    });
+  </script>
+</body>
+</html>
