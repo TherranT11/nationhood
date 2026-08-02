@@ -12,11 +12,15 @@ schema/00_auth.sql     profiles (id, email, nickname), RLS, sign-up trigger,
 schema/10_nations.sql  pp_nations (one founded nation per account: people, side,
                        realm, house) + pp_found_nation() RPC (side derived
                        server-side), RLS
+schema/20_world_map.sql pp_world_map (single JSON map document, read by any
+                       signed-in player) + pp_save_world_map() RPC gated to the
+                       owner's email server-side
 ```
 
-A fresh database: run `schema/00_auth.sql`, then `schema/10_nations.sql`.
-That is the whole backend so far — authentication, the profile a sign-up
-creates, and the nation a player founds.
+A fresh database: run `schema/00_auth.sql`, then `10_nations.sql`, then
+`20_world_map.sql`. That is the whole backend so far — authentication, the
+profile a sign-up creates, the nation a player founds, and the admin-authored
+world map.
 
 **Reused-project note:** this Supabase project also holds legacy tables from
 earlier games. This game's tables are namespaced (`pp_nations`) to avoid

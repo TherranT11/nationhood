@@ -90,7 +90,7 @@
   </div>
 
   <script type="module">
-    import { currentUser } from '../supabase.js';
+    import { currentUser, loadWorldMap, saveWorldMap } from '../supabase.js';
 
     const ADMIN_EMAIL = 'therrant@gmail.com';
     const T = { ink:'#0F1417', vellum:'#E6E0D0', brass:'#C8A15A', seal:'#9B3B33', coast:'#2E5468' };
@@ -308,6 +308,8 @@
         `<div class="swatches">${FILLS.map((f,i) => `<button class="swatch" data-palette="${i}" title="${f.name}" style="background:${f.fill}"></button>`).join('')}</div>` +
         `<div class="swatch-name" id="palette-name"></div>` +
         `<div class="head">Map</div>` +
+        `<button class="tbtn" id="save-btn">Save map</button>` +
+        `<div class="swatch-name" id="save-status"></div>` +
         `<button class="tbtn" id="undo-btn">Undo</button>` +
         `<button class="tbtn" data-removelast="landmasses">Remove last landmass</button>` +
         `<button class="tbtn" data-removelast="roads">Remove last line</button>` +
@@ -323,10 +325,19 @@
       $('undo-btn').addEventListener('click', undo);
       $('labels-btn').addEventListener('click', () => { state.labels = !state.labels; render(); });
       $('export-btn').addEventListener('click', exportSvg);
+      $('save-btn').addEventListener('click', async () => {
+        const btn = $('save-btn'); if (btn.disabled) return;
+        btn.disabled = true; btn.textContent = 'Saving…';
+        const { error } = await saveWorldMap({
+          landmasses: state.landmasses, settlements: state.settlements, roads: state.roads, borders: state.borders,
+        });
+        $('save-status').textContent = error ? ('Save failed: ' + (error.message || '')) : ('Saved ' + new Date().toLocaleTimeString());
+        btn.textContent = 'Save map'; btn.disabled = false;
+      });
       $('clear-btn').addEventListener('click', () => { snapshot(); state.settlements=[]; state.roads=[]; state.borders=[]; state.landmasses=[]; state.sel=null; render(); });
     }
 
-    function init() {
+    async function init() {
       buildToolbar();
       svg.addEventListener('pointerdown', onDown);
       svg.addEventListener('pointermove', onMove);
@@ -339,6 +350,19 @@
         if (e.key === 'Escape') { state.draft = null; state.sel = null; render(); }
         if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); undo(); }
       });
+
+      // Load the saved world map, if any.
+      const { data: row } = await loadWorldMap();
+      const m = row && row.data;
+      if (m) {
+        state.landmasses = m.landmasses || [];
+        state.settlements = m.settlements || [];
+        state.roads = m.roads || [];
+        state.borders = m.borders || [];
+        // bump the id counter past every loaded id so new ones can't collide
+        const ids = [...state.settlements, ...state.landmasses, ...state.roads, ...state.borders].map((o) => o.id || '');
+        uid = ids.reduce((mx, id) => { const n = parseInt(String(id).replace(/\D/g, ''), 10); return Number.isFinite(n) && n > mx ? n : mx; }, 0);
+      }
       render();
     }
 
@@ -349,7 +373,7 @@
       if ((user.email || '').toLowerCase() !== ADMIN_EMAIL) { window.location.href = '/'; return; }
       $('checking').hidden = true;
       $('app').hidden = false;
-      init();
+      await init();
     })();
   </script>
 </body>
