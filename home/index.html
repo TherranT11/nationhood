@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@400&family=Spectral:wght@300;400&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
 <style>
   :root {
-    --ink2:#151C20; --line:#33413F;
+    --ink:#0F1417; --ink2:#151C20; --line:#33413F;
     --vellum:#E6E0D0; --vellum-dim:#9AA39B;
     --brass:#C8A15A; --brass-dim:#8A6E3C; --seal:#9B3B33; --ocean:#132C3C;
     --display:'Grenze Gotisch','Iowan Old Style',Georgia,serif;
@@ -21,42 +21,69 @@
   body { background:var(--ocean); color:var(--vellum); font-family:var(--body); display:flex; flex-direction:column; }
   :focus-visible { outline:1px solid var(--brass); outline-offset:2px; }
 
-  /* Top bar: realm identity + game date on the left, log out on the right. */
-  .topbar { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:16px;
-    padding:12px 20px; background:var(--ink2); border-bottom:1px solid var(--line); }
-  .ident { display:flex; align-items:baseline; gap:11px; min-width:0; overflow:hidden; white-space:nowrap; }
-  .i-realm { font-family:var(--display); font-size:22px; line-height:1; color:var(--vellum); }
-  .i-sep { color:var(--brass-dim); }
-  .i-dyn { font-style:italic; font-size:14px; color:var(--brass); }
-  .i-pipe { color:var(--line); margin:0 3px; }
-  .i-time { font-family:var(--mono); font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:var(--vellum-dim); }
+  /* Header — crest + realm identity, Log out on the right. */
+  .topbar { flex:0 0 auto; background:var(--ink); border-bottom:1px solid var(--line); }
+  .brand { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:11px 22px; }
+  .brand-left { display:flex; align-items:center; gap:15px; min-width:0; }
+  .brand-crest { flex:0 0 auto; }
+  .brand-text { min-width:0; }
+  .realm { font-family:var(--display); font-size:24px; line-height:1.05; color:var(--vellum); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sub { font-family:var(--mono); font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:var(--vellum-dim); margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
   .logout { flex:0 0 auto; font-family:var(--mono); font-size:11px; letter-spacing:0.18em; text-transform:uppercase;
     color:var(--vellum-dim); background:none; border:1px solid var(--line); padding:9px 18px; cursor:pointer;
     transition:border-color 160ms ease, color 160ms ease; }
   .logout:hover { border-color:var(--seal); color:var(--vellum); }
 
-  /* Stage: the world map is the canvas the game will be built on. */
+  /* Resource strip — labels now; values arrive with a resource system. */
+  .resources { display:flex; background:var(--ink2); border-top:1px solid var(--line); }
+  .res { flex:1 1 0; min-width:0; padding:9px 22px; border-right:1px solid var(--line); }
+  .res:last-child { border-right:none; }
+  .res-k { font-family:var(--mono); font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:var(--vellum-dim); }
+  .res-v { font-family:var(--mono); font-size:14px; color:var(--vellum); margin-top:5px; }
+
+  /* Stage — the world map is the canvas the game will be built on. */
   .stage { flex:1 1 auto; position:relative; overflow:hidden; background:var(--ocean); }
   .wmap { position:absolute; inset:0; width:100%; height:100%; display:block; }
   .stage-note { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
     font-family:var(--mono); font-size:12px; letter-spacing:0.08em; color:var(--vellum-dim); text-align:center; padding:24px; }
 
-  @media (max-width:560px) { .i-realm { font-size:18px; } }
+  @media (max-width:640px) {
+    .realm { font-size:19px; }
+    .res { padding:9px 12px; }
+    .resources { overflow-x:auto; }
+  }
 </style>
 </head>
 <body>
   <div class="topbar">
-    <div class="ident" id="ident" hidden>
-      <span class="i-realm" id="i-realm"></span>
-      <span class="i-sep">·</span>
-      <span class="i-dyn" id="i-dyn"></span>
-      <span class="i-pipe">|</span>
-      <span class="i-time" id="i-date"></span>
-      <span class="i-pipe">|</span>
-      <span class="i-time" id="i-season"></span>
+    <div class="brand">
+      <div class="brand-left">
+        <svg class="brand-crest" width="34" height="37" viewBox="23 4 154 168" fill="none" aria-hidden="true">
+          <path d="M100 10 L169 48 L169 124 L100 162 L31 124 L31 48 Z" stroke="#C8A15A" stroke-width="5" stroke-linejoin="round"/>
+          <path d="M100 29 L152 58 L152 116 L100 145 L48 116 L48 58 Z" stroke="#8A6E3C" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M71 101 L77 75 L88 89 L100 66 L112 89 L123 75 L129 101 Z" fill="#C8A15A"/>
+          <circle cx="77" cy="72" r="4.5" fill="#C8A15A"/>
+          <circle cx="100" cy="62" r="5" fill="#C8A15A"/>
+          <circle cx="123" cy="72" r="4.5" fill="#C8A15A"/>
+          <path d="M100 111 L111 122 L100 133 L89 122 Z" fill="#C8A15A"/>
+        </svg>
+        <div class="brand-text">
+          <div class="realm" id="realm">&nbsp;</div>
+          <div class="sub" id="sub">&nbsp;</div>
+        </div>
+      </div>
+      <button class="logout" id="logout">Log out</button>
     </div>
-    <button class="logout" id="logout">Log out</button>
+
+    <div class="resources">
+      <div class="res"><div class="res-k">Coin</div><div class="res-v">—</div></div>
+      <div class="res"><div class="res-k">Grain</div><div class="res-v">—</div></div>
+      <div class="res"><div class="res-k">Stone</div><div class="res-v">—</div></div>
+      <div class="res"><div class="res-k">Iron</div><div class="res-v">—</div></div>
+      <div class="res"><div class="res-k">Levies</div><div class="res-v">—</div></div>
+      <div class="res"><div class="res-k">Subjects</div><div class="res-v">—</div></div>
+    </div>
   </div>
 
   <div class="stage">
@@ -78,13 +105,8 @@
 
   <script type="module">
     import { currentUser, currentNation, signOut, loadWorldMap } from '../supabase.js';
-    import { PEOPLES } from '../peoples.js';
+    import { PEOPLES, SIDE_LABEL } from '../peoples.js';
     import { renderTerrain, renderSettlements } from '../worldmap.js';
-
-    // Game date — static for now. There is no tick/clock backend yet; these are
-    // the single source for the displayed date until one exists.
-    const GAME_YEAR = '846 S.A.';
-    const GAME_SEASON = 'Early Spring';
 
     const $ = (id) => document.getElementById(id);
 
@@ -96,11 +118,9 @@
       if (!nation) { window.location.href = '/found/'; return; }
 
       const P = PEOPLES[nation.people];
-      $('i-realm').textContent = nation.realm;                 // e.g. Marrowgate
-      $('i-dyn').textContent = P.lineage + ' ' + nation.house; // e.g. House of Calloway
-      $('i-date').textContent = GAME_YEAR;
-      $('i-season').textContent = GAME_SEASON;
-      $('ident').hidden = false;
+      // e.g. "Ordane" / "HUMAN KINGDOM · FORCES OF GOOD · VERREN"
+      $('realm').textContent = nation.realm;
+      $('sub').textContent = [P.name, SIDE_LABEL[nation.side], nation.house].filter(Boolean).join(' · ');
       document.title = nation.realm + ' — Nationhood';
 
       drawStage(nation);
