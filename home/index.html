@@ -3,99 +3,90 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nationhood — Your nation</title>
+<title>Nationhood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@400&family=Spectral:wght@300;400&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
 <style>
   :root {
-    --ink:#0F1417; --ink2:#151C20; --line:#33413F;
+    --ink2:#151C20; --line:#33413F;
     --vellum:#E6E0D0; --vellum-dim:#9AA39B;
-    --brass:#C8A15A; --brass-dim:#8A6E3C; --seal:#9B3B33; --plague:#8DA85C;
+    --brass:#C8A15A; --brass-dim:#8A6E3C; --seal:#9B3B33; --ocean:#132C3C;
     --display:'Grenze Gotisch','Iowan Old Style',Georgia,serif;
     --body:'Spectral','Iowan Old Style',Georgia,serif;
     --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',monospace;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:var(--ink); color:var(--vellum); font-family:var(--body);
-    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:48px 24px; }
-  :focus-visible { outline:1px solid var(--brass); outline-offset:3px; }
+  html, body { height:100%; }
+  body { background:var(--ocean); color:var(--vellum); font-family:var(--body); display:flex; flex-direction:column; }
+  :focus-visible { outline:1px solid var(--brass); outline-offset:2px; }
 
-  .home { text-align:center; width:100%; max-width:820px; }
-  .crest { display:block; margin:0 auto 22px; }
-  .kicker { font-family:var(--mono); font-size:11px; letter-spacing:0.24em; text-transform:uppercase; color:var(--vellum-dim); margin-bottom:16px; }
+  /* Top bar: realm identity + game date on the left, log out on the right. */
+  .topbar { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:12px 20px; background:var(--ink2); border-bottom:1px solid var(--line); }
+  .ident { display:flex; align-items:baseline; gap:11px; min-width:0; overflow:hidden; white-space:nowrap; }
+  .i-realm { font-family:var(--display); font-size:22px; line-height:1; color:var(--vellum); }
+  .i-sep { color:var(--brass-dim); }
+  .i-dyn { font-style:italic; font-size:14px; color:var(--brass); }
+  .i-pipe { color:var(--line); margin:0 3px; }
+  .i-time { font-family:var(--mono); font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:var(--vellum-dim); }
 
-  .realm { font-family:var(--display); font-size:clamp(38px,7vw,56px); font-weight:400; line-height:1; margin:0; }
-  .house { font-size:18px; font-style:italic; color:var(--brass); margin-top:10px; }
-  .seat { font-family:var(--mono); font-size:11px; letter-spacing:0.14em; color:var(--vellum-dim); margin-top:12px; }
-
-  .badge { display:inline-block; margin-top:20px; border:1px solid var(--brass-dim); padding:7px 15px;
-    font-family:var(--mono); font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:var(--brass); }
-  .badge.evil { border-color:var(--seal); color:#c17b74; }
-  .badge.end  { border-color:var(--plague); color:var(--plague); }
-
-  .rule { width:220px; height:1px; margin:34px auto; background:linear-gradient(90deg,transparent,var(--brass-dim),transparent); }
-
-  .lede { font-size:15px; line-height:1.8; color:var(--vellum-dim); font-weight:300; max-width:400px; margin:0 auto; }
-
-  .domain { margin-top:34px; }
-  .domain-k { font-family:var(--mono); font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:var(--vellum-dim); margin-bottom:12px; }
-  .wmap { width:100%; height:auto; display:block; border:1px solid var(--line); background:#132C3C; }
-  .domain-note { font-family:var(--mono); font-size:11px; color:var(--vellum-dim); margin-top:12px; line-height:1.7; }
-
-  .logout { margin-top:36px; font-family:var(--mono); font-size:11px; letter-spacing:0.18em; text-transform:uppercase;
-    color:var(--vellum-dim); background:none; border:1px solid var(--line); padding:11px 22px; cursor:pointer;
+  .logout { flex:0 0 auto; font-family:var(--mono); font-size:11px; letter-spacing:0.18em; text-transform:uppercase;
+    color:var(--vellum-dim); background:none; border:1px solid var(--line); padding:9px 18px; cursor:pointer;
     transition:border-color 160ms ease, color 160ms ease; }
   .logout:hover { border-color:var(--seal); color:var(--vellum); }
+
+  /* Stage: the world map is the canvas the game will be built on. */
+  .stage { flex:1 1 auto; position:relative; overflow:hidden; background:var(--ocean); }
+  .wmap { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .stage-note { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-family:var(--mono); font-size:12px; letter-spacing:0.08em; color:var(--vellum-dim); text-align:center; padding:24px; }
+
+  @media (max-width:560px) { .i-realm { font-size:18px; } }
 </style>
 </head>
 <body>
-  <div class="home">
-    <svg class="crest" width="96" height="105" viewBox="23 4 154 168" fill="none" aria-hidden="true">
-      <path d="M100 10 L169 48 L169 124 L100 162 L31 124 L31 48 Z" stroke="#C8A15A" stroke-width="5" stroke-linejoin="round"/>
-      <path d="M100 29 L152 58 L152 116 L100 145 L48 116 L48 58 Z" stroke="#8A6E3C" stroke-width="2" stroke-linejoin="round"/>
-      <path d="M71 101 L77 75 L88 89 L100 66 L112 89 L123 75 L129 101 Z" fill="#C8A15A"/>
-      <circle cx="77" cy="72" r="4.5" fill="#C8A15A"/>
-      <circle cx="100" cy="62" r="5" fill="#C8A15A"/>
-      <circle cx="123" cy="72" r="4.5" fill="#C8A15A"/>
-      <path d="M100 111 L111 122 L100 133 L89 122 Z" fill="#C8A15A"/>
-    </svg>
-
-    <div class="kicker">Second Age · Vaunt</div>
-    <h1 class="realm" id="realm">&nbsp;</h1>
-    <div class="house" id="house">&nbsp;</div>
-    <div class="seat" id="seat"></div>
-    <div class="badge" id="badge">&nbsp;</div>
-
-    <div class="rule" aria-hidden="true"></div>
-
-    <p class="lede">Your nation is founded and the age has begun. The world — your lands, your armies, and the prophecy — opens here as it is built.</p>
-
-    <div class="domain" id="domain" hidden>
-      <div class="domain-k">Your domain</div>
-      <svg class="wmap" id="wmap" viewBox="0 0 1200 800" aria-label="World map">
-        <defs>
-          <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
-            <path d="M50 0 H0 V50" fill="none" stroke="#33413F" stroke-width="0.5" opacity="0.28"/>
-          </pattern>
-          <pattern id="swell" width="120" height="60" patternUnits="userSpaceOnUse">
-            <path d="M0 30 q30 -10 60 0 t60 0" fill="none" stroke="#2E5468" stroke-width="1" opacity="0.22"/>
-          </pattern>
-        </defs>
-        <rect width="1200" height="800" fill="#132C3C"/>
-        <rect width="1200" height="800" fill="url(#swell)"/>
-        <g id="wdyn"></g>
-      </svg>
-      <div class="domain-note" id="domain-note"></div>
+  <div class="topbar">
+    <div class="ident" id="ident" hidden>
+      <span class="i-realm" id="i-realm"></span>
+      <span class="i-sep">·</span>
+      <span class="i-dyn" id="i-dyn"></span>
+      <span class="i-pipe">|</span>
+      <span class="i-time" id="i-date"></span>
+      <span class="i-pipe">|</span>
+      <span class="i-time" id="i-season"></span>
     </div>
-
     <button class="logout" id="logout">Log out</button>
+  </div>
+
+  <div class="stage">
+    <svg class="wmap" id="wmap" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet" aria-label="World map">
+      <defs>
+        <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
+          <path d="M50 0 H0 V50" fill="none" stroke="#33413F" stroke-width="0.5" opacity="0.28"/>
+        </pattern>
+        <pattern id="swell" width="120" height="60" patternUnits="userSpaceOnUse">
+          <path d="M0 30 q30 -10 60 0 t60 0" fill="none" stroke="#2E5468" stroke-width="1" opacity="0.22"/>
+        </pattern>
+      </defs>
+      <rect width="1200" height="800" fill="#132C3C"/>
+      <rect width="1200" height="800" fill="url(#swell)"/>
+      <g id="wdyn"></g>
+    </svg>
+    <div class="stage-note" id="stage-note" hidden></div>
   </div>
 
   <script type="module">
     import { currentUser, currentNation, signOut, loadWorldMap } from '../supabase.js';
-    import { PEOPLES, SIDE_LABEL } from '../peoples.js';
+    import { PEOPLES } from '../peoples.js';
     import { renderTerrain, renderSettlements } from '../worldmap.js';
+
+    // Game date — static for now. There is no tick/clock backend yet; these are
+    // the single source for the displayed date until one exists.
+    const GAME_YEAR = '846 S.A.';
+    const GAME_SEASON = 'Early Spring';
+
+    const $ = (id) => document.getElementById(id);
 
     // Gate: signed in AND founded. Otherwise send them where they belong.
     (async () => {
@@ -105,50 +96,39 @@
       if (!nation) { window.location.href = '/found/'; return; }
 
       const P = PEOPLES[nation.people];
-      document.getElementById('realm').textContent = 'The ' + P.polity + ' ' + nation.realm;
-      document.getElementById('house').textContent = 'under the ' + P.lineage + ' ' + nation.house;
-      if (nation.capital) document.getElementById('seat').textContent = 'Seated at ' + nation.capital;
-      const badge = document.getElementById('badge');
-      badge.textContent = P.name + ' · ' + (SIDE_LABEL[nation.side] || '');
-      if (nation.side === 'evil') badge.classList.add('evil');
-      else if (nation.side === 'end') badge.classList.add('end');
+      $('i-realm').textContent = nation.realm;                 // e.g. Marrowgate
+      $('i-dyn').textContent = P.lineage + ' ' + nation.house; // e.g. House of Calloway
+      $('i-date').textContent = GAME_YEAR;
+      $('i-season').textContent = GAME_SEASON;
+      $('ident').hidden = false;
+      document.title = nation.realm + ' — Nationhood';
 
-      drawDomain(nation);
+      drawStage(nation);
     })();
 
-    // Render the world map read-only, with this ruler's capital renamed to their
-    // chosen name and marked "you are here". Only the player's own nation is
-    // known (RLS), so other slots keep their authored map names.
-    async function drawDomain(nation) {
-      const domain = document.getElementById('domain');
-      const wmap = document.getElementById('wmap');
-      const note = document.getElementById('domain-note');
-      domain.hidden = false;
+    // Render the world map as the stage canvas, with this ruler's capital renamed
+    // to their chosen name and marked "you are here". Only the player's own nation
+    // is known (RLS), so other slots keep their authored map names.
+    async function drawStage(nation) {
+      const wmap = $('wmap'), note = $('stage-note');
+      const showNote = (t) => { wmap.hidden = true; note.textContent = t; note.hidden = false; };
       try {
         const { data: row, error } = await loadWorldMap();
-        if (error) { wmap.hidden = true; note.textContent = 'The world map could not be loaded.'; return; }
+        if (error) return showNote('The world map could not be loaded.');
 
         const map = row && row.data;
-        if (!map || !(map.settlements || []).length) {
-          wmap.hidden = true;
-          note.textContent = 'The cartographers have not yet charted the world.';
-          return;
-        }
+        if (!map || !(map.settlements || []).length) return showNote('The cartographers have not yet charted the world.');
 
         const placed = nation.capital_slot && map.settlements.some((s) => s.id === nation.capital_slot);
         const names = placed ? { [nation.capital_slot]: nation.capital } : {};
-        document.getElementById('wdyn').innerHTML =
+        $('wdyn').innerHTML =
           renderTerrain(map) + renderSettlements(map, { highlightId: placed ? nation.capital_slot : null, names });
-        note.textContent = placed
-          ? 'Your seat, ' + nation.capital + ', stands marked among the realms.'
-          : 'Your capital awaits its place on the world map.';
       } catch (err) {
-        wmap.hidden = true;
-        note.textContent = 'The world map could not be loaded.';
+        showNote('The world map could not be loaded.');
       }
     }
 
-    const logoutBtn = document.getElementById('logout');
+    const logoutBtn = $('logout');
     logoutBtn.addEventListener('click', async () => {
       if (logoutBtn.disabled) return;
       logoutBtn.disabled = true; logoutBtn.textContent = 'Departing…';
