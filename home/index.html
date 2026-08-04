@@ -11,14 +11,14 @@
   :root {
     --ink:#0F1417; --ink2:#151C20; --line:#33413F;
     --vellum:#E6E0D0; --vellum-dim:#9AA39B;
-    --brass:#C8A15A; --brass-dim:#8A6E3C; --seal:#9B3B33; --ocean:#132C3C;
+    --brass:#C8A15A; --seal:#9B3B33; --ocean:#132C3C;
     --display:'Grenze Gotisch','Iowan Old Style',Georgia,serif;
     --body:'Spectral','Iowan Old Style',Georgia,serif;
     --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',monospace;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { height:100%; }
-  body { background:var(--ocean); color:var(--vellum); font-family:var(--body); display:flex; flex-direction:column; }
+  body { background:var(--ink); color:var(--vellum); font-family:var(--body); display:flex; flex-direction:column; }
   :focus-visible { outline:1px solid var(--brass); outline-offset:2px; }
 
   /* Header — crest + realm identity, Log out on the right. */
@@ -42,13 +42,29 @@
   .res-k { font-family:var(--mono); font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:var(--vellum-dim); }
   .res-v { font-family:var(--mono); font-size:14px; color:var(--vellum); margin-top:5px; }
 
-  /* Stage — the world map is the canvas the game will be built on. */
-  .stage { flex:1 1 auto; position:relative; overflow:hidden; background:var(--ocean); }
-  .wmap { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  /* Working area — console on the left, the world map box on the right half. */
+  .main { flex:1 1 auto; display:flex; min-height:0; }
+  .console { flex:1 1 50%; min-width:0; display:flex; align-items:center; justify-content:center;
+    padding:32px; background:var(--ink); }
+  .console-note { font-family:var(--mono); font-size:12px; letter-spacing:0.08em; color:var(--vellum-dim); text-align:center; }
+
+  .mapbox { flex:1 1 50%; min-width:0; position:relative; overflow:hidden; background:var(--ocean); border-left:1px solid var(--line); }
+  .wmap { position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
+  .wmap.dragging { cursor:grabbing; }
+
+  .zoom { position:absolute; right:14px; bottom:14px; display:flex; flex-direction:column; gap:6px; z-index:2; }
+  .zoom button { width:34px; height:34px; font-family:var(--mono); font-size:16px; line-height:1; color:var(--vellum);
+    background:rgba(15,20,23,0.82); border:1px solid var(--line); cursor:pointer;
+    transition:border-color 140ms ease, color 140ms ease; }
+  .zoom button:hover { border-color:var(--brass); color:var(--brass); }
+
   .stage-note { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
     font-family:var(--mono); font-size:12px; letter-spacing:0.08em; color:var(--vellum-dim); text-align:center; padding:24px; }
 
-  @media (max-width:640px) {
+  @media (max-width:900px) {
+    .main { flex-direction:column; }
+    .console { flex:0 0 auto; padding:22px; }
+    .mapbox { flex:1 1 auto; min-height:60vh; border-left:none; border-top:1px solid var(--line); }
     .realm { font-size:19px; }
     .res { padding:9px 12px; }
     .resources { overflow-x:auto; }
@@ -86,21 +102,29 @@
     </div>
   </div>
 
-  <div class="stage">
-    <svg class="wmap" id="wmap" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet" aria-label="World map">
-      <defs>
-        <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
-          <path d="M50 0 H0 V50" fill="none" stroke="#33413F" stroke-width="0.5" opacity="0.28"/>
-        </pattern>
-        <pattern id="swell" width="120" height="60" patternUnits="userSpaceOnUse">
-          <path d="M0 30 q30 -10 60 0 t60 0" fill="none" stroke="#2E5468" stroke-width="1" opacity="0.22"/>
-        </pattern>
-      </defs>
-      <rect width="1200" height="800" fill="#132C3C"/>
-      <rect width="1200" height="800" fill="url(#swell)"/>
-      <g id="wdyn"></g>
-    </svg>
-    <div class="stage-note" id="stage-note" hidden></div>
+  <div class="main">
+    <div class="console">
+      <div class="console-note" id="console-note">Your realm's affairs will appear here.</div>
+    </div>
+
+    <div class="mapbox">
+      <svg class="wmap" id="wmap" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet" aria-label="World map">
+        <defs>
+          <pattern id="swell" width="120" height="60" patternUnits="userSpaceOnUse">
+            <path d="M0 30 q30 -10 60 0 t60 0" fill="none" stroke="#2E5468" stroke-width="1" opacity="0.22"/>
+          </pattern>
+        </defs>
+        <rect width="1200" height="800" fill="#132C3C"/>
+        <rect width="1200" height="800" fill="url(#swell)"/>
+        <g id="wdyn"></g>
+      </svg>
+      <div class="zoom" id="zoom" hidden>
+        <button id="zin" title="Zoom in" aria-label="Zoom in">+</button>
+        <button id="zout" title="Zoom out" aria-label="Zoom out">−</button>
+        <button id="zreset" title="Reset view" aria-label="Reset view">⤢</button>
+      </div>
+      <div class="stage-note" id="stage-note" hidden></div>
+    </div>
   </div>
 
   <script type="module">
@@ -114,10 +138,12 @@
     (async () => {
       const user = await currentUser();
       if (!user) { window.location.href = '/login/'; return; }
-      const { data: nation } = await currentNation();
+      const { data: nation, error: nationErr } = await currentNation();
+      // A load error is not the same as "not founded" — don't misroute to /found.
+      if (nationErr) { $('console-note').textContent = 'Your realm could not be loaded. Please refresh.'; return; }
       if (!nation) { window.location.href = '/found/'; return; }
 
-      const P = PEOPLES[nation.people];
+      const P = PEOPLES[nation.people] || {};
       // e.g. "Ordane" / "HUMAN KINGDOM · FORCES OF GOOD · VERREN"
       $('realm').textContent = nation.realm;
       $('sub').textContent = [P.name, SIDE_LABEL[nation.side], nation.house].filter(Boolean).join(' · ');
@@ -126,12 +152,13 @@
       drawStage(nation);
     })();
 
-    // Render the world map as the stage canvas, with this ruler's capital renamed
-    // to their chosen name and marked "you are here". Only the player's own nation
-    // is known (RLS), so other slots keep their authored map names.
+    // Render the world map into the map box, with this ruler's capital renamed to
+    // their chosen name and marked "you are here". Only the player's own nation is
+    // known (RLS), so other slots keep their authored map names. On success, wire
+    // up zoom/pan; on failure, show a note in place of the map.
     async function drawStage(nation) {
-      const wmap = $('wmap'), note = $('stage-note');
-      const showNote = (t) => { wmap.hidden = true; note.textContent = t; note.hidden = false; };
+      const note = $('stage-note');
+      const showNote = (t) => { $('wmap').hidden = true; note.textContent = t; note.hidden = false; };
       try {
         const { data: row, error } = await loadWorldMap();
         if (error) return showNote('The world map could not be loaded.');
@@ -143,9 +170,73 @@
         const names = placed ? { [nation.capital_slot]: nation.capital } : {};
         $('wdyn').innerHTML =
           renderTerrain(map) + renderSettlements(map, { highlightId: placed ? nation.capital_slot : null, names });
+        enablePanZoom();
       } catch (err) {
         showNote('The world map could not be loaded.');
       }
+    }
+
+    // Pan/zoom over the map's viewBox. Clamped so the view never leaves the map:
+    // zoom out stops at the full 1200×800, zoom in stops at 8×.
+    function enablePanZoom() {
+      const wmap = $('wmap');
+      const BW = 1200, BH = 800, MINW = BW / 8;
+      const view = { x: 0, y: 0, w: BW, h: BH };
+
+      const apply = () => wmap.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+      const clamp = () => {
+        view.w = Math.min(BW, Math.max(MINW, view.w));
+        view.h = view.w * (BH / BW);
+        view.x = Math.min(BW - view.w, Math.max(0, view.x));
+        view.y = Math.min(BH - view.h, Math.max(0, view.y));
+      };
+      // Uniform pixels-per-unit scale under xMidYMid meet (same on both axes).
+      const rectScale = (r) => Math.min(r.width / view.w, r.height / view.h);
+      const zoomAt = (clientX, clientY, factor) => {
+        const r = wmap.getBoundingClientRect(), s = rectScale(r);
+        if (!(s > 0)) return;
+        const mx = view.x + (clientX - r.left - (r.width - view.w * s) / 2) / s;
+        const my = view.y + (clientY - r.top - (r.height - view.h * s) / 2) / s;
+        const ratio = Math.min(BW, Math.max(MINW, view.w * factor)) / view.w;
+        view.x = mx - (mx - view.x) * ratio;
+        view.y = my - (my - view.y) * ratio;
+        view.w = view.w * ratio;
+        clamp(); apply();
+      };
+
+      wmap.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 0.85 : 1 / 0.85);
+      }, { passive: false });
+
+      let dragging = false, lastX = 0, lastY = 0;
+      wmap.addEventListener('pointerdown', (e) => {
+        dragging = true; lastX = e.clientX; lastY = e.clientY;
+        try { wmap.setPointerCapture(e.pointerId); } catch (err) { /* capture unsupported — pan still tracks */ }
+        wmap.classList.add('dragging');
+      });
+      wmap.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const s = rectScale(wmap.getBoundingClientRect());
+        if (!(s > 0)) return;
+        view.x -= (e.clientX - lastX) / s; view.y -= (e.clientY - lastY) / s;
+        lastX = e.clientX; lastY = e.clientY;
+        clamp(); apply();
+      });
+      const endDrag = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        try { wmap.releasePointerCapture(e.pointerId); } catch (err) { /* pointer already released */ }
+        wmap.classList.remove('dragging');
+      };
+      wmap.addEventListener('pointerup', endDrag);
+      wmap.addEventListener('pointercancel', endDrag);
+
+      const centerZoom = (factor) => { const r = wmap.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, factor); };
+      $('zin').addEventListener('click', () => centerZoom(0.7));
+      $('zout').addEventListener('click', () => centerZoom(1 / 0.7));
+      $('zreset').addEventListener('click', () => { view.x = 0; view.y = 0; view.w = BW; clamp(); apply(); });
+      $('zoom').hidden = false;
     }
 
     const logoutBtn = $('logout');
