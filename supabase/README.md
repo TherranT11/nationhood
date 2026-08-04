@@ -25,11 +25,11 @@ profile a sign-up creates, the nation a player founds, and the admin-authored
 world map.
 
 **Founding claims a map slot.** `pp_found_nation()` reads `pp_world_map` at call
-time to grab an empty capital of the ruler's people (currently only
-`humanCapital` — draw those in the Cartographer) and stores its settlement id in
-`pp_nations.capital_slot`. The order above already satisfies this: the world map
-table exists before anyone founds. If no empty capital of that people remains,
-founding fails with a clear message — draw more capitals in the Cartographer.
+time to grab an empty village of the ruler's people (`humanVillage` for humans,
+`orcVillage` for orcs — draw those in the Cartographer) and stores its settlement
+id in `pp_nations.capital_slot`. The order above already satisfies this: the world
+map table exists before anyone founds. If no empty village of that people remains,
+founding fails with a clear message — draw more villages in the Cartographer.
 
 **Reused-project note:** this Supabase project also holds legacy tables from
 earlier games. This game's tables are namespaced (`pp_nations`) to avoid

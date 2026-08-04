@@ -73,14 +73,15 @@ returns text language sql immutable as $$
   end;
 $$;
 
--- The world-map settlement `type` that serves as a people's claimable capital.
--- One source for the people → capital-slot mapping. Human-only for now: the map
--- maker has no elf/dwarf/orc/undead capital types drawn yet, so those return
--- null and founding tells the ruler their lands aren't charted.
+-- The world-map settlement `type` a people claims when founding. One source for
+-- the people → home-village mapping. Humans and orcs each have a village drawn on
+-- the map; elves/dwarves/undead return null, so founding tells those rulers their
+-- lands aren't charted yet.
 create or replace function public.pp_capital_type_of(_people text)
 returns text language sql immutable as $$
   select case _people
-    when 'humans' then 'humanCapital'
+    when 'humans' then 'humanVillage'
+    when 'orcs'   then 'orcVillage'
     else null                              -- not yet drawn on the world map
   end;
 $$;
@@ -89,7 +90,7 @@ $$;
 -- on a second attempt, which the client turns into a clear "already founded".
 --
 -- Founding also claims the ruler's place on the map: it grabs the first empty
--- capital of their people from the authored world map (pp_world_map) and records
+-- village of their people from the authored world map (pp_world_map) and records
 -- its settlement id in capital_slot. The partial unique index on capital_slot
 -- guarantees no two nations hold the same slot; a slot taken by a concurrent
 -- founding between our SELECT and INSERT just makes us try the next free one.
@@ -114,10 +115,10 @@ begin
   end if;
 
   if cap_type is null then
-    raise exception 'No capital lands have been charted for your people yet.';
+    raise exception 'No lands have been charted for your people yet.';
   end if;
 
-  -- Claim the first unclaimed capital of this people from the world map.
+  -- Claim the first unclaimed village of this people from the world map.
   for slot in
     select st->>'id'
     from public.pp_world_map wm
@@ -140,7 +141,7 @@ begin
     end;
   end loop;
 
-  raise exception 'No empty capital remains for your people — the world is full.';
+  raise exception 'No empty village remains for your people — the world is full.';
 end;
 $$;
 

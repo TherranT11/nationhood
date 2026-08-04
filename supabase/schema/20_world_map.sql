@@ -36,3 +36,25 @@ end;
 $$;
 
 grant execute on function public.pp_save_world_map(jsonb) to authenticated;
+
+-- One-time settlement-type collapse: the map used to carry town/city/capital and
+-- tribe/village tiers; it now has a single village per people. Remap any legacy
+-- settlements in place so an already-drawn map keeps its positions and names —
+-- only the `type` changes. Guarded so it's a no-op once migrated (idempotent).
+update public.pp_world_map wm
+set data = jsonb_set(wm.data, '{settlements}', (
+  select coalesce(jsonb_agg(
+    case
+      when s->>'type' in ('humanCapital','humanCity','humanTown') then jsonb_set(s, '{type}', '"humanVillage"')
+      when s->>'type' in ('orcTribe','orcVillage')                then jsonb_set(s, '{type}', '"orcVillage"')
+      else s
+    end
+  ), '[]'::jsonb)
+  from jsonb_array_elements(wm.data->'settlements') s
+))
+where wm.id = 1
+  and jsonb_typeof(wm.data->'settlements') = 'array'
+  and exists (
+    select 1 from jsonb_array_elements(wm.data->'settlements') s
+    where s->>'type' in ('humanCapital','humanCity','humanTown','orcTribe')
+  );

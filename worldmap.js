@@ -5,13 +5,11 @@
 export const MAP_VIEW = { w: 1200, h: 800 };
 const INK = '#0F1417', VELLUM = '#E6E0D0', COAST = '#2E5468';
 
-// Settlement kinds: label (map maker), marker colour, marker radius.
+// Settlement kinds: label (map maker), marker colour, marker radius. One village
+// per people, drawn at the same size — no settlement type outranks another.
 export const TYPES = {
-  humanTown:    { label:'Human town',    color:'#C8A15A', r:5 },
-  humanCity:    { label:'Human city',    color:'#C8A15A', r:8 },
-  humanCapital: { label:'Human capital', color:'#C8A15A', r:11 },
-  orcVillage:   { label:'Orc village',   color:'#9B3B33', r:6 },
-  orcTribe:     { label:'Orc tribe',     color:'#9B3B33', r:10 },
+  humanVillage: { label:'Human village', color:'#C8A15A', r:7 },
+  orcVillage:   { label:'Orc village',   color:'#9B3B33', r:7 },
 };
 
 export const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -24,21 +22,16 @@ export const toPath = (pts, close) =>
 function markerSvg(type, { selected = false, highlight = false } = {}) {
   const t = TYPES[type];
   if (!t) return '';
-  const c = t.color, ring = selected ? VELLUM : c;
-  const selRing = (r) => selected ? `<circle r="${r}" fill="none" stroke="${VELLUM}" stroke-width="1" opacity="0.7"/>` : '';
+  const c = t.color;
   const hi = highlight
     ? `<circle r="${t.r + 9}" fill="none" stroke="${VELLUM}" stroke-width="1.5" opacity="0.85"><animate attributeName="opacity" values="0.85;0.3;0.85" dur="2.4s" repeatCount="indefinite"/></circle>`
     : '';
-  let body;
-  if (type === 'humanCapital') body =
-    `<circle r="15" fill="none" stroke="${ring}" stroke-width="1" opacity="0.6"/>` +
-    `<circle r="10" fill="${INK}" stroke="${c}" stroke-width="2"/>` +
-    `<path d="M-5 3 L-4 -4 L-1.5 -0.5 L0 -5 L1.5 -0.5 L4 -4 L5 3 Z" fill="${c}"/>`;
-  else if (type === 'humanCity') body = selRing(14) + `<circle r="8" fill="${INK}" stroke="${c}" stroke-width="2"/><circle r="3" fill="${c}"/>`;
-  else if (type === 'humanTown') body = selRing(11) + `<circle r="5" fill="${c}" stroke="${INK}" stroke-width="1.5"/>`;
-  else if (type === 'orcTribe')  body = selRing(16) + `<path d="M0 -12 L11 7 L-11 7 Z" fill="${INK}" stroke="${c}" stroke-width="2" stroke-linejoin="round"/><path d="M0 -4 L4 4 L-4 4 Z" fill="${c}"/>`;
-  else body = selRing(12) + `<path d="M0 -7 L6 5 L-6 5 Z" fill="${c}" stroke="${INK}" stroke-width="1.5" stroke-linejoin="round"/>`;
-  return hi + body;
+  const sel = selected ? `<circle r="${t.r + 6}" fill="none" stroke="${VELLUM}" stroke-width="1" opacity="0.7"/>` : '';
+  // Humans a walled circle, orcs a war-camp triangle — same radius either way.
+  const body = type === 'orcVillage'
+    ? `<path d="M0 ${-(t.r + 1)} L${t.r} ${t.r - 1} L${-t.r} ${t.r - 1} Z" fill="${c}" stroke="${INK}" stroke-width="1.5" stroke-linejoin="round"/>`
+    : `<circle r="${t.r}" fill="${INK}" stroke="${c}" stroke-width="2"/><circle r="3" fill="${c}"/>`;
+  return hi + sel + body;
 }
 
 // Everything beneath the settlements: landmasses, grid overlay, borders, roads.
