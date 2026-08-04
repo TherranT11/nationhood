@@ -108,7 +108,7 @@
     </div>
 
     <div class="mapbox">
-      <svg class="wmap" id="wmap" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet" aria-label="World map">
+      <svg class="wmap" id="wmap" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMin meet" aria-label="World map">
         <defs>
           <pattern id="swell" width="120" height="60" patternUnits="userSpaceOnUse">
             <path d="M0 30 q30 -10 60 0 t60 0" fill="none" stroke="#2E5468" stroke-width="1" opacity="0.22"/>
@@ -190,13 +190,15 @@
         view.x = Math.min(BW - view.w, Math.max(0, view.x));
         view.y = Math.min(BH - view.h, Math.max(0, view.y));
       };
-      // Uniform pixels-per-unit scale under xMidYMid meet (same on both axes).
+      // Uniform pixels-per-unit scale under xMidYMin meet (same on both axes).
+      // The map top-aligns (offY = 0), matching the Cartographer's framing; any
+      // horizontal slack is centred (xMid), so offX halves the leftover width.
       const rectScale = (r) => Math.min(r.width / view.w, r.height / view.h);
       const zoomAt = (clientX, clientY, factor) => {
         const r = wmap.getBoundingClientRect(), s = rectScale(r);
         if (!(s > 0)) return;
         const mx = view.x + (clientX - r.left - (r.width - view.w * s) / 2) / s;
-        const my = view.y + (clientY - r.top - (r.height - view.h * s) / 2) / s;
+        const my = view.y + (clientY - r.top) / s;
         const ratio = Math.min(BW, Math.max(MINW, view.w * factor)) / view.w;
         view.x = mx - (mx - view.x) * ratio;
         view.y = my - (my - view.y) * ratio;
