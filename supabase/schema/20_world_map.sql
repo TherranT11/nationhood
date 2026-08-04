@@ -49,8 +49,9 @@ set data = jsonb_set(wm.data, '{settlements}', (
       when s->>'type' in ('orcTribe','orcVillage')                then jsonb_set(s, '{type}', '"orcVillage"')
       else s
     end
+    order by ord                           -- keep the settlements in their original order
   ), '[]'::jsonb)
-  from jsonb_array_elements(wm.data->'settlements') s
+  from jsonb_array_elements(wm.data->'settlements') with ordinality as t(s, ord)
 ))
 where wm.id = 1
   and jsonb_typeof(wm.data->'settlements') = 'array'
