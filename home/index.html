@@ -11,7 +11,7 @@
   :root {
     --ink:#0F1417; --ink2:#151C20; --line:#33413F;
     --vellum:#E6E0D0; --vellum-dim:#9AA39B;
-    --brass:#C8A15A; --brass-dim:#8A6E3C; --seal:#9B3B33; --ocean:#132C3C;
+    --brass:#C8A15A; --seal:#9B3B33; --ocean:#132C3C;
     --display:'Grenze Gotisch','Iowan Old Style',Georgia,serif;
     --body:'Spectral','Iowan Old Style',Georgia,serif;
     --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',monospace;
@@ -104,7 +104,7 @@
 
   <div class="main">
     <div class="console">
-      <div class="console-note">Your realm's affairs will appear here.</div>
+      <div class="console-note" id="console-note">Your realm's affairs will appear here.</div>
     </div>
 
     <div class="mapbox">
@@ -138,10 +138,12 @@
     (async () => {
       const user = await currentUser();
       if (!user) { window.location.href = '/login/'; return; }
-      const { data: nation } = await currentNation();
+      const { data: nation, error: nationErr } = await currentNation();
+      // A load error is not the same as "not founded" — don't misroute to /found.
+      if (nationErr) { $('console-note').textContent = 'Your realm could not be loaded. Please refresh.'; return; }
       if (!nation) { window.location.href = '/found/'; return; }
 
-      const P = PEOPLES[nation.people];
+      const P = PEOPLES[nation.people] || {};
       // e.g. "Ordane" / "HUMAN KINGDOM · FORCES OF GOOD · VERREN"
       $('realm').textContent = nation.realm;
       $('sub').textContent = [P.name, SIDE_LABEL[nation.side], nation.house].filter(Boolean).join(' · ');
@@ -189,9 +191,9 @@
         view.y = Math.min(BH - view.h, Math.max(0, view.y));
       };
       // Uniform pixels-per-unit scale under xMidYMid meet (same on both axes).
-      const scale = () => { const r = wmap.getBoundingClientRect(); return Math.min(r.width / view.w, r.height / view.h); };
+      const rectScale = (r) => Math.min(r.width / view.w, r.height / view.h);
       const zoomAt = (clientX, clientY, factor) => {
-        const r = wmap.getBoundingClientRect(), s = scale();
+        const r = wmap.getBoundingClientRect(), s = rectScale(r);
         if (!(s > 0)) return;
         const mx = view.x + (clientX - r.left - (r.width - view.w * s) / 2) / s;
         const my = view.y + (clientY - r.top - (r.height - view.h * s) / 2) / s;
@@ -215,7 +217,7 @@
       });
       wmap.addEventListener('pointermove', (e) => {
         if (!dragging) return;
-        const s = scale();
+        const s = rectScale(wmap.getBoundingClientRect());
         if (!(s > 0)) return;
         view.x -= (e.clientX - lastX) / s; view.y -= (e.clientY - lastY) / s;
         lastX = e.clientX; lastY = e.clientY;
