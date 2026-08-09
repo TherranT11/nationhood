@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About · Kingdoms: Prophecies</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@300;400;600;700&family=Spectral:ital,wght@0,300;0,400;0,600;1,300&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#070911;
+    --ink-raised:#0D1123;
+    --lapis:#1C3E80;
+    --lapis-glow:#3A6BC4;
+    --gold:#C9A231;
+    --gold-lit:#EBCE79;
+    --vermilion:#AE3520;
+    --vellum:#E7DDC5;
+    --vellum-mute:#8C8574;
+
+    --display:'Grenze Gotisch', serif;
+    --body:'Spectral', Georgia, serif;
+    --util:'IBM Plex Mono', ui-monospace, monospace;
+
+    --wrap:920px;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  body{
+    background:var(--ink);
+    color:var(--vellum);
+    font-family:var(--body);
+    font-weight:300;
+    line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+
+  .ground{
+    position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(ellipse 80% 40% at 50% 0%, rgba(28,62,128,.34), transparent 68%),
+      radial-gradient(ellipse 60% 30% at 50% 0%, rgba(201,162,49,.09), transparent 70%),
+      radial-gradient(ellipse 90% 50% at 50% 100%, rgba(174,53,32,.09), transparent 66%),
+      var(--ink);
+  }
+  .grain{
+    position:fixed;inset:-20%;z-index:1;pointer-events:none;
+    opacity:.15;mix-blend-mode:overlay;
+  }
+
+  .page{position:relative;z-index:2}
+
+  /* ---------- nav ---------- */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    gap:20px;
+    max-width:var(--wrap);
+    margin:0 auto;
+    padding:22px 24px;
+    border-bottom:1px solid rgba(140,133,116,.14);
+  }
+  .brand{
+    font-family:var(--display);
+    font-size:1.06rem;
+    letter-spacing:.10em;
+    text-transform:uppercase;
+    color:var(--vellum);
+    text-decoration:none;
+    white-space:nowrap;
+  }
+  .brand span{color:var(--vermilion)}
+  .navlinks{display:flex;gap:22px;align-items:center}
+  .navlinks a{
+    font-family:var(--util);
+    font-size:10px;
+    letter-spacing:.22em;
+    text-transform:uppercase;
+    color:var(--vellum-mute);
+    text-decoration:none;
+    padding:4px 0;
+    border-bottom:1px solid transparent;
+    transition:color .25s,border-color .25s;
+  }
+  .navlinks a:hover,.navlinks a:focus-visible{color:var(--gold-lit);border-color:rgba(201,162,49,.6)}
+  .navlinks a.here{color:var(--vellum);border-color:rgba(201,162,49,.5)}
+
+  /* ---------- shared blocks ---------- */
+  .wrap{max-width:var(--wrap);margin:0 auto;padding:0 24px}
+
+  .eyebrow{
+    font-family:var(--util);
+    font-size:10px;
+    letter-spacing:.30em;
+    text-transform:uppercase;
+    color:var(--vellum-mute);
+    margin-bottom:16px;
+  }
+  .eyebrow em{font-style:normal;color:var(--gold)}
+
+  h2.head{
+    font-family:var(--display);
+    font-weight:400;
+    font-size:clamp(1.7rem,4.4vw,2.5rem);
+    line-height:1.1;
+    color:var(--vellum);
+    margin-bottom:18px;
+  }
+  h2.head b{color:var(--gold-lit);font-weight:400}
+
+  .lede{
+    font-size:1.06rem;
+    color:rgba(231,221,197,.78);
+    max-width:62ch;
+  }
+  .prose p{max-width:62ch;color:rgba(231,221,197,.72);margin-bottom:15px}
+  .prose p:last-child{margin-bottom:0}
+  .prose strong{color:var(--vellum);font-weight:600}
+
+  section.band{padding:74px 0;border-bottom:1px solid rgba(140,133,116,.12)}
+
+  /* ---------- hero ---------- */
+  .hero{padding:78px 0 66px;border-bottom:1px solid rgba(140,133,116,.12)}
+  .hero h1{
+    font-family:var(--display);
+    font-weight:400;
+    font-size:clamp(2.6rem,8vw,4.5rem);
+    line-height:1;
+    margin-bottom:24px;
+  }
+  .hero h1 .dim{color:var(--gold-lit);font-weight:300;display:block}
+  .hero .lede{font-size:clamp(1.05rem,2.6vw,1.22rem)}
+
+  .factbar{
+    display:flex;flex-wrap:wrap;gap:34px;
+    margin-top:38px;padding-top:26px;
+    border-top:1px solid rgba(140,133,116,.16);
+  }
+  .fact .n{
+    font-family:var(--display);
+    font-size:2rem;
+    line-height:1;
+    color:var(--gold-lit);
+  }
+  .fact .l{
+    font-family:var(--util);
+    font-size:9.5px;
+    letter-spacing:.2em;
+    text-transform:uppercase;
+    color:var(--vellum-mute);
+    margin-top:7px;
+  }
+
+  /* ---------- signature: standing ladder ---------- */
+  .ladder{
+    margin-top:38px;
+    border:1px solid rgba(201,162,49,.24);
+    background:rgba(13,17,35,.55);
+    padding:24px 18px 18px;
+    overflow-x:auto;
+  }
+  .ladder-grid{
+    display:grid;
+    grid-template-columns:104px repeat(5,minmax(66px,1fr));
+    min-width:520px;
+  }
+  .lg-head{
+    font-family:var(--util);
+    font-size:9px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--vellum-mute);
+    text-align:center;
+    padding-bottom:14px;
+    border-bottom:1px solid rgba(140,133,116,.2);
+    line-height:1.5;
+  }
+  .lg-corner{border-bottom:1px solid rgba(140,133,116,.2)}
+
+  .lg-rung{
+    font-family:var(--util);
+    font-size:9.5px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--vellum-mute);
+    display:flex;align-items:center;gap:8px;
+    padding:9px 10px 9px 0;
+    white-space:nowrap;
+  }
+  .lg-rung i{
+    font-style:normal;
+    color:rgba(140,133,116,.6);
+    width:20px;
+    text-align:right;
+  }
+  .lg-rung.pos i{color:var(--gold)}
+  .lg-rung.neg i{color:var(--vermilion)}
+
+  .lg-cell{
+    display:flex;align-items:center;justify-content:center;
+    padding:9px 0;
+    border-left:1px solid rgba(140,133,116,.10);
+  }
+  .pip{
+    width:7px;height:7px;
+    border-radius:50%;
+    background:rgba(140,133,116,.22);
+  }
+  .lg-cell.on .pip{
+    width:13px;height:13px;
+    background:var(--gold-lit);
+    box-shadow:0 0 0 4px rgba(201,162,49,.16), 0 0 16px rgba(235,206,121,.55);
+  }
+  .lg-cell.on.bad .pip{
+    background:var(--vermilion);
+    box-shadow:0 0 0 4px rgba(174,53,32,.16), 0 0 16px rgba(174,53,32,.55);
+  }
+  .lg-note{
+    font-family:var(--util);
+    font-size:9.5px;
+    letter-spacing:.13em;
+    text-transform:uppercase;
+    color:var(--vellum-mute);
+    margin-top:16px;
+    padding-top:13px;
+    border-top:1px solid rgba(140,133,116,.16);
+    line-height:1.8;
+  }
+  .lg-note b{color:var(--gold-lit);font-weight:500}
+
+  /* ---------- action cards ---------- */
+  .cards{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
+    gap:12px;
+    margin-top:34px;
+  }
+  .card{
+    border:1px solid rgba(201,162,49,.22);
+    background:rgba(13,17,35,.6);
+    padding:16px 15px 15px;
+    position:relative;
+    transition:border-color .28s,transform .28s,background .28s;
+  }
+  .card:hover{border-color:rgba(201,162,49,.65);transform:translateY(-3px);background:rgba(28,62,128,.20)}
+  .card .cn{
+    font-family:var(--display);
+    font-size:1.08rem;
+    letter-spacing:.10em;
+    text-transform:uppercase;
+    color:var(--gold-lit);
+    margin-bottom:7px;
+  }
+  .card .cd{font-size:.9rem;line-height:1.55;color:rgba(231,221,197,.68)}
+  .card .cs{
+    font-family:var(--util);
+    font-size:8.5px;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--vellum-mute);
+    margin-top:11px;
+    padding-top:9px;
+    border-top:1px solid rgba(140,133,116,.16);
+  }
+
+  /* ---------- stat row ---------- */
+  .stats{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:0;
+    margin-top:32px;
+    border-top:1px solid rgba(140,133,116,.16);
+  }
+  .stat{
+    padding:18px 16px 18px 0;
+    border-bottom:1px solid rgba(140,133,116,.10);
+  }
+  .stat .sn{
+    font-family:var(--display);
+    font-size:1.05rem;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--vellum);
+    margin-bottom:5px;
+  }
+  .stat .sd{font-size:.88rem;line-height:1.55;color:rgba(231,221,197,.62)}
+
+  /* ---------- cultures ---------- */
+  .cults{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:22px;margin-top:34px}
+  .cult{
+    border-left:2px solid rgba(201,162,49,.4);
+    padding:4px 0 4px 18px;
+  }
+  .cult.night{border-left-color:rgba(174,53,32,.6)}
+  .cult .kn{
+    font-family:var(--display);
+    font-size:1.32rem;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    margin-bottom:4px;
+  }
+  .cult.andric .kn{color:#B9C6E4}
+  .cult.sessau .kn{color:var(--gold-lit)}
+  .cult.night .kn{color:var(--vermilion)}
+  .cult .kr{
+    font-family:var(--util);
+    font-size:9px;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--vellum-mute);
+    margin-bottom:11px;
+  }
+  .cult p{font-size:.94rem;line-height:1.62;color:rgba(231,221,197,.7)}
+
+  /* ---------- thrones ---------- */
+  .thrones{margin-top:34px;border-top:1px solid rgba(140,133,116,.16)}
+  .throne{
+    display:grid;
+    grid-template-columns:minmax(160px,1fr) 2fr;
+    gap:18px;
+    padding:20px 0;
+    border-bottom:1px solid rgba(140,133,116,.12);
+    align-items:start;
+  }
+  .throne .tn{
+    font-family:var(--display);
+    font-size:1.14rem;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--vellum);
+  }
+  .throne .tw{
+    font-family:var(--util);
+    font-size:9px;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--gold);
+    margin-top:5px;
+  }
+  .throne .td{font-size:.94rem;line-height:1.62;color:rgba(231,221,197,.7)}
+
+  /* ---------- prophecy stages ---------- */
+  .stages{margin-top:34px;display:flex;flex-direction:column;gap:0}
+  .stage-row{
+    display:grid;
+    grid-template-columns:56px 1fr;
+    gap:18px;
+    padding:18px 0;
+    border-top:1px solid rgba(140,133,116,.14);
+    align-items:baseline;
+  }
+  .stage-row .num{
+    font-family:var(--display);
+    font-size:1.5rem;
+    color:rgba(140,133,116,.5);
+    letter-spacing:.06em;
+  }
+  .stage-row.lit .num{color:var(--gold-lit)}
+  .stage-row .st{
+    font-family:var(--display);
+    font-size:1.08rem;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--vellum);
+    margin-bottom:5px;
+  }
+  .stage-row.lit .st{color:var(--gold-lit)}
+  .stage-row .sx{font-size:.94rem;line-height:1.62;color:rgba(231,221,197,.68);max-width:56ch}
+  .stage-row .now{
+    font-family:var(--util);
+    font-size:8.5px;
+    letter-spacing:.2em;
+    text-transform:uppercase;
+    color:var(--vermilion);
+    margin-top:7px;
+  }
+
+  /* ---------- close ---------- */
+  .close{padding:76px 0 88px;text-align:center}
+  .close h2{
+    font-family:var(--display);
+    font-weight:400;
+    font-size:clamp(1.8rem,5vw,2.7rem);
+    line-height:1.12;
+    margin-bottom:16px;
+  }
+  .close h2 b{color:var(--gold-lit);font-weight:300}
+  .close p{color:rgba(231,221,197,.7);max-width:50ch;margin:0 auto 32px}
+  .btnrow{display:flex;gap:13px;justify-content:center;flex-wrap:wrap}
+  .btn{
+    position:relative;
+    display:inline-flex;align-items:center;justify-content:center;
+    padding:15px 30px;
+    font-family:var(--display);
+    font-size:1.06rem;
+    letter-spacing:.11em;
+    text-transform:uppercase;
+    text-decoration:none;
+    color:var(--vellum);
+    background:rgba(13,17,35,.72);
+    border:1px solid rgba(201,162,49,.3);
+    transition:color .28s,border-color .28s,background .28s,transform .28s;
+  }
+  .btn::before,.btn::after{
+    content:"";position:absolute;width:7px;height:7px;
+    border:1px solid rgba(201,162,49,.55);
+  }
+  .btn::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+  .btn::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+  .btn:hover,.btn:focus-visible{color:var(--gold-lit);border-color:rgba(201,162,49,.85);background:rgba(28,62,128,.24);transform:translateY(-2px)}
+  .btn.primary{
+    background:linear-gradient(180deg,rgba(201,162,49,.16),rgba(174,53,32,.12));
+    border-color:rgba(201,162,49,.62);
+    color:var(--gold-lit);
+  }
+  .btn.primary:hover,.btn.primary:focus-visible{background:linear-gradient(180deg,rgba(201,162,49,.3),rgba(174,53,32,.2));color:#FBEFC9}
+
+  a:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--gold-lit);outline-offset:3px}
+
+  footer.foot{
+    border-top:1px solid rgba(140,133,116,.14);
+    padding:26px 24px 40px;
+    text-align:center;
+    font-family:var(--util);
+    font-size:9.5px;
+    letter-spacing:.2em;
+    text-transform:uppercase;
+    color:var(--vellum-mute);
+  }
+
+  /* ---------- reveal ---------- */
+  .rv{opacity:0;transform:translateY(16px);transition:opacity .8s cubic-bezier(.2,.7,.3,1),transform .8s cubic-bezier(.2,.7,.3,1)}
+  .rv.in{opacity:1;transform:none}
+
+  @media (max-width:640px){
+    .throne{grid-template-columns:1fr;gap:8px}
+    .factbar{gap:24px}
+    .navlinks{gap:15px}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{transition-duration:.001ms !important;animation-duration:.001ms !important}
+    .rv{opacity:1;transform:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="ground"></div>
+<svg class="grain" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.82" numOctaves="3"/></filter>
+  <rect width="100%" height="100%" filter="url(#n)"/>
+</svg>
+
+<div class="page">
+
+  <header class="topbar">
+    <a class="brand" href="/">Kingdoms<span>:</span> Prophecies</a>
+    <nav class="navlinks" aria-label="Main">
+      <a class="here" href="/about" aria-current="page">About</a>
+      <a href="#">Wiki</a>
+      <a href="#">Settings</a>
+      <a href="#">Log in</a>
+    </nav>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero wrap rv">
+    <p class="eyebrow"><em>✦</em> &nbsp;About the game</p>
+    <h1>You are one person<span class="dim">in a very large argument.</span></h1>
+    <p class="lede">
+      Two kingdoms are at war. A church is watching both of them. The people who
+      farm the ground do not much care who wins. And somewhere on the map, in a
+      city nobody visits twice, something is counting down to a night that does
+      not end.
+    </p>
+    <div class="factbar">
+      <div class="fact"><div class="n">36+</div><div class="l">Settlements</div></div>
+      <div class="fact"><div class="n">3</div><div class="l">Cultures</div></div>
+      <div class="fact"><div class="n">5</div><div class="l">Powers to answer to</div></div>
+      <div class="fact"><div class="n">4</div><div class="l">Thrones</div></div>
+      <div class="fact"><div class="n">2</div><div class="l">Actions a turn</div></div>
+    </div>
+  </section>
+
+  <!-- WHAT IT IS -->
+  <section class="band wrap rv">
+    <p class="eyebrow"><em>I</em> &nbsp;The shape of it</p>
+    <h2 class="head">One character. One life. <b>No empire to hide behind.</b></h2>
+    <div class="prose">
+      <p>
+        Most games of this size hand you a kingdom. This one hands you a person
+        who owns almost nothing. You begin with <strong>no reputation, no
+        followers, and no skills</strong>, and the only thing you have that
+        anyone else wants is your time.
+      </p>
+      <p>
+        You win on <strong>Prestige</strong>, and Prestige comes from finishing
+        quests. Everything else in the game exists to decide which quests you are
+        allowed to attempt, and whether you survive them. Your first two are
+        given to you at the table, chosen by your station, and they are small on
+        purpose. Nobody starts important.
+      </p>
+    </div>
+  </section>
+
+  <!-- SIGNATURE: STANDING -->
+  <section class="band wrap rv">
+    <p class="eyebrow"><em>II</em> &nbsp;Standing</p>
+    <h2 class="head">Five powers keep count of what you owe them.</h2>
+    <p class="lede">
+      Every one of them holds you somewhere between hunted and exalted. You can
+      move on any track. You cannot move up all five at once, because most of
+      what earns you one costs you another.
+    </p>
+
+    <div class="ladder">
+      <div class="ladder-grid">
+        <div class="lg-corner"></div>
+        <div class="lg-head">Andric<br>Crown</div>
+        <div class="lg-head">Sessau<br>Court</div>
+        <div class="lg-head">The<br>Church</div>
+        <div class="lg-head">Common<br>folk</div>
+        <div class="lg-head">Night<br>court</div>
+
+        <div class="lg-rung pos"><i>+3</i> Exalted</div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell on"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+
+        <div class="lg-rung pos"><i>+2</i> Honored</div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+
+        <div class="lg-rung pos"><i>+1</i> Regarded</div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell on"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+
+        <div class="lg-rung"><i>0</i> Unknown</div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell on"><span class="pip"></span></div>
+
+        <div class="lg-rung neg"><i>&minus;1</i> Distrusted</div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell on bad"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+
+        <div class="lg-rung neg"><i>&minus;2</i> Despised</div>
+        <div class="lg-cell on bad"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+
+        <div class="lg-rung neg"><i>&minus;3</i> Hunted</div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+        <div class="lg-cell"><span class="pip"></span></div>
+      </div>
+
+      <p class="lg-note">
+        Shown: a Sessau chevalier, seventh season. <b>Adored at court.</b>
+        Hated across the border. Tolerated by the church, resented by the villages
+        she rode through to get here, and unknown to the thing under the city.
+      </p>
+    </div>
+
+    <div class="prose" style="margin-top:26px">
+      <p>
+        Standing is not a bonus. It is a door. At <strong>Honored</strong> with a
+        crown you can call banners you do not pay for. At <strong>Despised</strong>
+        no village in the province will follow you anywhere. At
+        <strong>Hunted</strong> by the church, killing you is worth Prestige to
+        every other player at the table.
+      </p>
+    </div>
+  </section>
+
+  <!-- ACTIONS -->
+  <section class="band wrap rv">
+    <p class="eyebrow"><em>III</em> &nbsp;A turn</p>
+    <h2 class="head">Six things you know how to do. <b>You get two.</b></h2>
+    <p class="lede">
+      You lock in both actions, and the order they happen in, before the turn
+      begins. The two you played last turn are unavailable this turn, so you
+      always choose two from four. Nobody can flee forever. Nobody can scheme
+      forever either.
+    </p>
+
+    <div class="cards">
+      <div class="card"><div class="cn">Travel</div><div class="cd">Ride somewhere. Arrive quietly, or arrive heralded and let the province know.</div><div class="cs">Vigor</div></div>
+      <div class="card"><div class="cn">Counsel</div><div class="cd">Petition, court, or undermine. This is where standing moves, yours and theirs.</div><div class="cs">Presence · Cunning</div></div>
+      <div class="card"><div class="cn">Recruit</div><div class="cd">Gain followers. What a place offers you depends on what it thinks of you.</div><div class="cs">Presence</div></div>
+      <div class="card"><div class="cn">Act</div><div class="cd">Do the deed. Fight, raid, defend, ride the tourney, work the ritual. Somebody always finds out.</div><div class="cs">Prowess</div></div>
+      <div class="card"><div class="cn">Study</div><div class="cd">Learn a skill, or learn a secret. The slow road, and the only one that leads to the prophecy.</div><div class="cs">Cunning</div></div>
+      <div class="card"><div class="cn">Hold</div><div class="cd">Rest, collect what you are owed, dig in. The only turn that leaves no trace behind it.</div><div class="cs">Vigor · Resolve</div></div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section class="band wrap rv">
+    <p class="eyebrow"><em>IV</em> &nbsp;What you are made of</p>
+    <h2 class="head">Five numbers, none above three when you begin.</h2>
+    <div class="stats">
+      <div class="stat"><div class="sn">Vigor</div><div class="sd">Hard roads, long sieges, poison, and how much of a wound you can walk off.</div></div>
+      <div class="stat"><div class="sn">Presence</div><div class="sd">Being listened to. Being followed. Holding a room that did not want you in it.</div></div>
+      <div class="stat"><div class="sn">Resolve</div><div class="sd">Fear, torture, temptation, and whatever it is that whispers to people at the edge of the map.</div></div>
+      <div class="stat"><div class="sn">Prowess</div><div class="sd">Your own hands. Duels, the hunt, and the part of a battle where you are personally involved.</div></div>
+      <div class="stat"><div class="sn">Cunning</div><div class="sd">Lying well, and noticing when someone else is. Low Cunning means you will never see it coming.</div></div>
+    </div>
+    <div class="prose" style="margin-top:26px">
+      <p>
+        Stats rise slowly and cap low. <strong>Skills</strong> carry the detail:
+        they are permanent, specific, and they change how a stat applies.
+        Duellist sharpens your Prowess in single combat and nowhere else. Court
+        Tongue lets your Presence work on Sessau nobility even when they cannot
+        stand you.
+      </p>
+    </div>
+  </section>
+
+  <!-- CULTURES -->
+  <section class="band wrap rv">
+    <p class="eyebrow"><em>V</em> &nbsp;Where you are from</p>
+    <h2 class="head">Three cultures. <b>Only two of them announce themselves.</b></h2>
+    <div class="cults">
+      <div class="cult andric">
+        <div class="kn">Andric</div>
+        <div class="kr">Chainmail and obligation</div>
+        <p>
+          Heraldry, oaths, and cold weather. Andrics are hard to kill and bad at
+          subtlety. You start as a lowborn lord: a little land, a title nobody
+          honors, and levies you cannot afford to keep for long.
+        </p>
+      </div>
+      <div class="cult sessau">
+        <div class="kn">Sessau</div>
+        <div class="kr">Court, glory, the knife after</div>
+        <p>
+          Powdered wigs, patronage, and duels fought for an audience. Sessauans
+          arrive already famous and entirely broke. You start as a chevalier:
+          renown on a clock, and nothing underneath it yet.
+        </p>
+      </div>
+      <div class="cult night">
+        <div class="kn">Nightcourt</div>
+        <div class="kr">One city, no allies, no hurry</div>
+        <p>
+          They hold a single settlement on the whole map and they are in no
+          rush. You start as a vampire lord or a necromancer, hidden, at zero
+          standing everywhere because nobody yet knows what you are. Your game is
+          not conquest. It is getting away with it.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- THRONES -->
+  <section class="band wrap rv">
+    <p class="eyebrow"><em>VI</em> &nbsp;The four chairs</p>
+    <h2 class="head">Every throne is already occupied.</h2>
+    <p class="lede">
+      A crown is not the finish line. It is a very good engine bolted to a very
+      public address. Kings can be deposed, and deposing one pays.
+    </p>
+    <div class="thrones">
+      <div class="throne">
+        <div><div class="tn">King of Andren</div><div class="tw">By right, or by force</div></div>
+        <div class="td">Bring a claim, or declare yourself a usurper and make the claim yourself. Then survive a succession crisis while every other player quietly counts swords for your rival.</div>
+      </div>
+      <div class="throne">
+        <div><div class="tn">King of Sessau</div><div class="tw">By court and by glory</div></div>
+        <div class="td">Won at parties, not battles. You need standing, renown, and the nerve to sit through a season of intrigue while rivals spend their own reputation trying to embarrass you out of the running.</div>
+      </div>
+      <div class="throne">
+        <div><div class="tn">Head of the Church</div><div class="tw">By acclaim, and a clean record</div></div>
+        <div class="td">The hardest seat, because it audits your whole game. Sink low enough with the commonfolk, or take a single favor from the Nightcourt, and it is remembered when the votes are counted.</div>
+      </div>
+      <div class="throne">
+        <div><div class="tn">Lord of the Nightcourt</div><div class="tw">By succession, in person</div></div>
+        <div class="td">Nobody elects you. You take it from the one sitting there now, which means the Nightcourt has a second war going on underneath the one everyone can see.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROPHECY -->
+  <section class="band wrap rv">
+    <p class="eyebrow"><em>VII</em> &nbsp;The clock</p>
+    <h2 class="head">Everyone can see how late it is. <b>Nobody can see who is winding it.</b></h2>
+    <p class="lede">
+      The Nightcourt holds the only prophetic quest in the game. It advances in
+      four stages, and every stage shows up on the map for all players to read.
+      What never shows up is the hand behind it.
+    </p>
+    <div class="stages">
+      <div class="stage-row lit">
+        <div class="num">I</div>
+        <div>
+          <div class="st">The nights lengthen</div>
+          <div class="sx">Travel after dark becomes possible for everyone. It is useful, so nobody complains, and nobody investigates.</div>
+          <div class="now">Where the world stands now</div>
+        </div>
+      </div>
+      <div class="stage-row">
+        <div class="num">II</div>
+        <div>
+          <div class="st">The dead do not settle</div>
+          <div class="sx">Named settlements start filing reports. The marked towns are a trail, and the trail points back at somebody's movements.</div>
+        </div>
+      </div>
+      <div class="stage-row">
+        <div class="num">III</div>
+        <div>
+          <div class="st">The sun fails for a day</div>
+          <div class="sx">The church stops arguing about the war. Inquisition unlocks, and being at zero standing is no longer the same as being safe.</div>
+        </div>
+      </div>
+      <div class="stage-row">
+        <div class="num">IV</div>
+        <div>
+          <div class="st">The endless night</div>
+          <div class="sx">The board turns over. Vampire armies move for the first time. The game does not end here, but everything left to play for changes, and there is not much left of it.</div>
+        </div>
+      </div>
+    </div>
+    <div class="prose" style="margin-top:30px">
+      <p>
+        The two kingdoms can stop this. Peace between Andren and Sessau frees the
+        church to look inward, and a church looking inward is the one thing the
+        Nightcourt genuinely fears. But peace has to be declared by someone
+        sitting a throne, and taking a throne takes most of a game.
+      </p>
+      <p>
+        <strong>So the war has to end for the world to survive, and the war is
+        how you win.</strong> That is the whole design, in one sentence.
+      </p>
+    </div>
+  </section>
+
+  <!-- CLOSE -->
+  <section class="close wrap rv">
+    <h2>Start at nothing.<br><b>Answer to everyone.</b></h2>
+    <p>Pick a culture, take your two small quests, and go stand somewhere that matters.</p>
+    <div class="btnrow">
+      <a class="btn primary" href="#">Sign up</a>
+      <a class="btn" href="#">Read the wiki</a>
+    </div>
+  </section>
+
+  <footer class="foot">Kingdoms: Prophecies &nbsp;·&nbsp; The sun has not failed yet</footer>
+
+</div>
+
+<script>
+  (function(){
+    var items = document.querySelectorAll('.rv');
+    if(!('IntersectionObserver' in window)){
+      items.forEach(function(el){el.classList.add('in')});
+      return;
+    }
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, {threshold:.12, rootMargin:'0px 0px -8% 0px'});
+    items.forEach(function(el){ io.observe(el); });
+  })();
+</script>
+
+</body>
+</html>
