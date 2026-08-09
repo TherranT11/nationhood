@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About — Kingdoms: Prophecies</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@300;400;600;700&family=Spectral:ital,wght@0,300;0,400;0,600;1,300&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#070911;
+    --ink-raised:#0D1123;
+    --lapis:#1C3E80;
+    --lapis-glow:#3A6BC4;
+    --gold:#C9A231;
+    --gold-lit:#EBCE79;
+    --vermilion:#AE3520;
+    --vellum:#E7DDC5;
+    --vellum-mute:#8C8574;
+
+    --display:'Grenze Gotisch', serif;
+    --body:'Spectral', Georgia, serif;
+    --util:'IBM Plex Mono', ui-monospace, monospace;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  html,body{height:100%}
+
+  body{
+    background:var(--ink);
+    color:var(--vellum);
+    font-family:var(--body);
+    font-weight:300;
+    -webkit-font-smoothing:antialiased;
+    min-height:100dvh;
+    display:flex;
+    flex-direction:column;
+    overflow-x:hidden;
+    position:relative;
+    line-height:1.7;
+  }
+
+  /* ---------- ground ---------- */
+  .ground{
+    position:fixed;
+    inset:0;
+    z-index:0;
+    pointer-events:none;
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 0%, rgba(28,62,128,.34), transparent 65%),
+      radial-gradient(ellipse 50% 40% at 50% -6%, rgba(201,162,49,.10), transparent 70%),
+      radial-gradient(ellipse 90% 70% at 50% 118%, rgba(174,53,32,.10), transparent 60%),
+      var(--ink);
+  }
+  .grain{
+    position:fixed;
+    inset:-20%;
+    z-index:1;
+    pointer-events:none;
+    opacity:.16;
+    mix-blend-mode:overlay;
+  }
+
+  /* ---------- shell ---------- */
+  .wrap{
+    position:relative;
+    z-index:2;
+    flex:1;
+    width:min(760px,100%);
+    margin:0 auto;
+    padding:40px 24px 72px;
+  }
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    margin-bottom:56px;
+  }
+  .back{
+    display:inline-flex;
+    align-items:center;
+    gap:9px;
+    font-family:var(--util);
+    font-size:10px;
+    letter-spacing:.26em;
+    text-transform:uppercase;
+    color:var(--vellum-mute);
+    text-decoration:none;
+    transition:color .28s;
+  }
+  .back:hover,.back:focus-visible{color:var(--gold-lit)}
+  .back:focus-visible{outline:2px solid var(--gold-lit);outline-offset:3px}
+  .back svg{width:13px;height:13px}
+  .crest{
+    font-family:var(--util);
+    font-size:10px;
+    letter-spacing:.26em;
+    text-transform:uppercase;
+    color:var(--vellum-mute);
+  }
+  .crest b{color:var(--gold-lit);font-weight:500}
+
+  /* ---------- header ---------- */
+  .eyebrow{
+    font-family:var(--util);
+    font-size:10px;
+    letter-spacing:.34em;
+    text-transform:uppercase;
+    color:var(--vellum-mute);
+    display:flex;
+    align-items:center;
+    gap:14px;
+    margin-bottom:22px;
+  }
+  .eyebrow::after{
+    content:"";
+    flex:1;
+    height:1px;
+    background:linear-gradient(90deg,rgba(201,162,49,.5),transparent);
+  }
+
+  h1{
+    font-family:var(--display);
+    font-weight:400;
+    font-size:clamp(2.4rem,7vw,3.9rem);
+    line-height:1;
+    letter-spacing:.005em;
+    color:var(--vellum);
+    text-shadow:0 0 34px rgba(58,107,196,.4), 0 0 80px rgba(201,162,49,.12);
+    margin-bottom:8px;
+  }
+  h1 .accent{color:var(--gold-lit)}
+
+  .lede{
+    max-width:56ch;
+    font-size:clamp(1.02rem,2.6vw,1.18rem);
+    color:rgba(231,221,197,.82);
+    margin:18px 0 8px;
+  }
+
+  .rule{
+    width:100%;
+    height:1px;
+    margin:40px 0;
+    background:linear-gradient(90deg,transparent,rgba(201,162,49,.5) 12%,rgba(201,162,49,.5) 88%,transparent);
+    position:relative;
+  }
+  .rule::after{
+    content:"✦";
+    position:absolute;
+    top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    background:var(--ink);
+    color:var(--gold);
+    font-size:11px;
+    padding:0 10px;
+  }
+
+  h2{
+    font-family:var(--display);
+    font-weight:400;
+    font-size:1.5rem;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--gold-lit);
+    margin:44px 0 14px;
+  }
+  h2:first-of-type{margin-top:0}
+
+  p{
+    color:rgba(231,221,197,.78);
+    margin-bottom:16px;
+    max-width:62ch;
+  }
+  p a{color:var(--gold-lit);text-decoration:none;border-bottom:1px solid rgba(201,162,49,.4)}
+  p a:hover{border-color:var(--gold-lit)}
+
+  /* ---------- powers ledger ---------- */
+  .ledger{
+    list-style:none;
+    margin:8px 0 8px;
+    border-top:1px solid rgba(140,133,116,.16);
+  }
+  .ledger li{
+    display:flex;
+    gap:16px;
+    align-items:baseline;
+    padding:15px 2px;
+    border-bottom:1px solid rgba(140,133,116,.16);
+  }
+  .ledger .k{
+    font-family:var(--display);
+    font-size:1.06rem;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--vellum);
+    flex:none;
+    width:150px;
+  }
+  .ledger .v{
+    font-size:.98rem;
+    color:rgba(231,221,197,.7);
+  }
+
+  /* ---------- cultures ---------- */
+  .cultures{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+    gap:16px;
+    margin-top:10px;
+  }
+  .culture{
+    border:1px solid rgba(201,162,49,.24);
+    background:rgba(13,17,35,.5);
+    padding:18px 20px;
+  }
+  .culture .name{
+    font-family:var(--display);
+    font-size:1.16rem;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--vellum);
+    margin-bottom:6px;
+  }
+  .culture.andric .name{color:#B9C6E4}
+  .culture.sessau .name{color:var(--gold-lit)}
+  .culture.hidden .name{color:var(--vermilion)}
+  .culture p{font-size:.95rem;margin:0;color:rgba(231,221,197,.72)}
+
+  /* ---------- footer note ---------- */
+  .stage-note{
+    margin-top:44px;
+    padding:18px 20px;
+    border:1px solid rgba(140,133,116,.22);
+    border-left:2px solid rgba(201,162,49,.6);
+    background:rgba(13,17,35,.4);
+    font-size:.96rem;
+    color:rgba(231,221,197,.72);
+  }
+  .stage-note b{color:var(--gold-lit);font-weight:500}
+
+  .colophon{
+    margin-top:48px;
+    text-align:center;
+    font-family:var(--util);
+    font-size:10px;
+    letter-spacing:.24em;
+    text-transform:uppercase;
+    color:var(--vellum-mute);
+  }
+
+  /* ---------- entrance ---------- */
+  .fade{opacity:0;transform:translateY(14px);animation:rise .8s cubic-bezier(.2,.7,.3,1) forwards}
+  .d1{animation-delay:.06s}
+  .d2{animation-delay:.20s}
+  .d3{animation-delay:.34s}
+  .d4{animation-delay:.48s}
+  @keyframes rise{to{opacity:1;transform:none}}
+
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{
+      animation-duration:.001ms !important;
+      animation-iteration-count:1 !important;
+      transition-duration:.001ms !important;
+    }
+    .fade{opacity:1;transform:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="ground"></div>
+<svg class="grain" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.82" numOctaves="3"/></filter>
+  <rect width="100%" height="100%" filter="url(#n)"/>
+</svg>
+
+<main class="wrap">
+
+  <div class="topbar fade d1">
+    <a class="back" href="/">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+        <path d="M15 5l-7 7 7 7"/>
+      </svg>
+      Return to the gate
+    </a>
+    <span class="crest">Kingdoms<b>:</b> Prophecies</span>
+  </div>
+
+  <p class="eyebrow fade d1">About the game</p>
+
+  <h1 class="fade d1">What waits in <span class="accent">Prophecies</span></h1>
+
+  <p class="lede fade d1">
+    A slow-burning game of medieval statecraft. You play one character across a
+    living map of thirty-six settlements, where five great powers keep a running
+    ledger of every favour, slight, and debt you leave behind.
+  </p>
+
+  <div class="rule fade d2"></div>
+
+  <section class="fade d2">
+    <h2>The world</h2>
+    <p>
+      The realm turns on a prophecy no one can quite agree on. The nights are
+      growing longer, the sun dimming stage by stage, and the powers that rule
+      the land are more concerned with their own count of debts than with the
+      dark gathering at the edges of the map.
+    </p>
+    <p>
+      You begin as one person — a name, a birthplace, a handful of obligations —
+      and make your way through a web of settlements, courts, and rivalries.
+      Build a reputation, raise a household, take a throne if you can hold it, or
+      let the long night come and see who is left standing when it does.
+    </p>
+  </section>
+
+  <section class="fade d2">
+    <h2>The five powers</h2>
+    <p>Every power keeps count of what you owe. Fall behind with one, and the others take notice.</p>
+    <ul class="ledger">
+      <li><span class="k">The Crown</span><span class="v">Law, taxation, and the right to name heirs.</span></li>
+      <li><span class="k">The Faith</span><span class="v">Keepers of the prophecy — and of who gets absolved.</span></li>
+      <li><span class="k">The Guilds</span><span class="v">Coin, contracts, and the roads between settlements.</span></li>
+      <li><span class="k">The Banners</span><span class="v">Sworn houses and the swords they can call.</span></li>
+      <li><span class="k">The Court</span><span class="v">Favour, glory, and the knife that follows.</span></li>
+    </ul>
+  </section>
+
+  <section class="fade d3">
+    <h2>The cultures</h2>
+    <div class="cultures">
+      <div class="culture andric">
+        <div class="name">Andric</div>
+        <p>Chainmail and obligation. A people bound by oath, ledger, and the weight of what is owed.</p>
+      </div>
+      <div class="culture sessau">
+        <div class="name">Sessau</div>
+        <p>Court, glory, and the knife after. Brilliant, ambitious, and never quite safe to turn your back on.</p>
+      </div>
+      <div class="culture hidden">
+        <div class="name">Nightcourt</div>
+        <p>Not yet known to the map. Some say they are only a rumour. The rumour is spreading.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="fade d3">
+    <h2>How it plays</h2>
+    <p>
+      One character. Thirty-six settlements. Turn by turn, you decide where to
+      go, whom to serve, and whom to cross — and the map remembers. There is no
+      single path to the throne, and more than one way to lose it.
+    </p>
+  </section>
+
+  <div class="stage-note fade d4">
+    <b>Prophecy · Stage I of IV.</b> Kingdoms: Prophecies is in early
+    development. The world, the powers, and the map are still being written —
+    check back as the nights lengthen.
+  </div>
+
+  <p class="colophon fade d4">The sun has not failed yet</p>
+
+</main>
+
+</body>
+</html>
