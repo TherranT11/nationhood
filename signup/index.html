@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign up · Kingdoms: Prophecies</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@300;400;600;700&family=Spectral:ital,wght@0,300;0,400;0,600;1,300&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#070911;
+    --ink-raised:#0D1123;
+    --lapis:#1C3E80;
+    --lapis-glow:#3A6BC4;
+    --gold:#C9A231;
+    --gold-lit:#EBCE79;
+    --vermilion:#AE3520;
+    --vellum:#E7DDC5;
+    --vellum-mute:#8C8574;
+
+    --display:'Grenze Gotisch', serif;
+    --body:'Spectral', Georgia, serif;
+    --util:'IBM Plex Mono', ui-monospace, monospace;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  body{
+    background:var(--ink);
+    color:var(--vellum);
+    font-family:var(--body);
+    font-weight:300;
+    line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+    min-height:100dvh;
+    display:flex;
+    flex-direction:column;
+    overflow-x:hidden;
+  }
+
+  .ground{
+    position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(ellipse 75% 45% at 50% 0%, rgba(28,62,128,.34), transparent 68%),
+      radial-gradient(ellipse 55% 30% at 50% 0%, rgba(201,162,49,.08), transparent 70%),
+      radial-gradient(ellipse 90% 55% at 50% 105%, rgba(174,53,32,.10), transparent 66%),
+      var(--ink);
+  }
+  .grain{position:fixed;inset:-20%;z-index:1;pointer-events:none;opacity:.15;mix-blend-mode:overlay}
+
+  /* ---------- nav ---------- */
+  .topbar{
+    position:relative;z-index:2;
+    display:flex;align-items:center;justify-content:space-between;gap:20px;
+    max-width:1020px;margin:0 auto;width:100%;
+    padding:22px 24px;
+    border-bottom:1px solid rgba(140,133,116,.14);
+  }
+  .brand{
+    font-family:var(--display);
+    font-size:1.06rem;letter-spacing:.10em;text-transform:uppercase;
+    color:var(--vellum);text-decoration:none;white-space:nowrap;
+  }
+  .brand span{color:var(--vermilion)}
+  .navlinks{display:flex;gap:22px;align-items:center}
+  .navlinks a{
+    font-family:var(--util);font-size:10px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--vellum-mute);text-decoration:none;
+    padding:4px 0;border-bottom:1px solid transparent;
+    transition:color .25s,border-color .25s;
+  }
+  .navlinks a:hover,.navlinks a:focus-visible{color:var(--gold-lit);border-color:rgba(201,162,49,.6)}
+
+  /* ---------- layout ---------- */
+  .stage{
+    position:relative;z-index:2;flex:1;
+    width:100%;max-width:1020px;margin:0 auto;
+    padding:52px 24px 60px;
+    display:grid;
+    grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);
+    gap:clamp(28px,5vw,64px);
+    align-items:start;
+  }
+
+  .eyebrow{
+    font-family:var(--util);font-size:10px;letter-spacing:.30em;
+    text-transform:uppercase;color:var(--vellum-mute);margin-bottom:14px;
+  }
+  .eyebrow em{font-style:normal;color:var(--gold)}
+
+  h1.head{
+    font-family:var(--display);font-weight:400;
+    font-size:clamp(2.1rem,5.4vw,2.9rem);line-height:1.04;
+    margin-bottom:14px;
+  }
+  h1.head b{color:var(--gold-lit);font-weight:300;display:block}
+
+  .sub{color:rgba(231,221,197,.72);max-width:44ch;margin-bottom:34px;font-size:1.01rem}
+
+  /* ---------- form ---------- */
+  .field{margin-bottom:26px}
+
+  .flabel{
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    font-family:var(--util);font-size:10px;letter-spacing:.20em;
+    text-transform:uppercase;color:var(--vellum-mute);
+    margin-bottom:9px;
+  }
+  .flabel .aside{letter-spacing:.14em;color:rgba(140,133,116,.72);text-transform:none;font-size:9.5px}
+
+  .inwrap{position:relative}
+
+  .input{
+    width:100%;
+    padding:14px 15px;
+    font-family:var(--body);font-size:1.02rem;font-weight:300;
+    color:var(--vellum);
+    background:rgba(13,17,35,.68);
+    border:1px solid rgba(140,133,116,.26);
+    border-bottom:1px solid rgba(201,162,49,.36);
+    transition:border-color .25s,background .25s,box-shadow .25s;
+  }
+  .input::placeholder{color:rgba(140,133,116,.5)}
+  .input:hover{border-color:rgba(140,133,116,.42)}
+  .input:focus{
+    outline:none;
+    border-color:rgba(201,162,49,.7);
+    background:rgba(28,62,128,.20);
+    box-shadow:0 0 0 3px rgba(201,162,49,.12);
+  }
+  .input.bad{border-color:rgba(174,53,32,.8);box-shadow:0 0 0 3px rgba(174,53,32,.12)}
+
+  .field.pw .input{padding-right:74px;font-family:var(--util);letter-spacing:.08em}
+
+  .reveal{
+    position:absolute;top:50%;right:11px;transform:translateY(-50%);
+    background:none;border:1px solid rgba(140,133,116,.28);
+    color:var(--vellum-mute);
+    font-family:var(--util);font-size:8.5px;letter-spacing:.16em;
+    text-transform:uppercase;padding:6px 9px;cursor:pointer;
+    transition:color .25s,border-color .25s;
+  }
+  .reveal:hover,.reveal:focus-visible{color:var(--gold-lit);border-color:rgba(201,162,49,.6)}
+
+  .hint{
+    font-family:var(--util);font-size:9.5px;letter-spacing:.13em;
+    color:rgba(140,133,116,.8);margin-top:9px;line-height:1.7;
+  }
+  .err{
+    font-family:var(--util);font-size:9.5px;letter-spacing:.13em;
+    color:var(--vermilion);margin-top:9px;line-height:1.7;
+    display:none;
+  }
+  .err.show{display:block}
+
+  /* strength */
+  .strength{display:flex;align-items:center;gap:9px;margin-top:11px}
+  .bars{display:flex;gap:4px;flex:1}
+  .bar{height:2px;flex:1;background:rgba(140,133,116,.22);transition:background .3s}
+  .bar.on1{background:var(--vermilion)}
+  .bar.on2{background:var(--gold)}
+  .bar.on3{background:var(--gold-lit)}
+  .slabel{
+    font-family:var(--util);font-size:9px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--vellum-mute);white-space:nowrap;
+  }
+
+  /* submit */
+  .btn{
+    position:relative;
+    display:inline-flex;align-items:center;justify-content:center;
+    width:100%;padding:17px 26px;
+    font-family:var(--display);font-size:1.14rem;
+    letter-spacing:.11em;text-transform:uppercase;
+    color:var(--gold-lit);text-decoration:none;
+    background:linear-gradient(180deg,rgba(201,162,49,.16),rgba(174,53,32,.12));
+    border:1px solid rgba(201,162,49,.62);
+    cursor:pointer;
+    transition:color .28s,border-color .28s,background .28s,transform .28s,opacity .28s;
+  }
+  .btn::before,.btn::after{
+    content:"";position:absolute;width:7px;height:7px;
+    border:1px solid rgba(201,162,49,.55);
+  }
+  .btn::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+  .btn::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+  .btn:hover,.btn:focus-visible{
+    background:linear-gradient(180deg,rgba(201,162,49,.3),rgba(174,53,32,.2));
+    color:#FBEFC9;transform:translateY(-2px);
+  }
+  .btn[aria-disabled="true"]{opacity:.42;cursor:not-allowed;transform:none}
+
+  .below{
+    font-family:var(--util);font-size:9.5px;letter-spacing:.14em;
+    color:rgba(140,133,116,.8);margin-top:18px;line-height:1.9;text-align:center;
+  }
+  .below a{color:var(--gold);text-decoration:none;border-bottom:1px solid rgba(201,162,49,.35)}
+  .below a:hover,.below a:focus-visible{color:var(--gold-lit)}
+
+  /* ---------- SIGNATURE: the name plate ---------- */
+  .aside-col{position:sticky;top:34px}
+
+  .plate{
+    border:1px solid rgba(201,162,49,.28);
+    background:rgba(13,17,35,.6);
+    padding:30px 26px 26px;
+    text-align:center;
+    position:relative;
+    overflow:hidden;
+  }
+  .plate::before{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(ellipse 70% 55% at 50% 22%, rgba(201,162,49,.10), transparent 70%);
+  }
+  .plate-cap{
+    font-family:var(--util);font-size:9px;letter-spacing:.24em;
+    text-transform:uppercase;color:var(--vellum-mute);
+    margin-bottom:22px;position:relative;
+  }
+  .seal{width:66px;height:66px;margin:0 auto 16px;display:block;position:relative;transition:transform .5s cubic-bezier(.2,.8,.3,1)}
+  .plate.sealed .seal{transform:scale(1.06)}
+  .seal-ring{stroke:var(--gold);stroke-opacity:.4;transition:stroke-opacity .5s}
+  .plate.sealed .seal-ring{stroke-opacity:.95}
+  .seal-mark{fill:var(--vellum-mute);transition:fill .5s}
+  .plate.sealed .seal-mark{fill:var(--gold-lit)}
+
+  .plate-name{
+    font-family:var(--display);font-weight:400;
+    font-size:clamp(1.7rem,4.6vw,2.3rem);line-height:1.14;
+    color:rgba(140,133,116,.55);
+    word-break:break-word;
+    transition:color .5s,text-shadow .5s;
+    position:relative;
+    min-height:1.2em;
+  }
+  .plate.sealed .plate-name{
+    color:var(--vellum);
+    text-shadow:0 0 30px rgba(58,107,196,.45),0 0 60px rgba(201,162,49,.16);
+  }
+  .plate-rule{
+    width:64%;height:1px;margin:18px auto 0;
+    background:linear-gradient(90deg,transparent,rgba(201,162,49,.5),transparent);
+    position:relative;
+  }
+  .plate-sub{
+    font-family:var(--util);font-size:9px;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--vellum-mute);
+    margin-top:14px;position:relative;
+  }
+
+  .notes{margin-top:26px;border-top:1px solid rgba(140,133,116,.16);padding-top:22px}
+  .note{
+    display:grid;grid-template-columns:22px 1fr;gap:12px;
+    padding:11px 0;align-items:start;
+  }
+  .note .k{
+    font-family:var(--display);font-size:1rem;color:var(--gold);line-height:1.4;
+  }
+  .note .v{font-size:.92rem;line-height:1.6;color:rgba(231,221,197,.68)}
+
+  footer.foot{
+    position:relative;z-index:2;
+    border-top:1px solid rgba(140,133,116,.14);
+    padding:24px;text-align:center;
+    font-family:var(--util);font-size:9.5px;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--vellum-mute);
+  }
+
+  a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--gold-lit);outline-offset:3px}
+
+  .rv{opacity:0;transform:translateY(14px);animation:rise .85s cubic-bezier(.2,.7,.3,1) forwards}
+  .d1{animation-delay:.06s}
+  .d2{animation-delay:.24s}
+  @keyframes rise{to{opacity:1;transform:none}}
+
+  @media (max-width:840px){
+    .stage{grid-template-columns:1fr;padding-top:40px}
+    .aside-col{position:static;order:-1}
+    .plate{padding:24px 20px 22px}
+    .notes{margin-top:20px}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{transition-duration:.001ms !important;animation-duration:.001ms !important}
+    .rv{opacity:1;transform:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="ground"></div>
+<svg class="grain" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.82" numOctaves="3"/></filter>
+  <rect width="100%" height="100%" filter="url(#n)"/>
+</svg>
+
+<header class="topbar">
+  <a class="brand" href="/">Kingdoms<span>:</span> Prophecies</a>
+  <nav class="navlinks" aria-label="Main">
+    <a href="/about">About</a>
+    <a href="#">Wiki</a>
+    <a href="#">Log in</a>
+  </nav>
+</header>
+
+<main class="stage">
+
+  <!-- FORM -->
+  <div class="form-col rv d1">
+    <p class="eyebrow"><em>✦</em> &nbsp;Enrolment</p>
+    <h1 class="head">Take a name<b>the map will remember.</b></h1>
+    <p class="sub">
+      Three things and you are in. You choose your culture and station after
+      this, at the table, once you can see who else is playing.
+    </p>
+
+    <form id="signup" novalidate>
+
+      <div class="field">
+        <label class="flabel" for="email">
+          <span>Email</span>
+        </label>
+        <div class="inwrap">
+          <input class="input" id="email" name="email" type="email"
+                 autocomplete="email" placeholder="you@example.com"
+                 aria-describedby="email-hint email-err">
+        </div>
+        <p class="hint" id="email-hint">Used for sign in and turn reminders. Nothing else.</p>
+        <p class="err" id="email-err" role="alert">Enter an email address that includes an @ and a domain.</p>
+      </div>
+
+      <div class="field pw">
+        <label class="flabel" for="password">
+          <span>Password</span>
+        </label>
+        <div class="inwrap">
+          <input class="input" id="password" name="password" type="password"
+                 autocomplete="new-password" placeholder="At least 8 characters"
+                 aria-describedby="pw-strength pw-err">
+          <button class="reveal" type="button" id="reveal" aria-label="Show password">Show</button>
+        </div>
+        <div class="strength" id="pw-strength" aria-live="polite">
+          <div class="bars">
+            <span class="bar" id="b1"></span>
+            <span class="bar" id="b2"></span>
+            <span class="bar" id="b3"></span>
+          </div>
+          <span class="slabel" id="slabel">Strength</span>
+        </div>
+        <p class="err" id="pw-err" role="alert">Use at least 8 characters.</p>
+      </div>
+
+      <div class="field">
+        <label class="flabel" for="nickname">
+          <span>Nickname</span>
+          <span class="aside">Will appear in game</span>
+        </label>
+        <div class="inwrap">
+          <input class="input" id="nickname" name="nickname" type="text"
+                 autocomplete="nickname" maxlength="18" placeholder="Aldric of Wenmoor"
+                 aria-describedby="nick-hint nick-err">
+        </div>
+        <p class="hint" id="nick-hint">3 to 18 characters. Other players see this on the map, in the chronicle, and on every quest you finish. You can change it once per season.</p>
+        <p class="err" id="nick-err" role="alert">Nicknames run 3 to 18 characters, using letters, numbers, spaces, apostrophes, and hyphens.</p>
+      </div>
+
+      <button class="btn" type="submit" id="submit" aria-disabled="true">Sign up</button>
+
+      <p class="below">
+        Already enrolled? <a href="#">Log in</a><br>
+        Signing up accepts the <a href="#">terms</a> and the <a href="#">privacy notice</a>.
+      </p>
+
+    </form>
+  </div>
+
+  <!-- SIGNATURE: name plate -->
+  <aside class="aside-col rv d2">
+    <div class="plate" id="plate">
+      <p class="plate-cap">How you will appear</p>
+
+      <svg class="seal" viewBox="0 0 80 80" aria-hidden="true">
+        <circle class="seal-ring" cx="40" cy="40" r="35" fill="none" stroke-width="1.2"/>
+        <circle class="seal-ring" cx="40" cy="40" r="29" fill="none" stroke-width="1" stroke-dasharray="3 5"/>
+        <path class="seal-mark" d="M40 20l17 8v12c0 10.5-7.2 17.8-17 20.8C30.2 57.8 23 50.5 23 40V28z" opacity=".22"/>
+        <path class="seal-mark" d="M40 26.5l11 5.2V40c0 6.9-4.6 11.7-11 13.8-6.4-2.1-11-6.9-11-13.8v-8.3z" opacity=".5"/>
+        <path class="seal-mark" d="M38.6 33h2.8v14h-2.8zM33.6 38.6h12.8v2.8H33.6z"/>
+      </svg>
+
+      <div class="plate-name" id="plate-name">Unnamed</div>
+      <div class="plate-rule"></div>
+      <p class="plate-sub" id="plate-sub">No standing anywhere</p>
+    </div>
+
+    <div class="notes">
+      <div class="note">
+        <div class="k">I</div>
+        <div class="v">You begin with no reputation, no followers, and no skills. That is normal and it is the same for everyone.</div>
+      </div>
+      <div class="note">
+        <div class="k">II</div>
+        <div class="v">Culture and station are picked at the table, not here. Andric, Sessau, and Nightcourt all open very differently.</div>
+      </div>
+      <div class="note">
+        <div class="k">III</div>
+        <div class="v">Your two starting quests are dealt once the game begins. They are small on purpose.</div>
+      </div>
+    </div>
+  </aside>
+
+</main>
+
+<footer class="foot">Kingdoms: Prophecies &nbsp;·&nbsp; The sun has not failed yet</footer>
+
+<script>
+(function(){
+  var email = document.getElementById('email');
+  var pw    = document.getElementById('password');
+  var nick  = document.getElementById('nickname');
+  var btn   = document.getElementById('submit');
+  var plate = document.getElementById('plate');
+  var pname = document.getElementById('plate-name');
+  var psub  = document.getElementById('plate-sub');
+  var reveal= document.getElementById('reveal');
+  var bars  = [document.getElementById('b1'),document.getElementById('b2'),document.getElementById('b3')];
+  var slabel= document.getElementById('slabel');
+
+  var NICK_RE = /^[A-Za-z0-9][A-Za-z0-9 '\-]{1,16}[A-Za-z0-9]$/;
+  var MAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+  function okEmail(){ return MAIL_RE.test(email.value.trim()); }
+  function okPw(){ return pw.value.length >= 8; }
+  function okNick(){ var v = nick.value.trim(); return v.length >= 3 && v.length <= 18 && NICK_RE.test(v); }
+
+  function score(v){
+    var s = 0;
+    if(v.length >= 8) s++;
+    if(v.length >= 14) s++;
+    var classes = 0;
+    if(/[a-z]/.test(v)) classes++;
+    if(/[A-Z]/.test(v)) classes++;
+    if(/[0-9]/.test(v)) classes++;
+    if(/[^A-Za-z0-9]/.test(v)) classes++;
+    if(classes >= 3) s++;
+    return Math.min(s,3);
+  }
+
+  function paintStrength(){
+    var s = pw.value ? score(pw.value) : 0;
+    bars.forEach(function(b,i){
+      b.className = 'bar' + (i < s ? ' on' + s : '');
+    });
+    slabel.textContent = ['Strength','Weak','Fair','Strong'][s];
+  }
+
+  function paintPlate(){
+    var v = nick.value.trim();
+    pname.textContent = v || 'Unnamed';
+    if(okNick()){
+      plate.classList.add('sealed');
+      psub.textContent = 'Ready to be dealt in';
+    }else{
+      plate.classList.remove('sealed');
+      psub.textContent = 'No standing anywhere';
+    }
+  }
+
+  function setErr(input, errId, isOk){
+    var el = document.getElementById(errId);
+    if(!isOk && input.value !== ''){ input.classList.add('bad'); el.classList.add('show'); }
+    else { input.classList.remove('bad'); el.classList.remove('show'); }
+  }
+
+  function refresh(){
+    var ready = okEmail() && okPw() && okNick();
+    btn.setAttribute('aria-disabled', ready ? 'false' : 'true');
+  }
+
+  email.addEventListener('input', function(){ setErr(email,'email-err',okEmail()); refresh(); });
+  pw.addEventListener('input', function(){ paintStrength(); setErr(pw,'pw-err',okPw()); refresh(); });
+  nick.addEventListener('input', function(){ paintPlate(); setErr(nick,'nick-err',okNick()); refresh(); });
+
+  email.addEventListener('blur', function(){ setErr(email,'email-err',okEmail()); });
+  pw.addEventListener('blur', function(){ setErr(pw,'pw-err',okPw()); });
+  nick.addEventListener('blur', function(){ setErr(nick,'nick-err',okNick()); });
+
+  reveal.addEventListener('click', function(){
+    var showing = pw.type === 'text';
+    pw.type = showing ? 'password' : 'text';
+    reveal.textContent = showing ? 'Show' : 'Hide';
+    reveal.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+    pw.focus();
+  });
+
+  document.getElementById('signup').addEventListener('submit', function(e){
+    e.preventDefault();
+    setErr(email,'email-err',okEmail());
+    setErr(pw,'pw-err',okPw());
+    setErr(nick,'nick-err',okNick());
+    if(!okEmail()){ email.classList.add('bad'); document.getElementById('email-err').classList.add('show'); email.focus(); return; }
+    if(!okPw()){ pw.classList.add('bad'); document.getElementById('pw-err').classList.add('show'); pw.focus(); return; }
+    if(!okNick()){ nick.classList.add('bad'); document.getElementById('nick-err').classList.add('show'); nick.focus(); return; }
+    btn.textContent = 'Enrolled';
+  });
+
+  paintStrength();
+  paintPlate();
+  refresh();
+})();
+</script>
+
+</body>
+</html>
