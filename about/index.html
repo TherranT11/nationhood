@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About — Nationhood: Rise and Fall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Unicase:wght@400;500;600;700&family=Gentium+Book+Plus:ital,wght@0,400;0,700;1,400&family=Spline+Sans+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ==========================================================
+   NATIONHOOD: RISE AND FALL — ABOUT
+   Same system as the archive: glazed brick chrome,
+   papyrus reading surface, rubricated headings.
+   ========================================================== */
+:root{
+  --lapis:        #17386B;
+  --lapis-deep:   #0E2449;
+  --papyrus:      #DFD0AC;
+  --papyrus-lift: #E9DCBD;
+  --papyrus-sink: #CDBC95;
+
+  --gold:         #C9962F;
+  --gold-bright:  #EBC163;
+  --ochre:        #A8452C;
+  --malachite:    #3F7F6E;
+  --clay:         #8B5E3C;
+  --ash:          #5C5850;
+
+  --ink:          #2A2119;
+  --ink-soft:     #5E5040;
+  --ink-faint:    #857459;
+  --on-lapis:     #DCE4F0;
+  --on-lapis-dim: #93A9C9;
+
+  --incise: "Cormorant Unicase", Georgia, serif;
+  --read:   "Gentium Book Plus", Georgia, serif;
+  --meta:   "Spline Sans Mono", ui-monospace, monospace;
+
+  --hair: 1px;
+  --shell: 1000px;
+}
+
+*,*::before,*::after{ box-sizing:border-box; }
+html{ scroll-behavior:smooth; }
+
+body{
+  margin:0;
+  font-family:var(--read);
+  font-size:17px; line-height:1.68;
+  color:var(--on-lapis);
+  background-color:var(--lapis);
+  background-image:
+    repeating-linear-gradient(0deg,  rgba(0,0,0,.20) 0 1px, transparent 1px 38px),
+    repeating-linear-gradient(90deg, rgba(0,0,0,.13) 0 1px, transparent 1px 76px),
+    radial-gradient(120% 70% at 50% 0%, rgba(235,193,99,.12), transparent 62%);
+  -webkit-font-smoothing:antialiased;
+}
+.sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+a:focus-visible, button:focus-visible{ outline:2px solid var(--gold-bright); outline-offset:3px; }
+
+/* ---------------- top bar ---------------- */
+.bar{
+  background:var(--lapis-deep);
+  border-bottom:2px solid var(--gold);
+  box-shadow:0 10px 26px rgba(0,0,0,.3);
+}
+.bar__in{
+  width:min(100% - 34px, var(--shell)); margin-inline:auto;
+  display:flex; align-items:center; gap:24px; padding:14px 0;
+}
+.mark{ display:flex; align-items:baseline; gap:10px; text-decoration:none; margin-right:auto; }
+.mark__name{
+  font-family:var(--incise); font-weight:600; font-size:23px;
+  letter-spacing:.14em; color:var(--papyrus-lift); line-height:1;
+}
+.mark__sub{
+  font-family:var(--meta); font-size:9px; letter-spacing:.24em;
+  text-transform:uppercase; color:var(--gold);
+}
+.bar__nav{ display:flex; align-items:center; gap:22px; }
+.bar__nav a{
+  font-family:var(--meta); font-size:11px; letter-spacing:.17em; text-transform:uppercase;
+  color:var(--on-lapis-dim); text-decoration:none;
+}
+.bar__nav a:hover{ color:var(--gold-bright); }
+.bar__nav a.is-here{ color:var(--papyrus-lift); border-bottom:var(--hair) solid var(--gold); padding-bottom:3px; }
+.bar__nav a.join{
+  color:var(--lapis-deep); background:var(--gold);
+  padding:8px 17px; border:var(--hair) solid var(--gold);
+}
+.bar__nav a.join:hover{ background:var(--gold-bright); color:var(--lapis-deep); }
+
+/* ---------------- the tablet ---------------- */
+.wrap{ width:min(100% - 34px, var(--shell)); margin:30px auto 64px; }
+.tablet{
+  background-color:var(--papyrus);
+  background-image:
+    repeating-linear-gradient(90deg, rgba(42,33,25,.045) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(0deg,  rgba(42,33,25,.035) 0 1px, transparent 1px 6px),
+    radial-gradient(70% 40% at 12% 6%,  rgba(139,94,60,.14), transparent 70%),
+    radial-gradient(60% 45% at 90% 78%, rgba(139,94,60,.12), transparent 72%);
+  color:var(--ink);
+  border:var(--hair) solid var(--papyrus-sink);
+  box-shadow:0 20px 46px rgba(0,0,0,.42), inset 0 0 0 6px rgba(205,188,149,.35);
+  padding:44px clamp(20px,4.4vw,54px) 48px;
+}
+
+/* ---------------- title ---------------- */
+.crown{ text-align:center; margin-bottom:34px; }
+.cartouche{
+  display:inline-block; padding:10px 44px;
+  border:2px solid var(--gold); border-radius:999px;
+  background:rgba(201,150,47,.10);
+  box-shadow:inset 0 0 0 4px rgba(223,208,172,.62);
+}
+.cartouche h1{
+  margin:0; font-family:var(--incise); font-weight:600;
+  font-size:clamp(30px,5vw,48px); letter-spacing:.16em; text-indent:.16em;
+  line-height:1.06; color:var(--ink);
+}
+.crown__thesis{
+  font-family:var(--incise); font-weight:500;
+  font-size:clamp(17px,2.4vw,23px); line-height:1.4;
+  letter-spacing:.04em; color:var(--ochre);
+  margin:22px auto 0; max-width:24ch;
+}
+
+/* facts strip */
+.facts{
+  display:grid; grid-template-columns:repeat(4,1fr);
+  border-block:var(--hair) solid rgba(42,33,25,.22);
+  margin-bottom:6px;
+}
+.facts div{
+  padding:14px 12px; text-align:center;
+  border-left:var(--hair) solid rgba(42,33,25,.14);
+}
+.facts div:first-child{ border-left:0; }
+.facts b{
+  display:block; font-family:var(--incise); font-weight:600;
+  font-size:19px; letter-spacing:.05em; color:var(--ink);
+}
+.facts span{
+  font-family:var(--meta); font-size:9.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--ink-faint);
+}
+
+/* ---------------- rubricated sections ---------------- */
+.h2{
+  font-family:var(--incise); font-weight:600;
+  font-size:clamp(23px,3vw,29px); letter-spacing:.07em;
+  color:var(--ochre);
+  margin:44px 0 6px; padding-bottom:9px;
+  border-bottom:var(--hair) solid rgba(168,69,44,.38);
+}
+.prose p{ margin:14px 0; max-width:68ch; }
+.prose b{ font-weight:700; }
+.prose .lede{ font-size:19px; border-left:3px solid var(--ochre); padding-left:18px; margin:0 0 8px; }
+.dropcap::first-letter{
+  font-family:var(--incise); font-weight:700; float:left;
+  font-size:56px; line-height:.84; padding:6px 10px 0 0; color:var(--clay);
+}
+
+/* ---------------- the cycle strip ---------------- */
+.cycle{ margin:26px 0 0; }
+.cycle__row{
+  display:grid; grid-template-columns:repeat(5,1fr); gap:8px;
+}
+.phase{
+  background:rgba(139,94,60,.09);
+  border:var(--hair) solid rgba(42,33,25,.18);
+  border-top:4px solid var(--tone);
+  padding:16px 14px 18px;
+}
+.phase--found{ --tone:var(--clay); }
+.phase--rise{  --tone:var(--malachite); }
+.phase--expand{--tone:var(--gold); }
+.phase--dec{   --tone:var(--ochre); }
+.phase--decline{ --tone:var(--ash); }
+
+.phase h3{
+  font-family:var(--incise); font-weight:600; font-size:17px;
+  letter-spacing:.09em; margin:0 0 7px; color:var(--ink);
+}
+.phase p{ margin:0; font-size:14.5px; line-height:1.5; color:var(--ink-soft); }
+
+.cycle__return{
+  margin-top:10px; padding-top:12px;
+  border-top:2px dashed rgba(201,150,47,.75);
+  position:relative;
+  font-family:var(--meta); font-size:10.5px; letter-spacing:.17em;
+  text-transform:uppercase; color:var(--clay);
+  text-align:center;
+}
+.cycle__return::before{
+  content:"◀"; position:absolute; left:-2px; top:-9px;
+  color:var(--gold); font-size:13px; line-height:1;
+}
+
+/* ---------------- diagrams ---------------- */
+.plate{ margin:26px 0 8px; }
+.plate svg{ width:100%; height:auto; display:block; }
+.plate figcaption{
+  font-family:var(--meta); font-size:10.5px; letter-spacing:.13em;
+  color:var(--ink-faint); text-align:center; margin-top:12px;
+  text-transform:uppercase;
+}
+
+/* ---------------- closing call ---------------- */
+.begin{
+  margin-top:46px; padding-top:34px;
+  border-top:2px solid var(--clay);
+  text-align:center;
+}
+.begin h2{
+  font-family:var(--incise); font-weight:600;
+  font-size:clamp(24px,3.4vw,34px); letter-spacing:.08em;
+  margin:0 0 10px; color:var(--ink);
+}
+.begin p{ margin:0 auto 24px; max-width:46ch; color:var(--ink-soft); }
+.begin__acts{ display:flex; flex-wrap:wrap; gap:13px; justify-content:center; }
+.btn{
+  font-family:var(--meta); font-size:11.5px; letter-spacing:.19em; text-transform:uppercase;
+  text-decoration:none; padding:15px 30px; display:inline-block;
+  border:var(--hair) solid var(--clay); transition:background-color .2s, color .2s;
+}
+.btn--gold{ background:var(--clay); color:var(--papyrus-lift); border-color:var(--clay); }
+.btn--gold:hover{ background:var(--ochre); border-color:var(--ochre); }
+.btn--plain{ color:var(--ink); }
+.btn--plain:hover{ background:rgba(139,94,60,.14); }
+
+/* ---------------- foot ---------------- */
+.foot{
+  border-top:2px solid var(--gold); background:var(--lapis-deep);
+  padding:28px 0 34px;
+}
+.foot__in{
+  width:min(100% - 34px, var(--shell)); margin-inline:auto;
+  display:flex; flex-wrap:wrap; gap:14px 34px; justify-content:space-between; align-items:center;
+}
+.foot a{
+  font-family:var(--meta); font-size:11px; letter-spacing:.17em; text-transform:uppercase;
+  color:var(--on-lapis-dim); text-decoration:none; margin-right:24px;
+}
+.foot a:hover{ color:var(--gold-bright); }
+.foot p{ font-family:var(--meta); font-size:10.5px; letter-spacing:.1em; color:#6E86A8; margin:0; }
+
+/* ---------------- responsive ---------------- */
+@media (max-width:820px){
+  .cycle__row{ grid-template-columns:repeat(2,1fr); }
+  .facts{ grid-template-columns:repeat(2,1fr); }
+  .facts div:nth-child(3){ border-left:0; }
+  .facts div:nth-child(n+3){ border-top:var(--hair) solid rgba(42,33,25,.14); }
+}
+@media (max-width:620px){
+  body{ font-size:16px; }
+  .bar__in{ flex-wrap:wrap; gap:12px 18px; }
+  .mark{ margin-right:0; flex:1 1 100%; }
+  .bar__nav{ gap:16px; flex-wrap:wrap; }
+  .tablet{ padding:28px 18px 34px; }
+  .cycle__row{ grid-template-columns:1fr; }
+  .cartouche{ padding:9px 22px; }
+}
+@media (prefers-reduced-motion:reduce){
+  html{ scroll-behavior:auto; }
+  *,*::before,*::after{ animation:none !important; transition:none !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ================= BAR ================= -->
+<header class="bar">
+  <div class="bar__in">
+    <a class="mark" href="/">
+      <span class="mark__name">NATIONHOOD</span>
+      <span class="mark__sub">Rise &amp; Fall</span>
+    </a>
+    <nav class="bar__nav" aria-label="Main">
+      <a href="#">Wiki</a>
+      <a href="/about" class="is-here" aria-current="page">About</a>
+      <a href="#">Log in</a>
+      <a href="#" class="join">Sign up</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+<main class="tablet">
+
+  <div class="crown">
+    <div class="cartouche"><h1>ABOUT</h1></div>
+    <p class="crown__thesis">Every civilization falls. The only question is when you let it.</p>
+  </div>
+
+  <div class="facts">
+    <div><b>Browser</b><span>No download</span></div>
+    <div><b>Persistent</b><span>Never pauses</span></div>
+    <div><b>Multiplayer</b><span>Shared world</span></div>
+    <div><b>Fast</b><span>Days, not months</span></div>
+  </div>
+
+  <div class="prose">
+
+    <h2 class="h2">The short version</h2>
+    <p class="lede">
+      You found a civilization. You raise it, expand it, and take every point of <b>Legacy</b> it will
+      give you. Then it stops giving. Regions that once paid well start paying less, and nothing you
+      build turns that around. At some point you stop feeding a dying thing, <b>go into Decline</b>,
+      and found a new civilization on top of the old one — richer for having buried it.
+    </p>
+    <p>
+      It runs in a browser, it runs whether or not you're logged in, and it runs alongside everyone
+      else's civilizations in the same world. A single civilization's whole life — founding to
+      collapse — takes days rather than months.
+    </p>
+
+    <h2 class="h2">The cycle</h2>
+    <p>
+      Every civilization moves through the same five stages in the same order. The stages are not
+      optional and they cannot be skipped. What you control is how fast you move through them and
+      how much you take out along the way.
+    </p>
+
+    <div class="cycle">
+      <div class="cycle__row">
+        <div class="phase phase--found">
+          <h3>Found</h3>
+          <p>Pick a river, a coast, or a high pass. One region, one people, no history.</p>
+        </div>
+        <div class="phase phase--rise">
+          <h3>Rise</h3>
+          <p>Food, population, faith. The early years are generous and forgiving.</p>
+        </div>
+        <div class="phase phase--expand">
+          <h3>Expand</h3>
+          <p>Take regions, research, build. Every region pays Legacy on every tick.</p>
+        </div>
+        <div class="phase phase--dec">
+          <h3>Decadence</h3>
+          <p>The payments shrink. More regions, less return. It is not a bug and not reversible.</p>
+        </div>
+        <div class="phase phase--decline">
+          <h3>Decline</h3>
+          <p>Step down deliberately. Bank everything earned. The map remembers you.</p>
+        </div>
+      </div>
+      <p class="cycle__return">and found again, higher up than you started</p>
+    </div>
+
+    <h2 class="h2">Decadence</h2>
+    <p class="dropcap">
+      Decadence is the engine of the whole game. Early on, each new region you take pays close to its
+      full Legacy value. As your civilization ages, that per-region yield falls — slowly at first, then
+      steeply. A hundred-region empire deep in Decadence can earn less per tick than a twenty-region
+      kingdom in its Rise.
+    </p>
+    <p>
+      There is no building, no technology, and no ruler that reverses it. You can slow the curve, and
+      good play does, but every civilization in the game's history has ended on the right-hand side of
+      this chart.
+    </p>
+
+    <figure class="plate">
+      <svg viewBox="0 0 860 340" role="img"
+           aria-label="A chart of Legacy earned per region against the age of a civilization. The yield climbs steeply during the Rise, plateaus through Expansion, then falls away through Decadence. Most players go into Decline part-way down the falling side.">
+        <defs>
+          <pattern id="hatch" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+            <line x1="0" y1="0" x2="0" y2="8" stroke="#A8452C" stroke-width="1.4" opacity=".34"/>
+          </pattern>
+          <linearGradient id="yieldFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#C9962F" stop-opacity=".55"/>
+            <stop offset="1" stop-color="#C9962F" stop-opacity=".08"/>
+          </linearGradient>
+        </defs>
+
+        <!-- decadence zone -->
+        <rect x="500" y="34" width="300" height="228" fill="url(#hatch)"/>
+
+        <!-- area under the curve -->
+        <path fill="url(#yieldFill)"
+              d="M 70 262 L 70 250 C 110 196 130 150 160 128 C 200 98 220 82 260 70
+                 C 320 58 380 56 430 60 C 480 66 500 76 530 92 C 580 120 630 152 680 182
+                 C 730 208 770 224 800 236 L 800 262 Z"/>
+        <!-- the curve itself -->
+        <path fill="none" stroke="#8B5E3C" stroke-width="2.6" stroke-linecap="round"
+              d="M 70 250 C 110 196 130 150 160 128 C 200 98 220 82 260 70
+                 C 320 58 380 56 430 60 C 480 66 500 76 530 92 C 580 120 630 152 680 182
+                 C 730 208 770 224 800 236"/>
+
+        <!-- axes -->
+        <line x1="70" y1="262" x2="806" y2="262" stroke="#2A2119" stroke-width="1.6"/>
+        <line x1="70" y1="34"  x2="70"  y2="262" stroke="#2A2119" stroke-width="1.6"/>
+
+        <!-- decadence threshold -->
+        <line x1="500" y1="34" x2="500" y2="262" stroke="#A8452C" stroke-width="1.6" stroke-dasharray="6 5"/>
+        <text x="508" y="50" font-family="Spline Sans Mono, monospace" font-size="11"
+              letter-spacing="1.6" fill="#A8452C">DECADENCE BEGINS</text>
+
+        <!-- the decision marker -->
+        <circle cx="655" cy="168" r="6.5" fill="#2A2119"/>
+        <circle cx="655" cy="168" r="12" fill="none" stroke="#2A2119" stroke-width="1.2" opacity=".5"/>
+        <line x1="655" y1="156" x2="655" y2="112" stroke="#2A2119" stroke-width="1.2"/>
+        <text x="655" y="102" text-anchor="middle" font-family="Spline Sans Mono, monospace"
+              font-size="11.5" letter-spacing="1.2" fill="#2A2119">MOST PLAYERS DECLINE HERE</text>
+
+        <!-- phase ticks -->
+        <g font-family="Spline Sans Mono, monospace" font-size="10.5" letter-spacing="1.4"
+           fill="#857459" text-anchor="middle">
+          <text x="165" y="284">RISE</text>
+          <text x="345" y="284">EXPAND</text>
+          <text x="650" y="284">DECADENCE</text>
+        </g>
+
+        <!-- axis titles -->
+        <text x="438" y="316" text-anchor="middle" font-family="Spline Sans Mono, monospace"
+              font-size="11" letter-spacing="1.8" fill="#5E5040">AGE OF CIVILIZATION →</text>
+        <text transform="rotate(-90 24 148)" x="24" y="148" text-anchor="middle"
+              font-family="Spline Sans Mono, monospace" font-size="11" letter-spacing="1.8"
+              fill="#5E5040">LEGACY PER REGION</text>
+      </svg>
+      <figcaption>Yield per region across one civilization's life</figcaption>
+    </figure>
+
+    <h2 class="h2">Going into Decline</h2>
+    <p class="dropcap">
+      Declining is a choice you make on purpose, and it is the most important decision in the game.
+      Go too early and you walk away from Legacy your civilization would still have paid you. Go too
+      late and you spend days grinding regions that barely return anything, while other players are
+      already three civilizations further on.
+    </p>
+    <p>
+      When you decline, your civilization ends. Its cities become ruins on the shared map, its borders
+      open, and its record is written into the archive under its own name. Everything it earned is
+      banked. Then you found again — and the new civilization does not start from nothing.
+    </p>
+
+    <figure class="plate">
+      <svg viewBox="0 0 860 490" role="img"
+           aria-label="A cross-section of a tell: five stacked layers of settlement, each one a past civilization. The oldest and smallest is at the bottom, and each later civilization is founded on top of the ruins of the last, with its banked Legacy listed beside it.">
+        <!-- running total -->
+        <text x="852" y="26" text-anchor="end" font-family="Spline Sans Mono, monospace"
+              font-size="11.5" letter-spacing="1.8" fill="#857459">BANKED LEGACY</text>
+        <text x="852" y="56" text-anchor="end" font-family="Cormorant Unicase, serif"
+              font-weight="700" font-size="30" letter-spacing="1.5" fill="#2A2119">2,707</text>
+
+        <!-- accumulation arrow -->
+        <line x1="30" y1="430" x2="30" y2="205" stroke="#8B5E3C" stroke-width="1.4" stroke-dasharray="5 5"/>
+        <polygon points="30,193 25,206 35,206" fill="#8B5E3C"/>
+        <text transform="rotate(-90 14 318)" x="14" y="318" text-anchor="middle"
+              font-family="Spline Sans Mono, monospace" font-size="10.5" letter-spacing="1.8"
+              fill="#857459">EACH ONE STARTS HIGHER</text>
+
+        <!-- strata, oldest at the bottom -->
+        <path d="M 70 430 L 520 430 L 502 386 L 88 386 Z"  fill="#5C5850"/>
+        <path d="M 88 386 L 502 386 L 480 342 L 110 342 Z" fill="#8B5E3C"/>
+        <path d="M 110 342 L 480 342 L 454 298 L 136 298 Z" fill="#3F7F6E"/>
+        <path d="M 136 298 L 454 298 L 422 254 L 168 254 Z" fill="#A8452C"/>
+        <!-- current, unfinished -->
+        <path d="M 168 254 L 422 254 L 385 200 L 205 200 Z"
+              fill="rgba(201,150,47,.34)" stroke="#C9962F" stroke-width="2" stroke-dasharray="7 5"/>
+
+        <!-- joints between layers -->
+        <g stroke="rgba(42,33,25,.34)" stroke-width="1">
+          <line x1="88"  y1="386" x2="502" y2="386"/>
+          <line x1="110" y1="342" x2="480" y2="342"/>
+          <line x1="136" y1="298" x2="454" y2="298"/>
+          <line x1="168" y1="254" x2="422" y2="254"/>
+        </g>
+
+        <!-- bedrock -->
+        <line x1="40" y1="430" x2="560" y2="430" stroke="#2A2119" stroke-width="2.2"/>
+        <text x="40" y="452" font-family="Spline Sans Mono, monospace" font-size="10.5"
+              letter-spacing="1.4" fill="#857459">BEDROCK — YOUR FIRST GAME</text>
+
+        <!-- leader lines -->
+        <g stroke="#857459" stroke-width="1">
+          <line x1="511" y1="408" x2="574" y2="408"/>
+          <line x1="491" y1="364" x2="574" y2="364"/>
+          <line x1="467" y1="320" x2="574" y2="320"/>
+          <line x1="438" y1="276" x2="574" y2="276"/>
+          <line x1="403" y1="227" x2="574" y2="227"/>
+        </g>
+
+        <!-- labels -->
+        <g font-family="Cormorant Unicase, serif" font-weight="600" font-size="16"
+           letter-spacing="1.3" fill="#2A2119">
+          <text x="586" y="404">FIRST HOLDING</text>
+          <text x="586" y="360">MERU-KHET</text>
+          <text x="586" y="316">THESSARY</text>
+          <text x="586" y="272">ASHKARUM</text>
+          <text x="586" y="223">NINHARA</text>
+        </g>
+        <g font-family="Spline Sans Mono, monospace" font-size="11" letter-spacing="1.1" fill="#857459">
+          <text x="586" y="420">+120 legacy · declined</text>
+          <text x="586" y="376">+455 legacy · declined</text>
+          <text x="586" y="332">+640 legacy · declined</text>
+          <text x="586" y="288">+1,180 legacy · declined</text>
+          <text x="586" y="239" fill="#A8452C">+312 and counting · standing</text>
+        </g>
+      </svg>
+      <figcaption>Five civilizations, one player — each founded on the ruins of the last</figcaption>
+    </figure>
+
+    <p>
+      This is what a tell is: the mound that forms when a city is rebuilt, over and over, on the rubble
+      of the city before it. Every real ancient site you can name is one. It is also, exactly, your
+      account.
+    </p>
+
+    <h2 class="h2">You are not alone on the map</h2>
+    <p class="dropcap">
+      The world is shared and it does not pause. While your civilization rises, other players are
+      expanding into the regions you wanted, trading with your neighbours, and deciding whether you
+      are worth invading. When someone declines, their territory opens — and everyone nearby moves
+      at once.
+    </p>
+    <p>
+      Nothing is lost when you log off; ticks continue, harvests come in, and armies keep marching.
+      Coming back to a changed map is the normal experience of playing, not a punishment for being away.
+    </p>
+
+  </div>
+
+  <section class="begin">
+    <h2>Found something that will fall</h2>
+    <p>Pick a river. Take what it gives you. Know when to walk away from it.</p>
+    <div class="begin__acts">
+      <a class="btn btn--gold" href="#">Found a civilization</a>
+      <a class="btn btn--plain" href="#">Read the archive</a>
+    </div>
+  </section>
+
+</main>
+</div>
+
+<footer class="foot">
+  <div class="foot__in">
+    <nav aria-label="Footer">
+      <a href="/">Home</a><a href="#">Wiki</a><a href="#">Log in</a><a href="#">Sign up</a>
+    </nav>
+    <p>Nationhood: Rise and Fall · a persistent world</p>
+  </div>
+</footer>
+
+</body>
+</html>
