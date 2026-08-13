@@ -3,905 +3,279 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nationhood — Take an office</title>
+<title>Nationhood: Rise and Fall</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..700&family=Spectral:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Cutive+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Unicase:wght@400;500;600;700&family=Spline+Sans+Mono:wght@300;400&display=swap" rel="stylesheet">
 <style>
-/* ============================================================
-   NATIONHOOD — design tokens
-   Direction: engraved security printing (banknote / bond
-   certificate / letters patent), circa 1900.
-   ============================================================ */
+/* ==========================================================
+   NATIONHOOD: RISE AND FALL — HOME
+   Four pylon gates on a glazed-brick field.
+   ========================================================== */
 :root{
-  /* Colour — intaglio inks on tinted stock */
-  --field:        #132420;   /* deep bottle-green ground   */
-  --field-deep:   #0A1310;   /* wells, ticker strip        */
-  --field-raised: #1A2E28;   /* lifted panels              */
-  --vellum:       #E9E3D1;   /* document stock             */
-  --vellum-shade: #D8D0B8;   /* stock in shadow            */
-  --engrave:      #6F9481;   /* sage hairline              */
-  --gilt:         #C6A24C;   /* brass rule, Government     */
-  --wax:          #A6291F;   /* sealing wax, Labour        */
-  --steel:        #5C7E9B;   /* gun steel, Military        */
-
-  --ink-on-field:  #DCD8C6;
-  --mute-on-field: #93AA9D;
-  --ink-on-vellum: #21332C;
-  --mute-on-vellum:#5C6E64;
-
-  /* Type roles */
-  --display: "Bodoni Moda", Didot, "Times New Roman", serif;
-  --body:    "Spectral", Georgia, serif;
-  --data:    "Cutive Mono", "Courier New", monospace;
-
-  /* Rhythm */
-  --gut: 28px;
-  --max: 1180px;
-  --hair: 1px;
+  --lapis:        #17386B;
+  --lapis-deep:   #0E2449;
+  --lapis-lift:   #22497F;
+  --papyrus:      #E9DCBD;
+  --gold:         #C9962F;
+  --gold-bright:  #EBC163;
+  --clay:         #8B5E3C;
+  --on-lapis-dim: #93A9C9;
+  --incise: "Cormorant Unicase", Georgia, serif;
+  --meta:   "Spline Sans Mono", ui-monospace, monospace;
 }
 
 *,*::before,*::after{ box-sizing:border-box; }
 
-html{ scroll-behavior:smooth; }
-
 body{
   margin:0;
-  background-color:var(--field);
-  /* Intaglio ground: fine engraved line-work over the field */
+  min-height:100vh;
+  min-height:100dvh;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:clamp(38px,7vh,74px);
+  padding:44px 22px;
+
+  background-color:var(--lapis);
+  /* glazed brick coursing + light falling from above the gate */
   background-image:
-    repeating-linear-gradient(  0deg, rgba(111,148,129,.055) 0 1px, transparent 1px 7px),
-    repeating-linear-gradient( 90deg, rgba(111,148,129,.035) 0 1px, transparent 1px 7px),
-    radial-gradient(120% 90% at 50% 0%, rgba(198,162,76,.10), transparent 62%);
-  color:var(--ink-on-field);
-  font-family:var(--body);
-  font-weight:300;
-  font-size:17px;
-  line-height:1.62;
+    repeating-linear-gradient(0deg,  rgba(0,0,0,.20) 0 1px, transparent 1px 38px),
+    repeating-linear-gradient(90deg, rgba(0,0,0,.13) 0 1px, transparent 1px 76px),
+    radial-gradient(58% 46% at 50% 4%,  rgba(235,193,99,.20), transparent 68%),
+    radial-gradient(120% 88% at 50% 108%, rgba(0,0,0,.55), transparent 62%);
+  background-attachment:fixed;
+
+  font-family:var(--meta);
+  color:var(--papyrus);
   -webkit-font-smoothing:antialiased;
 }
 
-.shell{ width:min(100% - 40px, var(--max)); margin-inline:auto; }
+/* ---------------- title ---------------- */
+.crown{ text-align:center; }
 
-/* Shared small-caps data label (eyebrows, table heads, meta) */
-.tag{
-  font-family:var(--data);
-  font-size:11px;
-  letter-spacing:.22em;
-  text-transform:uppercase;
-  color:var(--mute-on-field);
-}
-
-/* Engraved rule with a centred lozenge */
-.rule{
-  display:flex; align-items:center; gap:14px;
-  margin:0; border:0; padding:0;
-}
-.rule::before,.rule::after{
-  content:""; flex:1; height:1px;
-  background:linear-gradient(90deg,transparent,rgba(198,162,76,.55),transparent);
-}
-.rule span{
-  width:7px; height:7px; transform:rotate(45deg);
-  background:var(--gilt); opacity:.7;
-}
-
-/* ============================================================
-   MASTHEAD
-   ============================================================ */
-.masthead{
-  border-bottom:var(--hair) solid rgba(198,162,76,.28);
-  padding-block:22px 0;
-  background:linear-gradient(180deg, rgba(10,19,16,.55), transparent);
-}
-.masthead__row{
-  display:flex; align-items:center; gap:22px;
-}
-.masthead__mark{
-  font-family:var(--display);
-  font-optical-sizing:auto;
-  font-weight:500;
-  font-size:clamp(30px,5.4vw,58px);
-  letter-spacing:.20em;
-  text-indent:.20em;              /* optically re-centre the tracking */
-  line-height:1;
-  margin:0;
-  color:var(--vellum);
-  white-space:nowrap;
-}
-.masthead__wing{
-  flex:1; height:0;
-  border-top:var(--hair) solid rgba(198,162,76,.45);
-  border-bottom:var(--hair) solid rgba(198,162,76,.18);
-  padding-top:3px;
-}
-.masthead__sub{
-  text-align:center;
-  margin:12px 0 0;
-  font-family:var(--display);
-  font-style:italic;
-  font-size:15px;
-  color:var(--gilt);
-  letter-spacing:.04em;
-}
-.statband{
-  display:flex; flex-wrap:wrap; justify-content:center; gap:8px 26px;
-  margin-top:18px; padding:11px 0;
-  border-top:var(--hair) solid rgba(111,148,129,.22);
-}
-.statband b{
-  color:var(--ink-on-field); font-weight:400;
-}
-
-/* ============================================================
-   HERO — thesis + the balance
-   ============================================================ */
-.hero{
-  display:grid;
-  grid-template-columns:minmax(0,1.02fr) minmax(0,.98fr);
-  gap:56px;
-  align-items:center;
-  padding-block:72px 64px;
-}
-.hero__eyebrow{ margin:0 0 20px; }
-.hero__head{
-  font-family:var(--display);
-  font-optical-sizing:auto;
-  font-weight:400;
-  font-size:clamp(38px,5vw,63px);
-  line-height:1.03;
-  letter-spacing:-.012em;
-  margin:0 0 22px;
-  color:var(--vellum);
-}
-.hero__head em{
-  font-style:italic;
-  color:var(--gilt);
-}
-.hero__lede{
-  font-size:18.5px;
-  max-width:34em;
-  margin:0 0 16px;
-  color:var(--ink-on-field);
-}
-.hero__note{
-  font-size:16px;
-  color:var(--mute-on-field);
-  max-width:34em;
-  margin:0 0 34px;
-}
-.hero__acts{ display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
-
-/* Buttons */
-.btn{
-  font-family:var(--data);
-  font-size:12px;
-  letter-spacing:.20em;
-  text-transform:uppercase;
-  text-decoration:none;
-  padding:15px 28px;
+.cartouche{
   display:inline-block;
-  border:var(--hair) solid var(--gilt);
-  transition:background-color .2s ease, color .2s ease, transform .2s ease;
+  padding:clamp(11px,2vw,17px) clamp(28px,5vw,58px);
+  border:2px solid var(--gold);
+  border-radius:999px;
+  background:rgba(201,150,47,.09);
+  box-shadow:inset 0 0 0 4px rgba(233,220,189,.16),
+             0 0 44px rgba(201,150,47,.16);
 }
-.btn--seal{
-  background:var(--gilt); color:#16241E; font-weight:400;
-  box-shadow:0 0 0 4px rgba(198,162,76,.12);
+.cartouche h1{
+  margin:0;
+  font-family:var(--incise); font-weight:600;
+  font-size:clamp(31px,6.4vw,66px);
+  letter-spacing:.15em; text-indent:.15em;
+  line-height:1.04;
+  color:var(--papyrus);
 }
-.btn--seal:hover{ background:#D8B65E; transform:translateY(-1px); }
-.btn--plain{ color:var(--gilt); background:transparent; }
-.btn--plain:hover{ background:rgba(198,162,76,.12); }
 
-a:focus-visible,button:focus-visible{
-  outline:2px solid var(--gilt); outline-offset:3px;
+.crown__sub{
+  margin:clamp(14px,2.4vh,22px) 0 0;
+  font-family:var(--incise); font-weight:500;
+  font-size:clamp(13px,1.9vw,18px);
+  letter-spacing:.44em; text-indent:.44em;
+  color:var(--gold);
 }
 
-/* --- The balance (signature element) --- */
-.balance{ position:relative; }
-.balance svg{ width:100%; height:auto; display:block; overflow:visible; }
+/* ---------------- the four gates ---------------- */
+.gates{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0,1fr));
+  gap:clamp(14px,2.6vw,34px);
+  width:min(100%, 880px);
+  list-style:none; margin:0; padding:0;
+}
 
-.beam{
-  transform-origin:260px 150px;      /* the pivot, atop the column */
-  animation:sway 11s ease-in-out infinite;
+.gate{
+  display:block;
+  text-decoration:none;
+  text-align:center;
+  transition:transform .28s ease;
 }
-@keyframes sway{
-  0%,100%{ transform:rotate(-4.2deg); }
-  50%    { transform:rotate(-1.4deg); }
-}
-.pan-left  { animation:hangL 11s ease-in-out infinite; }
-.pan-right { animation:hangR 11s ease-in-out infinite; }
-@keyframes hangL{ 0%,100%{ transform:translateY(9px);} 50%{ transform:translateY(3px);} }
-@keyframes hangR{ 0%,100%{ transform:translateY(-9px);} 50%{ transform:translateY(-3px);} }
+.gate svg{ display:block; width:100%; height:auto; overflow:visible; }
 
-.rosette line, .rosette ellipse{ vector-effect:non-scaling-stroke; }
-
-/* Readouts under the balance */
-.index{
-  display:grid; grid-template-columns:repeat(3,1fr);
-  border:var(--hair) solid rgba(111,148,129,.28);
-  margin-top:26px;
-}
-.index__cell{ padding:13px 10px; text-align:center; border-left:var(--hair) solid rgba(111,148,129,.28); }
-.index__cell:first-child{ border-left:0; }
-.index__val{
-  font-family:var(--display); font-size:30px; line-height:1; display:block; margin-bottom:6px;
-}
-.index__cell--gov .index__val{ color:var(--gilt); }
-.index__cell--lab .index__val{ color:#D06B5F; }
-.index__cell--mil .index__val{ color:var(--steel); }
-
-/* ============================================================
-   THE WIRE — telegraph ticker
-   ============================================================ */
-.wire{
-  background:var(--field-deep);
-  border-block:var(--hair) solid rgba(198,162,76,.24);
-  padding:13px 0;
-  overflow:hidden;
-  display:flex; align-items:center; gap:0;
-}
-.wire__label{
-  flex:0 0 auto;
-  padding:0 20px;
-  border-right:var(--hair) solid rgba(198,162,76,.3);
-  color:var(--wax);
-  font-family:var(--data); font-size:11px; letter-spacing:.22em; text-transform:uppercase;
-}
-.wire__track{ flex:1; overflow:hidden; }
-.wire__run{
-  display:flex; width:max-content;
-  animation:crawl 58s linear infinite;
-}
-.wire__run:hover{ animation-play-state:paused; }
-.wire__item{
-  font-family:var(--data); font-size:12.5px; letter-spacing:.03em;
-  color:var(--mute-on-field);
-  padding:0 34px;
+.gate__label{
+  display:block;
+  margin-top:15px;
+  font-family:var(--incise); font-weight:600;
+  font-size:clamp(12px,1.55vw,17px);
+  letter-spacing:.2em; text-indent:.2em;
+  color:var(--on-lapis-dim);
+  transition:color .28s ease;
   white-space:nowrap;
 }
-.wire__item b{ color:var(--gilt); font-weight:400; }
-@keyframes crawl{ from{ transform:translateX(0);} to{ transform:translateX(-50%);} }
 
-/* ============================================================
-   OFFICES — three faction documents
-   ============================================================ */
-.offices{ padding-block:82px 74px; }
-.offices__head{ text-align:center; margin-bottom:44px; }
-.offices__title{
-  font-family:var(--display); font-weight:400;
-  font-size:clamp(30px,3.6vw,44px); margin:14px 0 12px; color:var(--vellum);
-}
-.offices__sub{ color:var(--mute-on-field); max-width:56ch; margin:0 auto; }
+/* stonework */
+.gate .stone{ fill:url(#face); stroke:rgba(201,150,47,.55); stroke-width:1.4; transition:stroke .28s ease; }
+.gate .cornice{ fill:url(#faceLift); stroke:rgba(201,150,47,.6); stroke-width:1.4; }
+.gate .plinth{ fill:#0E2449; stroke:rgba(201,150,47,.4); stroke-width:1.2; }
+.gate .door{ fill:url(#doorDark); stroke:rgba(201,150,47,.42); stroke-width:1.2; transition:fill .3s ease; }
+.gate .cipher{ stroke:var(--gold); fill:none; stroke-width:2.2;
+               stroke-linecap:round; stroke-linejoin:round; transition:stroke .28s ease; }
+.gate .cipher-solid{ fill:var(--gold); stroke:none; transition:fill .28s ease; }
 
-.deck{ display:grid; grid-template-columns:repeat(3,1fr); gap:24px; }
+/* Sign up stands open by default — the primary way in */
+.gate--open .door{ fill:url(#doorLit); }
+.gate--open .gate__label{ color:var(--papyrus); }
 
-.office{
-  position:relative;
-  background:var(--vellum);
-  /* laid-paper grain */
-  background-image:repeating-linear-gradient(0deg, rgba(33,51,44,.045) 0 1px, transparent 1px 5px);
-  color:var(--ink-on-vellum);
-  padding:32px 26px 26px;
-  border:var(--hair) solid var(--vellum-shade);
-  box-shadow:0 16px 34px rgba(0,0,0,.34);
-  display:flex; flex-direction:column;
-  transition:transform .22s ease, box-shadow .22s ease;
-}
-.office:hover{ transform:translateY(-4px); box-shadow:0 22px 44px rgba(0,0,0,.42); }
+/* any gate opens on approach */
+.gate:hover,
+.gate:focus-visible{ transform:translateY(-6px); }
+.gate:hover .door,
+.gate:focus-visible .door{ fill:url(#doorLit); }
+.gate:hover .stone,
+.gate:focus-visible .stone{ stroke:var(--gold-bright); }
+.gate:hover .cipher,
+.gate:focus-visible .cipher{ stroke:var(--gold-bright); }
+.gate:hover .cipher-solid,
+.gate:focus-visible .cipher-solid{ fill:var(--gold-bright); }
+.gate:hover .gate__label,
+.gate:focus-visible .gate__label{ color:var(--gold-bright); }
 
-/* the coloured ink stripe that identifies the office */
-.office::before{
-  content:""; position:absolute; inset:0 0 auto 0; height:4px;
-  background:var(--accent);
-}
-.office--gov{ --accent:var(--gilt); }
-.office--lab{ --accent:var(--wax); }
-.office--mil{ --accent:var(--steel); }
+.gate:focus{ outline:none; }
+.gate:focus-visible{ outline:2px solid var(--gold-bright); outline-offset:10px; }
 
-.office__cipher{
-  width:52px; height:52px; margin-bottom:18px;
-  border:var(--hair) solid var(--accent);
-  border-radius:50%;
-  display:grid; place-items:center;
-  font-family:var(--display); font-size:24px; color:var(--accent);
-  box-shadow:0 0 0 3px rgba(33,51,44,.06);
-}
-.office__name{
-  font-family:var(--display); font-weight:500;
-  font-size:27px; margin:0 0 4px; color:var(--ink-on-vellum);
-}
-.office__kicker{
-  font-family:var(--data); font-size:10.5px; letter-spacing:.2em;
-  text-transform:uppercase; color:var(--mute-on-vellum);
-  margin:0 0 18px;
-}
-.office__body{ font-size:15.5px; margin:0 0 20px; color:#33443C; }
+/* ---------------- entrance ---------------- */
+@keyframes rise{ from{ opacity:0; transform:translateY(16px); } to{ opacity:1; transform:none; } }
+.crown{ animation:rise .8s ease-out both; }
+.gates li{ animation:rise .8s ease-out both; }
+.gates li:nth-child(1){ animation-delay:.16s; }
+.gates li:nth-child(2){ animation-delay:.26s; }
+.gates li:nth-child(3){ animation-delay:.36s; }
+.gates li:nth-child(4){ animation-delay:.46s; }
 
-.branches{ margin:0 0 22px; padding:0; list-style:none; }
-.branches li{
-  border-top:var(--hair) solid rgba(33,51,44,.16);
-  padding:11px 0;
-  font-size:14.5px;
-  color:#33443C;
+/* ---------------- responsive ---------------- */
+@media (max-width:760px){
+  .gates{ grid-template-columns:repeat(2, minmax(0,1fr)); width:min(100%, 400px); gap:22px 20px; }
+  .gate__label{ font-size:14px; letter-spacing:.16em; text-indent:.16em; }
 }
-.branches li:last-child{ border-bottom:var(--hair) solid rgba(33,51,44,.16); }
-.branches strong{
-  display:block; font-family:var(--body); font-weight:600;
-  font-size:15px; color:var(--ink-on-vellum);
-}
-.branches em{ font-style:normal; color:var(--mute-on-vellum); }
-
-.office__foot{ margin-top:auto; padding-top:4px; }
-.office__seats{
-  font-family:var(--data); font-size:11px; letter-spacing:.14em;
-  color:var(--mute-on-vellum); text-align:center; margin:0;
-}
-.office__seats b{ font-weight:400; }
-.office--gov .office__seats b{ color:#8A6E22; }
-.office--lab .office__seats b{ color:var(--wax); }
-.office--mil .office__seats b{ color:#3F5F79; }
-
-/* ============================================================
-   THE SESSION DAY — clock cycle
-   ============================================================ */
-.session{ padding-block:26px 82px; }
-.session__head{ display:flex; align-items:baseline; gap:18px; flex-wrap:wrap; margin-bottom:30px; }
-.session__title{
-  font-family:var(--display); font-weight:400; font-size:clamp(26px,3vw,36px);
-  margin:0; color:var(--vellum);
-}
-.session__hint{ color:var(--mute-on-field); font-size:15.5px; margin:0; }
-
-.clock{ display:grid; grid-template-columns:repeat(4,1fr); gap:0; border-top:var(--hair) solid rgba(198,162,76,.3); }
-.clock__slot{
-  padding:22px 20px 24px;
-  border-left:var(--hair) solid rgba(111,148,129,.2);
-  position:relative;
-}
-.clock__slot:first-child{ border-left:0; }
-.clock__slot::before{
-  content:""; position:absolute; top:-4px; left:0; width:7px; height:7px;
-  transform:rotate(45deg); background:var(--gilt);
-}
-.clock__time{
-  font-family:var(--data); font-size:12px; letter-spacing:.18em; color:var(--gilt);
-  display:block; margin-bottom:9px;
-}
-.clock__what{ font-family:var(--display); font-size:21px; margin:0 0 7px; color:var(--vellum); }
-.clock__desc{ margin:0; font-size:15px; color:var(--mute-on-field); }
-
-/* ============================================================
-   THE ROLL — nations open for appointment
-   ============================================================ */
-.roll{ padding-bottom:86px; }
-.roll__paper{
-  background:var(--vellum);
-  background-image:repeating-linear-gradient(0deg, rgba(33,51,44,.045) 0 1px, transparent 1px 5px);
-  color:var(--ink-on-vellum);
-  border:var(--hair) solid var(--vellum-shade);
-  box-shadow:0 16px 40px rgba(0,0,0,.36);
-  padding:34px 30px 30px;
-}
-.roll__cap{ display:flex; align-items:baseline; justify-content:space-between; gap:20px; flex-wrap:wrap; margin-bottom:22px; }
-.roll__title{ font-family:var(--display); font-weight:500; font-size:28px; margin:0; }
-.roll__meta{ font-family:var(--data); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--mute-on-vellum); }
-
-.ledger{ width:100%; border-collapse:collapse; }
-.ledger thead th{
-  font-family:var(--data); font-size:10.5px; letter-spacing:.18em; text-transform:uppercase;
-  color:var(--mute-on-vellum); text-align:left; font-weight:400;
-  padding:0 12px 10px 0; border-bottom:2px solid rgba(33,51,44,.4);
-}
-.ledger tbody td{
-  padding:15px 12px 15px 0;
-  border-bottom:var(--hair) solid rgba(33,51,44,.15);
-  font-size:15.5px; vertical-align:middle;
-}
-.ledger tbody tr:hover{ background:rgba(33,51,44,.045); }
-.ledger .nation{ font-family:var(--display); font-size:18px; }
-.ledger .form{ color:var(--mute-on-vellum); font-size:14.5px; }
-
-.post{
-  font-family:var(--data); font-size:10.5px; letter-spacing:.13em; text-transform:uppercase;
-  border:var(--hair) solid currentColor; padding:5px 10px; display:inline-block;
-}
-.post--gov{ color:#8A6E22; }
-.post--lab{ color:var(--wax); }
-.post--mil{ color:#3F5F79; }
-.post--none{ color:#7C8A82; }
-
-.unrest{ display:flex; align-items:center; gap:8px; }
-.unrest__bar{ width:74px; height:6px; background:rgba(33,51,44,.14); }
-.unrest__fill{ display:block; height:100%; background:var(--wax); }
-.unrest__num{ font-family:var(--data); font-size:11.5px; color:var(--mute-on-vellum); }
-
-.ledger .act{ text-align:right; }
-.ledger .act a{
-  font-family:var(--data); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
-  color:var(--ink-on-vellum); text-decoration:none; border-bottom:var(--hair) solid rgba(33,51,44,.45);
-  padding-bottom:2px;
-}
-.ledger .act a:hover{ color:var(--wax); border-color:var(--wax); }
-.ledger .act span{ font-family:var(--data); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#96A199; }
-
-/* ============================================================
-   FOOT — the seal
-   ============================================================ */
-.foot{
-  border-top:var(--hair) solid rgba(198,162,76,.28);
-  padding-block:52px 44px;
-  text-align:center;
-}
-.seal{
-  width:88px; height:88px; margin:0 auto 22px;
-  border:var(--hair) solid rgba(198,162,76,.5);
-  border-radius:50%;
-  display:grid; place-items:center;
-  box-shadow:0 0 0 5px rgba(198,162,76,.10);
-}
-.seal span{
-  font-family:var(--display); font-size:13px; letter-spacing:.14em; color:var(--gilt);
-}
-.foot__line{
-  font-family:var(--display); font-style:italic; font-size:19px; color:var(--vellum);
-  margin:0 0 22px;
-}
-.foot__nav{ display:flex; flex-wrap:wrap; justify-content:center; gap:8px 30px; margin-bottom:26px; }
-.foot__nav a{
-  font-family:var(--data); font-size:11px; letter-spacing:.18em; text-transform:uppercase;
-  color:var(--mute-on-field); text-decoration:none;
-}
-.foot__nav a:hover{ color:var(--gilt); }
-.foot__fine{ font-family:var(--data); font-size:10.5px; letter-spacing:.13em; color:#6B8377; margin:0; }
-
-/* ============================================================
-   RESPONSIVE
-   ============================================================ */
-@media (max-width:980px){
-  .hero{ grid-template-columns:1fr; gap:44px; padding-block:52px 48px; }
-  .deck{ grid-template-columns:1fr; }
-  .clock{ grid-template-columns:repeat(2,1fr); }
-  .clock__slot:nth-child(3){ border-left:0; }
-  .clock__slot:nth-child(n+3){ border-top:var(--hair) solid rgba(111,148,129,.2); }
-}
-@media (max-width:680px){
-  body{ font-size:16px; }
-  .masthead__wing{ display:none; }
-  .masthead__row{ justify-content:center; }
-  .masthead__mark{ font-size:34px; letter-spacing:.14em; text-indent:.14em; }
-  .clock{ grid-template-columns:1fr; }
-  .clock__slot{ border-left:0; border-top:var(--hair) solid rgba(111,148,129,.2); }
-  .roll__paper{ padding:24px 18px; }
-  .ledger thead{ display:none; }
-  .ledger tbody td{ display:block; padding:5px 0; border:0; }
-  .ledger tbody tr{ display:block; padding:16px 0; border-bottom:var(--hair) solid rgba(33,51,44,.18); }
-  .ledger .act{ text-align:left; padding-top:10px; }
-  .btn{ flex:1 1 100%; text-align:center; }
+@media (max-width:360px){
+  .gate__label{ font-size:12.5px; }
 }
 
 @media (prefers-reduced-motion:reduce){
-  html{ scroll-behavior:auto; }
   *,*::before,*::after{ animation:none !important; transition:none !important; }
-  .beam{ transform:rotate(-3deg); }
 }
 </style>
 </head>
 <body>
 
-<!-- ========== MASTHEAD ========== -->
-<header class="masthead">
-  <div class="shell">
-    <div class="masthead__row">
-      <div class="masthead__wing" aria-hidden="true"></div>
-      <h1 class="masthead__mark">NATIONHOOD</h1>
-      <div class="masthead__wing" aria-hidden="true"></div>
-    </div>
-    <p class="masthead__sub">Every nation is run by three people who cannot stand each other.</p>
-    <div class="statband tag">
-      <span>World <b>IV — Ardalia</b></span>
-      <span>Year <b>1900</b></span>
-      <span>Session <b>214</b></span>
-      <span>Offices seated <b>1,208</b></span>
-      <span>Nations at war <b>6</b></span>
-    </div>
-  </div>
-</header>
+<!-- shared gradients for every gate -->
+<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+  <defs>
+    <linearGradient id="face" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0"   stop-color="#22497F"/>
+      <stop offset=".55" stop-color="#1A3D70"/>
+      <stop offset="1"   stop-color="#102B55"/>
+    </linearGradient>
+    <linearGradient id="faceLift" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A5893"/>
+      <stop offset="1" stop-color="#1B406F"/>
+    </linearGradient>
+    <linearGradient id="doorDark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0A1B36"/>
+      <stop offset="1" stop-color="#050E1E"/>
+    </linearGradient>
+    <linearGradient id="doorLit" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0"   stop-color="#F0CE7C"/>
+      <stop offset=".42" stop-color="#C9962F"/>
+      <stop offset="1"   stop-color="#7A5715"/>
+    </linearGradient>
+  </defs>
+</svg>
 
-<!-- ========== HERO ========== -->
-<main>
-<div class="shell">
-  <section class="hero">
+<div class="crown">
+  <div class="cartouche"><h1>NATIONHOOD</h1></div>
+  <p class="crown__sub">RISE AND FALL</p>
+</div>
 
-    <div class="hero__copy">
-      <p class="hero__eyebrow tag">Persistent · Multiplayer · Text</p>
-      <h2 class="hero__head">Three offices hold the nation.<br><em>None holds it alone.</em></h2>
-      <p class="hero__lede">
-        You don't play a country. You play one faction inside it — the Government, the Labour bloc, or the
-        Military — alongside two other people who want what you want and won't give it to you.
-      </p>
-      <p class="hero__note">
-        Budgets are voted, not assigned. Wars need a treasury the Government controls, factories the Labour bloc
-        can stop, and officers the Military won't lend for nothing. Fall out badly enough and the nation falls with you.
-      </p>
-      <div class="hero__acts">
-        <a class="btn btn--seal" href="#offices">Take an office</a>
-        <a class="btn btn--plain" href="#session">Read the standing orders</a>
-      </div>
-    </div>
+<ul class="gates">
 
-    <!-- ---------- SIGNATURE: the balance ---------- -->
-    <div class="balance">
-      <svg viewBox="0 0 520 430" role="img"
-           aria-label="A brass balance. The Government holds the pivot at the top of the column; the Labour bloc and the Military hang from opposite ends of the beam.">
-        <defs>
-          <linearGradient id="brass" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0"   stop-color="#E0C476"/>
-            <stop offset=".45" stop-color="#C6A24C"/>
-            <stop offset="1"   stop-color="#8A6E28"/>
-          </linearGradient>
-          <linearGradient id="brassH" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0"   stop-color="#8A6E28"/>
-            <stop offset=".5"  stop-color="#DCC073"/>
-            <stop offset="1"   stop-color="#8A6E28"/>
-          </linearGradient>
-        </defs>
-
-        <!-- guilloche rosette, drawn by script -->
-        <g class="rosette" id="rosette" fill="none" stroke="#6F9481" stroke-width=".5" opacity=".34"></g>
-
-        <!-- graduated arc behind the beam -->
-        <g stroke="#6F9481" fill="none" opacity=".55">
-          <path d="M 130 118 A 140 140 0 0 1 390 118" stroke-width="1"/>
-        </g>
-        <g id="ticks" stroke="#6F9481" stroke-width="1" opacity=".5"></g>
-
-        <!-- plinth -->
-        <g fill="url(#brass)">
-          <rect x="196" y="374" width="128" height="12"/>
-          <rect x="210" y="360" width="100" height="14"/>
-          <rect x="224" y="348" width="72"  height="12"/>
-        </g>
-        <!-- fluted column -->
-        <rect x="250" y="168" width="20" height="182" fill="url(#brassH)"/>
-        <g stroke="#8A6E28" stroke-width=".6" opacity=".8">
-          <line x1="256" y1="170" x2="256" y2="348"/>
-          <line x1="264" y1="170" x2="264" y2="348"/>
-        </g>
-
-        <!-- ===== GOVERNMENT: holds the fulcrum itself ===== -->
-        <g>
-          <rect x="238" y="160" width="44" height="10" fill="url(#brassH)"/>
-          <circle cx="260" cy="150" r="21" fill="#132420" stroke="#C6A24C" stroke-width="1.5"/>
-          <circle cx="260" cy="150" r="15" fill="none" stroke="#C6A24C" stroke-width=".7" opacity=".7"/>
-          <text x="260" y="158" text-anchor="middle" font-family="Bodoni Moda, serif"
-                font-size="19" fill="#C6A24C">G</text>
-          <text x="260" y="112" text-anchor="middle" font-family="Cutive Mono, monospace"
-                font-size="10.5" letter-spacing="2.4" fill="#C6A24C">GOVERNMENT</text>
-          <text x="260" y="126" text-anchor="middle" font-family="Cutive Mono, monospace"
-                font-size="9" letter-spacing="1.6" fill="#6F9481">HOLDS THE PIVOT</text>
-        </g>
-
-        <!-- ===== BEAM + the two hanging pans ===== -->
-        <g class="beam">
-          <rect x="88" y="146" width="344" height="7" fill="url(#brassH)"/>
-          <polygon points="260,132 268,150 252,150" fill="#C6A24C"/>
-          <circle cx="96"  cy="149" r="5" fill="#C6A24C"/>
-          <circle cx="424" cy="149" r="5" fill="#C6A24C"/>
-
-          <!-- LABOUR -->
-          <g class="pan-left">
-            <line x1="96" y1="152" x2="96" y2="238" stroke="#C6A24C" stroke-width="1"/>
-            <line x1="96" y1="238" x2="58" y2="266" stroke="#C6A24C" stroke-width=".8"/>
-            <line x1="96" y1="238" x2="134" y2="266" stroke="#C6A24C" stroke-width=".8"/>
-            <path d="M 52 266 L 140 266 L 126 288 L 66 288 Z" fill="#1A2E28" stroke="#A6291F" stroke-width="1.4"/>
-            <circle cx="96" cy="222" r="19" fill="#132420" stroke="#A6291F" stroke-width="1.5"/>
-            <circle cx="96" cy="222" r="13.5" fill="none" stroke="#A6291F" stroke-width=".7" opacity=".7"/>
-            <text x="96" y="229" text-anchor="middle" font-family="Bodoni Moda, serif"
-                  font-size="17" fill="#D06B5F">L</text>
-            <text x="96" y="312" text-anchor="middle" font-family="Cutive Mono, monospace"
-                  font-size="10.5" letter-spacing="2.2" fill="#D06B5F">LABOUR</text>
-            <text x="96" y="326" text-anchor="middle" font-family="Cutive Mono, monospace"
-                  font-size="9" letter-spacing="1.4" fill="#6F9481">MOVEMENT / INDUSTRY</text>
-          </g>
-
-          <!-- MILITARY -->
-          <g class="pan-right">
-            <line x1="424" y1="152" x2="424" y2="238" stroke="#C6A24C" stroke-width="1"/>
-            <line x1="424" y1="238" x2="386" y2="266" stroke="#C6A24C" stroke-width=".8"/>
-            <line x1="424" y1="238" x2="462" y2="266" stroke="#C6A24C" stroke-width=".8"/>
-            <path d="M 380 266 L 468 266 L 454 288 L 394 288 Z" fill="#1A2E28" stroke="#5C7E9B" stroke-width="1.4"/>
-            <circle cx="424" cy="222" r="19" fill="#132420" stroke="#5C7E9B" stroke-width="1.5"/>
-            <circle cx="424" cy="222" r="13.5" fill="none" stroke="#5C7E9B" stroke-width=".7" opacity=".7"/>
-            <text x="424" y="229" text-anchor="middle" font-family="Bodoni Moda, serif"
-                  font-size="17" fill="#7FA3C0">M</text>
-            <text x="424" y="312" text-anchor="middle" font-family="Cutive Mono, monospace"
-                  font-size="10.5" letter-spacing="2.2" fill="#7FA3C0">MILITARY</text>
-            <text x="424" y="326" text-anchor="middle" font-family="Cutive Mono, monospace"
-                  font-size="9" letter-spacing="1.4" fill="#6F9481">ARMY / NAVY</text>
-          </g>
+  <!-- ============ LOG IN ============ -->
+  <li>
+    <a class="gate" href="#">
+      <svg viewBox="0 0 160 236" aria-hidden="true" focusable="false">
+        <rect class="cornice" x="16" y="1" width="128" height="8"/>
+        <path class="cornice" d="M 20 9 L 140 9 L 130 32 L 30 32 Z"/>
+        <path class="stone"   d="M 30 32 L 130 32 L 148 224 L 12 224 Z"/>
+        <path class="door"    d="M 60 224 L 64 112 L 96 112 L 100 224 Z"/>
+        <rect class="plinth"  x="4" y="224" width="152" height="9"/>
+        <!-- door bolt -->
+        <g transform="translate(80,72)">
+          <rect class="cipher" x="-19" y="-6" width="38" height="12" rx="2"/>
+          <circle class="cipher-solid" cx="0" cy="0" r="4"/>
         </g>
       </svg>
+      <span class="gate__label">LOG IN</span>
+    </a>
+  </li>
 
-      <div class="index">
-        <div class="index__cell index__cell--gov">
-          <span class="index__val">34</span>
-          <span class="tag">Cabinet</span>
-        </div>
-        <div class="index__cell index__cell--lab">
-          <span class="index__val">29</span>
-          <span class="tag">Labour</span>
-        </div>
-        <div class="index__cell index__cell--mil">
-          <span class="index__val">37</span>
-          <span class="tag">Military</span>
-        </div>
-      </div>
-      <p class="tag" style="text-align:center;margin:12px 0 0;">Index of power · Kingdom of Tarvenia · Session 214</p>
-    </div>
+  <!-- ============ SIGN UP (stands open) ============ -->
+  <li>
+    <a class="gate gate--open" href="#">
+      <svg viewBox="0 0 160 236" aria-hidden="true" focusable="false">
+        <rect class="cornice" x="16" y="1" width="128" height="8"/>
+        <path class="cornice" d="M 20 9 L 140 9 L 130 32 L 30 32 Z"/>
+        <path class="stone"   d="M 30 32 L 130 32 L 148 224 L 12 224 Z"/>
+        <path class="door"    d="M 60 224 L 64 112 L 96 112 L 100 224 Z"/>
+        <rect class="plinth"  x="4" y="224" width="152" height="9"/>
+        <!-- sun rising over the horizon -->
+        <g transform="translate(80,74)">
+          <path class="cipher" d="M -21 8 L 21 8"/>
+          <path class="cipher" d="M -13 8 A 13 13 0 0 1 13 8"/>
+          <path class="cipher" d="M 0 -18 L 0 -13"/>
+          <path class="cipher" d="M -15 -11 L -12 -8"/>
+          <path class="cipher" d="M 15 -11 L 12 -8"/>
+        </g>
+      </svg>
+      <span class="gate__label">SIGN UP</span>
+    </a>
+  </li>
 
-  </section>
-</div>
+  <!-- ============ WIKI ============ -->
+  <li>
+    <a class="gate" href="#">
+      <svg viewBox="0 0 160 236" aria-hidden="true" focusable="false">
+        <rect class="cornice" x="16" y="1" width="128" height="8"/>
+        <path class="cornice" d="M 20 9 L 140 9 L 130 32 L 30 32 Z"/>
+        <path class="stone"   d="M 30 32 L 130 32 L 148 224 L 12 224 Z"/>
+        <path class="door"    d="M 60 224 L 64 112 L 96 112 L 100 224 Z"/>
+        <rect class="plinth"  x="4" y="224" width="152" height="9"/>
+        <!-- inscribed tablet -->
+        <g transform="translate(80,72)">
+          <rect class="cipher" x="-16" y="-19" width="32" height="38" rx="3"/>
+          <path class="cipher" d="M -9 -10 L 9 -10"/>
+          <path class="cipher" d="M -9 -1 L 9 -1"/>
+          <path class="cipher" d="M -9 8 L 3 8"/>
+        </g>
+      </svg>
+      <span class="gate__label">WIKI</span>
+    </a>
+  </li>
 
-<!-- ========== THE WIRE ========== -->
-<section class="wire" aria-label="Latest dispatches">
-  <span class="wire__label">The wire</span>
-  <div class="wire__track">
-    <div class="wire__run" id="wireRun"></div>
-  </div>
-</section>
+  <!-- ============ ABOUT ============ -->
+  <li>
+    <a class="gate" href="/about">
+      <svg viewBox="0 0 160 236" aria-hidden="true" focusable="false">
+        <rect class="cornice" x="16" y="1" width="128" height="8"/>
+        <path class="cornice" d="M 20 9 L 140 9 L 130 32 L 30 32 Z"/>
+        <path class="stone"   d="M 30 32 L 130 32 L 148 224 L 12 224 Z"/>
+        <path class="door"    d="M 60 224 L 64 112 L 96 112 L 100 224 Z"/>
+        <rect class="plinth"  x="4" y="224" width="152" height="9"/>
+        <!-- watching eye -->
+        <g transform="translate(80,72)">
+          <path class="cipher" d="M -22 0 Q 0 -17 22 0 Q 0 17 -22 0 Z"/>
+          <circle class="cipher-solid" cx="0" cy="0" r="5.4"/>
+          <path class="cipher" d="M 8 9 L 14 20"/>
+        </g>
+      </svg>
+      <span class="gate__label">ABOUT</span>
+    </a>
+  </li>
 
-<!-- ========== OFFICES ========== -->
-<div class="shell">
-  <section class="offices" id="offices">
-    <div class="offices__head">
-      <div class="rule" role="presentation"><span></span></div>
-      <h2 class="offices__title">Choose the office, not the country</h2>
-      <p class="offices__sub">
-        Each nation seats exactly three players. Pick what you want to control — the country you get
-        assigned to comes second.
-      </p>
-    </div>
+</ul>
 
-    <div class="deck">
-
-      <!-- GOVERNMENT -->
-      <article class="office office--gov">
-        <div class="office__cipher" aria-hidden="true">G</div>
-        <h3 class="office__name">The Government</h3>
-        <p class="office__kicker">Treasury · Law · Foreign office</p>
-        <p class="office__body">
-          You raise the money and you sign the treaties. Nothing the other two want happens without a
-          budget line, and every budget line you refuse buys you an enemy at home.
-        </p>
-        <ul class="branches">
-          <li><strong>Sets taxation and tariffs</strong><em>Both other offices are paid out of what you collect.</em></li>
-          <li><strong>Speaks to foreign powers</strong><em>Only you can open talks, sign, or break a treaty.</em></li>
-          <li><strong>Can be brought down</strong><em>Lose three divisions in a row and your ministry falls.</em></li>
-        </ul>
-        <div class="office__foot">
-          <p class="office__seats"><b>31</b> seats open</p>
-        </div>
-      </article>
-
-      <!-- LABOUR -->
-      <article class="office office--lab">
-        <div class="office__cipher" aria-hidden="true">L</div>
-        <h3 class="office__name">The Labour Bloc</h3>
-        <p class="office__kicker">Choose one course at founding</p>
-        <p class="office__body">
-          You are the country's capacity to make things — and to stop making them. Nothing gets built,
-          shipped, or armed on a timetable you refuse to keep.
-        </p>
-        <ul class="branches">
-          <li><strong>The Movement</strong><em>Organise, strike, and push reform. Cheap power, slow power, and it frightens the Cabinet.</em></li>
-          <li><strong>The Industrialists</strong><em>Own the mills and the yards. Fast output, private profit, and the streets turn on you.</em></li>
-          <li><strong>You cannot be both</strong><em>The course is fixed when you take the seat.</em></li>
-        </ul>
-        <div class="office__foot">
-          <p class="office__seats"><b>44</b> seats open</p>
-        </div>
-      </article>
-
-      <!-- MILITARY -->
-      <article class="office office--mil">
-        <div class="office__cipher" aria-hidden="true">M</div>
-        <h3 class="office__name">The Military</h3>
-        <p class="office__kicker">Choose one service at founding</p>
-        <p class="office__body">
-          You hold the only force in the country, and you are the only office that can lose the whole
-          game in an afternoon. You do not control what you're paid.
-        </p>
-        <ul class="branches">
-          <li><strong>The Army</strong><em>Borders, garrisons, and the capital. Cheap to raise, ruinous to keep standing.</em></li>
-          <li><strong>The Navy</strong><em>Trade lanes, colonies, and blockade. Slow to build, and it decides who eats.</em></li>
-          <li><strong>You cannot be both</strong><em>The service is fixed when you take the seat.</em></li>
-        </ul>
-        <div class="office__foot">
-          <p class="office__seats"><b>27</b> seats open</p>
-        </div>
-      </article>
-
-    </div>
-  </section>
-
-  <!-- ========== SESSION DAY ========== -->
-  <section class="session" id="session">
-    <div class="session__head">
-      <h2 class="session__title">A day in session</h2>
-      <p class="session__hint">The world runs whether you're at the desk or not. Four fixed hours, every day, world time.</p>
-    </div>
-    <div class="clock">
-      <div class="clock__slot">
-        <span class="clock__time">07.00</span>
-        <h3 class="clock__what">Dispatches</h3>
-        <p class="clock__desc">The night's events arrive: harvests, strikes, ships sighted, what the neighbours did.</p>
-      </div>
-      <div class="clock__slot">
-        <span class="clock__time">12.00</span>
-        <h3 class="clock__what">Debate</h3>
-        <p class="clock__desc">Open floor. Table motions, trade favours, threaten to walk. Nothing binds yet.</p>
-      </div>
-      <div class="clock__slot">
-        <span class="clock__time">18.00</span>
-        <h3 class="clock__what">Division</h3>
-        <p class="clock__desc">All three offices vote. Two carry a motion. One can abstain and let it pass.</p>
-      </div>
-      <div class="clock__slot">
-        <span class="clock__time">00.00</span>
-        <h3 class="clock__what">Consequences</h3>
-        <p class="clock__desc">Orders execute. Money moves, ships sail, unrest is counted, and it is on the record.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ========== THE ROLL ========== -->
-  <section class="roll">
-    <div class="roll__paper">
-      <div class="roll__cap">
-        <h2 class="roll__title">Nations seating an office</h2>
-        <span class="roll__meta">Register of vacancies · revised 06.00 · session 214</span>
-      </div>
-      <table class="ledger">
-        <thead>
-          <tr>
-            <th scope="col">Nation</th>
-            <th scope="col">Form of state</th>
-            <th scope="col">Vacant office</th>
-            <th scope="col">Unrest</th>
-            <th scope="col"><span class="sr">Action</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td class="nation">Kingdom of Tarvenia<br><span class="form">Great power · 41m souls</span></td>
-            <td class="form">Constitutional monarchy</td>
-            <td><span class="post post--lab">Labour bloc</span></td>
-            <td><div class="unrest"><span class="unrest__bar"><span class="unrest__fill" style="width:72%"></span></span><span class="unrest__num">72</span></div></td>
-            <td class="act"><a href="#">Take the seat</a></td>
-          </tr>
-          <tr>
-            <td class="nation">Verlish Republic<br><span class="form">Middle power · 18m souls</span></td>
-            <td class="form">Parliamentary republic</td>
-            <td><span class="post post--mil">Military</span></td>
-            <td><div class="unrest"><span class="unrest__bar"><span class="unrest__fill" style="width:24%"></span></span><span class="unrest__num">24</span></div></td>
-            <td class="act"><a href="#">Take the seat</a></td>
-          </tr>
-          <tr>
-            <td class="nation">Sublime State of Ahzeer<br><span class="form">Great power · 63m souls</span></td>
-            <td class="form">Absolute monarchy</td>
-            <td><span class="post post--gov">Government</span></td>
-            <td><div class="unrest"><span class="unrest__bar"><span class="unrest__fill" style="width:58%"></span></span><span class="unrest__num">58</span></div></td>
-            <td class="act"><a href="#">Take the seat</a></td>
-          </tr>
-          <tr>
-            <td class="nation">Free City of Braemont<br><span class="form">Minor power · 2m souls</span></td>
-            <td class="form">Merchant council</td>
-            <td><span class="post post--lab">Labour bloc</span></td>
-            <td><div class="unrest"><span class="unrest__bar"><span class="unrest__fill" style="width:11%"></span></span><span class="unrest__num">11</span></div></td>
-            <td class="act"><a href="#">Take the seat</a></td>
-          </tr>
-          <tr>
-            <td class="nation">Empire of Sar Kaido<br><span class="form">Great power · 55m souls</span></td>
-            <td class="form">Military governate</td>
-            <td><span class="post post--none">Fully seated</span></td>
-            <td><div class="unrest"><span class="unrest__bar"><span class="unrest__fill" style="width:39%"></span></span><span class="unrest__num">39</span></div></td>
-            <td class="act"><span>Join the waiting list</span></td>
-          </tr>
-          <tr>
-            <td class="nation">Kolstad Union<br><span class="form">Middle power · 9m souls</span></td>
-            <td class="form">Federated republic</td>
-            <td><span class="post post--mil">Military</span></td>
-            <td><div class="unrest"><span class="unrest__bar"><span class="unrest__fill" style="width:47%"></span></span><span class="unrest__num">47</span></div></td>
-            <td class="act"><a href="#">Take the seat</a></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
-</div>
-</main>
-
-<!-- ========== FOOT ========== -->
-<footer class="foot">
-  <div class="shell">
-    <div class="seal" aria-hidden="true"><span>MCM</span></div>
-    <p class="foot__line">No nation survives its own government for long.</p>
-    <nav class="foot__nav" aria-label="Footer">
-      <a href="#">Standing orders</a>
-      <a href="#">The atlas</a>
-      <a href="#">Archive of sessions</a>
-      <a href="#">Treaties on file</a>
-      <a href="#">Sign in</a>
-    </nav>
-    <p class="foot__fine">Nationhood · World IV · A persistent text world set in 1900</p>
-  </div>
-</footer>
-
-<script>
-/* ---- guilloche rosette behind the balance ---- */
-(function(){
-  const NS = "http://www.w3.org/2000/svg";
-  const g  = document.getElementById("rosette");
-  if(!g) return;
-  const cx = 260, cy = 205;
-  for (let i = 0; i < 34; i++){
-    const e = document.createElementNS(NS, "ellipse");
-    e.setAttribute("cx", cx);
-    e.setAttribute("cy", cy);
-    e.setAttribute("rx", 172);
-    e.setAttribute("ry", 62);
-    e.setAttribute("transform", "rotate(" + (i * 360 / 34) + " " + cx + " " + cy + ")");
-    g.appendChild(e);
-  }
-  for (let i = 0; i < 22; i++){
-    const e = document.createElementNS(NS, "ellipse");
-    e.setAttribute("cx", cx);
-    e.setAttribute("cy", cy);
-    e.setAttribute("rx", 96);
-    e.setAttribute("ry", 30);
-    e.setAttribute("transform", "rotate(" + (i * 360 / 22) + " " + cx + " " + cy + ")");
-    g.appendChild(e);
-  }
-})();
-
-/* ---- graduation marks on the arc ---- */
-(function(){
-  const NS = "http://www.w3.org/2000/svg";
-  const g  = document.getElementById("ticks");
-  if(!g) return;
-  const cx = 260, cy = 150, r = 140;
-  for (let d = -62; d <= 62; d += 6.2){
-    const a  = (d - 90) * Math.PI / 180;
-    const major = Math.abs(d) < 1 || Math.abs(Math.abs(d) - 31) < 1 || Math.abs(Math.abs(d) - 62) < 1;
-    const len = major ? 12 : 6;
-    const l = document.createElementNS(NS, "line");
-    l.setAttribute("x1", cx + Math.cos(a) * r);
-    l.setAttribute("y1", cy + Math.sin(a) * r);
-    l.setAttribute("x2", cx + Math.cos(a) * (r - len));
-    l.setAttribute("y2", cy + Math.sin(a) * (r - len));
-    l.setAttribute("stroke-width", major ? 1.4 : 0.8);
-    g.appendChild(l);
-  }
-})();
-
-/* ---- the wire: telegraph dispatches ---- */
-(function(){
-  const run = document.getElementById("wireRun");
-  if(!run) return;
-  const items = [
-    ["TARVENIA",  "GRAIN STRIKE ENTERS ELEVENTH DAY STOP MILLS AT HALF OUTPUT STOP"],
-    ["BRAEMONT",  "NAVAL ESTIMATES DEFEATED IN COUNCIL BY FOUR VOICES STOP"],
-    ["AHZEER",    "WAR MINISTRY REQUESTS EMERGENCY CREDIT OF 2.4 MILLION CROWNS STOP"],
-    ["VERLAND",   "INDUSTRIALISTS DECLINE TO SEAT A DELEGATE STOP OFFICE STANDS VACANT STOP"],
-    ["SAR KAIDO", "CABINET FALLS ON THIRD DIVISION STOP NEW MINISTRY FORMING STOP"],
-    ["KOLSTAD",   "BORDER GARRISON WITHDRAWN WITHOUT ORDER OF THE TREASURY STOP"],
-    ["TARVENIA",  "ADMIRALTY SIGNALS TWO SQUADRONS TURNED SOUTH AT FIRST LIGHT STOP"]
-  ];
-  const strip = items.map(function(it){
-    return '<span class="wire__item"><b>' + it[0] + '</b> — ' + it[1] + '</span>';
-  }).join("");
-  run.innerHTML = strip + strip;   /* doubled so the crawl loops seamlessly */
-})();
-</script>
 </body>
 </html>
