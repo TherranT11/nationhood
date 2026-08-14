@@ -154,7 +154,8 @@ button{ cursor:pointer; }
   padding:9px 17px; font-size:11px; letter-spacing:.09em;
   color:var(--gold-bright); pointer-events:none;
   opacity:0; transition:opacity .22s, transform .22s;
-  white-space:nowrap;
+  white-space:nowrap; max-width:calc(100% - 44px);
+  overflow:hidden; text-overflow:ellipsis;
 }
 .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 
@@ -311,12 +312,12 @@ var CLOUD_TABLE = 'rf_world_maps';
    TERRAIN
    ============================================================ */
 var TERRAIN = [
-  { id:0, key:"unassigned", name:"Unassigned", color:"#243B5E", edge:"#33517D" },
-  { id:1, key:"plains",     name:"Plains",     color:"#A3A063", edge:"#7E7B49" },
-  { id:2, key:"fertile",    name:"Fertile",    color:"#468659", edge:"#2F6440" },
-  { id:3, key:"mountain",   name:"Mountain",   color:"#7C756C", edge:"#5B564F" },
-  { id:4, key:"desert",     name:"Desert",     color:"#D9B96B", edge:"#B0934C" },
-  { id:5, key:"sea",        name:"Sea",        color:"#1F4E7A", edge:"#153A5C" }
+  { id:0, key:"unassigned", name:"Unassigned", color:"#243B5E" },
+  { id:1, key:"plains",     name:"Plains",     color:"#A3A063" },
+  { id:2, key:"fertile",    name:"Fertile",    color:"#468659" },
+  { id:3, key:"mountain",   name:"Mountain",   color:"#7C756C" },
+  { id:4, key:"desert",     name:"Desert",     color:"#D9B96B" },
+  { id:5, key:"sea",        name:"Sea",        color:"#1F4E7A" }
 ];
 
 /* [E, SE, SW, W, NW, NE] — matches edge index d = corner d → corner d+1 */
@@ -345,19 +346,27 @@ var S = {
 
 var undoStack = [], redoStack = [];
 
-function idx(c,r){ return r*S.cols + c; }
-function inBounds(c,r){ return c>=0 && r>=0 && c<S.cols && r<S.rows; }
+/* Grid-width-parameterized versions of idx/inBounds/edgeKey. idx() encodes a
+   hex as row*cols + col, so that encoding only means what it says for a fixed
+   cols — resizing the grid (which changes S.cols) invalidates any key stored
+   under the old width unless it's decoded and re-encoded through these. */
+function idxIn(cols, c, r){ return r*cols + c; }
+function inBoundsIn(cols, rows, c, r){ return c>=0 && r>=0 && c<cols && r<rows; }
 function neighbor(c,r,d){
   var t = DIRS[(r & 1) ? "odd" : "even"][d];
   return [c + t[0], r + t[1]];
 }
-/* one key per physical edge, whichever hex you draw it from */
-function edgeKey(c,r,d){
+function edgeKeyIn(cols, rows, c, r, d){
   var n = neighbor(c,r,d);
-  if(!inBounds(n[0], n[1])) return idx(c,r) + "|b" + d;
-  var a = idx(c,r), b = idx(n[0], n[1]);
+  if(!inBoundsIn(cols, rows, n[0], n[1])) return idxIn(cols,c,r) + "|b" + d;
+  var a = idxIn(cols,c,r), b = idxIn(cols, n[0], n[1]);
   return (a < b ? a + "|" + b : b + "|" + a);
 }
+
+function idx(c,r){ return idxIn(S.cols, c, r); }
+function inBounds(c,r){ return inBoundsIn(S.cols, S.rows, c, r); }
+/* one key per physical edge, whichever hex you draw it from */
+function edgeKey(c,r,d){ return edgeKeyIn(S.cols, S.rows, c, r, d); }
 
 function newMap(cols, rows){
   S.cols = cols; S.rows = rows;
@@ -958,13 +967,27 @@ document.getElementById("resize").addEventListener("click", function(){
       S.terrain[idx(cc,rr)] = old[rr*oc + cc];
     }
   }
-  S.borders = oldBorders;   /* keys are index-based; prune anything out of range */
+  /* Border keys encode hex ids as row*cols + col, so a key stored under the
+     old width means something different the moment cols changes — decode
+     each one back to (col,row) under the OLD width, drop anything that no
+     longer fits, and re-encode under the NEW width. Filtering old keys by
+     bounds alone (without re-encoding) would silently keep numerically
+     colliding-but-wrong keys and draw borders between the wrong hexes. */
   var keep = new Set();
-  S.borders.forEach(function(k){
+  oldBorders.forEach(function(k){
     var parts = k.split("|");
     var a = +parts[0];
     var ac = a % oc, ar = (a - ac)/oc;
-    if(ac < c && ar < r) keep.add(k);
+    if(ac >= c || ar >= r) return;
+    if(parts[1].charAt(0) === "b"){
+      keep.add(edgeKey(ac, ar, +parts[1].slice(1)));
+      return;
+    }
+    var b = +parts[1];
+    var bc = b % oc, br = (b - bc)/oc;
+    if(bc >= c || br >= r) return;
+    var na = idx(ac, ar), nb = idx(bc, br);
+    keep.add(na < nb ? na + "|" + nb : nb + "|" + na);
   });
   S.borders = keep;
   stats(); fit(); draw();
@@ -981,21 +1004,54 @@ document.getElementById("clearAll").addEventListener("click", function(){
   stats(); draw(); toast("New blank map");
 });
 
+/* ============================================================
+   SERIALIZE / APPLY — shared by local Export+Import and the
+   Supabase Save+Load, so the "what does a map look like as data"
+   and "how do we adopt loaded data" logic each live in one place.
+   ============================================================ */
+function terrainKeyList(){
+  return TERRAIN.map(function(t){ return t.key; });
+}
+function serializeMap(){
+  return {
+    cols: S.cols,
+    rows: S.rows,
+    layout: "pointy-odd-r",
+    terrainKeys: terrainKeyList(),
+    terrain: Array.from(S.terrain),
+    borders: Array.from(S.borders)
+  };
+}
+/* Validates before touching any state — a malformed terrain array (wrong
+   length, missing dims) would otherwise desync S from the canvas and crash
+   render() on the next frame. Returns false and leaves the current map
+   untouched if the data doesn't check out. */
+function applyLoadedMap(d){
+  var okDims = !!d && Number.isInteger(d.cols) && Number.isInteger(d.rows) &&
+               d.cols >= 1 && d.rows >= 1;
+  var okTerrain = okDims && Array.isArray(d.terrain) && d.terrain.length === d.cols * d.rows &&
+                  d.terrain.every(function(t){ return Number.isInteger(t) && t >= 0 && t < TERRAIN.length; });
+  var okBorders = d.borders === undefined || Array.isArray(d.borders);
+  if(!okDims || !okTerrain || !okBorders) return false;
+
+  commit();
+  newMap(d.cols, d.rows);
+  S.terrain = Uint8Array.from(d.terrain);
+  S.borders = new Set(d.borders || []);
+  document.getElementById("cols").value = d.cols;
+  document.getElementById("rows").value = d.rows;
+  stats(); fit(); draw();
+  return true;
+}
+
 /* export / import (local file) */
 document.getElementById("save").addEventListener("click", function(){
-  var data = {
-    format:"nationhood.map.v1",
-    name:document.getElementById("mapname").value,
-    cols:S.cols, rows:S.rows,
-    layout:"pointy-odd-r",
-    terrainKeys:TERRAIN.map(function(t){ return t.key; }),
-    terrain:Array.from(S.terrain),
-    borders:Array.from(S.borders)
-  };
+  var name = document.getElementById("mapname").value;
+  var data = Object.assign({ format:"nationhood.map.v1", name:name }, serializeMap());
   var blob = new Blob([JSON.stringify(data, null, 2)], { type:"application/json" });
   var a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = (data.name || "map").replace(/[^\w\-]+/g,"_").toLowerCase() + ".json";
+  a.download = (name || "map").replace(/[^\w\-]+/g,"_").toLowerCase() + ".json";
   a.click();
   URL.revokeObjectURL(a.href);
   toast("Exported " + a.download);
@@ -1008,33 +1064,38 @@ document.getElementById("file").addEventListener("change", function(e){
   if(!f) return;
   var fr = new FileReader();
   fr.onload = function(){
-    try{
-      var d = JSON.parse(fr.result);
-      commit();
-      newMap(d.cols, d.rows);
-      S.terrain = Uint8Array.from(d.terrain);
-      S.borders = new Set(d.borders || []);
-      document.getElementById("mapname").value = d.name || "Untitled";
-      document.getElementById("cols").value = d.cols;
-      document.getElementById("rows").value = d.rows;
-      stats(); fit(); draw();
-      toast("Imported " + (d.name || f.name));
-    } catch(err){
-      toast("Could not read that file");
-    }
+    var d;
+    try{ d = JSON.parse(fr.result); }
+    catch(err){ toast("Could not read that file"); return; }
+    if(!applyLoadedMap(d)){ toast("That file isn't a valid map"); return; }
+    document.getElementById("mapname").value = d.name || "Untitled";
+    toast("Imported " + (d.name || f.name));
   };
+  fr.onerror = function(){ toast("Could not read that file"); };
   fr.readAsText(f);
   e.target.value = "";
 });
 
-/* save / load (Supabase — shared, persists across devices and reloads) */
-function withBusy(btn, busyLabel, fn){
-  var prev = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = busyLabel;
-  return Promise.resolve(fn()).finally(function(){
-    btn.disabled = false;
-    btn.textContent = prev;
+/* save / load (Supabase — shared, persists across devices and reloads).
+   cloudBusy locks BOTH buttons, not just the one clicked: Save and Load both
+   read and write the same map state, so letting one fire while the other is
+   still in flight would race — e.g. a Save landing after a same-tick Load
+   just clobbered the canvas out from under it. */
+var cloudBusy = false;
+function withCloudLock(activeBtn, busyLabel, opLabel, fn){
+  if(cloudBusy) return;
+  cloudBusy = true;
+  var saveBtn = document.getElementById("cloudSave");
+  var loadBtn = document.getElementById("cloudLoad");
+  var prevText = activeBtn.textContent;
+  saveBtn.disabled = true; loadBtn.disabled = true;
+  activeBtn.textContent = busyLabel;
+  Promise.resolve().then(fn).catch(function(err){
+    toast(opLabel + " failed: " + (err && err.message ? err.message : "unexpected error"));
+  }).finally(function(){
+    cloudBusy = false;
+    saveBtn.disabled = false; loadBtn.disabled = false;
+    activeBtn.textContent = prevText;
   });
 }
 
@@ -1042,19 +1103,23 @@ document.getElementById("cloudSave").addEventListener("click", function(){
   var btn = this;
   var name = document.getElementById("mapname").value.trim();
   if(!name){ toast("Name the map before saving"); return; }
-  withBusy(btn, "Saving…", function(){
+  withCloudLock(btn, "Saving…", "Save", function(){
+    var snap = serializeMap();
+    /* terrain_keys/layout aren't read back by this editor's own Load below —
+       they're stored so a future game backend can interpret the terrain id
+       array without depending on this file's TERRAIN order staying stable. */
     return supabase.from(CLOUD_TABLE).upsert({
       name: name,
-      cols: S.cols,
-      rows: S.rows,
-      layout: "pointy-odd-r",
-      terrain_keys: TERRAIN.map(function(t){ return t.key; }),
-      terrain: Array.from(S.terrain),
-      borders: Array.from(S.borders),
+      cols: snap.cols,
+      rows: snap.rows,
+      layout: snap.layout,
+      terrain_keys: snap.terrainKeys,
+      terrain: snap.terrain,
+      borders: snap.borders,
       updated_at: new Date().toISOString()
     }, { onConflict: "name" }).then(function(res){
-      if(res.error) toast("Save failed: " + res.error.message);
-      else toast("Saved “" + name + "” to Supabase");
+      if(res.error) throw new Error(res.error.message);
+      toast("Saved “" + name + "” to Supabase");
     });
   });
 });
@@ -1063,19 +1128,12 @@ document.getElementById("cloudLoad").addEventListener("click", function(){
   var btn = this;
   var name = document.getElementById("mapname").value.trim();
   if(!name){ toast("Enter a map name to load"); return; }
-  withBusy(btn, "Loading…", function(){
+  withCloudLock(btn, "Loading…", "Load", function(){
     return supabase.from(CLOUD_TABLE).select("*").eq("name", name).maybeSingle()
       .then(function(res){
-        if(res.error){ toast("Load failed: " + res.error.message); return; }
+        if(res.error) throw new Error(res.error.message);
         if(!res.data){ toast("No saved map named “" + name + "”"); return; }
-        var d = res.data;
-        commit();
-        newMap(d.cols, d.rows);
-        S.terrain = Uint8Array.from(d.terrain);
-        S.borders = new Set(d.borders || []);
-        document.getElementById("cols").value = d.cols;
-        document.getElementById("rows").value = d.rows;
-        stats(); fit(); draw();
+        if(!applyLoadedMap(res.data)) throw new Error("saved data is malformed");
         toast("Loaded “" + name + "” from Supabase");
       });
   });
