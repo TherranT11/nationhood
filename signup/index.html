@@ -31,7 +31,6 @@ body{
     repeating-linear-gradient(90deg, rgba(0,0,0,.13) 0 1px, transparent 1px 76px);
   -webkit-font-smoothing:antialiased;
 }
-.sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 a:focus-visible,button:focus-visible,input:focus-visible{ outline:2px solid var(--gold-bright); outline-offset:2px; }
 
 /* bar */
@@ -221,14 +220,12 @@ import { supabase } from '/supabase.js';
 
   var userOK = false, userCheckTimer = null, submitting = false;
 
-  function setState(el, text, cls){
+  function setStatus(el, baseClass, text, cls){
     el.textContent = text;
-    el.className = "state" + (cls ? " " + cls : "");
+    el.className = baseClass + (cls ? " " + cls : "");
   }
-  function setNeed(text, isError){
-    need.textContent = text;
-    need.className = "need" + (isError ? " err" : "");
-  }
+  function setState(el, text, cls){ setStatus(el, "state", text, cls); }
+  function setNeed(text, isError){ setStatus(need, "need", text, isError ? "err" : ""); }
 
   function checkUser(){
     var v = user.value.trim();
@@ -243,16 +240,22 @@ import { supabase } from '/supabase.js';
     userCheckTimer = setTimeout(function(){
       supabase.from("rf_profiles").select("id").ilike("username", v).limit(1)
         .then(function(res){
+          if(res.error) throw res.error;
           /* the field may have changed again while this was in flight —
              don't let a slow, stale response overwrite a newer check */
           if(user.value.trim() !== v) return;
-          if(res.error){
-            setState(userState,"Couldn't check right now","no"); userOK = false;
-          } else if(res.data && res.data.length){
+          if(res.data && res.data.length){
             setState(userState,"Already taken","no"); userOK = false;
           } else {
             setState(userState,"Available","ok"); userOK = true;
           }
+          refresh();
+        })
+        .catch(function(){
+          /* a rejected promise (network failure, etc.) previously left the
+             field stuck showing "Checking..." forever with no way forward */
+          if(user.value.trim() !== v) return;
+          setState(userState,"Couldn't check right now","no"); userOK = false;
           refresh();
         });
     }, 420);
@@ -313,7 +316,25 @@ import { supabase } from '/supabase.js';
   function friendlyError(err){
     var msg = (err && err.message) || "Something went wrong — try again.";
     if(/already registered|already exists/i.test(msg)) return "That email already has an account.";
+    /* the username availability check and the actual account creation are two
+       separate round trips — someone else can take the name in between. The
+       DB's unique index is the real guard; this just explains the failure
+       instead of surfacing a raw trigger/constraint error. */
+    if(/duplicate key|unique constraint|database error saving new user/i.test(msg))
+      return "That username was just taken — go back and pick another.";
     return msg;
+  }
+
+  /* Builds "<before><b>boldText</b><after>" without innerHTML, since
+     username/email are user-supplied. Shared by both signUp() outcomes below
+     instead of duplicating the same three DOM calls in each branch. */
+  function setSuccessMessage(before, boldText, after){
+    successMsg.textContent = "";
+    successMsg.appendChild(document.createTextNode(before));
+    var b = document.createElement("b");
+    b.textContent = boldText;
+    successMsg.appendChild(b);
+    successMsg.appendChild(document.createTextNode(after));
   }
 
   form.addEventListener("submit", function(e){
@@ -343,19 +364,9 @@ import { supabase } from '/supabase.js';
       form.hidden = true;
       successPanel.hidden = false;
       if(res.data && res.data.session){
-        successMsg.innerHTML = "";
-        successMsg.appendChild(document.createTextNode("Account created. Welcome, "));
-        var b = document.createElement("b");
-        b.textContent = username;
-        successMsg.appendChild(b);
-        successMsg.appendChild(document.createTextNode("."));
+        setSuccessMessage("Account created. Welcome, ", username, ".");
       } else {
-        successMsg.innerHTML = "";
-        successMsg.appendChild(document.createTextNode("Almost there — we sent a confirmation link to "));
-        var b2 = document.createElement("b");
-        b2.textContent = email;
-        successMsg.appendChild(b2);
-        successMsg.appendChild(document.createTextNode(". Click it, then come back and log in."));
+        setSuccessMessage("Almost there — we sent a confirmation link to ", email, ". Click it, then come back and log in.");
       }
     }).catch(function(err){
       setNeed(friendlyError(err), true);
