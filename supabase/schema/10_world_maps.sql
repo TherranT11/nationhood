@@ -21,6 +21,12 @@ create table if not exists public.rf_world_maps (
   updated_at   timestamptz not null default now()
 );
 
+-- goods_keys/goods: the optional per-hex Goods layer added alongside terrain.
+-- Kept nullable-safe (default '{}') so re-running this file against a table
+-- created before the Goods panel existed just adds the columns in place.
+alter table public.rf_world_maps add column if not exists goods_keys text[] not null default '{}';
+alter table public.rf_world_maps add column if not exists goods integer[] not null default '{}';
+
 -- One saved row per map name; the editor's Save button upserts on this.
 create unique index if not exists rf_world_maps_name_key on public.rf_world_maps (name);
 
