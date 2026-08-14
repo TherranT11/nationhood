@@ -204,6 +204,7 @@ input::placeholder{ color:rgba(133,116,89,.8); }
 <script type="module">
 import { supabase } from '/supabase.js';
 import { routeAfterAuth } from '/post-auth.js';
+import { setStatusText, wirePasswordPeek } from '/ui-helpers.js';
 
 (function(){
   var user = document.getElementById("user");
@@ -222,12 +223,8 @@ import { routeAfterAuth } from '/post-auth.js';
 
   var userOK = false, userCheckTimer = null, submitting = false;
 
-  function setStatus(el, baseClass, text, cls){
-    el.textContent = text;
-    el.className = baseClass + (cls ? " " + cls : "");
-  }
-  function setState(el, text, cls){ setStatus(el, "state", text, cls); }
-  function setNeed(text, isError){ setStatus(need, "need", text, isError ? "err" : ""); }
+  function setState(el, text, cls){ setStatusText(el, "state", text, cls); }
+  function setNeed(text, isError){ setStatusText(need, "need", text, isError ? "err" : ""); }
 
   function checkUser(){
     var v = user.value.trim();
@@ -308,12 +305,7 @@ import { routeAfterAuth } from '/post-auth.js';
   mail.addEventListener("input", refresh);
   pass.addEventListener("input", refresh);
 
-  document.getElementById("peek").addEventListener("click", function(){
-    var shown = pass.type === "text";
-    pass.type = shown ? "password" : "text";
-    this.textContent = shown ? "Show" : "Hide";
-    this.setAttribute("aria-pressed", String(!shown));
-  });
+  wirePasswordPeek(document.getElementById("peek"), pass);
 
   function friendlyError(err){
     var msg = (err && err.message) || "Something went wrong — try again.";
@@ -370,7 +362,8 @@ import { routeAfterAuth } from '/post-auth.js';
         /* a brand new account has no civilization yet, so this resolves to
            /found — same routing decision /login makes after signing in,
            made in exactly one place rather than guessed at here too */
-        routeAfterAuth().then(function(route){ successCta.href = route.dest; });
+        routeAfterAuth().then(function(route){ successCta.href = route.dest; })
+          .catch(function(){ successCta.href = "/"; });
       } else {
         setSuccessMessage("Almost there — we sent a confirmation link to ", email, ". Click it, then come back and log in.");
         successCta.href = "/login";

@@ -385,7 +385,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{ outline:2px solid var(
             </label>
           </li>
           <li>
-            <input type="radio" name="trait" id="t-dev" value="devout" disabled>
+            <input type="radio" name="trait" id="t-dev" value="devout">
             <label class="tile" for="t-dev">
               <span class="tile__flag tile__flag--soon">Soon</span>
               <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 27h20M9 22h14M11 22v-4h10v4M16 15c3-3 1-5 0-7-1 2-3 4 0 7z"/></svg>
@@ -393,7 +393,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{ outline:2px solid var(
             </label>
           </li>
           <li>
-            <input type="radio" name="trait" id="t-sea" value="seafaring" disabled>
+            <input type="radio" name="trait" id="t-sea" value="seafaring">
             <label class="tile" for="t-sea">
               <span class="tile__flag tile__flag--soon">Soon</span>
               <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 21h22l-3 5H8zM16 4v13M16 8l8 4-8 3M3 29c2-2 4-2 6 0s4 2 6 0 4-2 6 0 4 2 6 0"/></svg>
@@ -401,7 +401,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{ outline:2px solid var(
             </label>
           </li>
           <li>
-            <input type="radio" name="trait" id="t-mon" value="monumental" disabled>
+            <input type="radio" name="trait" id="t-mon" value="monumental">
             <label class="tile" for="t-mon">
               <span class="tile__flag tile__flag--soon">Soon</span>
               <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 27h26L16 5zM9 27l7-12 7 12M3 27h26"/></svg>
@@ -409,7 +409,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{ outline:2px solid var(
             </label>
           </li>
           <li>
-            <input type="radio" name="trait" id="t-bur" value="bureaucratic" disabled>
+            <input type="radio" name="trait" id="t-bur" value="bureaucratic">
             <label class="tile" for="t-bur">
               <span class="tile__flag tile__flag--soon">Soon</span>
               <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 4h18v24H7zM11 10h10M11 15h10M11 20h6"/><circle cx="21" cy="21" r="3"/></svg>
@@ -417,7 +417,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{ outline:2px solid var(
             </label>
           </li>
           <li>
-            <input type="radio" name="trait" id="t-agr" value="agrarian" disabled>
+            <input type="radio" name="trait" id="t-agr" value="agrarian">
             <label class="tile" for="t-agr">
               <span class="tile__flag tile__flag--soon">Soon</span>
               <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 28V8M16 14c-5 0-7-3-7-6 4 0 7 2 7 6zM16 14c5 0 7-3 7-6-4 0-7 2-7 6zM16 22c-5 0-7-3-7-6 4 0 7 2 7 6zM16 22c5 0 7-3 7-6-4 0-7 2-7 6z"/></svg>
@@ -425,7 +425,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{ outline:2px solid var(
             </label>
           </li>
           <li>
-            <input type="radio" name="trait" id="t-nom" value="nomadic" disabled>
+            <input type="radio" name="trait" id="t-nom" value="nomadic">
             <label class="tile" for="t-nom">
               <span class="tile__flag tile__flag--soon">Soon</span>
               <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 24h24L16 6zM16 24v-7M2 28h28"/></svg>
@@ -433,7 +433,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{ outline:2px solid var(
             </label>
           </li>
           <li>
-            <input type="radio" name="trait" id="t-end" value="enduring" disabled>
+            <input type="radio" name="trait" id="t-end" value="enduring">
             <label class="tile" for="t-end">
               <span class="tile__flag tile__flag--soon">Soon</span>
               <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 12v16h24V12M4 12V7h4v5h4V7h4v5h4V7h4v5M4 20h24M12 20v8M20 20v8"/></svg>
@@ -468,6 +468,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{ outline:2px solid var(
 <script type="module">
 import { supabase } from '/supabase.js';
 import { routeAfterAuth } from '/post-auth.js';
+import { setStatusText } from '/ui-helpers.js';
 
 /* ---------------- trait data ---------------- */
 var TRAITS = {
@@ -572,9 +573,15 @@ function ordinal(n){
     return null;
   }
 
-  function setNeed(text, isError){
-    need.textContent = text;
-    need.className = "commit__need" + (isError ? " err" : "");
+  function setNeed(text, isError){ setStatusText(need, "commit__need", text, isError ? "err" : ""); }
+
+  /* AVAILABLE is the only source of truth for which natures can be selected
+     — this applies it to the actual inputs. The markup used to hardcode a
+     matching `disabled` attribute on the seven locked ones directly, which
+     meant two places had to agree on the same list by hand; drop one and
+     they will eventually drift. */
+  function applyTraitLocks(){
+    radios.forEach(function(r){ r.disabled = AVAILABLE.indexOf(r.value) === -1; });
   }
 
   function paint(){
@@ -627,6 +634,7 @@ function ordinal(n){
       '</div>';
   }
 
+  applyTraitLocks();
   civ.addEventListener("input", paint);
   cap.addEventListener("input", paint);
   radios.forEach(function(r){ r.addEventListener("change", paint); });
@@ -686,7 +694,7 @@ function ordinal(n){
       submitting = false;
       btn.disabled = false;
       civ.disabled = false; cap.disabled = false;
-      radios.forEach(function(r){ r.disabled = AVAILABLE.indexOf(r.value) === -1; });
+      applyTraitLocks();
       btn.textContent = prevLabel;
     });
   });
@@ -714,6 +722,11 @@ function ordinal(n){
     wait.hidden = true;
     wrap.hidden = false;
     paint();
+  }).catch(function(){
+    /* routeAfterAuth() itself never rejects — this only guards against the
+       callback above throwing, so a fluke there can't strand the visitor on
+       "Checking your account..." forever with no way to found anything. */
+    wait.textContent = "Something went wrong — try reloading.";
   });
 })();
 </script>

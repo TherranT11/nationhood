@@ -158,6 +158,7 @@ input::placeholder{ color:rgba(133,116,89,.8); }
 <script type="module">
 import { routeAfterAuth } from '/post-auth.js';
 import { supabase } from '/supabase.js';
+import { setStatusText, wirePasswordPeek } from '/ui-helpers.js';
 
 (function(){
   var wait = document.getElementById("wait");
@@ -170,10 +171,7 @@ import { supabase } from '/supabase.js';
 
   var submitting = false;
 
-  function setNeed(text, isError){
-    need.textContent = text;
-    need.className = "need" + (isError ? " err" : "");
-  }
+  function setNeed(text, isError){ setStatusText(need, "need", text, isError ? "err" : ""); }
 
   function refresh(){
     if(submitting) return;
@@ -182,12 +180,7 @@ import { supabase } from '/supabase.js';
   mail.addEventListener("input", refresh);
   pass.addEventListener("input", refresh);
 
-  document.getElementById("peek").addEventListener("click", function(){
-    var shown = pass.type === "text";
-    pass.type = shown ? "password" : "text";
-    this.textContent = shown ? "Show" : "Hide";
-    this.setAttribute("aria-pressed", String(!shown));
-  });
+  wirePasswordPeek(document.getElementById("peek"), pass);
 
   function friendlyError(err){
     var msg = (err && err.message) || "Something went wrong — try again.";
@@ -231,6 +224,11 @@ import { supabase } from '/supabase.js';
     wait.hidden = true;
     loginBox.hidden = false;
     refresh();
+  }).catch(function(){
+    /* routeAfterAuth() itself never rejects — this only guards against the
+       callback above throwing, so a fluke there can't strand the visitor on
+       "Checking your session..." forever with no way to log in. */
+    wait.textContent = "Something went wrong — try reloading.";
   });
 })();
 </script>
