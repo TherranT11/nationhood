@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log in — Nationhood: Rise and Fall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Unicase:wght@600&family=Gentium+Book+Plus:wght@400;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --lapis:#17386B; --lapis-deep:#0E2449;
+  --papyrus:#DFD0AC; --papyrus-lift:#E9DCBD; --papyrus-sink:#CDBC95;
+  --gold:#C9962F; --gold-bright:#EBC163;
+  --ochre:#A8452C; --malachite:#3F7F6E; --clay:#8B5E3C;
+  --ink:#2A2119; --ink-soft:#5E5040; --ink-faint:#857459;
+  --on-lapis-dim:#93A9C9;
+  --incise:"Cormorant Unicase",Georgia,serif;
+  --read:"Gentium Book Plus",Georgia,serif;
+  --meta:"Spline Sans Mono",ui-monospace,monospace;
+  --hair:1px;
+}
+*,*::before,*::after{ box-sizing:border-box; }
+body{
+  margin:0; min-height:100vh; min-height:100dvh;
+  display:flex; flex-direction:column;
+  font-family:var(--read); font-size:17px; line-height:1.6;
+  color:#DCE4F0; background-color:var(--lapis);
+  background-image:
+    repeating-linear-gradient(0deg, rgba(0,0,0,.20) 0 1px, transparent 1px 38px),
+    repeating-linear-gradient(90deg, rgba(0,0,0,.13) 0 1px, transparent 1px 76px);
+  -webkit-font-smoothing:antialiased;
+}
+a:focus-visible,button:focus-visible,input:focus-visible{ outline:2px solid var(--gold-bright); outline-offset:2px; }
+
+/* bar */
+.bar{ background:var(--lapis-deep); border-bottom:2px solid var(--gold); }
+.bar__in{
+  width:min(100% - 32px,1000px); margin-inline:auto;
+  display:flex; align-items:center; gap:20px; padding:13px 0;
+}
+.mark{ font-family:var(--incise); font-size:21px; letter-spacing:.13em;
+       color:var(--papyrus-lift); text-decoration:none; margin-right:auto; }
+.bar__alt{ font-family:var(--meta); font-size:11px; letter-spacing:.13em;
+           color:var(--on-lapis-dim); text-decoration:none; }
+.bar__alt b{ color:var(--gold); font-weight:400; }
+.bar__alt:hover b{ color:var(--gold-bright); }
+
+/* card */
+.stage{ flex:1; display:flex; align-items:center; justify-content:center; padding:36px 16px 46px; }
+.card{
+  width:min(100%,420px);
+  background:var(--papyrus); color:var(--ink);
+  border:var(--hair) solid var(--papyrus-sink);
+  box-shadow:0 20px 46px rgba(0,0,0,.42);
+  padding:34px clamp(20px,5vw,38px) 32px;
+}
+.card h1{
+  font-family:var(--incise); font-weight:600; font-size:32px;
+  letter-spacing:.04em; margin:0 0 6px; color:var(--ink);
+}
+.card__sub{ margin:0 0 28px; font-size:16px; color:var(--ink-soft); }
+.card__wait{ font-size:16px; color:var(--ink-soft); text-align:center; margin:0; }
+
+/* fields */
+.field{ margin-bottom:20px; }
+label{ display:block; font-family:var(--meta); font-size:11px; letter-spacing:.11em;
+       text-transform:uppercase; color:var(--ink-soft); margin-bottom:6px; }
+.row{ display:flex; gap:8px; }
+input{
+  flex:1 1 auto; min-width:0;
+  font-family:var(--meta); font-size:15.5px; color:var(--ink);
+  background:rgba(255,255,255,.34);
+  border:var(--hair) solid rgba(42,33,25,.32);
+  padding:12px 13px;
+}
+input:focus{ outline:none; border-color:var(--gold); background:rgba(255,255,255,.55); }
+input::placeholder{ color:rgba(133,116,89,.8); }
+
+.peek{
+  flex:0 0 auto; cursor:pointer; background:transparent; color:var(--clay);
+  border:var(--hair) solid rgba(42,33,25,.32);
+  font-family:var(--meta); font-size:10px; letter-spacing:.11em;
+  text-transform:uppercase; padding:0 13px;
+}
+.peek:hover{ background:rgba(139,94,60,.13); color:var(--ochre); border-color:var(--ochre); }
+
+/* submit */
+.go{
+  display:inline-block; width:100%; margin-top:8px; cursor:pointer;
+  font-family:var(--meta); font-size:12.5px; letter-spacing:.18em; text-transform:uppercase;
+  text-align:center; text-decoration:none; box-sizing:border-box;
+  padding:15px 18px;
+  background:var(--clay); color:var(--papyrus-lift); border:var(--hair) solid var(--clay);
+  transition:background-color .2s,border-color .2s,opacity .2s;
+}
+.go:hover:not(:disabled){ background:var(--ochre); border-color:var(--ochre); }
+.go:disabled{ opacity:.42; cursor:not-allowed; background:transparent; color:var(--ink-faint); }
+.need{ font-family:var(--meta); font-size:10.5px; color:var(--ink-faint);
+       text-align:center; margin:11px 0 0; min-height:1.4em; }
+.need.err{ color:var(--ochre); }
+
+/* foot */
+.foot{ border-top:2px solid var(--gold); background:var(--lapis-deep);
+       padding:18px 0 22px; text-align:center; }
+.foot a{ font-family:var(--meta); font-size:11px; letter-spacing:.13em;
+         color:var(--on-lapis-dim); text-decoration:none; margin:0 12px; }
+.foot a:hover{ color:var(--gold-bright); }
+
+@media (max-width:520px){ .card{ padding:26px 18px 28px; } .card h1{ font-size:28px; } }
+@media (prefers-reduced-motion:reduce){ *{ transition:none!important; } }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="bar__in">
+    <a class="mark" href="/">NATIONHOOD</a>
+    <a class="bar__alt" href="/signup">New here? <b>Sign up</b></a>
+  </div>
+</header>
+
+<div class="stage">
+<main class="card" id="card">
+  <p class="card__wait" id="wait">Checking your session…</p>
+
+  <div id="loginBox" hidden>
+    <h1>Log in</h1>
+    <p class="card__sub">Welcome back.</p>
+
+    <form id="loginForm" novalidate>
+      <div class="field">
+        <label for="mail">Email</label>
+        <div class="row">
+          <input id="mail" type="email" autocomplete="email" spellcheck="false" placeholder="you@example.com">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="pass">Password</label>
+        <div class="row">
+          <input id="pass" type="password" autocomplete="current-password" placeholder="Your password">
+          <button type="button" class="peek" id="peek" aria-pressed="false">Show</button>
+        </div>
+      </div>
+
+      <button class="go" id="goBtn" type="submit" disabled>Log in</button>
+      <p class="need" id="need"></p>
+    </form>
+  </div>
+</main>
+</div>
+
+<footer class="foot">
+  <a href="/">Home</a><a href="/about">About</a><a href="#">Wiki</a><a href="/signup">Sign up</a>
+</footer>
+
+<script type="module">
+import { routeAfterAuth } from '/post-auth.js';
+import { supabase } from '/supabase.js';
+
+(function(){
+  var wait = document.getElementById("wait");
+  var loginBox = document.getElementById("loginBox");
+  var mail = document.getElementById("mail");
+  var pass = document.getElementById("pass");
+  var btn  = document.getElementById("goBtn");
+  var need = document.getElementById("need");
+  var form = document.getElementById("loginForm");
+
+  var submitting = false;
+
+  function setNeed(text, isError){
+    need.textContent = text;
+    need.className = "need" + (isError ? " err" : "");
+  }
+
+  function refresh(){
+    if(submitting) return;
+    btn.disabled = !(mail.value.trim() && pass.value);
+  }
+  mail.addEventListener("input", refresh);
+  pass.addEventListener("input", refresh);
+
+  document.getElementById("peek").addEventListener("click", function(){
+    var shown = pass.type === "text";
+    pass.type = shown ? "password" : "text";
+    this.textContent = shown ? "Show" : "Hide";
+    this.setAttribute("aria-pressed", String(!shown));
+  });
+
+  function friendlyError(err){
+    var msg = (err && err.message) || "Something went wrong — try again.";
+    if(/invalid login credentials/i.test(msg)) return "Incorrect email or password.";
+    if(/email not confirmed/i.test(msg)) return "Confirm your email first — check the link we sent you.";
+    return msg;
+  }
+
+  form.addEventListener("submit", function(e){
+    e.preventDefault();
+    if(btn.disabled || submitting) return;
+
+    submitting = true;
+    btn.disabled = true;
+    mail.disabled = true; pass.disabled = true;
+    var prevLabel = btn.textContent;
+    btn.textContent = "Logging in…";
+    setNeed("", false);
+
+    supabase.auth.signInWithPassword({ email: mail.value.trim(), password: pass.value })
+      .then(function(res){
+        if(res.error) throw res.error;
+        return routeAfterAuth();
+      })
+      .then(function(route){
+        window.location.href = route.dest;
+      })
+      .catch(function(err){
+        setNeed(friendlyError(err), true);
+        submitting = false;
+        btn.disabled = false;
+        mail.disabled = false; pass.disabled = false;
+        btn.textContent = prevLabel;
+      });
+  });
+
+  /* Skip the form entirely if this visitor is already signed in — send them
+     wherever they actually belong instead of making them log in again. */
+  routeAfterAuth().then(function(route){
+    if(route.dest !== "/login"){ window.location.href = route.dest; return; }
+    wait.hidden = true;
+    loginBox.hidden = false;
+    refresh();
+  });
+})();
+</script>
+</body>
+</html>

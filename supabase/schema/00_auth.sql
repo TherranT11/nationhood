@@ -16,6 +16,15 @@ create table if not exists public.rf_profiles (
   created_at timestamptz not null default now()
 );
 
+-- Lifetime meta-progression, shown on /found ("Your Nth civilization",
+-- "X legacy banked"): legacy_banked accumulates from past civilizations
+-- (Decline isn't built yet, so this only ever moves once that exists), and
+-- civilizations_founded counts PAST civilizations only — the one you're
+-- about to found on /found isn't counted until it's founded, so a brand
+-- new account correctly reads "Your 1st civilization" / "0 legacy banked".
+alter table public.rf_profiles add column if not exists legacy_banked integer not null default 0;
+alter table public.rf_profiles add column if not exists civilizations_founded integer not null default 0;
+
 -- Case-insensitive uniqueness: "Theo" and "theo" are the same account name.
 create unique index if not exists rf_profiles_username_key on public.rf_profiles (lower(username));
 

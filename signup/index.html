@@ -134,7 +134,7 @@ input::placeholder{ color:rgba(133,116,89,.8); }
 <header class="bar">
   <div class="bar__in">
     <a class="mark" href="/">NATIONHOOD</a>
-    <a class="bar__alt" href="#">Already have an account? <b>Log in</b></a>
+    <a class="bar__alt" href="/login">Already have an account? <b>Log in</b></a>
   </div>
 </header>
 
@@ -198,11 +198,12 @@ input::placeholder{ color:rgba(133,116,89,.8); }
 </div>
 
 <footer class="foot">
-  <a href="/">Home</a><a href="/about">About</a><a href="#">Wiki</a><a href="#">Log in</a>
+  <a href="/">Home</a><a href="/about">About</a><a href="#">Wiki</a><a href="/login">Log in</a>
 </footer>
 
 <script type="module">
 import { supabase } from '/supabase.js';
+import { routeAfterAuth } from '/post-auth.js';
 
 (function(){
   var user = document.getElementById("user");
@@ -217,6 +218,7 @@ import { supabase } from '/supabase.js';
   var form = document.getElementById("joinForm");
   var successPanel = document.getElementById("success");
   var successMsg = document.getElementById("successMsg");
+  var successCta = document.getElementById("successCta");
 
   var userOK = false, userCheckTimer = null, submitting = false;
 
@@ -365,8 +367,13 @@ import { supabase } from '/supabase.js';
       successPanel.hidden = false;
       if(res.data && res.data.session){
         setSuccessMessage("Account created. Welcome, ", username, ".");
+        /* a brand new account has no civilization yet, so this resolves to
+           /found — same routing decision /login makes after signing in,
+           made in exactly one place rather than guessed at here too */
+        routeAfterAuth().then(function(route){ successCta.href = route.dest; });
       } else {
         setSuccessMessage("Almost there — we sent a confirmation link to ", email, ". Click it, then come back and log in.");
+        successCta.href = "/login";
       }
     }).catch(function(err){
       setNeed(friendlyError(err), true);
