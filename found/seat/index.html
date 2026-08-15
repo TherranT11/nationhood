@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Found Civilization — Nationhood: Rise and Fall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Unicase:wght@500;600;700&family=Gentium+Book+Plus:ital,wght@0,400;1,400&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --lapis:#17386B; --lapis-deep:#0E2449; --panel:#102647; --panel-2:#0A1B36;
+  --papyrus:#DFD0AC; --papyrus-lift:#E9DCBD;
+  --gold:#C9962F; --gold-bright:#EBC163;
+  --ochre:#A8452C; --malachite:#3F7F6E; --clay:#8B5E3C;
+  --txt:#DCE4F0; --dim:#93A9C9; --faint:#63809F;
+  --line:rgba(140,170,210,.22);
+  --meta:"Spline Sans Mono",ui-monospace,monospace;
+  --incise:"Cormorant Unicase",Georgia,serif;
+  --read:"Gentium Book Plus",Georgia,serif;
+}
+*,*::before,*::after{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0; overflow:hidden; user-select:none;
+  font-family:var(--meta); font-size:13px; color:var(--txt);
+  background:var(--lapis-deep); display:flex; flex-direction:column;
+  -webkit-font-smoothing:antialiased;
+}
+button,input{ font-family:inherit; font-size:inherit; color:inherit; }
+button{ cursor:pointer; }
+:focus-visible{ outline:2px solid var(--gold-bright); outline-offset:2px; }
+.sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+
+/* ============ WAIT / FATAL STATE ============ */
+.wait{
+  flex:1; display:flex; align-items:center; justify-content:center;
+  text-align:center; padding:40px 20px;
+  font-family:var(--meta); font-size:12px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--dim);
+}
+
+/* ============ HEADER ============ */
+.head{
+  flex:0 0 auto; background:var(--panel-2);
+  border-bottom:2px solid var(--gold);
+  padding:20px 24px 16px; text-align:center;
+}
+.head h1{
+  font-family:var(--incise); font-weight:600;
+  font-size:clamp(23px,3.2vw,33px); letter-spacing:.19em; text-indent:.19em;
+  margin:0 0 16px; color:var(--papyrus-lift);
+}
+
+/* the two names */
+.names{
+  display:flex; align-items:stretch; justify-content:center;
+  gap:0; max-width:820px; margin:0 auto;
+  border:1px solid var(--line); background:rgba(0,0,0,.24);
+}
+.names .cell{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; text-align:left; }
+.names .divider{ flex:0 0 1px; background:var(--line); }
+.names label{
+  font-size:9.5px; letter-spacing:.19em; text-transform:uppercase;
+  color:var(--faint); padding:9px 14px 0;
+}
+.names input{
+  width:100%; background:transparent; border:0;
+  font-family:var(--incise); font-weight:600;
+  font-size:clamp(17px,2.2vw,23px); letter-spacing:.09em;
+  color:var(--papyrus-lift); padding:2px 14px 11px;
+}
+.names input:focus{ outline:none; background:rgba(201,150,47,.09); }
+.names input::placeholder{
+  font-family:var(--read); font-weight:400; font-style:italic;
+  font-size:15px; letter-spacing:0; color:rgba(147,169,201,.55);
+}
+.names .roll{
+  flex:0 0 auto; align-self:center; margin:0 9px;
+  width:32px; height:32px; background:transparent;
+  border:1px solid var(--line); color:var(--dim); font-size:14px; line-height:1;
+}
+.names .roll:hover{ border-color:var(--gold); color:var(--gold-bright); }
+
+/* the question */
+.ask{
+  display:flex; align-items:center; justify-content:center; gap:16px;
+  margin-top:17px;
+}
+.ask p{
+  font-family:var(--incise); font-weight:600;
+  font-size:clamp(13px,1.7vw,17px); letter-spacing:.22em;
+  color:var(--gold); margin:0;
+}
+.ask .btn{
+  background:rgba(255,255,255,.05); border:1px solid var(--line); color:var(--txt);
+  padding:7px 13px; font-size:10px; letter-spacing:.15em; text-transform:uppercase;
+}
+.ask .btn:hover{ background:rgba(201,150,47,.2); border-color:var(--gold); }
+
+/* ============ MAP ============ */
+.stage{ flex:1 1 auto; position:relative; min-height:0; background:#081428; }
+#map{ display:block; width:100%; height:100%; cursor:pointer; touch-action:none; }
+.stage.panning #map{ cursor:grabbing; }
+
+.readout{
+  position:absolute; top:12px; left:12px;
+  background:rgba(10,27,54,.9); border:1px solid var(--line);
+  padding:7px 12px; font-size:10.5px; letter-spacing:.1em; color:var(--dim);
+  pointer-events:none;
+}
+.readout b{ color:var(--txt); font-weight:400; }
+
+.mapctl{ position:absolute; top:12px; right:12px; display:flex; gap:5px; }
+.mapctl button{
+  width:32px; height:32px; background:rgba(10,27,54,.9);
+  border:1px solid var(--line); color:var(--txt); font-size:13px;
+}
+.mapctl button:hover{ border-color:var(--gold); color:var(--gold-bright); }
+
+.key{
+  position:absolute; right:12px; bottom:12px;
+  background:rgba(10,27,54,.9); border:1px solid var(--line);
+  padding:9px 11px; font-size:10px; color:var(--dim);
+  display:grid; grid-template-columns:1fr 1fr; gap:2px 12px;
+}
+.key div{ display:flex; align-items:center; gap:6px; }
+.key i{ width:9px; height:9px; border-radius:50%; border:1px solid rgba(0,0,0,.5); }
+
+/* ============ SELECTION PANEL ============ */
+.seat{
+  position:absolute; left:50%; bottom:14px; transform:translateX(-50%) translateY(140%);
+  width:min(calc(100% - 28px), 940px);
+  background:rgba(10,27,54,.96); border:1px solid var(--gold);
+  box-shadow:0 -6px 40px rgba(0,0,0,.55);
+  display:flex; align-items:stretch; gap:0;
+  transition:transform .3s cubic-bezier(.2,.8,.3,1);
+}
+.seat.up{ transform:translateX(-50%) translateY(0); }
+
+.seat__id{
+  flex:0 0 auto; display:flex; align-items:center; gap:11px;
+  padding:14px 16px; border-right:1px solid var(--line); min-width:0;
+}
+.seat__id i{ width:30px; height:30px; flex:0 0 auto; border:1px solid rgba(0,0,0,.5); }
+.seat__id b{
+  display:block; font-family:var(--incise); font-weight:600; font-size:17px;
+  letter-spacing:.07em; color:var(--papyrus-lift); white-space:nowrap;
+}
+.seat__id span{ font-size:10px; letter-spacing:.11em; color:var(--dim); }
+
+.seat__facts{
+  flex:1 1 auto; min-width:0; display:flex; align-items:center;
+  gap:0; overflow:hidden;
+}
+.fact{ padding:12px 16px; border-right:1px solid rgba(140,170,210,.13); min-width:0; }
+.fact u{
+  display:block; text-decoration:none; font-size:9px; letter-spacing:.17em;
+  text-transform:uppercase; color:var(--faint); margin-bottom:3px;
+}
+.fact b{ font-weight:400; font-size:12px; color:var(--txt); white-space:nowrap; }
+.fact b.ok{ color:#7FCFA4; } .fact b.no{ color:#E39B8E; }
+.goods{ display:flex; gap:4px; flex-wrap:wrap; max-width:230px; }
+.goods span{ display:flex; align-items:center; gap:4px; font-size:10.5px; color:var(--txt); }
+.goods i{ width:8px; height:8px; border-radius:50%; border:1px solid rgba(0,0,0,.5); }
+
+.seat__no{
+  flex:1 1 auto; display:flex; align-items:center;
+  padding:14px 18px; font-family:var(--read); font-size:15px; color:#F0C4BC;
+}
+
+.seat__go{ flex:0 0 auto; display:flex; flex-direction:column; justify-content:center;
+           padding:10px 12px; border-left:1px solid var(--line); }
+.found{
+  padding:14px 26px; background:var(--gold); color:#0E2449;
+  border:1px solid var(--gold); font-size:11.5px; letter-spacing:.18em;
+  text-transform:uppercase; font-weight:500; white-space:nowrap;
+  transition:background-color .18s,opacity .18s;
+}
+.found:hover:not(:disabled){ background:var(--gold-bright); }
+.found:disabled{ background:transparent; color:var(--faint); border-color:var(--line); cursor:not-allowed; }
+.seat__go p{ margin:6px 0 0; font-size:9px; letter-spacing:.1em; color:var(--faint); text-align:center; }
+
+/* ============ CONFIRM ============ */
+.veil{
+  position:fixed; inset:0; background:rgba(6,14,28,.87);
+  display:none; align-items:center; justify-content:center; padding:20px; z-index:60;
+}
+.veil.on{ display:flex; }
+.deed{
+  width:min(100%,460px); background:var(--papyrus); color:#2A2119;
+  border:1px solid #CDBC95; box-shadow:0 24px 60px rgba(0,0,0,.6);
+  padding:30px 30px 26px; text-align:center;
+}
+.deed h3{ font-family:var(--meta); font-size:10px; letter-spacing:.24em;
+          text-transform:uppercase; color:var(--ochre); margin:0 0 16px; }
+.deed__cart{
+  display:inline-block; padding:9px 30px; border:2px solid var(--gold);
+  border-radius:999px; background:rgba(201,150,47,.1);
+  box-shadow:inset 0 0 0 4px rgba(223,208,172,.6); margin-bottom:14px;
+}
+.deed__cart b{ font-family:var(--incise); font-weight:600; font-size:28px; letter-spacing:.12em; }
+.deed p{ font-family:var(--read); font-size:16px; margin:0; color:#5E5040; }
+.deed dl{ margin:18px 0 20px; padding:14px 0; text-align:left;
+          border-block:1px solid rgba(42,33,25,.2); }
+.deed dl div{ display:flex; justify-content:space-between; padding:4px 0; font-size:12px; }
+.deed dt{ color:#857459; letter-spacing:.1em; text-transform:uppercase; font-size:10px; }
+.deed dd{ margin:0; }
+.deed__warn{ font-family:var(--meta); font-size:10px; letter-spacing:.11em;
+             color:var(--ochre); text-transform:uppercase; margin-bottom:16px; }
+.deed__acts{ display:flex; gap:10px; }
+.deed__acts button{ flex:1; padding:14px 10px; font-size:11px;
+                    letter-spacing:.16em; text-transform:uppercase; }
+.deed__yes{ background:#8B5E3C; color:#E9DCBD; border:1px solid #8B5E3C; }
+.deed__yes:hover{ background:var(--ochre); border-color:var(--ochre); }
+.deed__no{ background:transparent; color:#2A2119; border:1px solid #CDBC95; }
+.deed__no:hover{ background:rgba(139,94,60,.13); }
+
+@media (max-width:880px){
+  .key{ display:none; }
+  .seat{ flex-wrap:wrap; }
+  .seat__id{ flex:1 1 100%; border-right:0; border-bottom:1px solid var(--line); }
+  .seat__facts{ flex:1 1 100%; overflow-x:auto; }
+  .seat__go{ flex:1 1 100%; border-left:0; border-top:1px solid var(--line); }
+  .found{ width:100%; }
+}
+@media (max-width:600px){
+  .head{ padding:14px 14px 12px; }
+  .names{ flex-wrap:wrap; }
+  .names .divider{ flex:1 1 100%; height:1px; }
+  .ask{ flex-wrap:wrap; gap:10px; }
+}
+</style>
+</head>
+<body>
+
+<p class="wait" id="wait">Checking your account…</p>
+
+<!-- ================= HEADER ================= -->
+<header class="head" id="head" hidden>
+  <h1>FOUND CIVILIZATION</h1>
+
+  <div class="names">
+    <div class="cell">
+      <label for="civ">Name of Civilization</label>
+      <input id="civ" maxlength="22" autocomplete="off" spellcheck="false" placeholder="What the archive will remember">
+    </div>
+    <button class="roll" id="rollCiv" title="Suggest a name" aria-label="Suggest a civilization name">⟳</button>
+    <div class="divider"></div>
+    <div class="cell">
+      <label for="cap">Name of Capital</label>
+      <input id="cap" maxlength="26" autocomplete="off" spellcheck="false" placeholder="Where the first stone is laid">
+    </div>
+    <button class="roll" id="rollCap" title="Suggest a name" aria-label="Suggest a capital name">⟳</button>
+  </div>
+
+  <div class="ask">
+    <p>WHERE WILL YOUR CIVILIZATION BEGIN?</p>
+    <button class="btn" id="suggest">Suggest a seat</button>
+  </div>
+</header>
+
+<!-- ================= MAP ================= -->
+<div class="stage" id="stage" hidden>
+  <canvas id="map"></canvas>
+
+  <div class="readout" id="readout">Hex <b>—</b> · <b>—</b></div>
+
+  <div class="mapctl">
+    <button id="zIn" title="Zoom in">+</button>
+    <button id="zOut" title="Zoom out">−</button>
+    <button id="zFit" title="Fit map">⤢</button>
+  </div>
+
+  <div class="key" id="key"></div>
+
+  <!-- selection panel -->
+  <div class="seat" id="seat">
+    <div class="seat__id">
+      <i id="sColor"></i>
+      <div><b id="sTerr">—</b><span id="sWhere">—</span></div>
+    </div>
+    <div class="seat__facts" id="sFacts"></div>
+    <div class="seat__go">
+      <button class="found" id="foundBtn" disabled>Found Civilization</button>
+      <p id="sNote"></p>
+    </div>
+  </div>
+</div>
+
+<!-- ================= CONFIRM ================= -->
+<div class="veil" id="veil">
+  <div class="deed">
+    <h3>Foundation deposit</h3>
+    <div class="deed__cart"><b id="dName">—</b></div>
+    <p id="dLine">—</p>
+    <dl id="dFacts"></dl>
+    <p class="deed__warn">A capital cannot be moved once founded</p>
+    <div class="deed__acts">
+      <button class="deed__no" id="dNo">Choose again</button>
+      <button class="deed__yes" id="dYes">Found the capital</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+"use strict";
+import { supabase } from '/supabase.js';
+import { routeAfterAuth } from '/post-auth.js';
+import { getPendingFounding, clearPendingFounding } from '/pending-founding.js';
+
+/* ============================================================
+   TERRAIN + GOODS
+   Keys, not raw ids, are the source of truth: a saved map's terrain/goods
+   arrays are integers indexed against ITS OWN terrain_keys/goods_keys (see
+   /maptool), which don't necessarily line up with this page's own ordering.
+   Every loaded id is translated through the key string once, in loadWorld().
+   ============================================================ */
+var TERR = [
+  { key:"sea",        name:"Sea",        color:"#1F4E7A", can:false },
+  { key:"plains",     name:"Plains",     color:"#A3A063", can:true  },
+  { key:"fertile",    name:"Fertile",    color:"#468659", can:true  },
+  { key:"mountain",   name:"Mountain",   color:"#7C756C", can:false },
+  { key:"desert",     name:"Desert",     color:"#D9B96B", can:true  },
+  { key:"unassigned", name:"Unassigned", color:"#243B5E", can:false }
+];
+var T = {};
+TERR.forEach(function(t,i){ T[t.key.toUpperCase()] = i; });
+
+var RES = [
+  { key:"grain",  name:"Grain",  color:"#E3C56A" },
+  { key:"horses", name:"Horses", color:"#B4713C" },
+  { key:"iron",   name:"Iron",   color:"#96A0AE" },
+  { key:"timber", name:"Timber", color:"#4B7A4B" },
+  { key:"gold",   name:"Gold",   color:"#E0B23A" },
+  { key:"salt",   name:"Salt",   color:"#EDE9DC" },
+  { key:"spices", name:"Spices", color:"#B0472C" }
+];
+
+var DIRS = {
+  even: [[ 1, 0],[ 0, 1],[-1, 1],[-1, 0],[-1,-1],[ 0,-1]],
+  odd:  [[ 1, 0],[ 1, 1],[ 0, 1],[-1, 0],[ 0,-1],[ 1,-1]]
+};
+
+/* ============================================================
+   MAP STATE
+   COLS/ROWS/terrain/resource/claimed/rivals are all set once, in
+   loadWorld(), from the real saved map and the real founded nations —
+   nothing here is generated.
+   ============================================================ */
+var COLS, ROWS, R = 17, SQ3 = Math.sqrt(3);
+var terrain, resource, claimed, rivals = [], chosen = null;
+var MIN_GAP = 5;
+
+function idx(c,r){ return r*COLS + c; }
+function inB(c,r){ return c>=0 && r>=0 && c<COLS && r<ROWS; }
+function nb(c,r,d){ var t = DIRS[(r&1)?"odd":"even"][d]; return [c+t[0], r+t[1]]; }
+function hexCenter(c,r){ return { x:R*SQ3*(c+0.5*(r&1)) + R*SQ3*0.5, y:R*1.5*r + R }; }
+function corner(cx,cy,i){ var a = Math.PI/180*(60*i-30); return [cx+R*Math.cos(a), cy+R*Math.sin(a)]; }
+function mapW(){ return R*SQ3*(COLS+0.5); }
+function mapH(){ return R*1.5*ROWS + R*0.5; }
+function cube(c,r){ var q = c - ((r-(r&1))>>1); return [q,r,-q-r]; }
+function dist(c1,r1,c2,r2){
+  var a = cube(c1,r1), b = cube(c2,r2);
+  return (Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1])+Math.abs(a[2]-b[2]))/2;
+}
+function within(c,r,rad){
+  var out = [];
+  for(var rr=r-rad; rr<=r+rad; rr++)
+    for(var cc=c-rad-1; cc<=c+rad+1; cc++)
+      if(inB(cc,rr) && dist(c,r,cc,rr)<=rad) out.push([cc,rr]);
+  return out;
+}
+
+/* Translate a saved map's terrain/goods (indexed against its own key
+   arrays) into this page's own TERR/RES indices, by key name. Unknown or
+   missing keys fall back to "unassigned" for terrain, "no resource" for
+   goods, rather than throwing on a map authored with a different key set. */
+function loadWorld(mapRow, nationRows){
+  COLS = mapRow.cols; ROWS = mapRow.rows;
+  var n = COLS * ROWS;
+
+  var terrByKey = {}; TERR.forEach(function(t,i){ terrByKey[t.key] = i; });
+  var unassignedId = terrByKey.unassigned;
+  var terrTranslate = (mapRow.terrain_keys || []).map(function(k){
+    return terrByKey.hasOwnProperty(k) ? terrByKey[k] : unassignedId;
+  });
+  terrain = new Uint8Array(n);
+  for(var i=0;i<n;i++){
+    var srcT = mapRow.terrain[i];
+    terrain[i] = (typeof terrTranslate[srcT] === "number") ? terrTranslate[srcT] : unassignedId;
+  }
+
+  var resByKey = {}; RES.forEach(function(r,i){ resByKey[r.key] = i; });
+  var goodsTranslate = (mapRow.goods_keys || []).map(function(k){
+    return resByKey.hasOwnProperty(k) ? resByKey[k] : -1;
+  });
+  resource = new Int8Array(n).fill(-1);
+  if(Array.isArray(mapRow.goods) && mapRow.goods.length === n){
+    for(var j=0;j<n;j++){
+      var srcG = mapRow.goods[j];
+      resource[j] = (typeof goodsTranslate[srcG] === "number") ? goodsTranslate[srcG] : -1;
+    }
+  }
+
+  claimed = new Int8Array(n).fill(-1);
+  rivals = [];
+  var TINTS = ["#C2543F","#7E5AA8","#3F8F86","#B9873A","#5F84C4","#A34F7E","#6E9A44","#8A6E44","#4D7FA0","#A5578F"];
+  nationRows.forEach(function(row){
+    if(row.hex_col == null || row.hex_row == null) return;
+    if(!inB(row.hex_col, row.hex_row)) return;
+    var vi = rivals.length;
+    rivals.push({ c:row.hex_col, r:row.hex_row, name:row.civ_name, tint:TINTS[vi % TINTS.length] });
+    within(row.hex_col, row.hex_row, 1).forEach(function(cell){
+      claimed[idx(cell[0],cell[1])] = vi;
+    });
+  });
+}
+
+function isCoast(c,r){
+  for(var d=0;d<6;d++){
+    var n = nb(c,r,d);
+    if(inB(n[0],n[1]) && terrain[idx(n[0],n[1])] === T.SEA) return true;
+  }
+  return false;
+}
+
+/* ============================================================
+   VALIDITY + ASSESSMENT
+   ============================================================ */
+function why(c,r){
+  var i = idx(c,r);
+  if(terrain[i] === T.SEA)        return "You cannot found a civilization at sea.";
+  if(terrain[i] === T.MOUNTAIN)   return "Mountains will not feed a capital.";
+  if(terrain[i] === T.UNASSIGNED) return "This land hasn't been charted yet.";
+  if(claimed[i] >= 0)             return "This land already belongs to " + rivals[claimed[i]].name + ".";
+  for(var k=0;k<rivals.length;k++){
+    if(dist(c,r,rivals[k].c,rivals[k].r) < MIN_GAP)
+      return "Too close to " + rivals[k].name + " — keep " + MIN_GAP + " hexes clear.";
+  }
+  return null;
+}
+function valid(c,r){ return why(c,r) === null; }
+
+function assess(c,r){
+  var i = idx(c,r), ring = new Array(TERR.length).fill(0), d;
+  for(d=0;d<6;d++){
+    var n = nb(c,r,d);
+    if(inB(n[0],n[1])) ring[terrain[idx(n[0],n[1])]]++;
+  }
+  var near = {};
+  within(c,r,2).forEach(function(cell){
+    var ri = resource[idx(cell[0],cell[1])];
+    if(ri >= 0) near[RES[ri].key] = (near[RES[ri].key]||0)+1;
+  });
+  var closest = null, cd = 99;
+  rivals.forEach(function(v){
+    var dd = dist(c,r,v.c,v.r);
+    if(dd < cd){ cd = dd; closest = v; }
+  });
+  return { terr:terrain[i], coast:isCoast(c,r), ring:ring, res:near,
+           resCount:Object.keys(near).length, rival:closest, rivalDist:cd,
+           own: resource[i] >= 0 ? RES[resource[i]] : null };
+}
+function score(c,r){
+  if(!valid(c,r)) return -1;
+  var a = assess(c,r), s = 0;
+  if(a.terr === T.FERTILE) s += 4;
+  if(a.terr === T.PLAINS)  s += 2.5;
+  if(a.terr === T.DESERT)  s += 0.5;
+  s += a.ring[T.FERTILE]*1.3 + a.ring[T.PLAINS]*0.6 - a.ring[T.MOUNTAIN]*0.5;
+  s += a.resCount*1.5;
+  if(a.own) s += 1.4;
+  if(a.coast) s += 1.6;
+  if(a.rivalDist >= 8) s += 1.5;
+  return s;
+}
+var recommended = new Set();
+function computeRecommended(){
+  var all = [];
+  for(var r=0;r<ROWS;r++) for(var c=0;c<COLS;c++){
+    var s = score(c,r);
+    if(s > 0) all.push([s, idx(c,r)]);
+  }
+  all.sort(function(a,b){ return b[0]-a[0]; });
+  recommended = new Set(all.slice(0,14).map(function(x){ return x[1]; }));
+  return all.length ? all[0][1] : null;
+}
+
+/* ============================================================
+   NAME GENERATION
+   ============================================================ */
+var A = ["Nin","Ash","Mer","Thes","Kor","Sab","Anz","Hatt","Var","Tar","Eshu","Kish","Lag","Zim","Bel","Nem","Ky","Ur","Dur","Hala"];
+var B = ["ha","ka","sa","ra","tha","mi","nu","va","ze","li","ma","du","she","ti"];
+var C = ["ra","um","os","ia","ar","eth","an","ur","is","on","ash","ket"];
+var EP = ["on-the-Reeds","by-the-Ford","of-the-Two-Rivers","under-the-Hill",
+          "of-the-Salt-Flats","on-the-Narrows","of-the-High-Pass","by-the-Delta"];
+function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+function makeName(){
+  var n = pick(A) + pick(B);
+  if(Math.random() < .55) n += pick(C);
+  return n.charAt(0).toUpperCase() + n.slice(1);
+}
+function makeCapital(){
+  var n = makeName();
+  return Math.random() < .35 ? n + "-" + pick(EP) : n;
+}
+
+/* ============================================================
+   CANVAS
+   ============================================================ */
+var cv = document.getElementById("map"), ctx = cv.getContext("2d");
+var stage = document.getElementById("stage");
+var view = { x:0, y:0, k:1 }, dpr = 1, hover = null, pending2 = false, tick = 0;
+
+function s2w(sx,sy){ return { x:(sx-view.x)/view.k, y:(sy-view.y)/view.k }; }
+function hexAt(wx,wy){
+  var rg = Math.round((wy-R)/(R*1.5)), best = null, bd = Infinity;
+  for(var r=rg-1;r<=rg+1;r++){
+    if(r<0||r>=ROWS) continue;
+    var cg = Math.round((wx-R*SQ3*.5)/(R*SQ3) - .5*(r&1));
+    for(var c=cg-1;c<=cg+1;c++){
+      if(c<0||c>=COLS) continue;
+      var p = hexCenter(c,r), d = (p.x-wx)*(p.x-wx)+(p.y-wy)*(p.y-wy);
+      if(d<bd){ bd=d; best={c:c,r:r}; }
+    }
+  }
+  return best;
+}
+function resize(){
+  dpr = window.devicePixelRatio || 1;
+  cv.width  = Math.max(1, Math.round(stage.clientWidth*dpr));
+  cv.height = Math.max(1, Math.round(stage.clientHeight*dpr));
+  paint();
+}
+function paint(){
+  if(pending2) return;
+  pending2 = true;
+  requestAnimationFrame(function(){ pending2 = false; render(); });
+}
+function pathHex(p){
+  ctx.beginPath();
+  for(var i=0;i<6;i++){
+    var q = corner(p.x,p.y,i);
+    if(i===0) ctx.moveTo(q[0],q[1]); else ctx.lineTo(q[0],q[1]);
+  }
+  ctx.closePath();
+}
+function render(){
+  var w = cv.width/dpr, h = cv.height/dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle = "#081428"; ctx.fillRect(0,0,w,h);
+  ctx.save(); ctx.translate(view.x,view.y); ctx.scale(view.k,view.k);
+
+  var tl = s2w(0,0), br = s2w(w,h);
+  var r0 = Math.max(0, Math.floor((tl.y-R*2)/(R*1.5)));
+  var r1 = Math.min(ROWS-1, Math.ceil((br.y+R*2)/(R*1.5)));
+  var c0 = Math.max(0, Math.floor((tl.x-R*2)/(R*SQ3))-1);
+  var c1 = Math.min(COLS-1, Math.ceil((br.x+R*2)/(R*SQ3)));
+  var c,r,i,p;
+
+  for(r=r0;r<=r1;r++) for(c=c0;c<=c1;c++){
+    i = idx(c,r); p = hexCenter(c,r);
+    pathHex(p); ctx.fillStyle = TERR[terrain[i]].color; ctx.fill();
+    if(claimed[i] >= 0){ ctx.fillStyle = rivals[claimed[i]].tint + "66"; ctx.fill(); }
+    if(terrain[i] !== T.SEA && !valid(c,r)){ ctx.fillStyle = "rgba(8,18,36,.44)"; ctx.fill(); }
+  }
+
+  if(view.k > .34){
+    ctx.lineWidth = 1/view.k; ctx.strokeStyle = "rgba(8,18,36,.34)";
+    ctx.beginPath();
+    for(r=r0;r<=r1;r++) for(c=c0;c<=c1;c++){
+      p = hexCenter(c,r);
+      for(i=0;i<6;i++){
+        var a = corner(p.x,p.y,i), b = corner(p.x,p.y,(i+1)%6);
+        ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]);
+      }
+    }
+    ctx.stroke();
+  }
+
+  if(view.k > .4){
+    ctx.fillStyle = "rgba(235,193,99,.92)";
+    recommended.forEach(function(id){
+      var cc = id % COLS, rr = (id-cc)/COLS;
+      if(rr<r0-1||rr>r1+1||cc<c0-1||cc>c1+1) return;
+      if(chosen && chosen.c===cc && chosen.r===rr) return;
+      var q = hexCenter(cc,rr);
+      ctx.beginPath(); ctx.arc(q.x, q.y - R*.42, 2.4, 0, 7); ctx.fill();
+    });
+  }
+
+  if(view.k > .62){
+    for(r=r0;r<=r1;r++) for(c=c0;c<=c1;c++){
+      i = idx(c,r);
+      if(resource[i] < 0) continue;
+      p = hexCenter(c,r);
+      ctx.beginPath(); ctx.arc(p.x, p.y + R*.22, R*.24, 0, 7);
+      ctx.fillStyle = RES[resource[i]].color; ctx.fill();
+      ctx.lineWidth = 1.2/view.k; ctx.strokeStyle = "rgba(8,18,36,.75)"; ctx.stroke();
+    }
+  }
+
+  rivals.forEach(function(v){
+    p = hexCenter(v.c,v.r);
+    ctx.beginPath(); ctx.arc(p.x,p.y,R*.44,0,7);
+    ctx.fillStyle = v.tint; ctx.fill();
+    ctx.lineWidth = 2/view.k; ctx.strokeStyle = "#0A1B36"; ctx.stroke();
+    if(view.k > .55){
+      ctx.save(); ctx.scale(1/view.k,1/view.k);
+      ctx.font = "600 11px Cormorant Unicase, Georgia, serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+      ctx.lineWidth = 3; ctx.strokeStyle = "rgba(8,18,36,.9)";
+      ctx.strokeText(v.name, p.x*view.k, (p.y-R*.62)*view.k);
+      ctx.fillStyle = "#E9DCBD";
+      ctx.fillText(v.name, p.x*view.k, (p.y-R*.62)*view.k);
+      ctx.restore();
+    }
+  });
+
+  if(hover){
+    p = hexCenter(hover.c,hover.r); pathHex(p);
+    ctx.lineWidth = 2/view.k;
+    ctx.strokeStyle = valid(hover.c,hover.r) ? "rgba(255,255,255,.9)" : "rgba(226,120,100,.9)";
+    ctx.stroke();
+  }
+
+  if(chosen){
+    for(var d=0;d<6;d++){
+      var n = nb(chosen.c,chosen.r,d);
+      if(!inB(n[0],n[1])) continue;
+      p = hexCenter(n[0],n[1]); pathHex(p);
+      ctx.lineWidth = 1.6/view.k; ctx.strokeStyle = "rgba(235,193,99,.55)";
+      ctx.setLineDash([4/view.k,3/view.k]); ctx.stroke(); ctx.setLineDash([]);
+    }
+    p = hexCenter(chosen.c,chosen.r); pathHex(p);
+    ctx.fillStyle = "rgba(235,193,99,.22)"; ctx.fill();
+    ctx.lineWidth = 3/view.k; ctx.strokeStyle = "#EBC163"; ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, R*(.64+.10*Math.sin(tick/16)), 0, 7);
+    ctx.lineWidth = 1.6/view.k; ctx.strokeStyle = "rgba(235,193,99,.55)"; ctx.stroke();
+  }
+  ctx.restore();
+}
+function loop(){ tick++; if(chosen) paint(); requestAnimationFrame(loop); }
+
+/* ============================================================
+   PANEL
+   ============================================================ */
+var seat = document.getElementById("seat");
+var btn  = document.getElementById("foundBtn");
+var submitting = false;
+var currentUser = null, pendingFounding = null;
+
+function ringText(ring){
+  var out = [];
+  [T.FERTILE,T.PLAINS,T.DESERT,T.MOUNTAIN,T.SEA,T.UNASSIGNED].forEach(function(t){
+    if(ring[t]) out.push(ring[t] + " " + TERR[t].name.toLowerCase());
+  });
+  return out.join(", ") || "nothing";
+}
+function namesOK(){
+  return document.getElementById("civ").value.trim().length > 0 &&
+         document.getElementById("cap").value.trim().length > 0;
+}
+function refreshButton(){
+  if(submitting) return;
+  var reason = chosen ? why(chosen.c, chosen.r) : "no hex";
+  var ok = chosen && !reason && namesOK();
+  btn.disabled = !ok;
+  var note = document.getElementById("sNote");
+  if(!chosen)            note.textContent = "";
+  else if(reason)        note.textContent = "Choose another hex";
+  else if(!namesOK())    note.textContent = "Name both above";
+  else                   note.textContent = "This cannot be undone";
+}
+
+function showSeat(c,r){
+  var reason = why(c,r), a = assess(c,r);
+  document.getElementById("sColor").style.background = TERR[a.terr].color;
+  document.getElementById("sTerr").textContent = TERR[a.terr].name;
+  document.getElementById("sWhere").textContent =
+    "hex " + c + ", " + r + " · " + (a.coast ? "coastal" : "inland");
+
+  var facts = document.getElementById("sFacts");
+  if(reason){
+    facts.className = "seat__no";
+    facts.innerHTML = reason;
+  } else {
+    facts.className = "seat__facts";
+    var goods = Object.keys(a.res).map(function(k){
+      var m = RES.find(function(x){ return x.key === k; });
+      return '<span><i style="background:'+m.color+'"></i>'+m.name+'</span>';
+    }).join("") || '<span style="color:#63809F">none nearby</span>';
+
+    facts.innerHTML =
+      '<div class="fact"><u>Adjacent land</u><b>'+ringText(a.ring)+'</b></div>' +
+      '<div class="fact"><u>On this hex</u><b>'+(a.own ? a.own.name : "—")+'</b></div>' +
+      '<div class="fact"><u>Goods within two</u><div class="goods">'+goods+'</div></div>' +
+      '<div class="fact"><u>Nearest neighbour</u><b class="'+
+        (a.rivalDist>=8?"ok":"")+'">'+(a.rival?a.rival.name+" · "+a.rivalDist+" hexes":"—")+'</b></div>';
+  }
+  seat.classList.add("up");
+  refreshButton();
+}
+
+/* ============================================================
+   INPUT
+   ============================================================ */
+var drag = null;
+function local(e){ var b = cv.getBoundingClientRect(); return { x:e.clientX-b.left, y:e.clientY-b.top }; }
+
+cv.addEventListener("pointerdown", function(e){
+  cv.setPointerCapture(e.pointerId);
+  var p = local(e);
+  drag = { sx:p.x, sy:p.y, vx:view.x, vy:view.y, moved:false };
+});
+cv.addEventListener("pointermove", function(e){
+  var p = local(e);
+  if(drag && Math.abs(p.x-drag.sx)+Math.abs(p.y-drag.sy) > 5){
+    drag.moved = true; stage.classList.add("panning");
+    view.x = drag.vx + (p.x-drag.sx); view.y = drag.vy + (p.y-drag.sy);
+    paint(); return;
+  }
+  var w = s2w(p.x,p.y), h = hexAt(w.x,w.y);
+  hover = h;
+  if(h){
+    var good = resource[idx(h.c,h.r)] >= 0 ? " · " + RES[resource[idx(h.c,h.r)]].name : "";
+    document.getElementById("readout").innerHTML =
+      "Hex <b>"+h.c+", "+h.r+"</b> · <b>"+TERR[terrain[idx(h.c,h.r)]].name+good+"</b>";
+  }
+  paint();
+});
+cv.addEventListener("pointerup", function(e){
+  var wasDrag = drag && drag.moved;
+  drag = null; stage.classList.remove("panning");
+  if(wasDrag || submitting) return;
+  var p = local(e), w = s2w(p.x,p.y), h = hexAt(w.x,w.y);
+  if(!h) return;
+  chosen = h; showSeat(h.c,h.r); paint();
+});
+cv.addEventListener("pointerleave", function(){ hover = null; paint(); });
+cv.addEventListener("wheel", function(e){
+  e.preventDefault();
+  var p = local(e), before = s2w(p.x,p.y);
+  view.k = Math.max(.28, Math.min(3.2, view.k*(e.deltaY<0?1.12:1/1.12)));
+  var after = s2w(p.x,p.y);
+  view.x += (after.x-before.x)*view.k; view.y += (after.y-before.y)*view.k;
+  paint();
+}, { passive:false });
+
+function zoom(f){
+  var w = cv.width/dpr/2, h = cv.height/dpr/2, before = s2w(w,h);
+  view.k = Math.max(.28, Math.min(3.2, view.k*f));
+  var after = s2w(w,h);
+  view.x += (after.x-before.x)*view.k; view.y += (after.y-before.y)*view.k;
+  paint();
+}
+function fit(){
+  var w = cv.width/dpr, h = cv.height/dpr;
+  view.k = Math.max(.28, Math.min(3.2, Math.min(w/(mapW()+40), h/(mapH()+40))));
+  view.x = (w - mapW()*view.k)/2; view.y = (h - mapH()*view.k)/2;
+  paint();
+}
+document.getElementById("zIn").onclick  = function(){ zoom(1.25); };
+document.getElementById("zOut").onclick = function(){ zoom(1/1.25); };
+document.getElementById("zFit").onclick = fit;
+
+document.getElementById("suggest").onclick = function(){
+  if(submitting) return;
+  var best = computeRecommended();
+  if(best == null) return;
+  var c = best % COLS, r = (best-c)/COLS;
+  chosen = { c:c, r:r };
+  var p = hexCenter(c,r), w = cv.width/dpr, h = cv.height/dpr;
+  view.k = Math.max(view.k, 1);
+  view.x = w/2 - p.x*view.k; view.y = h/2 - p.y*view.k;
+  showSeat(c,r); paint();
+};
+
+document.getElementById("civ").addEventListener("input", refreshButton);
+document.getElementById("cap").addEventListener("input", refreshButton);
+document.getElementById("rollCiv").onclick = function(){
+  if(submitting) return;
+  document.getElementById("civ").value = makeName(); refreshButton();
+};
+document.getElementById("rollCap").onclick = function(){
+  if(submitting) return;
+  document.getElementById("cap").value = makeCapital(); refreshButton();
+};
+
+/* ============================================================
+   CONFIRM + FOUND
+   ============================================================ */
+function friendlyError(err){
+  var msg = (err && err.message) || "Something went wrong — try again.";
+  if(/rf_nations_hex_key/i.test(msg))
+    return "Someone just founded on this hex — choose another.";
+  if(/rf_nations_user_id_key/i.test(msg))
+    return "You've already founded a civilization.";
+  if(/duplicate key|unique constraint/i.test(msg))
+    return "That spot or account already has a civilization — try again.";
+  if(/check constraint|violates check/i.test(msg))
+    return "That nature isn't available yet.";
+  return msg;
+}
+
+btn.onclick = function(){
+  if(btn.disabled || submitting) return;
+  var a = assess(chosen.c, chosen.r);
+  var civ = document.getElementById("civ").value.trim();
+  var cap = document.getElementById("cap").value.trim();
+  document.getElementById("dName").textContent = civ.toUpperCase();
+  document.getElementById("dLine").textContent = "to be seated at " + cap;
+  var natureName = pendingFounding.trait.charAt(0).toUpperCase() + pendingFounding.trait.slice(1);
+  document.getElementById("dFacts").innerHTML =
+    '<div><dt>Nature</dt><dd>'+natureName+'</dd></div>' +
+    '<div><dt>Hex</dt><dd>'+chosen.c+', '+chosen.r+'</dd></div>' +
+    '<div><dt>Terrain</dt><dd>'+TERR[a.terr].name+(a.coast?" · coastal":"")+'</dd></div>' +
+    '<div><dt>Goods within two</dt><dd>'+(a.resCount||"none")+'</dd></div>' +
+    '<div><dt>Nearest neighbour</dt><dd>'+(a.rival?a.rival.name+" · "+a.rivalDist+" hexes":"—")+'</dd></div>';
+  document.getElementById("veil").classList.add("on");
+};
+document.getElementById("dNo").onclick = function(){
+  document.getElementById("veil").classList.remove("on");
+};
+
+document.getElementById("dYes").onclick = function(){
+  if(submitting || !chosen) return;
+  submitting = true;
+  document.getElementById("veil").classList.remove("on");
+  btn.disabled = true;
+  document.getElementById("sNote").textContent = "Founding…";
+
+  supabase.from("rf_nations").insert({
+    user_id: currentUser.id,
+    civ_name: document.getElementById("civ").value.trim(),
+    capital_name: document.getElementById("cap").value.trim(),
+    trait: pendingFounding.trait,
+    hex_col: chosen.c,
+    hex_row: chosen.r
+  }).then(function(res){
+    if(res.error) throw res.error;
+    clearPendingFounding();
+    return routeAfterAuth();
+  }).then(function(route){
+    window.location.href = route.dest;
+  }).catch(function(err){
+    submitting = false;
+    /* refreshButton() first (it re-derives btn.disabled and would otherwise
+       overwrite sNote with its own status text) — the actual error message
+       goes in after, or refreshButton()'s next line would erase it.
+       Also note: the hex/nations snapshot loaded when the map opened is now
+       stale if this failed because someone else just founded nearby — we
+       don't re-fetch, so refreshButton() may re-enable a hex that's no
+       longer actually valid. The next attempt would fail again with the
+       same clear message rather than silently succeeding somewhere wrong. */
+    refreshButton();
+    document.getElementById("sNote").textContent = friendlyError(err);
+  });
+};
+
+/* key */
+(function(){
+  document.getElementById("key").innerHTML = RES.map(function(x){
+    return '<div><i style="background:'+x.color+'"></i>'+x.name+'</div>';
+  }).join("") + '<div style="color:#EBC163">◦ suggested</div>';
+})();
+
+/* ============================================================
+   BOOT — gate the page, load the real world, then reveal it
+   ============================================================ */
+var wait = document.getElementById("wait");
+
+function showFatal(msg){ wait.textContent = msg; }
+
+routeAfterAuth().then(function(route){
+  if(route.dest !== "/found"){ window.location.href = route.dest; return; }
+  currentUser = route.user;
+
+  pendingFounding = getPendingFounding();
+  if(!pendingFounding){ window.location.href = "/found"; return; }
+
+  return Promise.all([
+    supabase.from("rf_world_maps").select("*").order("updated_at", { ascending:false }).limit(1).maybeSingle(),
+    supabase.from("rf_nations").select("civ_name, hex_col, hex_row")
+  ]).then(function(results){
+    var mapRes = results[0], nationsRes = results[1];
+    if(mapRes.error) throw mapRes.error;
+    if(nationsRes.error) throw nationsRes.error;
+
+    var mapRow = mapRes.data;
+    var mapOK = mapRow && Number.isInteger(mapRow.cols) && Number.isInteger(mapRow.rows) &&
+                mapRow.cols > 0 && mapRow.rows > 0 &&
+                Array.isArray(mapRow.terrain) && mapRow.terrain.length === mapRow.cols * mapRow.rows;
+    if(!mapOK){
+      showFatal("The world hasn't been created yet — check back soon.");
+      return;
+    }
+
+    loadWorld(mapRow, nationsRes.data || []);
+    computeRecommended();
+
+    document.getElementById("civ").value = pendingFounding.civName;
+    document.getElementById("cap").value = pendingFounding.capitalName;
+
+    wait.hidden = true;
+    document.getElementById("head").hidden = false;
+    stage.hidden = false;
+
+    new ResizeObserver(resize).observe(stage);
+    resize(); fit(); loop(); refreshButton();
+  });
+}).catch(function(){
+  showFatal("Something went wrong — try reloading.");
+});
+</script>
+</body>
+</html>

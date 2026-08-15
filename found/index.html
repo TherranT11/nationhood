@@ -469,6 +469,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{ outline:2px solid var(
 import { supabase } from '/supabase.js';
 import { routeAfterAuth } from '/post-auth.js';
 import { setStatusText } from '/ui-helpers.js';
+import { setPendingFounding } from '/pending-founding.js';
 
 /* ---------------- trait data ---------------- */
 var TRAITS = {
@@ -656,47 +657,20 @@ function ordinal(n){
     cap.value = makeCapital(); paint(); cap.focus();
   });
 
-  function friendlyError(err){
-    var msg = (err && err.message) || "Something went wrong — try again.";
-    if(/duplicate key|unique constraint/i.test(msg))
-      return "You've already founded a civilization.";
-    if(/check constraint|violates check/i.test(msg))
-      return "That nature isn't available yet — choose one of the first three.";
-    return msg;
-  }
-
+  /* Naming and nature are decided here, but the account isn't founded yet —
+     that happens on /found/seat once a hex is chosen, since a capital
+     without a location on the world isn't a real nation. This just hands
+     the three fields forward and moves on. */
   document.getElementById("foundForm").addEventListener("submit", function(e){
     e.preventDefault();
-    if(btn.disabled || submitting || !currentUser) return;
+    if(btn.disabled || submitting) return;
     var t = chosen();
     if(!t || AVAILABLE.indexOf(t) === -1) return;
 
     submitting = true;
     btn.disabled = true;
-    civ.disabled = true; cap.disabled = true;
-    radios.forEach(function(r){ r.disabled = true; });
-    var prevLabel = btn.textContent;
-    btn.textContent = "Founding…";
-    setNeed("", false);
-
-    supabase.from("rf_nations").insert({
-      user_id: currentUser.id,
-      civ_name: civ.value.trim(),
-      capital_name: cap.value.trim(),
-      trait: t
-    }).then(function(res){
-      if(res.error) throw res.error;
-      return routeAfterAuth();
-    }).then(function(route){
-      window.location.href = route.dest;
-    }).catch(function(err){
-      setNeed(friendlyError(err), true);
-      submitting = false;
-      btn.disabled = false;
-      civ.disabled = false; cap.disabled = false;
-      applyTraitLocks();
-      btn.textContent = prevLabel;
-    });
+    setPendingFounding({ civName: civ.value.trim(), capitalName: cap.value.trim(), trait: t });
+    window.location.href = "/found/seat";
   });
 
   /* Gate the page: must be signed in, must not already have a civilization.
