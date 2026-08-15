@@ -116,10 +116,6 @@ body{
                stroke-linecap:round; stroke-linejoin:round; transition:stroke .28s ease; }
 .gate .cipher-solid{ fill:var(--gold); stroke:none; transition:fill .28s ease; }
 
-/* Sign up stands open by default — the primary way in */
-.gate--open .door{ fill:url(#doorLit); }
-.gate--open .gate__label{ color:var(--papyrus); }
-
 /* any gate opens on approach */
 .gate:hover,
 .gate:focus-visible{ transform:translateY(-6px); }
@@ -212,9 +208,9 @@ body{
     </a>
   </li>
 
-  <!-- ============ SIGN UP (stands open) ============ -->
+  <!-- ============ SIGN UP ============ -->
   <li>
-    <a class="gate gate--open" href="/signup">
+    <a class="gate" href="/signup">
       <svg viewBox="0 0 160 236" aria-hidden="true" focusable="false">
         <rect class="cornice" x="16" y="1" width="128" height="8"/>
         <path class="cornice" d="M 20 9 L 140 9 L 130 32 L 30 32 Z"/>
