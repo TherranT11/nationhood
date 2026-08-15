@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Found a Civilization — Nationhood: Rise and Fall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Unicase:wght@400;500;600;700&family=Gentium+Book+Plus:ital,wght@0,400;0,700;1,400&family=Spline+Sans+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ==========================================================
+   NATIONHOOD: RISE AND FALL — FOUND A CIVILIZATION
+   The form as a foundation deposit: an inscribed tablet
+   buried at the corner of the first building.
+   ========================================================== */
+:root{
+  --lapis:#17386B; --lapis-deep:#0E2449;
+  --papyrus:#DFD0AC; --papyrus-lift:#E9DCBD; --papyrus-sink:#CDBC95;
+  --gold:#C9962F; --gold-bright:#EBC163;
+  --ochre:#A8452C; --malachite:#3F7F6E; --clay:#8B5E3C; --ash:#5C5850;
+  --ink:#2A2119; --ink-soft:#5E5040; --ink-faint:#857459;
+  --on-lapis:#DCE4F0; --on-lapis-dim:#93A9C9;
+  --incise:"Cormorant Unicase",Georgia,serif;
+  --read:"Gentium Book Plus",Georgia,serif;
+  --meta:"Spline Sans Mono",ui-monospace,monospace;
+  --hair:1px; --shell:1000px;
+}
+*,*::before,*::after{ box-sizing:border-box; }
+body{
+  margin:0; font-family:var(--read); font-size:17px; line-height:1.62;
+  color:var(--on-lapis); background-color:var(--lapis);
+  background-image:
+    repeating-linear-gradient(0deg, rgba(0,0,0,.20) 0 1px, transparent 1px 38px),
+    repeating-linear-gradient(90deg, rgba(0,0,0,.13) 0 1px, transparent 1px 76px),
+    radial-gradient(120% 70% at 50% 0%, rgba(235,193,99,.13), transparent 62%);
+  -webkit-font-smoothing:antialiased;
+}
+.sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+a:focus-visible,button:focus-visible,input:focus-visible{ outline:2px solid var(--gold-bright); outline-offset:3px; }
+
+/* ---------- bar ---------- */
+.bar{ background:var(--lapis-deep); border-bottom:2px solid var(--gold); }
+.bar__in{
+  width:min(100% - 34px,var(--shell)); margin-inline:auto;
+  display:flex; align-items:center; gap:22px; padding:13px 0;
+}
+.mark{ display:flex; align-items:baseline; gap:10px; text-decoration:none; margin-right:auto; }
+.mark__name{ font-family:var(--incise); font-weight:600; font-size:22px; letter-spacing:.14em; color:var(--papyrus-lift); }
+.mark__sub{ font-family:var(--meta); font-size:9px; letter-spacing:.24em; text-transform:uppercase; color:var(--gold); }
+.bar__quit{
+  font-family:var(--meta); font-size:11px; letter-spacing:.17em; text-transform:uppercase;
+  color:var(--on-lapis-dim); text-decoration:none;
+}
+.bar__quit:hover{ color:var(--gold-bright); }
+
+/* ---------- wait state ---------- */
+.wait{ width:min(100% - 34px,var(--shell)); margin:80px auto; text-align:center;
+       font-family:var(--meta); font-size:12px; letter-spacing:.16em; text-transform:uppercase;
+       color:var(--on-lapis-dim); }
+
+/* ---------- tablet ---------- */
+.wrap{ width:min(100% - 34px,var(--shell)); margin:26px auto 60px; }
+.tablet{
+  background-color:var(--papyrus);
+  background-image:
+    repeating-linear-gradient(90deg, rgba(42,33,25,.045) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(0deg,  rgba(42,33,25,.035) 0 1px, transparent 1px 6px),
+    radial-gradient(70% 40% at 12% 6%, rgba(139,94,60,.14), transparent 70%);
+  color:var(--ink);
+  border:var(--hair) solid var(--papyrus-sink);
+  box-shadow:0 20px 46px rgba(0,0,0,.42), inset 0 0 0 6px rgba(205,188,149,.35);
+  padding:34px clamp(20px,4.2vw,50px) 40px;
+}
+
+/* ---------- standing / legacy strip ---------- */
+.standing{
+  display:flex; flex-wrap:wrap; justify-content:center; gap:6px 26px;
+  padding-bottom:20px; margin-bottom:26px;
+  border-bottom:var(--hair) solid rgba(42,33,25,.2);
+  font-family:var(--meta); font-size:10.5px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.standing b{ color:var(--ink); font-weight:400; }
+
+/* ---------- live cartouche ---------- */
+.crown{ text-align:center; margin-bottom:34px; }
+.crown__kicker{
+  font-family:var(--meta); font-size:10.5px; letter-spacing:.24em;
+  text-transform:uppercase; color:var(--ochre); margin:0 0 16px;
+}
+.cartouche{
+  display:inline-flex; align-items:center; justify-content:center; gap:16px;
+  min-height:76px; min-width:min(100%,330px);
+  padding:10px 40px;
+  border:2px solid var(--gold); border-radius:999px;
+  background:rgba(201,150,47,.10);
+  box-shadow:inset 0 0 0 4px rgba(223,208,172,.62);
+  transition:box-shadow .3s ease;
+}
+.cartouche.is-named{ box-shadow:inset 0 0 0 4px rgba(223,208,172,.62), 0 0 34px rgba(201,150,47,.28); }
+.cartouche__name{
+  font-family:var(--incise); font-weight:600;
+  font-size:clamp(26px,4.6vw,44px); letter-spacing:.13em; text-indent:.13em;
+  line-height:1.06; color:var(--ink); word-break:break-word;
+}
+.cartouche__name:empty::before{
+  content:"— unnamed —";
+  font-size:clamp(15px,2.4vw,20px); letter-spacing:.2em;
+  color:rgba(133,116,89,.75);
+}
+.cartouche__glyph{ flex:0 0 auto; width:34px; height:34px; color:var(--gold); }
+.cartouche__glyph svg{ width:100%; height:100%; display:block; }
+.cartouche__glyph:empty{ display:none; }
+
+.crown__seat{
+  margin:16px 0 0; font-family:var(--read); font-style:italic;
+  font-size:16px; color:var(--ink-soft); min-height:1.6em;
+}
+
+/* ---------- inscriptions ---------- */
+.line{ margin-bottom:30px; }
+.line__head{ display:flex; align-items:baseline; gap:13px; margin-bottom:6px; }
+.line__num{
+  font-family:var(--incise); font-weight:700; font-size:19px;
+  color:var(--gold); letter-spacing:.08em; flex:0 0 auto;
+}
+.line__ask{
+  font-family:var(--incise); font-weight:600; font-size:20px;
+  letter-spacing:.06em; color:var(--ink); margin:0;
+}
+.line__note{
+  font-family:var(--meta); font-size:10px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--ink-faint); margin-left:auto; white-space:nowrap;
+}
+.line__body{ padding-left:32px; }
+
+/* inscribed field */
+.field{ display:flex; align-items:flex-end; gap:12px; }
+.field input{
+  flex:1 1 auto; min-width:0;
+  font-family:var(--incise); font-weight:500;
+  font-size:clamp(21px,3vw,30px); letter-spacing:.09em;
+  color:var(--ink); background:transparent;
+  border:0; border-bottom:2px solid var(--clay);
+  padding:6px 2px 9px;
+}
+.field input::placeholder{
+  font-family:var(--read); font-style:italic; font-weight:400;
+  font-size:17px; letter-spacing:0; color:rgba(133,116,89,.72);
+}
+.field input:focus{ outline:none; border-bottom-color:var(--gold); background:rgba(201,150,47,.07); }
+.roll{
+  flex:0 0 auto; width:42px; height:42px;
+  background:transparent; color:var(--clay);
+  border:var(--hair) solid var(--papyrus-sink);
+  cursor:pointer; font-size:17px; line-height:1;
+  transition:background-color .2s, color .2s, border-color .2s;
+}
+.roll:hover{ background:rgba(139,94,60,.14); color:var(--ochre); border-color:var(--ochre); }
+
+/* ---------- trait tiles ---------- */
+.traits{
+  display:grid; grid-template-columns:repeat(5,1fr); gap:9px;
+  list-style:none; margin:0 0 20px; padding:0;
+}
+.traits li{ position:relative; }
+.traits input{ position:absolute; opacity:0; width:0; height:0; }
+.tile{
+  display:flex; flex-direction:column; align-items:center; gap:9px;
+  padding:15px 6px 13px; cursor:pointer;
+  background:rgba(139,94,60,.07);
+  border:var(--hair) solid rgba(42,33,25,.2);
+  border-top:3px solid transparent;
+  transition:background-color .2s, border-color .2s, transform .2s;
+}
+.tile svg{ width:30px; height:30px; stroke:var(--clay); fill:none;
+           stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; transition:stroke .2s; }
+.tile span{
+  font-family:var(--incise); font-weight:600; font-size:12.5px;
+  letter-spacing:.09em; color:var(--ink-soft); text-align:center; line-height:1.2;
+  transition:color .2s;
+}
+.tile:hover{ background:rgba(139,94,60,.15); transform:translateY(-2px); }
+.traits input:focus-visible + .tile{ outline:2px solid var(--gold-bright); outline-offset:2px; }
+.traits input:checked + .tile{
+  background:rgba(201,150,47,.22);
+  border-color:var(--gold); border-top-color:var(--gold);
+  box-shadow:inset 0 0 0 1px rgba(201,150,47,.5);
+}
+.traits input:checked + .tile svg{ stroke:var(--ochre); }
+.traits input:checked + .tile span{ color:var(--ink); }
+.traits input:disabled + .tile{ cursor:not-allowed; opacity:.42; }
+.traits input:disabled + .tile:hover{ background:rgba(139,94,60,.07); transform:none; }
+.tile__flag{
+  position:absolute; top:-7px; right:-4px;
+  font-family:var(--meta); font-size:8px; letter-spacing:.1em; text-transform:uppercase;
+  background:var(--malachite); color:var(--papyrus-lift); padding:2px 6px;
+}
+.tile__flag--soon{ background:var(--ash); }
+
+/* trait detail */
+.detail{
+  border:var(--hair) solid rgba(42,33,25,.22);
+  border-left:4px solid var(--clay);
+  background:rgba(139,94,60,.08);
+  padding:20px 22px; min-height:150px;
+}
+.detail__idle{
+  font-family:var(--read); font-style:italic; color:var(--ink-faint); margin:0;
+}
+.detail__name{
+  font-family:var(--incise); font-weight:600; font-size:23px;
+  letter-spacing:.07em; margin:0 0 3px; color:var(--ochre);
+}
+.detail__soon{
+  display:inline-block; margin:0 0 12px; font-family:var(--meta);
+  font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ash);
+}
+.detail__essence{ margin:0 0 16px; font-size:16px; color:var(--ink-soft); }
+.detail__grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px 24px; }
+.detail__grid h4{
+  font-family:var(--meta); font-size:9.5px; letter-spacing:.18em; text-transform:uppercase;
+  margin:0 0 5px; color:var(--ink-faint);
+}
+.detail__grid p{ margin:0; font-size:15px; }
+.detail__gives h4{ color:var(--malachite); }
+.detail__costs h4{ color:var(--ochre); }
+.detail__foot{
+  display:flex; flex-wrap:wrap; gap:8px 22px; margin-top:16px; padding-top:13px;
+  border-top:var(--hair) solid rgba(42,33,25,.18);
+  font-family:var(--meta); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.detail__foot b{ color:var(--ink-soft); font-weight:400; }
+
+/* locked second slot */
+.locked{
+  margin-top:12px; padding:13px 16px;
+  border:var(--hair) dashed rgba(42,33,25,.3);
+  display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px;
+  font-family:var(--meta); font-size:10.5px; letter-spacing:.13em; text-transform:uppercase;
+  color:var(--ink-faint); background:rgba(42,33,25,.035);
+}
+.locked b{ color:var(--ink-soft); font-weight:400; }
+.locked__bar{ flex:1 1 130px; height:6px; background:rgba(42,33,25,.16); min-width:90px; }
+.locked__fill{ display:block; height:100%; background:var(--clay); }
+
+/* ---------- commit ---------- */
+.commit{
+  margin-top:34px; padding-top:26px;
+  border-top:2px solid var(--clay); text-align:center;
+}
+.commit__warn{
+  font-family:var(--meta); font-size:10.5px; letter-spacing:.13em;
+  color:var(--ochre); margin:0 0 18px; text-transform:uppercase;
+}
+.found{
+  font-family:var(--meta); font-size:13px; letter-spacing:.24em; text-transform:uppercase;
+  padding:18px 54px; border:var(--hair) solid var(--clay);
+  background:var(--clay); color:var(--papyrus-lift);
+  cursor:pointer; transition:background-color .2s, border-color .2s, transform .2s, opacity .2s;
+}
+.found:hover:not(:disabled){ background:var(--ochre); border-color:var(--ochre); transform:translateY(-2px); }
+.found:disabled{ opacity:.4; cursor:not-allowed; background:transparent; color:var(--ink-faint); }
+.commit__need{
+  font-family:var(--meta); font-size:10.5px; letter-spacing:.13em;
+  color:var(--ink-faint); margin:14px 0 0; min-height:1.4em; text-transform:uppercase;
+}
+.commit__need.err{ color:var(--ochre); }
+
+/* ---------- responsive ---------- */
+@media (max-width:820px){
+  .traits{ grid-template-columns:repeat(4,1fr); }
+  .detail__grid{ grid-template-columns:1fr; gap:14px; }
+}
+@media (max-width:620px){
+  body{ font-size:16px; }
+  .tablet{ padding:24px 17px 30px; }
+  .line__body{ padding-left:0; }
+  .line__note{ margin-left:0; flex:1 1 100%; }
+  .traits{ grid-template-columns:repeat(3,1fr); }
+  .found{ width:100%; padding:17px 20px; }
+}
+@media (max-width:400px){ .traits{ grid-template-columns:repeat(2,1fr); } }
+@media (prefers-reduced-motion:reduce){ *,*::before,*::after{ animation:none!important; transition:none!important; } }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="bar__in">
+    <a class="mark" href="/">
+      <span class="mark__name">NATIONHOOD</span>
+      <span class="mark__sub">Rise &amp; Fall</span>
+    </a>
+    <a class="bar__quit" href="/">Abandon founding</a>
+  </div>
+</header>
+
+<p class="wait" id="wait">Checking your account…</p>
+
+<div class="wrap" id="wrap" hidden>
+<main class="tablet">
+
+  <p class="standing">
+    <span>Your <b id="standingOrdinal">1st</b> civilization</span>
+    <span><b id="standingLegacy">0</b> legacy banked</span>
+    <span>World II · <b>Session 611</b></span>
+    <span>Era: <b>3000 BC</b></span>
+  </p>
+
+  <div class="crown">
+    <p class="crown__kicker">Foundation deposit · to be buried at the first corner</p>
+    <div class="cartouche" id="cartouche">
+      <span class="cartouche__glyph" id="crownGlyph"></span>
+      <span class="cartouche__name" id="crownName"></span>
+    </div>
+    <p class="crown__seat" id="crownSeat"></p>
+  </div>
+
+  <form id="foundForm" novalidate>
+
+    <!-- I -->
+    <section class="line">
+      <div class="line__head">
+        <span class="line__num">I</span>
+        <h2 class="line__ask">Name your civilization</h2>
+        <span class="line__note">Permanent</span>
+      </div>
+      <div class="line__body">
+        <div class="field">
+          <label class="sr" for="civ">Name of civilization</label>
+          <input id="civ" type="text" maxlength="24" autocomplete="off" spellcheck="false"
+                 placeholder="The name the archive will remember">
+          <button type="button" class="roll" id="rollCiv" title="Suggest a name" aria-label="Suggest a civilization name">⟳</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- II -->
+    <section class="line">
+      <div class="line__head">
+        <span class="line__num">II</span>
+        <h2 class="line__ask">Name your capital</h2>
+        <span class="line__note">Your first region</span>
+      </div>
+      <div class="line__body">
+        <div class="field">
+          <label class="sr" for="cap">Name of capital</label>
+          <input id="cap" type="text" maxlength="28" autocomplete="off" spellcheck="false"
+                 placeholder="Where the first stone is laid">
+          <button type="button" class="roll" id="rollCap" title="Suggest a name" aria-label="Suggest a capital name">⟳</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- III -->
+    <section class="line">
+      <div class="line__head">
+        <span class="line__num">III</span>
+        <h2 class="line__ask">Choose its nature</h2>
+        <span class="line__note">One only · cannot be changed</span>
+      </div>
+      <div class="line__body">
+        <ul class="traits" id="traits">
+          <li>
+            <input type="radio" name="trait" id="t-merc" value="mercantile">
+            <label class="tile" for="t-merc">
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 5v22M7 10h18M9 10l-4 8h8zM23 10l-4 8h8zM11 27h10"/></svg>
+              <span>Mercantile</span>
+            </label>
+          </li>
+          <li>
+            <input type="radio" name="trait" id="t-phil" value="philosophical">
+            <label class="tile" for="t-phil">
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 16a4 4 0 108 0 8 8 0 10-16 0 12 12 0 1024 0"/></svg>
+              <span>Philosophical</span>
+            </label>
+          </li>
+          <li>
+            <input type="radio" name="trait" id="t-war" value="warlike">
+            <label class="tile" for="t-war">
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 27L25 6M25 27L7 6M23 4h5v5M9 4H4v5"/></svg>
+              <span>Warlike</span>
+            </label>
+          </li>
+          <li>
+            <input type="radio" name="trait" id="t-dev" value="devout">
+            <label class="tile" for="t-dev">
+              <span class="tile__flag tile__flag--soon">Soon</span>
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 27h20M9 22h14M11 22v-4h10v4M16 15c3-3 1-5 0-7-1 2-3 4 0 7z"/></svg>
+              <span>Devout</span>
+            </label>
+          </li>
+          <li>
+            <input type="radio" name="trait" id="t-sea" value="seafaring">
+            <label class="tile" for="t-sea">
+              <span class="tile__flag tile__flag--soon">Soon</span>
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 21h22l-3 5H8zM16 4v13M16 8l8 4-8 3M3 29c2-2 4-2 6 0s4 2 6 0 4-2 6 0 4 2 6 0"/></svg>
+              <span>Seafaring</span>
+            </label>
+          </li>
+          <li>
+            <input type="radio" name="trait" id="t-mon" value="monumental">
+            <label class="tile" for="t-mon">
+              <span class="tile__flag tile__flag--soon">Soon</span>
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 27h26L16 5zM9 27l7-12 7 12M3 27h26"/></svg>
+              <span>Monumental</span>
+            </label>
+          </li>
+          <li>
+            <input type="radio" name="trait" id="t-bur" value="bureaucratic">
+            <label class="tile" for="t-bur">
+              <span class="tile__flag tile__flag--soon">Soon</span>
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 4h18v24H7zM11 10h10M11 15h10M11 20h6"/><circle cx="21" cy="21" r="3"/></svg>
+              <span>Bureaucratic</span>
+            </label>
+          </li>
+          <li>
+            <input type="radio" name="trait" id="t-agr" value="agrarian">
+            <label class="tile" for="t-agr">
+              <span class="tile__flag tile__flag--soon">Soon</span>
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 28V8M16 14c-5 0-7-3-7-6 4 0 7 2 7 6zM16 14c5 0 7-3 7-6-4 0-7 2-7 6zM16 22c-5 0-7-3-7-6 4 0 7 2 7 6zM16 22c5 0 7-3 7-6-4 0-7 2-7 6z"/></svg>
+              <span>Agrarian</span>
+            </label>
+          </li>
+          <li>
+            <input type="radio" name="trait" id="t-nom" value="nomadic">
+            <label class="tile" for="t-nom">
+              <span class="tile__flag tile__flag--soon">Soon</span>
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 24h24L16 6zM16 24v-7M2 28h28"/></svg>
+              <span>Nomadic</span>
+            </label>
+          </li>
+          <li>
+            <input type="radio" name="trait" id="t-end" value="enduring">
+            <label class="tile" for="t-end">
+              <span class="tile__flag tile__flag--soon">Soon</span>
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 12v16h24V12M4 12V7h4v5h4V7h4v5h4V7h4v5M4 20h24M12 20v8M20 20v8"/></svg>
+              <span>Enduring</span>
+            </label>
+          </li>
+        </ul>
+
+        <div class="detail" id="detail" aria-live="polite">
+          <p class="detail__idle">Every civilization has one nature. It shapes how fast you rise, how hard Decadence bites, and when you will want to go into Decline. Rest a mark to read it.</p>
+        </div>
+
+        <div class="locked">
+          <span>Second nature</span>
+          <b>Locked</b>
+          <span class="locked__bar"><span class="locked__fill" id="secondNatureFill" style="width:0%"></span></span>
+          <span><b id="secondNatureLabel">0 / 5,000</b> legacy</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="commit">
+      <p class="commit__warn">A civilization cannot be renamed, and its nature cannot be changed</p>
+      <button class="found" id="foundBtn" type="submit" disabled>Found</button>
+      <p class="commit__need" id="need">Name it, seat it, and choose its nature</p>
+    </div>
+
+  </form>
+</main>
+</div>
+
+<script type="module">
+import { supabase } from '/supabase.js';
+import { routeAfterAuth } from '/post-auth.js';
+import { setStatusText } from '/ui-helpers.js';
+
+/* ---------------- trait data ---------------- */
+var TRAITS = {
+  mercantile:{ name:"Mercantile", essence:"You do not need to make a thing to profit from moving it.",
+    gives:"Extra trade routes, better prices, and the right to broker goods you do not produce.",
+    costs:"A weak army, and wealth that marks you as worth invading. A severed route hurts immediately.",
+    goods:"Gold · Spices · Cloth", rhythm:"Decline on a read" },
+  philosophical:{ name:"Philosophical", essence:"Knowledge will not feed you, but it will outlast you.",
+    gives:"Faster and cheaper research. Late techs partly offset falling per-region yield.",
+    costs:"A slow, fragile opening. Your first century is the most dangerous in the game.",
+    goods:"Cloth · Gold", rhythm:"Decline on schedule" },
+  warlike:{ name:"Warlike", essence:"Everything worth having already belongs to someone.",
+    gives:"Cheap armies, rapid conquest, and Legacy paid for the taking itself.",
+    costs:"Conquered regions carry permanent unrest, and you reach Decadence faster than anyone.",
+    goods:"Iron · Horses", rhythm:"Decline early and often" },
+  devout:{ name:"Devout", essence:"A people who share a god will bear a great deal.",
+    gives:"Unrest suppressed, distant regions stay loyal, and Legacy earned from pilgrimage.",
+    costs:"Research penalty, and doctrine is close to impossible to reverse once set.",
+    goods:"Grain · Gold", rhythm:"Decline on schedule" },
+  seafaring:{ name:"Seafaring", essence:"The water is not a border. It is the shortest road you have.",
+    gives:"Cheap coastal and island regions, and early reach to distant resources.",
+    costs:"Inland regions cost more to take and hold. Constant hunger for timber.",
+    goods:"Timber · Spices", rhythm:"Decline on a read" },
+  monumental:{ name:"Monumental", essence:"Build the thing that is still standing when nobody remembers you.",
+    gives:"Wonders pay large one-time Legacy — and they survive your Decline.",
+    costs:"Enormous drain on labour and materials. Expansion crawls.",
+    goods:"Timber · Grain · Gold", rhythm:"Decline late" },
+  bureaucratic:{ name:"Bureaucratic", essence:"An empire is a filing problem before it is a military one.",
+    gives:"Per-region yield decays more slowly. Distance penalties sharply reduced.",
+    costs:"Heavy administrative upkeep, a weak army, and the slowest start on this tablet.",
+    goods:"Grain · Cloth", rhythm:"Decline late" },
+  agrarian:{ name:"Agrarian", essence:"Count the harvest. Everything else follows from the harvest.",
+    gives:"Grain surplus, fast population growth, and armies that feed themselves.",
+    costs:"Low value per region, and a reputation as somewhere worth raiding.",
+    goods:"Grain · Salt", rhythm:"Decline on schedule" },
+  nomadic:{ name:"Nomadic", essence:"A capital is only a thing your enemies know where to find.",
+    gives:"Armies move free and eat nothing. Raid without holding. Nothing to besiege.",
+    costs:"No monuments, poor research, and undeveloped regions that pay very little.",
+    goods:"Horses · Salt", rhythm:"Decline early and often" },
+  enduring:{ name:"Enduring", essence:"Outlast them. That is the entire strategy.",
+    gives:"Regions are close to impossible to take, and you survive collapse events others do not.",
+    costs:"The lowest peak yield in the game, and painfully slow expansion.",
+    goods:"Iron · Timber", rhythm:"Decline late" }
+};
+
+/* The only natures /found can actually submit. This mirrors the check
+   constraint on rf_nations.trait — that constraint is the real trust
+   boundary (a disabled input doesn't stop a direct REST call), this list is
+   just what drives the UI. Widen both together when a trait ships. */
+var AVAILABLE = ["mercantile", "philosophical", "warlike"];
+
+/* ---------------- name generation ---------------- */
+var A=["Nin","Ash","Mer","Thes","Kor","Sab","Anz","Hatt","Var","Tar","Eshu","Kish","Lag","Zim","Bel","Nem","Ky","Ur","Dur","Hala"];
+var B=["ha","ka","sa","ra","tha","mi","nu","va","ze","li","ma","du","she","ti"];
+var C=["ra","um","os","ia","ar","eth","an","ur","is","on","ash","ket"];
+var EPITHET=["on the Reeds","by the Ford","of the Two Rivers","under the Hill","of the Salt Flats",
+             "on the Narrows","of the High Pass","by the Delta","of the Still Water"];
+
+function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+function coin(p){ return Math.random() < (p||0.5); }
+function makeName(){
+  var n = pick(A) + pick(B);
+  if(coin(0.55)) n += pick(C);
+  return n.charAt(0).toUpperCase() + n.slice(1);
+}
+function makeCapital(){
+  var n = makeName();
+  return coin(0.4) ? n + "-" + pick(EPITHET).replace(/ /g,"-") : n;
+}
+
+function ordinal(n){
+  var mod100 = n % 100;
+  if(mod100 >= 11 && mod100 <= 13) return n + "th";
+  switch(n % 10){
+    case 1: return n + "st";
+    case 2: return n + "nd";
+    case 3: return n + "rd";
+    default: return n + "th";
+  }
+}
+
+/* ---------------- wiring ---------------- */
+(function(){
+  var wait   = document.getElementById("wait");
+  var wrap   = document.getElementById("wrap");
+  var civ    = document.getElementById("civ");
+  var cap    = document.getElementById("cap");
+  var crownN = document.getElementById("crownName");
+  var crownS = document.getElementById("crownSeat");
+  var crownG = document.getElementById("crownGlyph");
+  var cart   = document.getElementById("cartouche");
+  var detail = document.getElementById("detail");
+  var btn    = document.getElementById("foundBtn");
+  var need   = document.getElementById("need");
+  var radios = Array.prototype.slice.call(document.querySelectorAll('input[name="trait"]'));
+
+  var submitting = false;
+  var currentUser = null;
+
+  function chosen(){
+    for(var i=0;i<radios.length;i++){ if(radios[i].checked) return radios[i].value; }
+    return null;
+  }
+
+  function setNeed(text, isError){ setStatusText(need, "commit__need", text, isError ? "err" : ""); }
+
+  /* AVAILABLE is the only source of truth for which natures can be selected
+     — this applies it to the actual inputs. The markup used to hardcode a
+     matching `disabled` attribute on the seven locked ones directly, which
+     meant two places had to agree on the same list by hand; drop one and
+     they will eventually drift. */
+  function applyTraitLocks(){
+    radios.forEach(function(r){ r.disabled = AVAILABLE.indexOf(r.value) === -1; });
+  }
+
+  function paint(){
+    if(submitting) return;
+    var n = civ.value.trim();
+    var c = cap.value.trim();
+    var t = chosen();
+
+    crownN.textContent = n;
+    cart.classList.toggle("is-named", n.length > 0);
+    crownS.textContent = c ? "seated at " + c : "";
+
+    /* mirror the chosen trait's mark into the cartouche */
+    crownG.innerHTML = "";
+    if(t){
+      var src = document.querySelector('input[value="'+t+'"] + .tile svg');
+      if(src){
+        var copy = src.cloneNode(true);
+        copy.setAttribute("style","stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round");
+        crownG.appendChild(copy);
+      }
+    }
+
+    var missing = [];
+    if(!n) missing.push("a name");
+    if(!c) missing.push("a capital");
+    if(!t || AVAILABLE.indexOf(t) === -1) missing.push("a nature");
+
+    btn.disabled = missing.length > 0;
+    setNeed(missing.length
+      ? "Still needed: " + missing.join(", ")
+      : "Ready to be buried at the first corner", false);
+  }
+
+  function showTrait(key){
+    var d = TRAITS[key];
+    if(!d) return;
+    var locked = AVAILABLE.indexOf(key) === -1;
+    detail.innerHTML =
+      '<h3 class="detail__name">' + d.name + '</h3>' +
+      (locked ? '<p class="detail__soon">Not yet available to found with</p>' : '') +
+      '<p class="detail__essence">' + d.essence + '</p>' +
+      '<div class="detail__grid">' +
+        '<div class="detail__gives"><h4>It gives</h4><p>' + d.gives + '</p></div>' +
+        '<div class="detail__costs"><h4>It costs</h4><p>' + d.costs + '</p></div>' +
+      '</div>' +
+      '<div class="detail__foot">' +
+        '<span>Leans on <b>' + d.goods + '</b></span>' +
+        '<span>Rhythm: <b>' + d.rhythm + '</b></span>' +
+      '</div>';
+  }
+
+  applyTraitLocks();
+  civ.addEventListener("input", paint);
+  cap.addEventListener("input", paint);
+  radios.forEach(function(r){ r.addEventListener("change", paint); });
+
+  /* Every tile previews on hover/click regardless of whether it's locked —
+     the disabled attribute only stops it from being SELECTED. Reading about
+     a trait you can't found with yet is still useful. */
+  document.querySelectorAll(".tile").forEach(function(tile){
+    var input = document.getElementById(tile.getAttribute("for"));
+    if(!input) return;
+    tile.addEventListener("mouseenter", function(){ showTrait(input.value); });
+    tile.addEventListener("click", function(){ showTrait(input.value); });
+  });
+
+  document.getElementById("rollCiv").addEventListener("click", function(){
+    civ.value = makeName(); paint(); civ.focus();
+  });
+  document.getElementById("rollCap").addEventListener("click", function(){
+    cap.value = makeCapital(); paint(); cap.focus();
+  });
+
+  function friendlyError(err){
+    var msg = (err && err.message) || "Something went wrong — try again.";
+    if(/duplicate key|unique constraint/i.test(msg))
+      return "You've already founded a civilization.";
+    if(/check constraint|violates check/i.test(msg))
+      return "That nature isn't available yet — choose one of the first three.";
+    return msg;
+  }
+
+  document.getElementById("foundForm").addEventListener("submit", function(e){
+    e.preventDefault();
+    if(btn.disabled || submitting || !currentUser) return;
+    var t = chosen();
+    if(!t || AVAILABLE.indexOf(t) === -1) return;
+
+    submitting = true;
+    btn.disabled = true;
+    civ.disabled = true; cap.disabled = true;
+    radios.forEach(function(r){ r.disabled = true; });
+    var prevLabel = btn.textContent;
+    btn.textContent = "Founding…";
+    setNeed("", false);
+
+    supabase.from("rf_nations").insert({
+      user_id: currentUser.id,
+      civ_name: civ.value.trim(),
+      capital_name: cap.value.trim(),
+      trait: t
+    }).then(function(res){
+      if(res.error) throw res.error;
+      return routeAfterAuth();
+    }).then(function(route){
+      window.location.href = route.dest;
+    }).catch(function(err){
+      setNeed(friendlyError(err), true);
+      submitting = false;
+      btn.disabled = false;
+      civ.disabled = false; cap.disabled = false;
+      applyTraitLocks();
+      btn.textContent = prevLabel;
+    });
+  });
+
+  /* Gate the page: must be signed in, must not already have a civilization.
+     Also pulls the lifetime stats shown in the standing strip while we're
+     already loading the profile — one round trip, not a separate fetch. */
+  routeAfterAuth().then(function(route){
+    if(route.dest !== "/found"){ window.location.href = route.dest; return; }
+    currentUser = route.user;
+
+    supabase.from("rf_profiles").select("legacy_banked, civilizations_founded")
+      .eq("id", currentUser.id).maybeSingle()
+      .then(function(res){
+        var legacy = (res.data && res.data.legacy_banked) || 0;
+        var founded = (res.data && res.data.civilizations_founded) || 0;
+        document.getElementById("standingOrdinal").textContent = ordinal(founded + 1);
+        document.getElementById("standingLegacy").textContent = legacy.toLocaleString();
+        var pct = Math.max(0, Math.min(100, (legacy / 5000) * 100));
+        document.getElementById("secondNatureFill").style.width = pct + "%";
+        document.getElementById("secondNatureLabel").textContent = legacy.toLocaleString() + " / 5,000";
+      })
+      .catch(function(){ /* standing strip just keeps its 1st/0 defaults */ });
+
+    wait.hidden = true;
+    wrap.hidden = false;
+    paint();
+  }).catch(function(){
+    /* routeAfterAuth() itself never rejects — this only guards against the
+       callback above throwing, so a fluke there can't strand the visitor on
+       "Checking your account..." forever with no way to found anything. */
+    wait.textContent = "Something went wrong — try reloading.";
+  });
+})();
+</script>
+</body>
+</html>
