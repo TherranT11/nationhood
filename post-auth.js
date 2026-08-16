@@ -33,6 +33,7 @@ export async function routeAfterAuth(){
     if(sessionRes === null) throw new Error("timed out");
     user = sessionRes.data && sessionRes.data.session && sessionRes.data.session.user;
   } catch(err){
+    console.error("routeAfterAuth: session check failed, sending to /login —", err);
     return { dest: "/login", user: null };
   }
   if(!user) return { dest: "/login", user: null };
@@ -43,6 +44,7 @@ export async function routeAfterAuth(){
     if(res.error) throw res.error;
     return { dest: res.data ? "/" : "/found", user: user };
   } catch(err){
+    console.error("routeAfterAuth: nations lookup failed, defaulting to / —", err);
     return { dest: "/", user: user };
   }
 }
