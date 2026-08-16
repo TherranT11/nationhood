@@ -1306,6 +1306,17 @@ resizeCanvas();
 fit();
 stats();
 syncHistory();
+
+/* Resume the most recently saved map instead of always opening blank —
+   same "most recently updated rf_world_maps row" convention /found/seat
+   already relies on for the live world. Silently stays on the blank map
+   above if nothing's saved yet or the fetch fails. */
+supabase.from(CLOUD_TABLE).select("*").order("updated_at", { ascending:false }).limit(1).maybeSingle()
+  .then(function(res){
+    if(res.error || !res.data) return;
+    if(applyLoadedMap(res.data)) document.getElementById("mapname").value = res.data.name || "Untitled";
+  })
+  .catch(function(){});
 </script>
 </body>
 </html>
