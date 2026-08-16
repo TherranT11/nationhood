@@ -316,6 +316,7 @@ button{ cursor:pointer; }
 "use strict";
 
 import { supabase } from '/supabase.js';
+import { loadLatestWorldMap } from '/world-maps.js';
 var CLOUD_TABLE = 'rf_world_maps';
 
 /* ============================================================
@@ -1306,6 +1307,30 @@ resizeCanvas();
 fit();
 stats();
 syncHistory();
+
+/* Resume the most recently saved map instead of always opening blank —
+   same "most recently updated rf_world_maps row" convention /found/seat
+   already relies on for the live world (loadLatestWorldMap(), shared so
+   the two can't drift). Silently stays on the blank map above if nothing's
+   saved yet or the fetch fails.
+   Locks Save/Load the same way withCloudLock() does: without this, a click
+   on either button while this fetch is still in flight could race it —
+   e.g. a manual Save landing, then this fetch's now-stale response
+   overwriting the canvas right back out from under it. */
+cloudBusy = true;
+document.getElementById("cloudSave").disabled = true;
+document.getElementById("cloudLoad").disabled = true;
+loadLatestWorldMap()
+  .then(function(res){
+    if(res.error || !res.data) return;
+    if(applyLoadedMap(res.data)) document.getElementById("mapname").value = res.data.name || "Untitled";
+  })
+  .catch(function(){})
+  .finally(function(){
+    cloudBusy = false;
+    document.getElementById("cloudSave").disabled = false;
+    document.getElementById("cloudLoad").disabled = false;
+  });
 </script>
 </body>
 </html>
