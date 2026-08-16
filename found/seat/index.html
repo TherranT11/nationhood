@@ -30,7 +30,6 @@ body{
 button,input{ font-family:inherit; font-size:inherit; color:inherit; }
 button{ cursor:pointer; }
 :focus-visible{ outline:2px solid var(--gold-bright); outline-offset:2px; }
-.sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 
 /* ============ WAIT / FATAL STATE ============ */
 .wait{
@@ -308,6 +307,7 @@ button{ cursor:pointer; }
 import { supabase } from '/supabase.js';
 import { routeAfterAuth } from '/post-auth.js';
 import { getPendingFounding, clearPendingFounding } from '/pending-founding.js';
+import { loadLatestWorldMap } from '/world-maps.js';
 
 /* ============================================================
    TERRAIN + GOODS
@@ -882,7 +882,7 @@ routeAfterAuth().then(function(route){
   if(!pendingFounding){ window.location.href = "/found"; return; }
 
   return Promise.all([
-    supabase.from("rf_world_maps").select("*").order("updated_at", { ascending:false }).limit(1).maybeSingle(),
+    loadLatestWorldMap(),
     supabase.from("rf_nations").select("civ_name, hex_col, hex_row")
   ]).then(function(results){
     var mapRes = results[0], nationsRes = results[1];
