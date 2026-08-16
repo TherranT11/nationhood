@@ -411,9 +411,12 @@ function loadWorld(mapRow, nationRows){
     if(!inB(row.hex_col, row.hex_row)) return;
     var vi = rivals.length;
     rivals.push({ c:row.hex_col, r:row.hex_row, name:row.civ_name, tint:TINTS[vi % TINTS.length] });
-    within(row.hex_col, row.hex_row, 1).forEach(function(cell){
-      claimed[idx(cell[0],cell[1])] = vi;
-    });
+    /* Only the capital's own hex counts as occupied — the MIN_GAP check
+       below already keeps new capitals 5 hexes clear of any rival, so a
+       neighboring-ring claim here would just be a second, redundant way of
+       blocking the same nearby hexes (and would visually tint hexes no one
+       actually occupies). */
+    claimed[idx(row.hex_col, row.hex_row)] = vi;
   });
 }
 
@@ -909,7 +912,12 @@ routeAfterAuth().then(function(route){
     stage.hidden = false;
 
     new ResizeObserver(resize).observe(stage);
-    resize(); fit(); loop(); refreshButton();
+    /* fit() alone shows the whole map, which on a large saved world leaves
+       most of the screen dark and empty — zoom in an extra step from there
+       (around the same center fit() already settled on) so the opening view
+       fills more of the screen. The FIT button stays true to its name and
+       still calls fit() alone. */
+    resize(); fit(); zoom(2); loop(); refreshButton();
   });
 }).catch(function(){
   showFatal("Something went wrong — try reloading.");

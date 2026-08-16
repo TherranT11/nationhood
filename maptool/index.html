@@ -973,7 +973,11 @@ function buildGoodsPalette(){
     b.dataset.g = g.id;
     b.innerHTML = '<i style="background:'+g.color+'"></i>' + g.name +
                   '<b data-count="'+g.id+'">0</b>';
-    b.addEventListener("click", function(){ setGood(g.id); });
+    /* Picking a resource also switches into the Goods tool — there's no
+       reason to select one without meaning to place it, and requiring a
+       separate click on GOODS first was confusing (clicks kept painting
+       whatever terrain tool was still active). */
+    b.addEventListener("click", function(){ setGood(g.id); setTool("goods"); });
     box.appendChild(b);
   });
 }
