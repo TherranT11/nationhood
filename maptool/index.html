@@ -628,20 +628,41 @@ function render(){
     ctx.stroke();
   }
 
-  /* --- goods markers --- */
+  /* --- goods markers: a small dot, not a hex-filling one, so terrain
+     stays readable underneath — the good's name labels it at higher zoom
+     rather than relying on dot color alone. */
   for(r = r0; r <= r1; r++){
     for(c = c0; c <= c1; c++){
       var gId = S.goods[idx(c,r)];
       if(!gId) continue;
       ctr = hexCenter(c,r);
       ctx.beginPath();
-      ctx.arc(ctr.x, ctr.y, S.R*0.32, 0, Math.PI*2);
+      ctx.arc(ctr.x, ctr.y, S.R*0.16, 0, Math.PI*2);
       ctx.fillStyle = GOODS[gId].color;
       ctx.fill();
       ctx.lineWidth = 1.4/S.view.k;
       ctx.strokeStyle = "rgba(10,18,34,.85)";
       ctx.stroke();
     }
+  }
+  if(S.view.k > 0.55){
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.font = "600 10px Spline Sans Mono, monospace";
+    ctx.save(); ctx.scale(1/S.view.k, 1/S.view.k);
+    for(r = r0; r <= r1; r++){
+      for(c = c0; c <= c1; c++){
+        var glId = S.goods[idx(c,r)];
+        if(!glId) continue;
+        ctr = hexCenter(c,r);
+        var sx = ctr.x*S.view.k, sy = (ctr.y + S.R*0.24)*S.view.k;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(10,18,34,.9)";
+        ctx.strokeText(GOODS[glId].name, sx, sy);
+        ctx.fillStyle = "#EDE9DC";
+        ctx.fillText(GOODS[glId].name, sx, sy);
+      }
+    }
+    ctx.restore();
   }
 
   /* --- region highlight under cursor --- */
