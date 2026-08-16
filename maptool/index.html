@@ -328,16 +328,22 @@ var TERRAIN = [
   { id:2, key:"fertile",    name:"Fertile",    color:"#468659" },
   { id:3, key:"mountain",   name:"Mountain",   color:"#7C756C" },
   { id:4, key:"desert",     name:"Desert",     color:"#D9B96B" },
-  { id:5, key:"sea",        name:"Sea",        color:"#1F4E7A" }
+  { id:5, key:"sea",        name:"Sea",        color:"#1F4E7A" },
+  /* Appended, not inserted — every id above is already load-bearing in
+     saved maps (terrain arrays store raw ids, translated back to these
+     keys on the founding page). Renumbering an existing id here would
+     silently reinterpret every already-saved map's terrain. */
+  { id:6, key:"forest",     name:"Forest",     color:"#6B4A2E" }
 ];
 
 /* ============================================================
    GOODS — a second, optional per-hex layer (one good per hex, or
-   none). id:0 ("none") is never shown as a swatch; it's what the
-   Goods tool's right-click and Clear all goods write.
+   none). id:0 ("no good selected") is a real swatch like any other —
+   selecting it and dragging with the Goods tool clears goods, the same
+   as right-click or "Clear all goods".
    ============================================================ */
 var GOODS = [
-  { id:0, key:"none",   name:"None",   color:"#3A5378" },
+  { id:0, key:"none",   name:"No Good Selected",   color:"#3A5378" },
   { id:1, key:"grain",  name:"Grain",  color:"#D4B24C" },
   { id:2, key:"horses", name:"Horses", color:"#C1602E" },
   { id:3, key:"iron",   name:"Iron",   color:"#AEB4BA" },
@@ -961,13 +967,10 @@ function setTerrain(id){
   });
   syncStatus();
 }
-/* Goods swatches skip id:0 ("none") — there's nothing to select for "no
-   good"; right-click with the Goods tool (and Clear all goods) cover that. */
 function buildGoodsPalette(){
   var box = document.getElementById("goods");
   box.innerHTML = "";
   GOODS.forEach(function(g){
-    if(g.id === 0) return;
     var b = document.createElement("button");
     b.className = "swatch" + (g.id === S.good ? " on" : "");
     b.dataset.g = g.id;
@@ -1296,7 +1299,7 @@ window.addEventListener("keydown", function(e){
   if(k === "i") setTool("pick");
   if(k === "k") setTool("goods");
   if(k === "h") setTool("pan");
-  if(k >= "0" && k <= "5") setTerrain(+k);
+  if(k >= "0" && k <= "6") setTerrain(+k);
 });
 
 /* ---------------- boot ---------------- */

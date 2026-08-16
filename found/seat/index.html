@@ -317,12 +317,13 @@ import { loadLatestWorldMap } from '/world-maps.js';
    Every loaded id is translated through the key string once, in loadWorld().
    ============================================================ */
 var TERR = [
-  { key:"sea",        name:"Sea",        color:"#1F4E7A", can:false },
+  { key:"sea",        name:"Sea",        color:"#1F4E7A", can:false, blockedReason:"You cannot found a civilization at sea." },
   { key:"plains",     name:"Plains",     color:"#A3A063", can:true  },
   { key:"fertile",    name:"Fertile",    color:"#468659", can:true  },
-  { key:"mountain",   name:"Mountain",   color:"#7C756C", can:false },
+  { key:"mountain",   name:"Mountain",   color:"#7C756C", can:false, blockedReason:"Mountains will not feed a capital." },
   { key:"desert",     name:"Desert",     color:"#D9B96B", can:true  },
-  { key:"unassigned", name:"Unassigned", color:"#243B5E", can:false }
+  { key:"unassigned", name:"Unassigned", color:"#243B5E", can:false, blockedReason:"This land hasn't been charted yet." },
+  { key:"forest",     name:"Forest",     color:"#6B4A2E", can:true  }
 ];
 var T = {};
 TERR.forEach(function(t,i){ T[t.key.toUpperCase()] = i; });
@@ -433,10 +434,9 @@ function isCoast(c,r){
    ============================================================ */
 function why(c,r){
   var i = idx(c,r);
-  if(terrain[i] === T.SEA)        return "You cannot found a civilization at sea.";
-  if(terrain[i] === T.MOUNTAIN)   return "Mountains will not feed a capital.";
-  if(terrain[i] === T.UNASSIGNED) return "This land hasn't been charted yet.";
-  if(claimed[i] >= 0)             return "This land already belongs to " + rivals[claimed[i]].name + ".";
+  var t = TERR[terrain[i]];
+  if(!t.can)             return t.blockedReason;
+  if(claimed[i] >= 0)    return "This land already belongs to " + rivals[claimed[i]].name + ".";
   for(var k=0;k<rivals.length;k++){
     if(dist(c,r,rivals[k].c,rivals[k].r) < MIN_GAP)
       return "Too close to " + rivals[k].name + " — keep " + MIN_GAP + " hexes clear.";
@@ -657,8 +657,8 @@ var currentUser = null, pendingFounding = null;
 
 function ringText(ring){
   var out = [];
-  [T.FERTILE,T.PLAINS,T.DESERT,T.MOUNTAIN,T.SEA,T.UNASSIGNED].forEach(function(t){
-    if(ring[t]) out.push(ring[t] + " " + TERR[t].name.toLowerCase());
+  TERR.forEach(function(t,i){
+    if(ring[i]) out.push(ring[i] + " " + t.name.toLowerCase());
   });
   return out.join(", ") || "nothing";
 }
