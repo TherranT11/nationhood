@@ -1,0 +1,960 @@
+[
+  {
+    "id": "healthcare_system_failure",
+    "archetype": "public_health_crisis",
+    "pressure_trigger": {
+      "conditions": [
+        { "stat": "Healthcare_quality", "below": 35, "ticks_sustained": 6 },
+        { "stat": "Beds_per_100k", "below": 30, "ticks_sustained": 6 }
+      ],
+      "match": "any"
+    },
+
+    "tier_a": {
+      "title": "Hospital Wait Times Surge Across {region}",
+      "description": "Emergency rooms in {region} are turning away non-critical patients. Nurses are working double shifts and the system is visibly buckling. A leaked internal memo from the Health Ministry warns of 'systemic capacity failure within months.'",
+      "choices": [
+        {
+          "label": "Emergency funding for hospital staffing and beds",
+          "cost": { "budget": 150, "action_points": 2 },
+          "effects": { "Healthcare_quality": 5, "Beds_per_100k": 4, "Happiness": 2 },
+          "resolution": "resolved",
+          "outcome_text": "Temporary staff are hired, overtime pay is authorized, and mothballed wards are reopened. The bleeding stops, but the system remains fragile."
+        },
+        {
+          "label": "Fast-track foreign medical worker visas",
+          "cost": { "budget": 40, "action_points": 1 },
+          "effects": { "Immigration": 2, "Healthcare_quality": 1 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [10, 16],
+          "outcome_text": "A modest wave of foreign doctors and nurses begins arriving. It helps at the margins, but the structural problems remain. The medical union is not happy."
+        },
+        {
+          "label": "Issue a statement expressing confidence in the system",
+          "cost": {},
+          "effects": { "Legitimacy": -3, "Happiness": -2 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [5, 9],
+          "outcome_text": "The Health Minister's press conference is interrupted by a doctor holding up a photo of patients on gurneys in hallways. It goes viral."
+        }
+      ]
+    },
+
+    "tier_b": {
+      "title": "Patients Dying in Waiting Rooms as Health System Buckles",
+      "description": "Three deaths in hospital waiting rooms in a single week make national headlines. The medical workers' union threatens a general strike. International health organizations have issued advisories warning travelers about {nation}'s medical capacity.",
+      "choices": [
+        {
+          "label": "Declare a health emergency and authorize wartime-level spending",
+          "cost": { "budget": 400, "action_points": 4 },
+          "effects": { "Healthcare_quality": 8, "Beds_per_100k": 8, "Happiness": 3, "Debt_growth": 3 },
+          "resolution": "resolved",
+          "outcome_text": "Field hospitals are erected. Military medics are deployed. Construction begins on two new hospitals. The crisis stabilizes, but the debt is real and the scars remain."
+        },
+        {
+          "label": "Negotiate with the medical union — concede to most demands",
+          "cost": { "budget": 180, "action_points": 2 },
+          "effects": { "Healthcare_quality": 3, "Happiness": -1, "Union_strength": 4 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [8, 12],
+          "outcome_text": "The union calls off the strike, but the deal is expensive and doesn't address bed shortages. You've bought months, not years."
+        },
+        {
+          "label": "Blame regional administrators and launch an investigation",
+          "cost": { "action_points": 1 },
+          "effects": { "Legitimacy": -6, "Stability": -3, "Happiness": -4 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [4, 7],
+          "outcome_text": "The fired administrators give interviews. They have emails showing they warned the central government for years. The investigation backfires spectacularly."
+        }
+      ]
+    },
+
+    "tier_c": {
+      "title": "Health System Collapse: Epidemic Sweeps {region}",
+      "description": "A preventable disease outbreak has torn through overcrowded, understaffed hospitals. Quarantine zones are established. Foreign embassies are evacuating non-essential staff. The WHO has placed {nation} on its emergency watch list.",
+      "forced_effects": {
+        "Healthcare_quality": -15,
+        "Beds_per_100k": -10,
+        "Lifespan": -4,
+        "Happiness": -12,
+        "Legitimacy": -10,
+        "Foreign_Investment": -8,
+        "Population_growth": -3,
+        "budget": -600
+      },
+      "outcome_text": "International aid arrives but the damage is generational. Thousands dead. A permanent stain on the government's record. The opposition doesn't even need to campaign — they just hold up the numbers.",
+      "lingers": {
+        "effects": { "Healthcare_quality": -4, "Lifespan": -2, "Foreign_Investment": -3 },
+        "duration_ticks": 24,
+        "label": "Ongoing public health emergency"
+      }
+    }
+  },
+
+  {
+    "id": "housing_affordability_crisis",
+    "archetype": "cost_of_living",
+    "pressure_trigger": {
+      "conditions": [
+        { "stat": "Housing_Affordability", "below": 30, "ticks_sustained": 5 },
+        { "stat": "Cost_of_Living", "above": 70, "ticks_sustained": 5 }
+      ],
+      "match": "any"
+    },
+
+    "tier_a": {
+      "title": "Tent Cities Appearing on the Outskirts of {city}",
+      "description": "What started as a few rough sleepers has become organized encampments. Young professionals — teachers, nurses, shop workers — are living in cars and tents because they cannot afford rent. Local news runs a devastating segment: 'The Working Homeless.'",
+      "choices": [
+        {
+          "label": "Launch an emergency public housing construction program",
+          "cost": { "budget": 200, "action_points": 3 },
+          "effects": { "Housing_Affordability": 6, "Happiness": 3, "Urbanization": 2 },
+          "resolution": "resolved",
+          "outcome_text": "Prefabricated housing units go up in weeks. It's not glamorous, but people have roofs. The opposition calls them 'government boxes' but polling shows the public is grateful."
+        },
+        {
+          "label": "Introduce rent control legislation",
+          "cost": { "budget": 30, "action_points": 2 },
+          "effects": { "Housing_Affordability": 2, "Foreign_Investment": -2 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [8, 14],
+          "outcome_text": "Rents freeze, but landlords begin converting rental units to short-term lets and condos. Supply quietly shrinks. The problem is deferred, not solved."
+        },
+        {
+          "label": "Enforce vagrancy laws and clear the encampments",
+          "cost": { "action_points": 1 },
+          "effects": { "Civil_unrest": 4, "Happiness": -4, "Press_freedom": -2, "Legitimacy": -3 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [4, 8],
+          "outcome_text": "Police in riot gear bulldoze tent cities at dawn. A journalist is arrested. The photos are everywhere. The people are still homeless — they're just less visible."
+        }
+      ]
+    },
+
+    "tier_b": {
+      "title": "Housing Riots Erupt in {city} After Eviction Wave",
+      "description": "A mass eviction in {city}'s largest low-income district sparks three nights of rioting. Property developers' offices are set ablaze. The hashtag #WeHaveNoHome trends globally. A mother of three gives a tearful interview from her car that gets 20 million views.",
+      "choices": [
+        {
+          "label": "Massive public housing initiative and eviction moratorium",
+          "cost": { "budget": 450, "action_points": 4 },
+          "effects": { "Housing_Affordability": 10, "Happiness": 5, "Civil_unrest": -4, "Debt_growth": 4 },
+          "resolution": "resolved",
+          "outcome_text": "The largest construction program since the postwar era begins. Evictions halt. It will take years and cost billions, but the streets are calm and people have hope again."
+        },
+        {
+          "label": "Offer rental subsidies funded by a new developer tax",
+          "cost": { "budget": 150, "action_points": 2 },
+          "effects": { "Housing_Affordability": 3, "Foreign_Investment": -4, "Corporate_tax": 2 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [6, 10],
+          "outcome_text": "The subsidies help some families. The developer tax drives construction firms abroad. New housing starts drop 40%. You've made the long-term problem worse while applying a bandage."
+        },
+        {
+          "label": "Deploy the national guard to restore order",
+          "cost": { "action_points": 2 },
+          "effects": { "Civil_unrest": -2, "Stability": -5, "Freedom_index": -4, "Happiness": -8, "Legitimacy": -6 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [3, 6],
+          "outcome_text": "Soldiers on the streets of {city}. The rioting stops but the anger doesn't. International media runs 'Authoritarian turn in {nation}' headlines. The underlying crisis festers."
+        }
+      ]
+    },
+
+    "tier_c": {
+      "title": "National Housing Emergency: Mass Internal Displacement",
+      "description": "The housing market has effectively collapsed for the bottom 40% of the population. Squatter settlements ring every major city. Crime in makeshift communities is rampant. Emigration surges as young families flee the country entirely. The UN Special Rapporteur on Housing issues a formal condemnation.",
+      "forced_effects": {
+        "Housing_Affordability": -12,
+        "Happiness": -15,
+        "Crime_rate": 10,
+        "Emigration": 8,
+        "Stability": -10,
+        "Civil_unrest": 8,
+        "Poverty_rate": 8,
+        "Foreign_Investment": -6,
+        "budget": -500
+      },
+      "outcome_text": "A generation is marked. The 'lost youth' of {nation} — educated, capable, and homeless — become a symbol of governmental failure. Many leave and never return. Recovery will take a decade.",
+      "lingers": {
+        "effects": { "Housing_Affordability": -4, "Emigration": 3, "Happiness": -3 },
+        "duration_ticks": 30,
+        "label": "Generational housing crisis"
+      }
+    }
+  },
+
+  {
+    "id": "energy_grid_failure",
+    "archetype": "energy_crisis",
+    "pressure_trigger": {
+      "conditions": [
+        { "stat": "Energy_generation", "below": 35, "ticks_sustained": 4 },
+        { "stat": "Physical_infrastructure", "below": 30, "ticks_sustained": 6 }
+      ],
+      "match": "any"
+    },
+
+    "tier_a": {
+      "title": "Rolling Blackouts Hit {region} During Heat Wave",
+      "description": "The power grid, strained beyond capacity, begins shedding load. Factories shut down. Traffic lights go dark. Three elderly residents die from heat exposure in {city}. The Energy Minister calls it 'an unfortunate but temporary situation.'",
+      "choices": [
+        {
+          "label": "Emergency grid investment and generator procurement",
+          "cost": { "budget": 180, "action_points": 2 },
+          "effects": { "Energy_generation": 6, "Physical_infrastructure": 3, "Happiness": 2 },
+          "resolution": "resolved",
+          "outcome_text": "Diesel generators are deployed to critical infrastructure while fast-track grid repairs begin. The lights stay on. The underlying fragility remains, but the immediate danger passes."
+        },
+        {
+          "label": "Implement mandatory energy rationing schedules",
+          "cost": { "budget": 20, "action_points": 1 },
+          "effects": { "Happiness": -3, "Industrialization": -2, "Standard_of_living": -2 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [8, 14],
+          "outcome_text": "Citizens receive schedules telling them when they'll have power. It's orderly but humiliating. Businesses that depend on consistent power begin relocating."
+        },
+        {
+          "label": "Blame the previous government's failure to invest",
+          "cost": {},
+          "effects": { "Legitimacy": -3, "Happiness": -2 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [4, 8],
+          "outcome_text": "'People don't care whose fault it is — they want the lights on,' says the lead editorial in {nation}'s paper of record. The blame game falls flat."
+        }
+      ]
+    },
+
+    "tier_b": {
+      "title": "Power Grid Failure Cripples {nation}'s Industrial Heartland",
+      "description": "A cascade failure takes down the national grid for 72 hours. Hospitals switch to backup generators — some of which fail. Factories lose millions in spoiled production. The stock market drops 8% in a single day. Foreign investors are on the phone asking hard questions.",
+      "choices": [
+        {
+          "label": "National grid reconstruction — borrow whatever it takes",
+          "cost": { "budget": 500, "action_points": 5 },
+          "effects": { "Energy_generation": 10, "Physical_infrastructure": 8, "Debt_growth": 5, "Foreign_Investment": 3 },
+          "resolution": "resolved",
+          "outcome_text": "The largest infrastructure project in a generation begins. International firms are contracted. It will take years, but the grid will be modern when it's done. The debt, however, is staggering."
+        },
+        {
+          "label": "Negotiate emergency power imports from neighboring nations",
+          "cost": { "budget": 120, "action_points": 2 },
+          "effects": { "Energy_generation": 3, "Trade_balance": -4, "Currency_strength": -2 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [6, 10],
+          "outcome_text": "Power flows in from abroad at premium prices. The neighbors now have leverage they didn't have before. The dependency is dangerous and everyone knows it."
+        },
+        {
+          "label": "Order mandatory conservation and arrest power thieves",
+          "cost": { "action_points": 2 },
+          "effects": { "Freedom_index": -3, "Happiness": -6, "Incarceration_rate": 3, "Civil_unrest": 4 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [3, 6],
+          "outcome_text": "Police raid poor neighborhoods cutting illegal connections. The optics are devastating — armed officers disconnecting power from families with children. The grid is still failing."
+        }
+      ]
+    },
+
+    "tier_c": {
+      "title": "Total Grid Collapse: {nation} Goes Dark",
+      "description": "The national grid suffers a catastrophic failure. The entire country loses power for over a week. Water treatment plants fail. Supply chains collapse. Looting breaks out in major cities. The military is deployed to maintain order around hospitals and government buildings.",
+      "forced_effects": {
+        "Energy_generation": -15,
+        "Physical_infrastructure": -12,
+        "Industrialization": -8,
+        "Gdp_growth": -10,
+        "Foreign_Investment": -12,
+        "Happiness": -15,
+        "Crime_rate": 8,
+        "Stability": -10,
+        "Standard_of_living": -8,
+        "budget": -700
+      },
+      "outcome_text": "When the lights finally come back on, the country is changed. Factories have relocated. Foreign capital has fled. The phrase 'before the blackout' enters the national vocabulary as shorthand for better times.",
+      "lingers": {
+        "effects": { "Foreign_Investment": -5, "Industrialization": -3, "Gdp_growth": -3 },
+        "duration_ticks": 28,
+        "label": "Post-blackout economic damage"
+      }
+    }
+  },
+
+  {
+    "id": "brain_drain_exodus",
+    "archetype": "emigration_crisis",
+    "pressure_trigger": {
+      "conditions": [
+        { "stat": "Emigration", "above": 65, "ticks_sustained": 6 },
+        { "stat": "Higher_education", "above": 55, "ticks_sustained": 4 },
+        { "stat": "Happiness", "below": 30, "ticks_sustained": 5 }
+      ],
+      "match": "all_of",
+      "match_count": 2
+    },
+
+    "tier_a": {
+      "title": "Universities Report Alarming Faculty Departures",
+      "description": "The deans of {nation}'s three top universities publish a joint open letter: 40% of tenured professors have left in the past two years, lured by better salaries and conditions abroad. Medical residency programs can't fill their slots. Tech companies are quietly relocating their R&D teams.",
+      "choices": [
+        {
+          "label": "Competitive retention packages for critical professionals",
+          "cost": { "budget": 160, "action_points": 2 },
+          "effects": { "Emigration": -5, "Higher_education": 3, "Academic_immigration": 2, "Happiness": 2 },
+          "resolution": "resolved",
+          "outcome_text": "Salary boosts, research grants, and tax breaks for doctors, engineers, and academics stem the tide. It's expensive, but the people who keep the country running are staying — for now."
+        },
+        {
+          "label": "Launch a 'Come Home' marketing campaign for expatriates",
+          "cost": { "budget": 30, "action_points": 1 },
+          "effects": { "Emigration": -1 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [10, 16],
+          "outcome_text": "The glossy ads run on social media. Expatriates share them with laughing emojis. 'Fix the hospitals and maybe we'll talk,' says a viral response from a doctor now working in a neighboring country."
+        },
+        {
+          "label": "Impose exit taxes and credential transfer restrictions",
+          "cost": { "action_points": 1 },
+          "effects": { "Freedom_index": -4, "Happiness": -5, "Legitimacy": -3 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [4, 8],
+          "outcome_text": "The restrictions accelerate departures as professionals rush to leave before the rules take effect. International condemnation follows. The brain drain becomes a stampede."
+        }
+      ]
+    },
+
+    "tier_b": {
+      "title": "Skilled Worker Exodus Reaches Crisis Levels",
+      "description": "Hospitals are closing wings. Schools are combining classes. Tech firms have relocated entirely. A damning report shows {nation} has lost 25% of its degree-holding workforce in five years. The phrase 'last one out, turn off the lights' is no longer a joke.",
+      "choices": [
+        {
+          "label": "Sweeping quality-of-life reforms: wages, housing, services",
+          "cost": { "budget": 400, "action_points": 4 },
+          "effects": { "Emigration": -8, "Happiness": 6, "Standard_of_living": 5, "Higher_education": 4, "Debt_growth": 4 },
+          "resolution": "resolved",
+          "outcome_text": "A comprehensive reform package makes headlines internationally. 'Can {nation} reverse its brain drain?' asks the foreign press. Slowly, cautiously, some begin to return. But trust takes time to rebuild."
+        },
+        {
+          "label": "Aggressively recruit foreign workers to fill the gaps",
+          "cost": { "budget": 100, "action_points": 2 },
+          "effects": { "Immigration": 5, "Emigration": -1, "Polarization": 3, "Ethnic_diversity": 3 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [8, 12],
+          "outcome_text": "Foreign workers arrive, but they're filling positions, not building institutions. The knowledge transfer is one-directional. Meanwhile, native professionals continue to leave. You're running on a treadmill."
+        },
+        {
+          "label": "Restrict emigration reporting to stop the 'negative narrative'",
+          "cost": { "action_points": 1 },
+          "effects": { "Press_freedom": -6, "Freedom_index": -4, "Legitimacy": -5, "Emigration": 3 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [3, 6],
+          "outcome_text": "Censoring the data doesn't stop the departures — it just means the government is the last to know how bad it's gotten. Foreign press covers the censorship, adding reputational damage to the brain drain."
+        }
+      ]
+    },
+
+    "tier_c": {
+      "title": "Institutional Collapse: {nation} Loses a Generation",
+      "description": "The tipping point has passed. {nation} no longer has enough doctors to staff its hospitals, enough teachers to run its schools, or enough engineers to maintain its infrastructure. Entire industries have relocated. The diaspora now outnumbers the remaining professional class.",
+      "forced_effects": {
+        "Higher_education": -15,
+        "Healthcare_quality": -10,
+        "Emigration": 12,
+        "Gdp_growth": -10,
+        "Physical_infrastructure": -6,
+        "Digital_infrastructure": -6,
+        "Labor_force_participation": -8,
+        "Happiness": -10,
+        "Legitimacy": -8,
+        "budget": -400
+      },
+      "outcome_text": "History books will call it 'The Exodus.' An entire generation of {nation}'s best and brightest, gone. The institutions they left behind hollow out. Recovery isn't measured in years — it's measured in generations.",
+      "lingers": {
+        "effects": { "Higher_education": -5, "Healthcare_quality": -3, "Emigration": 4 },
+        "duration_ticks": 36,
+        "label": "Generational brain drain"
+      }
+    }
+  },
+
+  {
+    "id": "corruption_scandal",
+    "archetype": "governance_crisis",
+    "pressure_trigger": {
+      "conditions": [
+        { "stat": "Corruption", "above": 65, "ticks_sustained": 5 },
+        { "stat": "Judicial_independence", "below": 35, "ticks_sustained": 5 }
+      ],
+      "match": "any"
+    },
+
+    "tier_a": {
+      "title": "Leaked Documents Reveal Systematic Bribery in {region}",
+      "description": "A whistleblower leaks thousands of documents showing government contracts being awarded to firms owned by officials' family members. The amounts are staggering. The Justice Minister calls it 'isolated incidents.' Nobody believes him.",
+      "choices": [
+        {
+          "label": "Independent anti-corruption commission with prosecution powers",
+          "cost": { "budget": 100, "action_points": 3 },
+          "effects": { "Corruption": -6, "Judicial_independence": 4, "Legitimacy": 4, "Efficiency": 2 },
+          "resolution": "resolved",
+          "outcome_text": "The commission is appointed — pointedly including opposition figures and civil society leaders. Prosecutions begin within weeks. It's painful, but the public sees a government willing to clean house."
+        },
+        {
+          "label": "Internal review — we'll handle this ourselves",
+          "cost": { "action_points": 1 },
+          "effects": { "Legitimacy": -2, "Corruption": 1 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [8, 14],
+          "outcome_text": "The 'internal review' produces a report that blames mid-level bureaucrats. No senior officials are named. The press calls it a whitewash. More whistleblowers come forward."
+        },
+        {
+          "label": "Prosecute the whistleblower for leaking classified documents",
+          "cost": { "action_points": 1 },
+          "effects": { "Press_freedom": -5, "Legitimacy": -5, "Freedom_index": -3, "Civil_unrest": 3 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [3, 7],
+          "outcome_text": "The whistleblower becomes a folk hero. 'They're jailing the person who told the truth,' becomes the rallying cry. International press freedom organizations issue condemnations. The corruption continues unchecked."
+        }
+      ]
+    },
+
+    "tier_b": {
+      "title": "Corruption Scandal Engulfs Senior Government Officials",
+      "description": "Foreign investigators have traced {nation}'s stolen public funds to offshore accounts. The amounts run into the billions. Senior ministers are named. Street protests begin. International lenders freeze a pending loan package, demanding accountability.",
+      "choices": [
+        {
+          "label": "Full cooperation with international investigators, ministers resign",
+          "cost": { "budget": 250, "action_points": 5 },
+          "effects": { "Corruption": -10, "Legitimacy": 6, "Foreign_Investment": 3, "Efficiency": 3, "Stability": -3 },
+          "resolution": "resolved",
+          "outcome_text": "Three ministers are arrested. Seized assets partially refill the treasury. The government is weakened but its credibility is salvaged. International lenders resume the loan package."
+        },
+        {
+          "label": "Limited reshuffle — sacrifice a few, protect the rest",
+          "cost": { "budget": 80, "action_points": 2 },
+          "effects": { "Corruption": -2, "Legitimacy": -4, "Stability": -2 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [6, 10],
+          "outcome_text": "Two junior ministers take the fall. The press immediately identifies that the real players are untouched. 'Sacrificial lambs,' reads the headline. The protests grow."
+        },
+        {
+          "label": "Declare the investigation a foreign interference operation",
+          "cost": { "action_points": 2 },
+          "effects": { "Legitimacy": -8, "Foreign_Investment": -6, "Press_freedom": -4, "Corruption": 4 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [3, 6],
+          "outcome_text": "The 'sovereign defense' narrative plays well with the base but horrifies everyone else. International lenders formally withdraw. Credit agencies downgrade {nation}'s bonds. The corrupt officials feel untouchable."
+        }
+      ]
+    },
+
+    "tier_c": {
+      "title": "State Capture: {nation} Labeled a Kleptocracy",
+      "description": "An international transparency report formally classifies {nation} as a kleptocratic state. Sanctions are imposed on senior officials. Foreign banks freeze government accounts. The civil service has become a patronage network. Nothing works because everything has a price.",
+      "forced_effects": {
+        "Corruption": 15,
+        "Legitimacy": -18,
+        "Foreign_Investment": -15,
+        "Credit": -10,
+        "Efficiency": -12,
+        "Judicial_independence": -8,
+        "Freedom_index": -6,
+        "Gdp_growth": -8,
+        "Stability": -8,
+        "budget": -600
+      },
+      "outcome_text": "The word 'kleptocracy' appears next to {nation}'s name in every international publication. Sanctions bite. Capital flees. The institutions of government exist on paper but serve only those who can pay. Rebuilding trust — domestic and international — will take a generation of clean governance.",
+      "lingers": {
+        "effects": { "Corruption": 5, "Foreign_Investment": -5, "Legitimacy": -5 },
+        "duration_ticks": 36,
+        "label": "International kleptocracy sanctions"
+      }
+    }
+  },
+
+  {
+    "id": "food_security_collapse",
+    "archetype": "agricultural_crisis",
+    "pressure_trigger": {
+      "conditions": [
+        { "stat": "Food_Security", "below": 35, "ticks_sustained": 4 },
+        { "stat": "Arable_land", "below": 30, "ticks_sustained": 6 }
+      ],
+      "match": "any"
+    },
+
+    "tier_a": {
+      "title": "Crop Failures in {region} Drive Food Prices Up 30%",
+      "description": "A combination of poor soil management and erratic weather has devastated this season's harvest. Staple food prices spike. The poorest communities are skipping meals. Supermarket shelves in {city} show gaps for the first time in memory.",
+      "choices": [
+        {
+          "label": "Emergency agricultural subsidies and food import program",
+          "cost": { "budget": 140, "action_points": 2 },
+          "effects": { "Food_Security": 5, "Happiness": 2, "Trade_balance": -3 },
+          "resolution": "resolved",
+          "outcome_text": "Subsidized grain floods the market, stabilizing prices. Farmers receive emergency support to replant. It's a stopgap, but people can eat."
+        },
+        {
+          "label": "Impose food price controls",
+          "cost": { "budget": 20, "action_points": 1 },
+          "effects": { "Food_Security": 1, "Happiness": -1 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [8, 14],
+          "outcome_text": "Prices are capped, but farmers can't cover costs. Some stop planting. A black market emerges. The controlled price means full shelves of things nobody is producing."
+        },
+        {
+          "label": "It's a market issue — the market will correct",
+          "cost": {},
+          "effects": { "Happiness": -4, "Poverty_rate": 3, "Civil_unrest": 2 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [4, 8],
+          "outcome_text": "The market does not correct. The poor simply eat less. Child malnutrition rates begin climbing. An NGO releases photos that make international news."
+        }
+      ]
+    },
+
+    "tier_b": {
+      "title": "Food Riots Break Out Across {nation}",
+      "description": "Bread lines stretch around blocks. Warehouses are being looted. In {city}, a crowd storms a government grain reserve and finds it nearly empty. The Agriculture Minister's claim that 'no one is going hungry' is mocked relentlessly.",
+      "choices": [
+        {
+          "label": "National food emergency: mass imports, rationing, and farm reform",
+          "cost": { "budget": 400, "action_points": 4 },
+          "effects": { "Food_Security": 9, "Arable_land": 3, "Happiness": 3, "Trade_balance": -6, "Debt_growth": 4 },
+          "resolution": "resolved",
+          "outcome_text": "Ships loaded with grain arrive at port. A rationing system ensures equitable distribution. Long-term farm reform begins — irrigation, soil restoration, seed programs. The crisis breaks, but food sovereignty remains a distant goal."
+        },
+        {
+          "label": "Request international food aid",
+          "cost": { "action_points": 1 },
+          "effects": { "Food_Security": 3, "Legitimacy": -5, "Happiness": -2 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [6, 10],
+          "outcome_text": "Aid arrives — with conditions, cameras, and the implicit message that {nation} cannot feed itself. The immediate hunger eases. The humiliation doesn't."
+        },
+        {
+          "label": "Crack down on looters and hoarders",
+          "cost": { "action_points": 2 },
+          "effects": { "Civil_unrest": 5, "Incarceration_rate": 4, "Freedom_index": -3, "Happiness": -6 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [3, 6],
+          "outcome_text": "Prisons fill with hungry people who stole food. The international community is appalled. 'They're jailing the starving,' runs the headline. The food shortage continues."
+        }
+      ]
+    },
+
+    "tier_c": {
+      "title": "Famine Conditions Declared in {region}",
+      "description": "The UN formally declares famine conditions in {nation}. Children are dying of malnutrition. International media broadcasts images that shock the world. The government has lost control of food distribution — armed groups and black marketeers control what's left.",
+      "forced_effects": {
+        "Food_Security": -18,
+        "Happiness": -18,
+        "Population_growth": -6,
+        "Lifespan": -5,
+        "Poverty_rate": 12,
+        "Civil_unrest": 10,
+        "Crime_rate": 8,
+        "Stability": -12,
+        "Legitimacy": -15,
+        "Foreign_Investment": -8,
+        "budget": -500
+      },
+      "outcome_text": "The famine of {year} becomes {nation}'s defining tragedy. A generation of children is stunted. The images — bloated bellies, hollow eyes — define the country for decades in the international imagination. No political recovery is possible for those who let this happen.",
+      "lingers": {
+        "effects": { "Food_Security": -5, "Population_growth": -3, "Legitimacy": -5, "Lifespan": -2 },
+        "duration_ticks": 36,
+        "label": "Post-famine recovery"
+      }
+    }
+  },
+
+  {
+    "id": "sovereign_debt_crisis",
+    "archetype": "financial_crisis",
+    "pressure_trigger": {
+      "conditions": [
+        { "stat": "Debt_growth", "above": 70, "ticks_sustained": 5 },
+        { "stat": "Credit", "below": 30, "ticks_sustained": 4 }
+      ],
+      "match": "any"
+    },
+
+    "tier_a": {
+      "title": "Credit Rating Downgrade Sends Shockwaves Through Markets",
+      "description": "A major credit agency has downgraded {nation}'s sovereign debt to one notch above junk status. Bond yields spike overnight. The Finance Minister holds an emergency press conference insisting the fundamentals are sound. The currency drops 4% during his speech.",
+      "choices": [
+        {
+          "label": "Emergency austerity package: cut spending, raise taxes",
+          "cost": { "budget": -80, "action_points": 3 },
+          "effects": { "Debt_growth": -6, "Credit": 4, "Currency_strength": 3, "Happiness": -4, "Standard_of_living": -3 },
+          "resolution": "resolved",
+          "outcome_text": "The cuts hurt. Public services are reduced. But the bond market stabilizes, the rating agency puts {nation} on 'positive watch,' and foreign investors cautiously return. The medicine is bitter but it works."
+        },
+        {
+          "label": "Negotiate a credit line from international lenders",
+          "cost": { "budget": 50, "action_points": 2 },
+          "effects": { "Credit": 1, "Debt_growth": 3 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [8, 14],
+          "outcome_text": "The IMF extends a precautionary credit line — with conditions the government quietly agrees to but doesn't implement. The markets calm temporarily. The underlying debt trajectory is unchanged."
+        },
+        {
+          "label": "Denounce the rating agencies as politically motivated",
+          "cost": {},
+          "effects": { "Foreign_Investment": -4, "Currency_strength": -3, "Credit": -2, "Legitimacy": -2 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [4, 7],
+          "outcome_text": "The combative rhetoric plays well domestically for about 48 hours. Then the second rating agency downgrades. Capital flight accelerates. The currency drops another 6%."
+        }
+      ]
+    },
+
+    "tier_b": {
+      "title": "Bond Market Rout: {nation} Locked Out of International Lending",
+      "description": "No one will buy {nation}'s debt at any reasonable rate. The government cannot refinance maturing bonds. Foreign reserves are draining at an alarming rate. Bank runs begin in {city} as depositors fear the worst. The central bank governor resigns.",
+      "choices": [
+        {
+          "label": "Full IMF bailout program with structural reforms",
+          "cost": { "budget": 100, "action_points": 5 },
+          "effects": { "Debt_growth": -8, "Credit": 6, "Currency_strength": 4, "Happiness": -6, "Standard_of_living": -5, "Legitimacy": -4 },
+          "resolution": "resolved",
+          "outcome_text": "The IMF takes effective control of fiscal policy. Pensions are cut. State enterprises are sold. The markets stabilize, but the government is seen as having surrendered sovereignty. It's the right call. It doesn't feel like it."
+        },
+        {
+          "label": "Print money to cover obligations",
+          "cost": { "action_points": 1 },
+          "effects": { "Inflation": 10, "Currency_strength": -8, "Debt_growth": -3, "Cost_of_Living": 6 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [4, 8],
+          "outcome_text": "The printing presses run. Inflation spikes immediately. The currency enters free fall. What was a debt crisis is now also a currency crisis. Imported goods become luxuries overnight."
+        },
+        {
+          "label": "Default on foreign-held debt — prioritize domestic obligations",
+          "cost": { "action_points": 3 },
+          "effects": { "Credit": -10, "Foreign_Investment": -10, "Currency_strength": -6, "Trade_balance": -5 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [3, 6],
+          "outcome_text": "The default makes global headlines. {nation} is locked out of international capital markets entirely. Trade partners demand cash-on-delivery. Imports collapse. The isolation is immediate and brutal."
+        }
+      ]
+    },
+
+    "tier_c": {
+      "title": "Economic Collapse: {nation}'s Currency in Free Fall",
+      "description": "Hyperinflation sets in. The currency has lost 80% of its value in months. Savings are wiped out. Shops price goods in foreign currency. Government employees haven't been paid in weeks. The economy is reverting to barter in rural areas.",
+      "forced_effects": {
+        "Inflation": 20,
+        "Currency_strength": -20,
+        "Gdp_growth": -15,
+        "Credit": -15,
+        "Foreign_Investment": -15,
+        "Cost_of_Living": 15,
+        "Poverty_rate": 12,
+        "Happiness": -18,
+        "Stability": -12,
+        "Standard_of_living": -10,
+        "Emigration": 8,
+        "budget": -800
+      },
+      "outcome_text": "The economy doesn't crash — it disintegrates. Wheelbarrows of cash to buy bread. Doctors driving taxis. Engineers emigrating. The middle class ceases to exist. When stabilization finally comes, it comes with foreign control, foreign currency, and foreign conditions. {nation} will spend decades repaying this moment.",
+      "lingers": {
+        "effects": { "Inflation": 5, "Currency_strength": -5, "Credit": -5, "Foreign_Investment": -5, "Emigration": 3 },
+        "duration_ticks": 40,
+        "label": "Post-hyperinflation economic devastation"
+      }
+    }
+  },
+
+  {
+    "id": "civil_unrest_spiral",
+    "archetype": "social_crisis",
+    "pressure_trigger": {
+      "conditions": [
+        { "stat": "Civil_unrest", "above": 65, "ticks_sustained": 4 },
+        { "stat": "Polarization", "above": 70, "ticks_sustained": 5 }
+      ],
+      "match": "any"
+    },
+
+    "tier_a": {
+      "title": "Mass Protests Paralyze {city} for Third Consecutive Week",
+      "description": "What began as scattered demonstrations has coalesced into a sustained protest movement. Tens of thousands occupy the central square in {city}. Roads are blocked. The movement has no single leader, which makes it impossible to negotiate with — and impossible to discredit.",
+      "choices": [
+        {
+          "label": "Open formal dialogue — invite protest leaders to the table",
+          "cost": { "action_points": 3 },
+          "effects": { "Civil_unrest": -5, "Polarization": -3, "Legitimacy": 3, "Happiness": 2 },
+          "resolution": "resolved",
+          "outcome_text": "A televised roundtable with protest representatives. It's messy, heated, and uncomfortable. But the fact that the government is listening — actually listening — defuses the immediate crisis. Concessions are made. The square clears."
+        },
+        {
+          "label": "Wait them out — they'll get tired eventually",
+          "cost": {},
+          "effects": { "Civil_unrest": 2, "Legitimacy": -3 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [6, 12],
+          "outcome_text": "They don't get tired. They get organized. The encampment develops its own infrastructure — kitchens, medical tents, a newspaper. The government's silence is read as contempt."
+        },
+        {
+          "label": "Disperse the protests — clear the square",
+          "cost": { "action_points": 2 },
+          "effects": { "Civil_unrest": 4, "Freedom_index": -4, "Press_freedom": -3, "Legitimacy": -5, "Political_violence": 3 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [3, 7],
+          "outcome_text": "Tear gas in the square. Water cannons. A protester loses an eye. The square is cleared by morning and refilled by noon. Now they're not just angry — they're furious."
+        }
+      ]
+    },
+
+    "tier_b": {
+      "title": "General Strike Brings {nation} to a Standstill",
+      "description": "The protest movement has called a general strike and the country has answered. Ports are closed. Transit is halted. Schools are empty. The economy is losing millions per day. Counter-protests emerge, raising the specter of direct confrontation between citizens.",
+      "choices": [
+        {
+          "label": "Major concessions: constitutional reform commission",
+          "cost": { "budget": 150, "action_points": 5 },
+          "effects": { "Civil_unrest": -8, "Polarization": -5, "Legitimacy": 5, "Freedom_index": 3, "Stability": 3 },
+          "resolution": "resolved",
+          "outcome_text": "The government announces sweeping reforms — an elected constitutional assembly, new elections within the year, amnesty for protesters. The strike ends. The hard work of reform begins. It's a genuine turning point, if the government follows through."
+        },
+        {
+          "label": "Declare a state of emergency and ban public gatherings",
+          "cost": { "action_points": 3 },
+          "effects": { "Civil_unrest": 6, "Freedom_index": -8, "Political_violence": 5, "Press_freedom": -5, "Stability": -5 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [3, 6],
+          "outcome_text": "The emergency decree radicalizes the movement. Underground networks form. Acts of sabotage begin. What was a democratic protest movement starts to fracture into something darker."
+        },
+        {
+          "label": "Offer minor concessions and hope it's enough",
+          "cost": { "budget": 50, "action_points": 1 },
+          "effects": { "Civil_unrest": 2, "Legitimacy": -4, "Polarization": 3 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [6, 10],
+          "outcome_text": "The 'concessions' are seen as insulting. 'They offered us crumbs and called it a feast,' says a protest leader. The movement hardens. Moderates lose influence to radicals."
+        }
+      ]
+    },
+
+    "tier_c": {
+      "title": "Nationwide Civil Disorder: {nation} on the Brink",
+      "description": "The country has fractured. Street battles between factions. Government buildings set ablaze. The military issues a statement that is carefully neutral — and terrifying in its ambiguity. International flights are cancelled. Embassies evacuate non-essential staff.",
+      "forced_effects": {
+        "Civil_unrest": 15,
+        "Stability": -18,
+        "Political_violence": 12,
+        "Legitimacy": -15,
+        "Freedom_index": -8,
+        "Foreign_Investment": -12,
+        "Gdp_growth": -10,
+        "Happiness": -15,
+        "Crime_rate": 8,
+        "Emigration": 8,
+        "Polarization": 10,
+        "budget": -600
+      },
+      "outcome_text": "The government survives — barely. But it governs a fractured, traumatized nation. The scars of the violence — on both sides — will define politics for a generation. Trust in institutions has evaporated. The moderates have been discredited. Every future disagreement will carry the echo of this moment.",
+      "lingers": {
+        "effects": { "Stability": -5, "Polarization": 5, "Political_violence": 3, "Civil_unrest": 3 },
+        "duration_ticks": 30,
+        "label": "Post-crisis national trauma"
+      }
+    }
+  },
+
+  {
+    "id": "infrastructure_collapse",
+    "archetype": "infrastructure_decay",
+    "pressure_trigger": {
+      "conditions": [
+        { "stat": "Physical_infrastructure", "below": 30, "ticks_sustained": 6 },
+        { "stat": "Rail_network", "below": 25, "ticks_sustained": 6 }
+      ],
+      "match": "any"
+    },
+
+    "tier_a": {
+      "title": "Bridge Collapse in {region} Kills Twelve",
+      "description": "A highway bridge that engineers flagged as 'critically deficient' three years ago collapses during morning rush hour. Twelve dead, dozens injured. An investigation reveals that 40% of {nation}'s bridges have the same classification. The Transport Minister says funding was 'insufficient.'",
+      "choices": [
+        {
+          "label": "Emergency infrastructure inspection and repair program",
+          "cost": { "budget": 170, "action_points": 2 },
+          "effects": { "Physical_infrastructure": 6, "Rail_network": 3, "Happiness": 2, "Standard_of_living": 2 },
+          "resolution": "resolved",
+          "outcome_text": "Every major bridge, road, and tunnel is inspected. The worst are closed for immediate repair. Detours are frustrating but nobody else dies. A long-term maintenance fund is established."
+        },
+        {
+          "label": "Close the worst bridges and promise future repairs",
+          "cost": { "budget": 30, "action_points": 1 },
+          "effects": { "Physical_infrastructure": 1, "Happiness": -2, "Industrialization": -2 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [8, 14],
+          "outcome_text": "Bridges close but the promised repairs never materialize. Detour routes deteriorate under the extra traffic. Commerce slows. The 'temporary' closures become permanent."
+        },
+        {
+          "label": "Blame the construction company and launch a lawsuit",
+          "cost": { "action_points": 1 },
+          "effects": { "Legitimacy": -3, "Happiness": -3 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [5, 9],
+          "outcome_text": "The lawsuit drags on. The other 4,000 deficient bridges remain deficient. A leaked government report from five years ago shows officials knew and chose not to act. The lawsuit becomes evidence of negligence."
+        }
+      ]
+    },
+
+    "tier_b": {
+      "title": "Highway Network Deterioration Strangling {nation}'s Economy",
+      "description": "It's not one bridge anymore — it's the entire network. A major highway collapses into a sinkhole. Rail service is reduced to 60% capacity due to track damage. Shipping companies add a 'poor infrastructure surcharge' to deliveries to {nation}. Supply chains are breaking.",
+      "choices": [
+        {
+          "label": "National infrastructure reconstruction act — borrow and build",
+          "cost": { "budget": 450, "action_points": 5 },
+          "effects": { "Physical_infrastructure": 10, "Rail_network": 8, "Industrialization": 4, "Unemployment": -3, "Debt_growth": 5 },
+          "resolution": "resolved",
+          "outcome_text": "The biggest public works project in {nation}'s history. Hundreds of thousands of jobs. New roads, bridges, rail lines. The debt is enormous but the country is being physically rebuilt. For once, the construction cranes are a sign of hope."
+        },
+        {
+          "label": "Public-private partnership — let corporations build toll roads",
+          "cost": { "budget": 80, "action_points": 2 },
+          "effects": { "Physical_infrastructure": 3, "Income_inequality": 3, "Cost_of_Living": 3, "Happiness": -3 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [6, 10],
+          "outcome_text": "Gleaming new toll roads appear — serving wealthy commuters. The rest of the network continues to crumble. Two-tier infrastructure: one for those who can pay, and decay for everyone else."
+        },
+        {
+          "label": "Reduce weight limits and speed limits to extend road life",
+          "cost": { "action_points": 1 },
+          "effects": { "Industrialization": -5, "Trade_balance": -4, "Gdp_growth": -3, "Happiness": -4 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [4, 8],
+          "outcome_text": "Trucks crawl at 30 km/h on crumbling highways. Delivery times double. Factories can't get supplies. {nation}'s competitive disadvantage becomes structural. Companies don't relocate because of taxes — they relocate because they can't move goods."
+        }
+      ]
+    },
+
+    "tier_c": {
+      "title": "Infrastructure Disintegration: {nation} Physically Falling Apart",
+      "description": "A dam fails in {region}, flooding a valley and displacing 100,000 people. This is the third major structural failure this year. Foreign engineers refuse to certify {nation}'s infrastructure as safe. Airlines reroute around airports with deteriorating runways. The country is physically disintegrating.",
+      "forced_effects": {
+        "Physical_infrastructure": -18,
+        "Rail_network": -10,
+        "Industrialization": -10,
+        "Gdp_growth": -10,
+        "Trade_balance": -8,
+        "Foreign_Investment": -10,
+        "Happiness": -12,
+        "Standard_of_living": -8,
+        "Urbanization": -5,
+        "Stability": -6,
+        "budget": -700
+      },
+      "outcome_text": "Maps of {nation} are redrawn — not politically, but practically. Entire routes are impassable. Regions become isolated. The economy fragments into local pockets. International trade reroutes around {nation} entirely. The physical collapse mirrors the institutional one.",
+      "lingers": {
+        "effects": { "Physical_infrastructure": -5, "Trade_balance": -4, "Industrialization": -4, "Foreign_Investment": -3 },
+        "duration_ticks": 32,
+        "label": "National infrastructure failure"
+      }
+    }
+  },
+
+  {
+    "id": "crime_wave",
+    "archetype": "security_crisis",
+    "pressure_trigger": {
+      "conditions": [
+        { "stat": "Crime_rate", "above": 65, "ticks_sustained": 5 },
+        { "stat": "Poverty_rate", "above": 60, "ticks_sustained": 5 },
+        { "stat": "Unemployment", "above": 60, "ticks_sustained": 4 }
+      ],
+      "match": "all_of",
+      "match_count": 2
+    },
+
+    "tier_a": {
+      "title": "Violent Crime Surge Terrorizes {city}",
+      "description": "Carjackings up 200%. Armed robberies in broad daylight. A popular restaurant owner is murdered during a robbery in {city}'s main square — in front of diners. Citizens are afraid to go out at night. Gated communities report record sales.",
+      "choices": [
+        {
+          "label": "Comprehensive anti-crime plan: policing, jobs, and social programs",
+          "cost": { "budget": 180, "action_points": 3 },
+          "effects": { "Crime_rate": -6, "Happiness": 3, "Unemployment": -2, "Poverty_rate": -2 },
+          "resolution": "resolved",
+          "outcome_text": "More police on the streets, but also more youth centers, job training programs, and community outreach. It's the hard, slow, unglamorous work of addressing root causes. Crime statistics start dropping within months."
+        },
+        {
+          "label": "Flood the streets with police — maximum visible presence",
+          "cost": { "budget": 80, "action_points": 2 },
+          "effects": { "Crime_rate": -2, "Incarceration_rate": 4, "Freedom_index": -2, "Happiness": -1 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [8, 14],
+          "outcome_text": "Crime dips temporarily as police saturate high-crime areas. But the prisons fill up, the underlying causes remain, and when the overtime budget runs out, the officers withdraw. The criminals were just waiting."
+        },
+        {
+          "label": "Arm citizens — relax gun ownership laws",
+          "cost": {},
+          "effects": { "Crime_rate": 2, "Political_violence": 3, "Happiness": -3, "Stability": -3 },
+          "resolution": "escalate_b",
+          "escalate_ticks": [4, 8],
+          "outcome_text": "Gun sales spike. So do accidental shootings, domestic murders, and armed confrontations between citizens. The criminals are now better armed too — they steal the guns. The cure is worse than the disease."
+        }
+      ]
+    },
+
+    "tier_b": {
+      "title": "Organized Crime Takes Control of {region}",
+      "description": "Criminal organizations have moved from the shadows into open governance of entire neighborhoods. They collect 'taxes,' settle disputes, and provide 'security' — services the state has failed to deliver. Police officers are being assassinated. A judge who convicted a gang leader is found dead.",
+      "choices": [
+        {
+          "label": "All-out law enforcement offensive with witness protection",
+          "cost": { "budget": 380, "action_points": 5 },
+          "effects": { "Crime_rate": -9, "Stability": 4, "Judicial_independence": 3, "Incarceration_rate": 3, "Happiness": 2 },
+          "resolution": "resolved",
+          "outcome_text": "A coordinated operation — new prosecutors, protected witnesses, seized assets, dismantled networks. It takes months and it's dangerous. Officers die. But the gangs are broken. The neighborhoods are reclaimed. The state is present again."
+        },
+        {
+          "label": "Negotiate truces with gang leaders in exchange for reduced violence",
+          "cost": { "action_points": 2 },
+          "effects": { "Crime_rate": -2, "Legitimacy": -8, "Corruption": 5, "Judicial_independence": -4 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [6, 10],
+          "outcome_text": "The gangs agree to 'reduce' visible violence. In exchange, they operate freely. The state has formally surrendered territory to criminals. When the truce inevitably breaks down, the gangs are stronger than ever."
+        },
+        {
+          "label": "Declare martial law in affected areas",
+          "cost": { "action_points": 3 },
+          "effects": { "Crime_rate": -3, "Freedom_index": -6, "Civil_unrest": 5, "Happiness": -5, "Legitimacy": -5 },
+          "resolution": "escalate_c",
+          "escalate_ticks": [4, 8],
+          "outcome_text": "Tanks in residential streets. Curfews. Military checkpoints. The gangs melt away — into the military, into the police, into the civilian population. You can't shoot your way out of organized crime. The military occupation brutalizes the communities it was meant to protect."
+        }
+      ]
+    },
+
+    "tier_c": {
+      "title": "Failed State Territory: Government Loses Control of {region}",
+      "description": "Criminal organizations effectively govern three provinces. They have armed forces, taxation, courts. The national police refuse to enter. Foreign governments issue 'do not travel' advisories for the entire country. Kidnapping of foreign nationals triggers an international incident.",
+      "forced_effects": {
+        "Crime_rate": 15,
+        "Stability": -15,
+        "Legitimacy": -15,
+        "Judicial_independence": -8,
+        "Foreign_Investment": -12,
+        "Happiness": -15,
+        "Freedom_index": -8,
+        "Corruption": 10,
+        "Emigration": 8,
+        "Political_violence": 8,
+        "Terrorism": 5,
+        "budget": -600
+      },
+      "outcome_text": "The word 'narco-state' enters the international vocabulary to describe {nation}. Territory has been ceded to criminals without a formal surrender. The government governs the parts of the map that the gangs don't want. Reclaiming sovereignty will require a generation of institution-building — assuming anyone is left to build them.",
+      "lingers": {
+        "effects": { "Crime_rate": 5, "Stability": -5, "Corruption": 4, "Legitimacy": -4, "Foreign_Investment": -4 },
+        "duration_ticks": 36,
+        "label": "Organized crime entrenchment"
+      }
+    }
+  }
+]
